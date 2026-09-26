@@ -86,3 +86,25 @@ dist\stage\coreshiftd.exe update check -download %TEMP%\coreshift-check
 Для проверки без GitHub подойдёт папка: в настройках службы `app_update.source` = путь к `dist\release\0.3.0`, либо `coreshiftd update check -source <папка>`.
 
 Если обновление не установилось, смотрите журнал установщика: `C:\ProgramData\CoreShift\updates\install.log`. Неудавшуюся версию служба сама повторно не ставит, это можно сделать кнопкой «Установить сейчас».
+
+## Android
+
+```
+powershell -ExecutionPolicy Bypass -File packaging\android\build.ps1
+```
+
+Скрипт собирает `dist\coreshift-<версия>-b<сборка>.apk` только для 64-битных ARM-телефонов (arm64-v8a), то есть практически для всех телефонов последних лет.
+
+Что нужно на компьютере:
+
+- Android SDK с NDK 28.2 в `%LOCALAPPDATA%\Android\Sdk`;
+- `gomobile`: `go install golang.org/x/mobile/cmd/gomobile@latest`;
+- ядра для Android в `engine\testdata\bin\android-arm64`: `libxray.so`, `libsingbox.so`, `libmihomo.so`. Это обычные Android-сборки xray, sing-box и mihomo из их релизов, переименованные так, чтобы Android разрешил их запуск.
+
+**Подпись.** APK подписывается ключом `%USERPROFILE%\.coreshift\android-release.jks`, пароль лежит в `android-signing.properties` рядом. Храните копию ключа вместе с ключом обновлений. Android ставит новую версию поверх старой, только если обе подписаны одним ключом. Без ключа придётся удалять приложение, а вместе с ним и подписки.
+
+**Как устроено.**
+- Go-движок работает внутри приложения, у него тот же HTTP API, что у службы на ПК.
+- Туннель — это sing-box внутри приложения на TUN от `VpnService`.
+- Само приложение исключено из VPN, поэтому ядра подключаются к серверам напрямую.
+- Mihomo из официальных релизов требует Android 14 и новее. На более старых телефонах автосвап обходится xray и sing-box.
