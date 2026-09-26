@@ -26,7 +26,7 @@ void main() {
     return state;
   }
 
-  const pages = ['Серверы', 'Исключения', 'Настройки', 'Ядра', 'Журнал', 'Главная'];
+  const pages = ['Серверы', 'Правила', 'Настройки', 'Ядра', 'Журнал', 'Главная'];
 
   testWidgets('every page renders on demo data', (tester) async {
     final state = await pumpApp(tester);
@@ -172,7 +172,7 @@ void main() {
 
   testWidgets('apps picked from the running ones bypass the tunnel', (tester) async {
     final state = await pumpApp(tester);
-    await tester.tap(find.text('Исключения').first);
+    await tester.tap(find.text('Правила').first);
     await tester.pump();
     expect(find.text('Программы без VPN'), findsOneWidget);
     expect(find.text('qbittorrent.exe'), findsOneWidget);
@@ -278,7 +278,7 @@ void main() {
       await tester.pump();
       expect(tester.takeException(), isNull, reason: page);
     }
-    await tester.tap(find.text('Исключения').first);
+    await tester.tap(find.text('Правила').first);
     await tester.pump();
     await tester.ensureVisible(find.text('Выбрать из запущенных'));
     await tester.tap(find.text('Выбрать из запущенных'));
@@ -293,7 +293,7 @@ void main() {
 
   testWidgets('own lists: addresses, always through the VPN, blocked', (tester) async {
     final state = await pumpApp(tester);
-    await tester.tap(find.text('Исключения').first);
+    await tester.tap(find.text('Правила').first);
     await tester.pump();
     List<String> list(String key) => state.setting<List>('routing.$key', const []).cast<String>();
     Future<void> add(String hint, String text) async {
@@ -337,7 +337,7 @@ void main() {
 
   testWidgets('only selected services go through the VPN', (tester) async {
     final state = await pumpApp(tester);
-    await tester.tap(find.text('Исключения').first);
+    await tester.tap(find.text('Правила').first);
     await tester.pump();
     List<String> list(String key) => state.setting<List>('routing.$key', const []).cast<String>();
     expect(find.text('Популярные сервисы'), findsNothing);
@@ -586,7 +586,7 @@ void main() {
       }
     }
 
-    for (final page in ['Серверы', 'Исключения', 'Настройки', 'Главная']) {
+    for (final page in ['Серверы', 'Правила', 'Настройки', 'Главная']) {
       await tester.tap(find.descendant(of: find.byType(NavigationBar), matching: find.text(page)));
       await check(page);
       // Scroll through the page, so rows further down are laid out too.

@@ -118,7 +118,7 @@ class SettingsPage extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const PanelTitle('DNS', sub: 'для опытных — значения по умолчанию подходят большинству'),
+          const PanelTitle('DNS', sub: 'можно не трогать'),
           SettingRow(
             first: true,
             title: 'DNS через VPN',

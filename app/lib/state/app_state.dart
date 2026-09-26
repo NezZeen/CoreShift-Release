@@ -299,7 +299,7 @@ class AppState extends ChangeNotifier {
         _statusSoon();
       case 'swap':
         swaps++;
-        _log(e.time, 'автосвап', '${e.from} → ${e.core} (${_reasonText(e.reason)})', LogLevel.swap);
+        _log(e.time, 'автосвап', '${coreName(e.from)} → ${coreName(e.core)} (${_reasonText(e.reason)})', LogLevel.swap);
         if (live) {
           final back = e.reason == 'return-to-primary';
           toast(back ? 'Снова работает основное ядро: ${coreName(e.core)}' : 'Ядро переключено с ${coreName(e.from)} на ${coreName(e.core)}', ToastKind.swap);
