@@ -216,3 +216,6 @@ Future<List<Map<String, dynamic>>> dnsLeakTest() async {
     c.close(force: true);
   }
 }
+
+/// The system, for the journal's header: "Windows 10 Pro 10.0 (Build 19045)".
+String get osDescription => '${Platform.operatingSystem} ${Platform.operatingSystemVersion}';

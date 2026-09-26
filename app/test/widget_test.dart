@@ -479,4 +479,45 @@ void main() {
     expect(humanError('update signature does not match the release key'), contains('подпись'));
     expect(humanError('check for updates: dial tcp: i/o timeout'), contains('нет связи с GitHub'));
   });
+
+  test('settings changes are described for the journal', () {
+    final before = {
+      'tun': true,
+      'cores': {
+        'mode': 'auto',
+        'priority': ['xray', 'sing-box'],
+      },
+      'routing': {
+        'russia_direct': false,
+        'direct_domains': ['a.ru'],
+      },
+    };
+    final after = {
+      'tun': false,
+      'cores': {
+        'mode': 'manual',
+        'priority': ['xray', 'sing-box'],
+      },
+      'routing': {
+        'russia_direct': true,
+        'direct_domains': ['a.ru', 'b.ru'],
+      },
+    };
+    expect(settingsChanges(before, after), [
+      'tun: да → нет',
+      'cores.mode: auto → manual',
+      'routing.russia_direct: нет → да',
+      'routing.direct_domains: 1 записей → 2 записей',
+    ]);
+    expect(settingsChanges(before, before), isEmpty);
+  });
+
+  testWidgets('the copied journal starts with versions and mode', (tester) async {
+    final state = await pumpApp(tester);
+    final header = state.diagnosticsHeader();
+    expect(header[0], startsWith('CoreShift: приложение'));
+    expect(header[2], contains('все приложения (TUN)'));
+    expect(header.join('\n'), isNot(contains('https://')));
+    await tester.pump(const Duration(seconds: 6));
+  });
 }
