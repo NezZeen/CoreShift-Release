@@ -150,6 +150,30 @@ class _Line extends StatelessWidget {
       LogLevel.info => p.text,
     };
     const mono = TextStyle(fontFamily: monoFont, fontFamilyFallback: monoFallback, fontSize: 12.5, height: 1.45);
+    final source = isCore ? coreStyle(l.source).name : l.source;
+    final message = mono.copyWith(color: msgColor, fontWeight: l.level == LogLevel.swap ? FontWeight.w500 : null);
+    if (isCompact(context)) {
+      // A phone has no room for columns: one paragraph that wraps.
+      return Container(
+        color: l.level == LogLevel.swap ? swapColor.withValues(alpha: .08) : null,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+        child: Text.rich(
+          TextSpan(
+            children: [
+              TextSpan(
+                text: '${_time(l.time)} ',
+                style: mono.copyWith(color: p.dim, fontSize: 11.5),
+              ),
+              TextSpan(
+                text: '$source ',
+                style: mono.copyWith(color: srcColor, fontWeight: FontWeight.w500),
+              ),
+              TextSpan(text: l.message, style: message),
+            ],
+          ),
+        ),
+      );
+    }
     return Container(
       color: l.level == LogLevel.swap ? swapColor.withValues(alpha: .08) : null,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 1),
@@ -163,17 +187,12 @@ class _Line extends StatelessWidget {
           SizedBox(
             width: 100,
             child: Text(
-              isCore ? coreStyle(l.source).name : l.source,
+              source,
               style: mono.copyWith(color: srcColor, fontWeight: FontWeight.w500),
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          Expanded(
-            child: Text(
-              l.message,
-              style: mono.copyWith(color: msgColor, fontWeight: l.level == LogLevel.swap ? FontWeight.w500 : null),
-            ),
-          ),
+          Expanded(child: Text(l.message, style: message)),
         ],
       ),
     );

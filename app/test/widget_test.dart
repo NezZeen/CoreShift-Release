@@ -550,6 +550,18 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
   });
 
+  testWidgets('the add dialog fits a phone', (tester) async {
+    await pumpApp(tester, size: const Size(390, 844));
+    await tester.tap(find.descendant(of: find.byType(NavigationBar), matching: find.text('Серверы')));
+    await tester.pump();
+    await tester.tap(find.text('Добавить'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('Добавить подписку'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(seconds: 1));
+  });
+
   testWidgets('a phone hides explanations behind an icon', (tester) async {
     await pumpApp(tester, size: const Size(390, 844));
     await tester.tap(find.descendant(of: find.byType(NavigationBar), matching: find.text('Настройки')));
@@ -593,7 +605,11 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 600));
       expect(find.byType(BottomSheet), findsNothing, reason: page);
-      expect(find.descendant(of: find.byType(PageHeader), matching: find.text(page)), findsOneWidget, reason: page);
+      expect(
+        find.descendant(of: find.byType(PageHeader), matching: find.text(page)),
+        findsOneWidget,
+        reason: page,
+      );
       await check(page);
     }
     expect(problems, isEmpty);

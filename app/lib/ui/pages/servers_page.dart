@@ -247,7 +247,7 @@ class _EmptySubs extends StatelessWidget {
           const Text('Подписок пока нет', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
           const SizedBox(height: 6),
           Text(
-            'Добавьте ссылку на подписку от вашего провайдера или вставьте ссылки на узлы (vless://, trojan://, hy2://…)',
+            'Добавьте ссылку на подписку от вашего провайдера или вставьте ссылки на серверы (vless://, trojan://, hy2://…)',
             textAlign: TextAlign.center,
             style: TextStyle(color: p.muted),
           ),
@@ -758,11 +758,14 @@ class _AddDialogState extends State<_AddDialog> {
   Widget build(BuildContext context) {
     final p = context.pal;
     final label = TextStyle(fontSize: 12, color: p.muted, fontWeight: FontWeight.w500);
+    final compact = isCompact(context);
     return Dialog(
+      // A phone: the dialog takes the width, the paste button its icon.
+      insetPadding: compact ? const EdgeInsets.symmetric(horizontal: 14, vertical: 24) : null,
       child: SizedBox(
         width: 520,
         child: Padding(
-          padding: const EdgeInsets.all(22),
+          padding: EdgeInsets.all(compact ? 18 : 22),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -810,7 +813,8 @@ class _AddDialogState extends State<_AddDialog> {
               Row(
                 children: [
                   Btn(
-                    label: 'Из буфера',
+                    label: compact ? null : 'Из буфера',
+                    tooltip: compact ? 'Вставить из буфера' : null,
                     icon: Icons.content_paste,
                     kind: BtnKind.ghost,
                     onPressed: () async {
