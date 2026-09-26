@@ -479,8 +479,33 @@ class AppState extends ChangeNotifier {
 
   Future<void> toggleConnect() => status.active ? disconnect() : connect();
 
+  /// The first lines of a copied journal: which versions, which system and
+  /// how CoreShift is set up. No servers' addresses or subscription links.
+  List<String> diagnosticsHeader() {
+    String on(String path) => setting(path, false) ? 'да' : 'нет';
+    final cores = setting('cores.mode', 'auto') == 'manual'
+        ? 'вручную ${setting('cores.manual', '')}'
+        : 'автосвап ${(settings['cores']?['priority'] as List?)?.join(' → ') ?? ''}';
+    return [
+      'CoreShift: приложение ${version.label} (${version.commit.isEmpty ? '—' : version.commit}), '
+          'служба ${info.buildVersion.label} (${info.commit.isEmpty ? '—' : info.commit})',
+      'Система: ${platform.osDescription}',
+      'Режим: ${setting('tun', false) ? 'все приложения (TUN)' : 'только прокси'}; ядра: $cores; '
+          'маршруты: ${setting('routing.mode', 'all') == 'selected' ? 'только выбранное' : 'всё через VPN'}; '
+          'Россия напрямую: ${on('routing.russia_direct')}; IPv6: ${on('ipv6')}; fake-IP: ${on('dns.fake_ip')}',
+      'Сейчас: ${_stateText(status.state.name)}${status.core.isEmpty ? '' : ' через ${status.core}'}'
+          '${selection.name.isEmpty ? '' : ', сервер «${selection.name}»'}',
+      '',
+    ];
+  }
+
+  /// Notes what the user did, so a journal copied from another computer
+  /// says why the connection changed.
+  void _logAction(String text) => _log(DateTime.now(), 'действие', text, LogLevel.info);
+
   Future<void> connect({String? subscription, String? fingerprint, String? name}) async {
     busy = true;
+    _logAction(name != null && name.isNotEmpty ? 'подключить: $name' : 'подключить${selection.name.isEmpty ? '' : ': ${selection.name}'}');
     _notify();
     await _act(() async {
       final body = subscription != null ? {'subscription': subscription, 'fingerprint': fingerprint, 'name': ?name} : null;
@@ -492,6 +517,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> reconnect() async {
     busy = true;
+    _logAction(status.settingsPending ? 'переподключить, чтобы применить настройки' : 'переподключить');
     _notify();
     await _act(() async => status = Status.fromJson(await backend.call('POST', '/v1/reconnect') as Json));
     busy = false;
@@ -500,6 +526,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> disconnect() async {
     busy = true;
+    _logAction('отключить');
     _notify();
     await _act(() async => status = Status.fromJson(await backend.call('POST', '/v1/disconnect') as Json));
     if (!status.active) speed.clear();
@@ -583,7 +610,10 @@ class AppState extends ChangeNotifier {
     final draft = jsonDecode(jsonEncode(settings)) as Json;
     edit(draft);
     try {
+      final before = settings;
       settings = await backend.call('PUT', '/v1/settings', draft) as Json;
+      final changes = settingsChanges(before, settings);
+      if (changes.isNotEmpty) _log(DateTime.now(), 'настройки', changes.join('; '), LogLevel.info);
       _notify();
       return null;
     } catch (e) {
@@ -743,4 +773,33 @@ class AppState extends ChangeNotifier {
     _statusDebounce?.cancel();
     super.dispose();
   }
+}
+
+/// What differs between two settings objects, one entry per changed value:
+/// "tun: да → нет", "routing.direct_domains: 3 → 4 записей". Lists are
+/// counted, not listed: they can be long.
+List<String> settingsChanges(Map before, Map after, [String prefix = '']) {
+  String show(Object? v) => switch (v) {
+    true => 'да',
+    false => 'нет',
+    null => '—',
+    List l => '${l.length} записей',
+    String s when s.isEmpty => '«»',
+    _ => '$v',
+  };
+  final out = <String>[];
+  for (final k in {...before.keys, ...after.keys}) {
+    final a = before[k], b = after[k];
+    final path = '$prefix$k';
+    if (a is Map && b is Map) {
+      out.addAll(settingsChanges(a, b, '$path.'));
+    } else if (a is List && b is List) {
+      if (jsonEncode(a) != jsonEncode(b)) {
+        out.add(a.length == b.length ? '$path: изменён список (${b.length} записей)' : '$path: ${show(a)} → ${show(b)}');
+      }
+    } else if (a != b) {
+      out.add('$path: ${show(a)} → ${show(b)}');
+    }
+  }
+  return out;
 }

@@ -93,7 +93,8 @@ class _LogsPageState extends State<LogsPage> {
                 onPressed: lines.isEmpty
                     ? null
                     : () {
-                        Clipboard.setData(ClipboardData(text: lines.map((l) => '${_time(l.time)}  ${l.source}  ${l.message}').join('\n')));
+                        final text = [...widget.state.diagnosticsHeader(), for (final l in lines) '${_time(l.time)}  ${l.source}  ${l.message}'];
+                        Clipboard.setData(ClipboardData(text: text.join('\n')));
                         widget.state.toast('Журнал скопирован');
                       },
               ),
