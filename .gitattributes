@@ -1,0 +1,4 @@
+# Keep LF everywhere, also in the worktrees of build-version.ps1.
+* text=auto eol=lf
+*.png binary
+*.ico binary
