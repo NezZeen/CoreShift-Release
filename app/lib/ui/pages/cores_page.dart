@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../api/models.dart';
+import '../../platform/platform.dart' as platform;
 import '../../state/app_state.dart';
 import '../../state/errors.dart';
 import '../theme.dart';
@@ -19,12 +20,14 @@ class CoresPage extends StatelessWidget {
           'Ядра',
           subtitle: 'Установленные ядра, их приоритет и правила автоматического переключения.',
           actions: [
-            Btn(
-              label: 'Проверить обновления',
-              icon: Icons.system_update_alt,
-              loading: state.checkingUpdates,
-              onPressed: state.updatingCore.isNotEmpty || !state.online ? null : state.checkCoreUpdates,
-            ),
+            // Android runs programs only from the APK: cores update with it.
+            if (!platform.isAndroid)
+              Btn(
+                label: 'Проверить обновления',
+                icon: Icons.system_update_alt,
+                loading: state.checkingUpdates,
+                onPressed: state.updatingCore.isNotEmpty || !state.online ? null : state.checkCoreUpdates,
+              ),
             Seg<String>(
               value: mode,
               options: const [('auto', 'Автосвап'), ('manual', 'Вручную')],

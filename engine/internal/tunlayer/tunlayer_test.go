@@ -5,6 +5,7 @@ import (
 	"net/netip"
 	"reflect"
 	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -568,5 +569,23 @@ func TestDirectAppsOnIPv4OnlyHost(t *testing.T) {
 	o.DNS.DirectIPv4Only = false
 	if ruleIndex(list(sub(render(t, o), "route"), "rules"), map[string]any{"action": "reject", "ip_cidr": []any{"2000::/3"}}) >= 0 {
 		t.Error("a host with IPv6 must reach direct IPv6 addresses")
+	}
+}
+
+func TestPlatformTUN(t *testing.T) {
+	o := baseOptions()
+	o.Platform = true
+	o.BypassProcesses = []string{`C:\cores\xray.exe`}
+	o.DirectApps = []string{"telegram.exe"}
+	o.BypassAddresses = []netip.Prefix{netip.MustParsePrefix("203.0.113.5/32")}
+	cfg := render(t, o)
+	if sub(cfg, "route")["auto_detect_interface"] != false {
+		t.Error("auto_detect_interface on with a platform TUN")
+	}
+	b, _ := Build(o)
+	for _, bad := range []string{"process_path", "route_exclude_address"} {
+		if strings.Contains(string(b), bad) {
+			t.Errorf("%s in a platform config", bad)
+		}
 	}
 }

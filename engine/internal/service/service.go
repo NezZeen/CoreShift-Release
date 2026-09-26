@@ -124,9 +124,22 @@ type Config struct {
 	// service of a release build may run an installer over itself.
 	SelfUpdate bool
 
+	// Hooks for embedding the service in an app (Android); nil means the
+	// desktop implementation.
+	//
+	// TUNLayer runs the TUN + DNS layer.
+	TUNLayer TUNLayer
+	// SystemResolvers lists the resolvers of the network the device is on.
+	SystemResolvers func(ctx context.Context, exclude string) ([]netip.Addr, error)
+	// PhysicalBind says how pings of servers leave the device, outside the
+	// tunnel.
+	PhysicalBind func() (ping.Bind, error)
+	// HostIPv6 reports whether the device has IPv6 of its own.
+	HostIPv6 func() bool
+
 	// Test seams; nil means the real implementation.
 	guard     dnsguard.Guard
-	tun       tunLayer
+	tun       TUNLayer
 	resolvers func(ctx context.Context, exclude string) ([]netip.Addr, error)
 	// lookup resolves a server name: through server when it is valid,
 	// else through the system resolver.
@@ -267,7 +280,7 @@ type Service struct {
 	upd     appUpdater
 
 	op       sync.Mutex // serialises connect, disconnect and teardown
-	tun      tunInstance
+	tun      TUNInstance
 	stopPing context.CancelFunc // ends the connected server's pings
 
 	mu       sync.Mutex
@@ -300,6 +313,18 @@ func New(cfg Config) (*Service, error) {
 	cfg.Options = cfg.Options.withDefaults()
 	if !cfg.Listen.IsValid() {
 		cfg.Listen = core.DefaultListen
+	}
+	if cfg.TUNLayer != nil {
+		cfg.tun = cfg.TUNLayer
+	}
+	if cfg.SystemResolvers != nil {
+		cfg.resolvers = cfg.SystemResolvers
+	}
+	if cfg.PhysicalBind != nil {
+		cfg.physical = cfg.PhysicalBind
+	}
+	if cfg.HostIPv6 != nil {
+		cfg.hostIPv6 = cfg.HostIPv6
 	}
 	if cfg.resolvers == nil {
 		cfg.resolvers = dnsguard.SystemResolvers
@@ -465,7 +490,7 @@ func (s *Service) onStoreChange(c store.Change) {
 }
 
 // tunLayer returns the TUN layer, creating it on first use.
-func (s *Service) tunLayer() (tunLayer, error) {
+func (s *Service) tunLayer() (TUNLayer, error) {
 	if s.cfg.TUNUnavailable != "" {
 		return nil, errors.New(s.cfg.TUNUnavailable)
 	}
@@ -482,13 +507,17 @@ func (s *Service) tunLayer() (tunLayer, error) {
 	}
 	s.cfg.tun = &singBoxTUN{
 		group: group, bin: bin, dir: filepath.Join(s.cfg.DataDir, "tun"),
-		onLine: func(l string) {
-			if !noiseLine(l) {
-				s.hub.publish(Event{Kind: "log", Source: "tun", Line: l})
-			}
-		},
+		onLine: func(l string) { s.Log("tun", l) },
 	}
 	return s.cfg.tun, nil
+}
+
+// Log adds a line of output to the event stream, as the TUN layer reports
+// it (a separate process on the desktop, part of the app on Android).
+func (s *Service) Log(source, line string) {
+	if !noiseLine(line) {
+		s.hub.publish(Event{Kind: "log", Source: source, Line: line})
+	}
 }
 
 // noiseLine recognises TUN layer errors that are no fault of the tunnel: a
@@ -681,7 +710,7 @@ func (s *Service) ConnectSelected(ctx context.Context) error {
 
 // connectLocked returns the address of n's server.
 func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Options) (netip.Addr, error) {
-	var tun tunLayer
+	var tun TUNLayer
 	if o.TUN {
 		var err error
 		if tun, err = s.tunLayer(); err != nil {
@@ -845,7 +874,7 @@ func (s *Service) teardown(gen int, cause error) {
 	}()
 }
 
-func (s *Service) watchTUN(t tunInstance, gen int) {
+func (s *Service) watchTUN(t TUNInstance, gen int) {
 	<-t.Exited()
 	s.teardown(gen, fmt.Errorf("TUN layer stopped: %w", t.ExitError()))
 }

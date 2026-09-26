@@ -146,7 +146,7 @@ type fakeTUN struct {
 	inst     *fakeInstance
 }
 
-func (f *fakeTUN) Start(_ context.Context, o tunlayer.Options) (tunInstance, error) {
+func (f *fakeTUN) Start(_ context.Context, o tunlayer.Options) (TUNInstance, error) {
 	f.log.add("tun.start")
 	if f.startErr != nil {
 		return nil, f.startErr

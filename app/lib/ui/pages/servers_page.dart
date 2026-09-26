@@ -420,6 +420,41 @@ class _NodeTable extends StatelessWidget {
   }
 
   static Widget _row(BuildContext context, {required List<Widget> cells, bool header = false}) {
+    if (isCompact(context)) {
+      // A phone: the name over the protocol and transport, then the ping
+      // and the action; the column headings and the cores are left out.
+      if (header) return const SizedBox.shrink();
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+        child: Row(
+          children: [
+            SizedBox(width: 28, child: cells[0]),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  cells[1],
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      cells[2],
+                      const SizedBox(width: 8),
+                      Flexible(child: cells[3]),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(width: 64, child: cells[5]),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 104),
+              child: FittedBox(fit: BoxFit.scaleDown, child: cells[6]),
+            ),
+          ],
+        ),
+      );
+    }
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 12, vertical: header ? 8 : 10),
       child: Row(

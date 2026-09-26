@@ -55,6 +55,31 @@ class _ShellState extends State<Shell> {
                 PageId.logs => LogsPage(state: s),
                 PageId.settings => SettingsPage(state: s, themeMode: widget.themeMode, onThemeMode: widget.onThemeMode),
               };
+        final content = Column(
+          children: [
+            if (s.loaded && !s.online) _OfflineBanner(reason: s.offlineReason),
+            Expanded(
+              child: KeyedSubtree(key: ValueKey(page), child: body),
+            ),
+          ],
+        );
+        if (isCompact(context)) {
+          return Nav(
+            go: (p) => setState(() => page = p),
+            child: Scaffold(
+              body: SafeArea(
+                bottom: false,
+                child: Stack(
+                  children: [
+                    content,
+                    Positioned(left: 12, right: 12, bottom: 12, child: _Toasts(state: s)),
+                  ],
+                ),
+              ),
+              bottomNavigationBar: _BottomNav(state: s, page: page, onPage: (p) => setState(() => page = p)),
+            ),
+          );
+        }
         return Nav(
           go: (p) => setState(() => page = p),
           child: Scaffold(
@@ -63,16 +88,7 @@ class _ShellState extends State<Shell> {
                 Row(
                   children: [
                     _Sidebar(state: s, page: page, onPage: (p) => setState(() => page = p)),
-                    Expanded(
-                      child: Column(
-                        children: [
-                          if (s.loaded && !s.online) _OfflineBanner(reason: s.offlineReason),
-                          Expanded(
-                            child: KeyedSubtree(key: ValueKey(page), child: body),
-                          ),
-                        ],
-                      ),
-                    ),
+                    Expanded(child: content),
                   ],
                 ),
                 Positioned(right: 20, bottom: 20, child: _Toasts(state: s)),
@@ -81,6 +97,59 @@ class _ShellState extends State<Shell> {
           ),
         );
       },
+    );
+  }
+}
+
+/// The phone's navigation: the four main pages, and the pages for advanced
+/// users behind "Ещё".
+class _BottomNav extends StatelessWidget {
+  final AppState state;
+  final PageId page;
+  final ValueChanged<PageId> onPage;
+  const _BottomNav({required this.state, required this.page, required this.onPage});
+
+  static const _main = [PageId.home, PageId.servers, PageId.routing, PageId.settings];
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    final index = _main.indexOf(page);
+    return NavigationBar(
+      height: 64,
+      backgroundColor: p.bg2,
+      indicatorColor: accent.withValues(alpha: .18),
+      labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+      selectedIndex: index < 0 ? _main.length : index,
+      onDestinationSelected: (i) async {
+        if (i < _main.length) return onPage(_main[i]);
+        final more = await showModalBottomSheet<PageId>(
+          context: context,
+          backgroundColor: p.bg2,
+          builder: (context) => SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Padding(padding: EdgeInsets.fromLTRB(20, 16, 20, 4), child: SectionLabel('Для опытных')),
+                ListTile(leading: const Icon(Icons.memory), title: const Text('Ядра'), onTap: () => Navigator.pop(context, PageId.cores)),
+                ListTile(leading: const Icon(Icons.notes), title: const Text('Журнал'), onTap: () => Navigator.pop(context, PageId.logs)),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+        if (more != null) onPage(more);
+      },
+      destinations: [
+        const NavigationDestination(icon: Icon(Icons.home_outlined), label: 'Главная'),
+        NavigationDestination(
+          icon: Badge(isLabelVisible: state.nodeCount > 0, label: Text('${state.nodeCount}'), child: const Icon(Icons.public)),
+          label: 'Серверы',
+        ),
+        const NavigationDestination(icon: Icon(Icons.alt_route), label: 'Исключения'),
+        const NavigationDestination(icon: Icon(Icons.settings_outlined), label: 'Настройки'),
+        const NavigationDestination(icon: Icon(Icons.more_horiz), label: 'Ещё'),
+      ],
     );
   }
 }

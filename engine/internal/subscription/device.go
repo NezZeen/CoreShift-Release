@@ -20,10 +20,12 @@ type Device struct {
 }
 
 var (
-	deviceOnce sync.Once
-	device     Device
-	deviceID   string
-	deviceMu   sync.Mutex
+	deviceOnce  sync.Once
+	device      Device
+	deviceID    string
+	deviceOSVer string
+	deviceModel string
+	deviceMu    sync.Mutex
 )
 
 // SetDeviceID sets the machine identity where the engine cannot read one
@@ -31,6 +33,15 @@ var (
 func SetDeviceID(id string) {
 	deviceMu.Lock()
 	deviceID = strings.TrimSpace(id)
+	deviceMu.Unlock()
+}
+
+// SetDeviceInfo sets the identity, OS version and model where the engine
+// cannot read them itself: Android passes its ANDROID_ID, the Android
+// version and the phone's maker and model. Call it before the first fetch.
+func SetDeviceInfo(id, osVersion, model string) {
+	deviceMu.Lock()
+	deviceID, deviceOSVer, deviceModel = strings.TrimSpace(id), strings.TrimSpace(osVersion), strings.TrimSpace(model)
 	deviceMu.Unlock()
 }
 
@@ -43,6 +54,12 @@ func ThisDevice() Device {
 		deviceMu.Lock()
 		if deviceID != "" {
 			id = deviceID
+		}
+		if deviceOSVer != "" {
+			device.OSVersion = deviceOSVer
+		}
+		if deviceModel != "" {
+			device.Model = deviceModel
 		}
 		deviceMu.Unlock()
 		if id != "" {

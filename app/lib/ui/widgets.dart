@@ -54,6 +54,10 @@ class PageFrame extends StatelessWidget {
   }
 }
 
+/// A phone's screen, or a window as narrow: pages switch with a bottom bar
+/// instead of the sidebar, and wide tables become lists.
+bool isCompact(BuildContext context) => MediaQuery.sizeOf(context).width < 720;
+
 class PanelTitle extends StatelessWidget {
   final String title;
   final String? sub;
@@ -62,22 +66,46 @@ class PanelTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (trailing != null && isCompact(context)) {
+      // On a phone the control gets a line of its own.
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            PanelTitle(title, sub: sub),
+            SingleChildScrollView(scrollDirection: Axis.horizontal, child: trailing),
+          ],
+        ),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: Row(
         children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-          if (sub != null) ...[
-            const SizedBox(width: 10),
-            Flexible(
-              child: Text(
-                sub!,
-                style: TextStyle(color: context.pal.muted, fontSize: 12),
-                overflow: TextOverflow.ellipsis,
-              ),
+          Expanded(
+            child: Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    title,
+                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (sub != null) ...[
+                  const SizedBox(width: 10),
+                  Flexible(
+                    child: Text(
+                      sub!,
+                      style: TextStyle(color: context.pal.muted, fontSize: 12),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ],
             ),
-          ],
-          const Spacer(),
+          ),
           ?trailing,
         ],
       ),
@@ -158,9 +186,12 @@ class Btn extends StatelessWidget {
           Icon(icon, size: iconSize, color: fg),
         if ((icon != null || loading) && label != null) SizedBox(width: small ? 6 : 7),
         if (label != null)
-          Text(
-            label!,
-            style: TextStyle(color: fg, fontWeight: FontWeight.w500, fontSize: small ? 12 : 13),
+          Flexible(
+            child: Text(
+              label!,
+              style: TextStyle(color: fg, fontWeight: FontWeight.w500, fontSize: small ? 12 : 13),
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
       ],
     );
@@ -200,7 +231,7 @@ class Seg<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.pal;
-    return Container(
+    final seg = Container(
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
         color: p.bg2,
@@ -237,6 +268,10 @@ class Seg<T> extends StatelessWidget {
             ),
         ],
       ),
+    );
+    // Too wide for a phone: it scrolls sideways rather than overflowing.
+    return LayoutBuilder(
+      builder: (context, c) => c.hasBoundedWidth ? SingleChildScrollView(scrollDirection: Axis.horizontal, child: seg) : seg,
     );
   }
 }
@@ -326,30 +361,43 @@ class SettingRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.pal;
+    final text = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
+        if (description != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(description!, style: TextStyle(fontSize: 12, color: p.muted)),
+          ),
+        if (descriptionWidget != null) Padding(padding: const EdgeInsets.only(top: 4), child: descriptionWidget!),
+      ],
+    );
+    // On a phone a wide control (anything but a switch) goes under the text.
+    final below = trailing != null && trailing is! Switch && isCompact(context);
     return Container(
       padding: EdgeInsets.only(top: first ? 0 : 12, bottom: 12),
       decoration: BoxDecoration(
         border: first ? null : Border(top: BorderSide(color: p.border)),
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      child: below
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
-                if (description != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Text(description!, style: TextStyle(fontSize: 12, color: p.muted)),
-                  ),
-                if (descriptionWidget != null) Padding(padding: const EdgeInsets.only(top: 4), child: descriptionWidget!),
+                text,
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: trailing),
+                ),
+              ],
+            )
+          : Row(
+              children: [
+                Expanded(child: text),
+                if (trailing != null) ...[const SizedBox(width: 14), trailing!],
               ],
             ),
-          ),
-          if (trailing != null) ...[const SizedBox(width: 14), trailing!],
-        ],
-      ),
     );
   }
 }

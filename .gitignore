@@ -10,3 +10,8 @@
 
 # The releases token, built in by build.ps1 for the duration of a build.
 /engine/internal/selfupdate/token_gen.go
+
+# Android: the engine AAR (gomobile) and the cores, put in place by
+# packaging/android/build.ps1.
+/app/android/app/libs/
+/app/android/app/src/main/jniLibs/

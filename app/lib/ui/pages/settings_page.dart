@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../platform/desktop.dart' as desktop;
+import '../../platform/platform.dart' as platform;
 import '../../state/app_state.dart';
 import '../../state/errors.dart';
 import '../theme.dart';
@@ -223,33 +224,34 @@ class SettingsPage extends StatelessWidget {
               style: TextStyle(color: state.versionMismatch ? warnColor : p.muted, fontFamily: monoFont),
             ),
           ),
-          SettingRow(
-            title: 'Обновления',
-            description: _appUpdateText(state),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (state.appUpdate.state == 'ready') ...[
+          if (!platform.isAndroid)
+            SettingRow(
+              title: 'Обновления',
+              description: _appUpdateText(state),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (state.appUpdate.state == 'ready') ...[
+                    Btn(
+                      label: 'Установить сейчас',
+                      icon: Icons.system_update_alt,
+                      kind: BtnKind.primary,
+                      small: true,
+                      tooltip: state.status.active ? 'VPN отключится на время установки и подключится снова' : null,
+                      onPressed: state.online ? state.installAppUpdate : null,
+                    ),
+                    const SizedBox(width: 8),
+                  ],
                   Btn(
-                    label: 'Установить сейчас',
-                    icon: Icons.system_update_alt,
-                    kind: BtnKind.primary,
+                    label: 'Проверить сейчас',
                     small: true,
-                    tooltip: state.status.active ? 'VPN отключится на время установки и подключится снова' : null,
-                    onPressed: state.online ? state.installAppUpdate : null,
+                    loading: state.appUpdate.busy,
+                    onPressed: state.online && !state.appUpdate.off ? state.checkAppUpdate : null,
                   ),
-                  const SizedBox(width: 8),
                 ],
-                Btn(
-                  label: 'Проверить сейчас',
-                  small: true,
-                  loading: state.appUpdate.busy,
-                  onPressed: state.online && !state.appUpdate.off ? state.checkAppUpdate : null,
-                ),
-              ],
+              ),
             ),
-          ),
-          if (state.hasSetting('app_update.auto'))
+          if (state.hasSetting('app_update.auto') && !platform.isAndroid)
             SettingRow(
               title: 'Устанавливать обновления автоматически',
               description:
