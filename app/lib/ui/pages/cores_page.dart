@@ -40,23 +40,26 @@ class CoresPage extends StatelessWidget {
             ),
           ],
         ),
-        LayoutBuilder(
-          builder: (context, c) {
-            final cols = c.maxWidth >= 900 ? 3 : 1;
-            final w = (c.maxWidth - 12 * (cols - 1)) / cols;
-            return Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: [
-                for (final k in allCores)
-                  SizedBox(
-                    width: w,
-                    child: _CoreTile(state: state, kind: k),
-                  ),
-              ],
-            );
-          },
-        ),
+        // On a phone the tiles repeat the priority list below; they stay
+        // only for picking the core by hand.
+        if (!isCompact(context) || mode == 'manual')
+          LayoutBuilder(
+            builder: (context, c) {
+              final cols = c.maxWidth >= 900 ? 3 : 1;
+              final w = (c.maxWidth - 12 * (cols - 1)) / cols;
+              return Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  for (final k in allCores)
+                    SizedBox(
+                      width: w,
+                      child: _CoreTile(state: state, kind: k),
+                    ),
+                ],
+              );
+            },
+          ),
         if (mode == 'manual')
           Padding(
             padding: const EdgeInsets.only(top: 10),

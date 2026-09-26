@@ -92,8 +92,8 @@ class _RuleListPanelState extends State<RuleListPanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          PanelTitle(widget.title, sub: widget.sub),
-          if (widget.description != null) ...[
+          PanelTitle(widget.title, sub: widget.sub, info: widget.description),
+          if (widget.description != null && !isCompact(context)) ...[
             Text(widget.description!, style: TextStyle(fontSize: 12, color: p.muted, height: 1.45)),
             const SizedBox(height: 12),
           ],

@@ -6,6 +6,7 @@ import 'package:coreshift/main.dart';
 import 'package:coreshift/state/app_state.dart';
 import 'package:coreshift/state/errors.dart';
 import 'package:coreshift/state/leak.dart';
+import 'package:coreshift/ui/widgets.dart';
 import 'package:coreshift/version.dart';
 
 void main() {
@@ -521,6 +522,47 @@ void main() {
     await tester.pump(const Duration(seconds: 6));
   });
 
+  testWidgets('a phone home page keeps to the button, the server and a few numbers', (tester) async {
+    final state = await pumpApp(tester, size: const Size(390, 844));
+    expect(find.text('Отключено'), findsOneWidget);
+    expect(find.text('Amsterdam'), findsOneWidget);
+    expect(find.textContaining('подписка ещё'), findsOneWidget);
+    // The desktop's panels stay on the desktop.
+    for (final t in ['Скорость', 'Очередь ядер', 'Через VPN', 'Смен ядра', 'Загрузка']) {
+      expect(find.text(t), findsNothing, reason: t);
+    }
+    await tester.runAsync(() async {
+      await state.connect();
+      await Future.delayed(const Duration(milliseconds: 2300));
+    });
+    await tester.pump();
+    expect(find.text('Подключено'), findsOneWidget);
+    expect(find.text('Загрузка'), findsOneWidget);
+    expect(find.text('Xray-core'), findsOneWidget);
+    expect(find.text('АВТОСВАП'), findsOneWidget);
+    expect(find.text('Скорость'), findsNothing);
+    expect(tester.takeException(), isNull);
+    // The core line leads to the cores page.
+    await tester.tap(find.text('Xray-core'));
+    await tester.pump();
+    expect(find.text('Приоритет ядер'), findsOneWidget);
+    await tester.runAsync(() => state.disconnect());
+    await tester.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets('a phone hides explanations behind an icon', (tester) async {
+    await pumpApp(tester, size: const Size(390, 844));
+    await tester.tap(find.descendant(of: find.byType(NavigationBar), matching: find.text('Настройки')));
+    await tester.pump();
+    const text = 'IPv6-трафик тоже идёт через VPN';
+    expect(find.textContaining(text), findsNothing);
+    final row = find.ancestor(of: find.text('IPv6 через туннель'), matching: find.byType(Row)).first;
+    await tester.tap(find.descendant(of: row, matching: find.byIcon(Icons.info_outline)));
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(find.textContaining(text), findsOneWidget);
+    await tester.pump(const Duration(seconds: 1));
+  });
+
   testWidgets('every page fits a phone', (tester) async {
     final state = await pumpApp(tester, size: const Size(390, 844));
     expect(find.byType(NavigationBar), findsOneWidget);
@@ -543,10 +585,15 @@ void main() {
       }
     }
     for (final page in ['Ядра', 'Журнал']) {
+      // A frame to start each sheet animation, then time for it to end.
       await tester.tap(find.text('Ещё'));
+      await tester.pump();
       await tester.pump(const Duration(milliseconds: 600));
       await tester.tap(find.text(page).last);
+      await tester.pump();
       await tester.pump(const Duration(milliseconds: 600));
+      expect(find.byType(BottomSheet), findsNothing, reason: page);
+      expect(find.descendant(of: find.byType(PageHeader), matching: find.text(page)), findsOneWidget, reason: page);
       await check(page);
     }
     expect(problems, isEmpty);
