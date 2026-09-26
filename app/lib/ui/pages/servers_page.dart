@@ -70,6 +70,39 @@ class _ServersPageState extends State<ServersPage> {
     }.toList()..sort();
     if (byLatency) rows.sort((a, b) => _latencyKey(a.$1, a.$2).compareTo(_latencyKey(b.$1, b.$2)));
     final fastest = _fastest(rows);
+    final compact = isCompact(context);
+
+    final search = TextField(
+      onChanged: (v) => setState(() => query = v.trim().toLowerCase()),
+      style: const TextStyle(fontSize: 13),
+      decoration: InputDecoration(
+        hintText: compact ? 'Поиск' : 'Поиск по названию, стране, протоколу',
+        prefixIcon: Icon(Icons.search, size: 17, color: context.pal.dim),
+        prefixIconConstraints: const BoxConstraints(minWidth: 34),
+      ),
+    );
+    final chips = [
+      _Chip(label: 'Все', on: protoFilter.isEmpty, onTap: () => setState(() => protoFilter = '')),
+      for (final pr in protocols)
+        _Chip(label: protocolLabel(pr), on: protoFilter == pr, onTap: () => setState(() => protoFilter = protoFilter == pr ? '' : pr)),
+      if (subFilter != null) _Chip(label: '× ${s.subscriptionById(subFilter!)?.displayName ?? ''}', on: true, onTap: () => setState(() => subFilter = null)),
+      _Chip(label: 'Сначала быстрые', on: byLatency, onTap: () => setState(() => byLatency = !byLatency)),
+    ];
+    final ping = Btn(
+      label: 'Проверить пинг',
+      icon: Icons.speed,
+      small: true,
+      loading: s.testingLatency,
+      tooltip: subFilter == null ? 'Проверить все серверы' : 'Проверить серверы этой подписки',
+      onPressed: () => s.testLatency(subFilter),
+    );
+    final best = Btn(
+      label: 'Самый быстрый',
+      icon: Icons.bolt,
+      small: true,
+      tooltip: fastest == null ? 'Сначала запустите тест задержки' : '${fastest.$2.name}: ${s.latencyOf(fastest.$1.id, fastest.$2.fingerprint)!.ms} мс',
+      onPressed: fastest == null ? null : () => s.selectNode(fastest.$1.id, fastest.$2.fingerprint, fastest.$2.name),
+    );
 
     return PageFrame(
       children: [
@@ -77,8 +110,15 @@ class _ServersPageState extends State<ServersPage> {
           'Серверы',
           subtitle: 'Выберите сервер и нажмите «Подключить». Нажмите на подписку, чтобы показать только её серверы.',
           actions: [
-            if (subs.any((x) => !x.isLocal)) Btn(label: 'Обновить все', icon: Icons.refresh, loading: s.refreshing.isNotEmpty, onPressed: s.refreshAll),
-            Btn(label: 'Добавить подписку', icon: Icons.add, kind: BtnKind.primary, onPressed: () => showAddSubscription(context, s)),
+            if (subs.any((x) => !x.isLocal))
+              Btn(
+                label: compact ? null : 'Обновить все',
+                icon: Icons.refresh,
+                tooltip: compact ? 'Обновить подписки' : null,
+                loading: s.refreshing.isNotEmpty,
+                onPressed: s.refreshAll,
+              ),
+            Btn(label: compact ? 'Добавить' : 'Добавить подписку', icon: Icons.add, kind: BtnKind.primary, onPressed: () => showAddSubscription(context, s)),
           ],
         ),
         if (subs.isEmpty)
@@ -106,50 +146,41 @@ class _ServersPageState extends State<ServersPage> {
               );
             },
           ),
-          const SizedBox(height: 18),
-          Wrap(
-            spacing: 12,
-            runSpacing: 10,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              SizedBox(
-                width: 320,
-                child: TextField(
-                  onChanged: (v) => setState(() => query = v.trim().toLowerCase()),
-                  style: const TextStyle(fontSize: 13),
-                  decoration: InputDecoration(
-                    hintText: 'Поиск по названию, стране, протоколу',
-                    prefixIcon: Icon(Icons.search, size: 17, color: context.pal.dim),
-                    prefixIconConstraints: const BoxConstraints(minWidth: 34),
-                  ),
-                ),
+          SizedBox(height: compact ? 14 : 18),
+          if (compact) ...[
+            // A phone: the search with the buttons as icons, then one
+            // sideways row of filters.
+            Row(
+              children: [
+                Expanded(child: search),
+                const SizedBox(width: 8),
+                Btn(icon: ping.icon, tooltip: ping.tooltip, loading: ping.loading, onPressed: ping.onPressed),
+                const SizedBox(width: 6),
+                Btn(icon: best.icon, tooltip: best.tooltip, onPressed: best.onPressed),
+              ],
+            ),
+            const SizedBox(height: 10),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (final (i, c) in chips.indexed) ...[if (i > 0) const SizedBox(width: 6), c],
+                ],
               ),
-              _Chip(label: 'Все', on: protoFilter.isEmpty, onTap: () => setState(() => protoFilter = '')),
-              for (final pr in protocols)
-                _Chip(label: protocolLabel(pr), on: protoFilter == pr, onTap: () => setState(() => protoFilter = protoFilter == pr ? '' : pr)),
-              if (subFilter != null)
-                _Chip(label: '× ${s.subscriptionById(subFilter!)?.displayName ?? ''}', on: true, onTap: () => setState(() => subFilter = null)),
-              _Chip(label: 'Сначала быстрые', on: byLatency, onTap: () => setState(() => byLatency = !byLatency)),
-              Btn(
-                label: 'Проверить пинг',
-                icon: Icons.speed,
-                small: true,
-                loading: s.testingLatency,
-                tooltip: subFilter == null ? 'Проверить все серверы' : 'Проверить серверы этой подписки',
-                onPressed: () => s.testLatency(subFilter),
-              ),
-              Btn(
-                label: 'Самый быстрый',
-                icon: Icons.bolt,
-                small: true,
-                tooltip: fastest == null
-                    ? 'Сначала запустите тест задержки'
-                    : '${fastest.$2.name}: ${s.latencyOf(fastest.$1.id, fastest.$2.fingerprint)!.ms} мс',
-                onPressed: fastest == null ? null : () => s.selectNode(fastest.$1.id, fastest.$2.fingerprint, fastest.$2.name),
-              ),
-              Text('Пинг: зелёный — до 200 мс, жёлтый — до 500 мс', style: TextStyle(fontSize: 11, color: context.pal.dim)),
-            ],
-          ),
+            ),
+          ] else
+            Wrap(
+              spacing: 12,
+              runSpacing: 10,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                SizedBox(width: 320, child: search),
+                ...chips,
+                ping,
+                best,
+                Text('Пинг: зелёный — до 200 мс, жёлтый — до 500 мс', style: TextStyle(fontSize: 11, color: context.pal.dim)),
+              ],
+            ),
           const SizedBox(height: 12),
           Panel(
             padding: const EdgeInsets.all(6),
@@ -243,8 +274,9 @@ class _SubCard extends StatelessWidget {
     final daysLeft = i.expire?.difference(DateTime.now()).inDays;
     final expired = i.expire != null && i.expire!.isBefore(DateTime.now());
     final expiresSoon = daysLeft != null && daysLeft < 7;
+    final compact = isCompact(context);
     return Panel(
-      padding: const EdgeInsets.fromLTRB(16, 12, 8, 14),
+      padding: compact ? const EdgeInsets.fromLTRB(14, 4, 4, 12) : const EdgeInsets.fromLTRB(16, 12, 8, 14),
       borderColor: selected ? accent : null,
       onTap: onTap,
       child: Column(
@@ -268,20 +300,21 @@ class _SubCard extends StatelessWidget {
               _SubMenu(state: state, sub: sub),
             ],
           ),
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: Text(
-              sub.isLocal ? 'вставленный список' : sub.host,
-              style: TextStyle(fontSize: 12, color: p.dim, fontFamily: monoFont, fontFamilyFallback: monoFallback),
-              overflow: TextOverflow.ellipsis,
+          if (!compact)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Text(
+                sub.isLocal ? 'вставленный список' : sub.host,
+                style: TextStyle(fontSize: 12, color: p.dim, fontFamily: monoFont, fontFamilyFallback: monoFallback),
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
-          ),
           Padding(
-            padding: const EdgeInsets.only(right: 8),
+            padding: EdgeInsets.only(right: compact ? 10 : 8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(height: 12),
+                SizedBox(height: compact ? 2 : 12),
                 if (i.total > 0) ...[
                   ClipRRect(
                     borderRadius: BorderRadius.circular(9),

@@ -113,6 +113,8 @@ class RoutingPage extends StatelessWidget {
 
   Widget _notice(BuildContext context, bool tun) {
     final p = context.pal;
+    // On a phone only the warning: the rest the home page says itself.
+    if (tun && isCompact(context)) return const SizedBox();
     final color = tun ? swapColor : warnColor;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -151,7 +153,7 @@ class RoutingPage extends StatelessWidget {
                         const TextSpan(
                           text:
                               'В нём через VPN идут только программы, настроенные на прокси, и списки ниже не действуют. '
-                              'Они заработают в режиме «Все приложения» на главной.',
+                              'Они заработают в режиме «Все приложения».',
                         ),
                       ],
               ),
@@ -210,13 +212,27 @@ class RoutingPage extends StatelessWidget {
       );
     }
 
-    final all = option('all', Icons.shield_outlined, 'Всё через VPN', 'Кроме исключений. Скрывает весь трафик, российские сайты можно пустить напрямую.');
-    final only = option(
-      'selected',
-      Icons.filter_alt_outlined,
-      'Только выбранное',
-      'Через VPN идут только выбранные сервисы, остальное напрямую. Банки и российские сайты работают как без VPN.',
-    );
+    const allText = 'Кроме исключений. Скрывает весь трафик, российские сайты можно пустить напрямую.';
+    const onlyText = 'Через VPN идут только выбранные сервисы, остальное напрямую. Банки и российские сайты работают как без VPN.';
+    if (isCompact(context)) {
+      // A phone: a switch of two words and what the chosen mode does.
+      return Builder(
+        builder: (context) => Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Seg<bool>(
+              value: selected,
+              options: const [(false, 'Всё через VPN'), (true, 'Только выбранное')],
+              onChanged: (v) => s.updateSettings((x) => x['routing']['mode'] = v ? 'selected' : 'all'),
+            ),
+            const SizedBox(height: 8),
+            Text(selected ? onlyText : allText, style: TextStyle(fontSize: 12, color: context.pal.muted, height: 1.4)),
+          ],
+        ),
+      );
+    }
+    final all = option('all', Icons.shield_outlined, 'Всё через VPN', allText);
+    final only = option('selected', Icons.filter_alt_outlined, 'Только выбранное', onlyText);
     return LayoutBuilder(
       builder: (context, c) => c.maxWidth < 640
           ? Column(children: [all, const SizedBox(height: 10), only])
@@ -235,6 +251,8 @@ class RoutingPage extends StatelessWidget {
 
   Widget _presetsPanel(BuildContext context) {
     final p = context.pal;
+    // What always goes direct is news only to the curious: not on a phone.
+    final always = !isCompact(context);
     return Panel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -250,19 +268,21 @@ class RoutingPage extends StatelessWidget {
                   'Списки обновляются сами раз в неделю.',
               trailing: Switch(value: s.setting('routing.russia_direct', false), onChanged: (v) => s.updateSettings((x) => x['routing']['russia_direct'] = v)),
             ),
-          SettingRow(
-            title: 'Локальная сеть напрямую',
-            descriptionWidget: Text(
-              '10.0.0.0/8, 192.168.0.0/16, .lan, .local, .home.arpa',
-              style: TextStyle(fontSize: 12, color: p.muted, fontFamily: monoFont),
+          if (always)
+            SettingRow(
+              title: 'Локальная сеть напрямую',
+              descriptionWidget: Text(
+                '10.0.0.0/8, 192.168.0.0/16, .lan, .local, .home.arpa',
+                style: TextStyle(fontSize: 12, color: p.muted, fontFamily: monoFont),
+              ),
+              trailing: Text('всегда', style: TextStyle(fontSize: 12, color: p.dim)),
             ),
-            trailing: Text('всегда', style: TextStyle(fontSize: 12, color: p.dim)),
-          ),
-          SettingRow(
-            title: 'Адрес VPN-сервера напрямую',
-            description: 'Чтобы туннель не шёл сам через себя',
-            trailing: Text('всегда', style: TextStyle(fontSize: 12, color: p.dim)),
-          ),
+          if (always)
+            SettingRow(
+              title: 'Адрес VPN-сервера напрямую',
+              description: 'Чтобы туннель не шёл сам через себя',
+              trailing: Text('всегда', style: TextStyle(fontSize: 12, color: p.dim)),
+            ),
         ],
       ),
     );

@@ -6,18 +6,18 @@ import 'theme.dart';
 /// A bordered surface, the prototype's `.card`.
 class Panel extends StatelessWidget {
   final Widget child;
-  final EdgeInsets padding;
+  final EdgeInsets? padding;
   final Color? borderColor;
   final VoidCallback? onTap;
   final bool dashed;
 
-  const Panel({super.key, required this.child, this.padding = const EdgeInsets.all(18), this.borderColor, this.onTap, this.dashed = false});
+  const Panel({super.key, required this.child, this.padding, this.borderColor, this.onTap, this.dashed = false});
 
   @override
   Widget build(BuildContext context) {
     final p = context.pal;
     final box = Container(
-      padding: padding,
+      padding: padding ?? EdgeInsets.all(isCompact(context) ? 14 : 18),
       decoration: BoxDecoration(
         color: dashed ? Colors.transparent : p.surface,
         borderRadius: BorderRadius.circular(14),
@@ -42,7 +42,7 @@ class PageFrame extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scrollbar(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(28, 24, 28, 40),
+        padding: isCompact(context) ? const EdgeInsets.fromLTRB(14, 14, 14, 28) : const EdgeInsets.fromLTRB(28, 24, 28, 40),
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 1180),
@@ -58,29 +58,33 @@ class PageFrame extends StatelessWidget {
 /// instead of the sidebar, and wide tables become lists.
 bool isCompact(BuildContext context) => MediaQuery.sizeOf(context).width < 720;
 
+/// A panel's heading. On a phone the [sub] note is left out and [info], the
+/// explanation a desktop page shows under the heading, hides behind an icon.
 class PanelTitle extends StatelessWidget {
   final String title;
   final String? sub;
   final Widget? trailing;
-  const PanelTitle(this.title, {super.key, this.sub, this.trailing});
+  final String? info;
+  const PanelTitle(this.title, {super.key, this.sub, this.trailing, this.info});
 
   @override
   Widget build(BuildContext context) {
-    if (trailing != null && isCompact(context)) {
+    final compact = isCompact(context);
+    if (trailing != null && compact) {
       // On a phone the control gets a line of its own.
       return Padding(
-        padding: const EdgeInsets.only(bottom: 14),
+        padding: const EdgeInsets.only(bottom: 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            PanelTitle(title, sub: sub),
+            PanelTitle(title, info: info),
             SingleChildScrollView(scrollDirection: Axis.horizontal, child: trailing),
           ],
         ),
       );
     }
     return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
+      padding: EdgeInsets.only(bottom: compact ? 12 : 14),
       child: Row(
         children: [
           Expanded(
@@ -93,7 +97,8 @@ class PanelTitle extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                if (sub != null) ...[
+                if (compact && info != null) InfoIcon(title: title, text: info!),
+                if (sub != null && !compact) ...[
                   const SizedBox(width: 10),
                   Flexible(
                     child: Text(
@@ -113,6 +118,8 @@ class PanelTitle extends StatelessWidget {
   }
 }
 
+/// A page's title. On a phone the subtitle is left out: the bottom bar and
+/// the page itself say enough.
 class PageHeader extends StatelessWidget {
   final String title;
   final String? subtitle;
@@ -121,8 +128,9 @@ class PageHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final compact = isCompact(context);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 18),
+      padding: EdgeInsets.only(bottom: compact ? 14 : 18),
       child: Wrap(
         crossAxisAlignment: WrapCrossAlignment.end,
         alignment: WrapAlignment.spaceBetween,
@@ -133,8 +141,11 @@ class PageHeader extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w600, letterSpacing: -.2)),
-              if (subtitle != null)
+              Text(
+                title,
+                style: TextStyle(fontSize: compact ? 20 : 22, fontWeight: FontWeight.w600, letterSpacing: -.2),
+              ),
+              if (subtitle != null && !compact)
                 Padding(
                   padding: const EdgeInsets.only(top: 3),
                   child: Text(subtitle!, style: TextStyle(color: context.pal.muted)),
@@ -361,11 +372,23 @@ class SettingRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.pal;
+    final compact = isCompact(context);
     final text = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
-        if (description != null)
+        if (compact && description != null)
+          // On a phone the explanation waits behind an icon.
+          Row(
+            children: [
+              Flexible(
+                child: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
+              ),
+              InfoIcon(title: title, text: description!),
+            ],
+          )
+        else
+          Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
+        if (description != null && !compact)
           Padding(
             padding: const EdgeInsets.only(top: 2),
             child: Text(description!, style: TextStyle(fontSize: 12, color: p.muted)),
@@ -373,8 +396,10 @@ class SettingRow extends StatelessWidget {
         if (descriptionWidget != null) Padding(padding: const EdgeInsets.only(top: 4), child: descriptionWidget!),
       ],
     );
-    // On a phone a wide control (anything but a switch) goes under the text.
-    final below = trailing != null && trailing is! Switch && isCompact(context);
+    // On a phone a wide control goes under the text; a switch, a word or a short field stays beside it.
+    final t = trailing;
+    final narrow = t is Switch || t is Text || (t is SavingField && t.width <= 100);
+    final below = t != null && !narrow && compact;
     return Container(
       padding: EdgeInsets.only(top: first ? 0 : 12, bottom: 12),
       decoration: BoxDecoration(
@@ -398,6 +423,44 @@ class SettingRow extends StatelessWidget {
                 if (trailing != null) ...[const SizedBox(width: 14), trailing!],
               ],
             ),
+    );
+  }
+}
+
+/// An "i" that shows [text] in a sheet: a phone's stand-in for the
+/// explanations a desktop page shows inline.
+class InfoIcon extends StatelessWidget {
+  final String title;
+  final String text;
+  const InfoIcon({super.key, required this.title, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    return InkResponse(
+      radius: 18,
+      onTap: () => showModalBottomSheet<void>(
+        context: context,
+        backgroundColor: p.bg2,
+        builder: (context) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                Text(text, style: TextStyle(color: p.muted, height: 1.45)),
+              ],
+            ),
+          ),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        child: Icon(Icons.info_outline, size: 15, color: p.dim),
+      ),
     );
   }
 }
