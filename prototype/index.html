@@ -1,0 +1,986 @@
+<!doctype html>
+<html lang="ru" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CoreShift — прототип UI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0c11; --bg2:#0e1117; --surface:#131720; --surface2:#1a1f2a; --surface3:#222838;
+  --border:#232938; --border2:#2f3647;
+  --text:#e7eaf0; --muted:#8b93a7; --dim:#5b6275;
+  --accent:#6d8cff; --ok:#34d399; --warn:#fbbf24; --err:#f87171; --swap:#c084fc;
+  --xray:#a78bfa; --singbox:#2dd4bf; --mihomo:#f59e0b;
+  --radius:14px;
+  --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+}
+[data-theme=light]{
+  --bg:#f3f5f9; --bg2:#eceff5; --surface:#ffffff; --surface2:#f4f6fa; --surface3:#e6eaf1;
+  --border:#e0e4ec; --border2:#cfd5e0;
+  --text:#131722; --muted:#5b6376; --dim:#8c93a4;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 Inter,"Segoe UI",system-ui,sans-serif;overflow:hidden;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit}
+input,textarea,select{font:inherit;color:var(--text)}
+.muted{color:var(--muted)} .dim{color:var(--dim)} .small{font-size:12px} .mono{font-family:var(--mono)}
+.spacer{flex:1}
+
+/* ---------- shell ---------- */
+.app{display:grid;grid-template-columns:216px 1fr;grid-template-rows:40px 1fr;height:100vh}
+.titlebar{grid-column:1/-1;display:flex;align-items:center;gap:14px;padding-left:16px;background:var(--bg2);border-bottom:1px solid var(--border);-webkit-app-region:drag;user-select:none}
+.logo{display:flex;align-items:center;gap:9px;font-weight:700;letter-spacing:.2px}
+.logo-mark{width:22px;height:22px;border-radius:7px;background:conic-gradient(from 200deg,var(--xray),var(--singbox),var(--mihomo),var(--xray));position:relative}
+.logo-mark::after{content:"";position:absolute;inset:5px;border-radius:3px;background:var(--bg2)}
+.logo small{font-weight:500;color:var(--dim);font-size:11px;margin-left:2px}
+.tb-status{display:flex;align-items:center;gap:8px;padding:4px 11px;border-radius:99px;background:var(--surface);border:1px solid var(--border);font-size:12px;color:var(--muted);margin-left:auto}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--dim);flex:none}
+body[data-state=on] .tb-status .dot{background:var(--ok);box-shadow:0 0 0 3px rgba(52,211,153,.18)}
+body[data-state=connecting] .tb-status .dot{background:var(--warn);animation:blink 1s infinite}
+.win-btns{display:flex;-webkit-app-region:no-drag}
+.win-btns button{width:46px;height:39px;border:0;background:none;color:var(--muted);cursor:pointer;display:grid;place-items:center}
+.win-btns button:hover{background:var(--surface2);color:var(--text)}
+.win-btns button.close:hover{background:#c42b1c;color:#fff}
+
+.sidebar{background:var(--bg2);border-right:1px solid var(--border);padding:14px 10px;display:flex;flex-direction:column;gap:2px}
+.nav{display:flex;align-items:center;gap:12px;padding:9px 12px;border-radius:10px;color:var(--muted);cursor:pointer;font-weight:500;position:relative;border:0;background:none;text-align:left;width:100%}
+.nav:hover{background:var(--surface);color:var(--text)}
+.nav.active{background:var(--surface2);color:var(--text)}
+.nav.active::before{content:"";position:absolute;left:-10px;top:9px;bottom:9px;width:3px;border-radius:0 3px 3px 0;background:var(--accent)}
+.nav .count{margin-left:auto;font-size:11px;color:var(--dim);background:var(--surface);padding:1px 7px;border-radius:99px}
+.side-foot{margin-top:auto;padding:12px;border-radius:12px;background:var(--surface);border:1px solid var(--border);font-size:12px}
+.side-foot .row{display:flex;align-items:center;gap:8px}
+.side-foot .lbl{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px}
+
+main{overflow:auto;padding:24px 28px 40px}
+.page{display:none;max-width:1180px;margin:0 auto}
+.page.active{display:block;animation:fade .22s ease}
+.page-h{display:flex;align-items:flex-end;gap:16px;margin-bottom:18px}
+.page-h h1{font-size:22px;margin:0;font-weight:650;letter-spacing:-.2px}
+.page-h p{margin:3px 0 0;color:var(--muted)}
+.page-h .actions{margin-left:auto;display:flex;gap:8px;align-items:center}
+
+/* ---------- primitives ---------- */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px}
+.card-h{display:flex;align-items:center;gap:10px;margin-bottom:14px;font-weight:600}
+.card-h .sub{font-weight:400;color:var(--muted);font-size:12px}
+.card-h .right{margin-left:auto;display:flex;gap:8px;align-items:center}
+.btn{display:inline-flex;align-items:center;gap:7px;padding:8px 14px;border-radius:10px;border:1px solid var(--border2);background:var(--surface2);cursor:pointer;font-weight:500;font-size:13px;white-space:nowrap}
+.btn:hover{background:var(--surface3)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.ghost{background:transparent}
+.btn.sm{padding:5px 10px;font-size:12px;border-radius:8px}
+.btn.icon{padding:7px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;letter-spacing:.3px}
+.badge.auto{background:rgba(192,132,252,.14);color:var(--swap)}
+.badge.manual{background:rgba(139,147,167,.16);color:var(--muted)}
+.proto{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:6px;background:color-mix(in srgb,var(--pc) 15%,transparent);color:var(--pc);white-space:nowrap}
+.cc{width:34px;height:26px;border-radius:7px;display:grid;place-items:center;font-size:11px;font-weight:700;letter-spacing:.5px;background:var(--surface3);color:var(--muted);flex:none}
+
+.seg{display:inline-flex;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:3px;gap:2px}
+.seg button{border:0;background:none;color:var(--muted);padding:6px 12px;border-radius:7px;font-size:13px;cursor:pointer;font-weight:500}
+.seg button:hover{color:var(--text)}
+.seg button.on{background:var(--surface3);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.25)}
+
+.sw{position:relative;width:38px;height:22px;flex:none;display:inline-block}
+.sw input{opacity:0;position:absolute;inset:0;margin:0;cursor:pointer;z-index:1}
+.sw span{position:absolute;inset:0;border-radius:99px;background:var(--surface3);border:1px solid var(--border2);transition:.18s}
+.sw span::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--muted);transition:.18s}
+.sw input:checked+span{background:var(--accent);border-color:var(--accent)}
+.sw input:checked+span::after{transform:translateX(16px);background:#fff}
+
+.field{background:var(--bg2);border:1px solid var(--border);border-radius:9px;padding:7px 10px;outline:none;min-width:0}
+.field:focus{border-color:var(--accent)}
+.field.num{width:64px;text-align:center;padding:5px 6px}
+.search{display:flex;align-items:center;gap:8px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:0 10px;color:var(--dim);flex:1;max-width:320px}
+.search input{border:0;background:none;outline:none;padding:8px 0;flex:1}
+
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{border:1px solid var(--border);background:transparent;color:var(--muted);padding:5px 11px;border-radius:99px;font-size:12px;cursor:pointer;font-weight:500}
+.chip:hover{color:var(--text)}
+.chip.on{background:var(--surface3);border-color:var(--border2);color:var(--text)}
+
+/* ---------- home ---------- */
+.home{display:grid;grid-template-columns:minmax(330px,.9fr) 1.3fr;gap:18px}
+.hero{display:flex;flex-direction:column;align-items:center;padding:30px 22px 22px;gap:4px}
+.conn{width:176px;height:176px;border-radius:50%;display:grid;place-items:center;position:relative;cursor:pointer;border:1px solid var(--border2);
+  background:radial-gradient(circle at 50% 30%,var(--surface3),var(--surface2) 70%);
+  box-shadow:0 0 0 12px color-mix(in srgb,var(--text) 3%,transparent),0 24px 50px -24px rgba(0,0,0,.8);transition:.35s;margin-bottom:18px}
+.conn:hover{transform:scale(1.02)}
+.conn svg{width:56px;height:56px;color:var(--muted);transition:.35s}
+.conn::before{content:"";position:absolute;inset:-13px;border-radius:50%;border:2px solid transparent}
+body[data-state=connecting] .conn::before{border-top-color:var(--accent);border-right-color:var(--accent);animation:spin .9s linear infinite}
+body[data-state=connecting] .conn svg{color:var(--accent)}
+body[data-state=on] .conn{background:radial-gradient(circle at 50% 30%,#1d6b52,#0f3a2d 72%);border-color:#2e8566;box-shadow:0 0 0 12px rgba(52,211,153,.07),0 0 70px -12px rgba(52,211,153,.55)}
+body[data-state=on] .conn svg{color:#b8f5dc}
+body[data-state=on] .conn::after{content:"";position:absolute;inset:0;border-radius:50%;border:2px solid rgba(52,211,153,.5);animation:pulse 2.4s ease-out infinite}
+.conn-state{font-size:20px;font-weight:650}
+.conn-sub{color:var(--muted);font-size:13px;min-height:19px;font-variant-numeric:tabular-nums}
+.server-pick{width:100%;margin-top:18px;display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;background:var(--surface2);border:1px solid var(--border);cursor:pointer;text-align:left}
+.server-pick:hover{border-color:var(--border2)}
+.server-pick .nm{font-weight:600}
+.server-pick .meta{display:flex;gap:6px;align-items:center;margin-top:3px;font-size:12px;color:var(--muted)}
+.ping{font-family:var(--mono);font-size:12px;font-weight:500}
+.ping.g{color:var(--ok)} .ping.y{color:var(--warn)} .ping.r{color:var(--err)}
+.opt-rows{width:100%;display:flex;flex-direction:column;gap:10px;margin-top:14px}
+.opt-row{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px;color:var(--muted)}
+
+.right-col{display:flex;flex-direction:column;gap:18px;min-width:0}
+.core-main{display:flex;align-items:center;gap:14px}
+.clogo{width:46px;height:46px;border-radius:13px;display:grid;place-items:center;font-weight:800;font-size:19px;color:#0b0d12;background:var(--c);flex:none;box-shadow:0 8px 24px -10px var(--c)}
+.clogo.sm{width:28px;height:28px;border-radius:8px;font-size:13px;box-shadow:none}
+.core-main .nm{font-size:18px;font-weight:650}
+.core-main .ver{font-size:12px;color:var(--muted)}
+.reason{margin:14px 0 16px;padding:10px 12px;border-radius:10px;background:var(--surface2);border:1px solid var(--border);font-size:13px;color:var(--muted);display:flex;gap:9px;align-items:flex-start}
+.reason svg{flex:none;margin-top:1px;color:var(--swap)}
+.reason.warn svg{color:var(--warn)}
+.lbl{font-size:11px;text-transform:uppercase;letter-spacing:.7px;color:var(--dim);font-weight:600;margin-bottom:8px}
+.chain{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.chain .arr{color:var(--dim);display:grid}
+.cchip{display:inline-flex;align-items:center;gap:8px;padding:6px 12px 6px 6px;border-radius:99px;border:1px solid var(--border2);background:var(--surface2);font-size:13px;font-weight:500;transition:.25s}
+.cchip .st{font-size:11px;color:var(--dim);font-weight:500}
+.cchip.active{border-color:var(--c);box-shadow:0 0 0 3px color-mix(in srgb,var(--c) 18%,transparent)}
+.cchip.active .st{color:var(--ok)}
+.cchip.failed{border-color:rgba(248,113,113,.5);opacity:.75}
+.cchip.failed .st{color:var(--err)}
+.cchip.skipped{border-style:dashed;opacity:.45}
+.core-actions{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:13px 14px}
+.stat .k{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.stat .v{font-family:var(--mono);font-size:19px;font-weight:500;margin-top:5px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.stat .v small{font-size:12px;color:var(--muted);font-family:Inter,sans-serif;margin-left:3px}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--muted);font-weight:400}
+.legend i{display:inline-block;width:10px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
+#chart{width:100%;height:150px;display:block}
+
+/* ---------- servers ---------- */
+.subs{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-bottom:18px}
+.sub{padding:14px 16px;cursor:pointer;transition:.15s}
+.sub:hover{border-color:var(--border2)}
+.sub.on{border-color:var(--accent);box-shadow:0 0 0 3px rgba(109,140,255,.14)}
+.sub .top{display:flex;align-items:center;gap:8px}
+.sub .nm{font-weight:600}
+.sub .host{font-size:12px;color:var(--dim);font-family:var(--mono);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar{height:5px;border-radius:9px;background:var(--surface3);overflow:hidden;margin:12px 0 7px}
+.bar i{display:block;height:100%;background:var(--accent);border-radius:9px}
+.sub .foot{display:flex;justify-content:space-between;font-size:12px;color:var(--muted)}
+.sub.add{border-style:dashed;display:flex;align-items:center;justify-content:center;gap:8px;color:var(--muted);min-height:112px;background:transparent}
+.sub.add:hover{color:var(--text)}
+.toolbar{display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap}
+.nodes{padding:6px}
+.nrow{display:grid;grid-template-columns:40px minmax(150px,1.4fr) 110px minmax(120px,1fr) 96px 64px 22px;align-items:center;gap:12px;padding:10px 12px;border-radius:10px;cursor:pointer}
+.nrow:hover{background:var(--surface2)}
+.nrow.sel{background:color-mix(in srgb,var(--accent) 10%,transparent)}
+.nrow.head{cursor:default;font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.6px;font-weight:600;padding-top:8px;padding-bottom:6px}
+.nrow.head:hover{background:none}
+.nrow .nm{font-weight:550}
+.nrow .tag{font-size:12px;color:var(--muted)}
+.cdots{display:flex;gap:4px}
+.cdot{width:20px;height:20px;border-radius:6px;display:grid;place-items:center;font-size:10px;font-weight:800;background:var(--c);color:#0b0d12}
+.cdot.off{background:transparent;border:1px dashed var(--border2);color:var(--dim)}
+.radio{width:16px;height:16px;border-radius:50%;border:2px solid var(--border2)}
+.nrow.sel .radio{border-color:var(--accent);box-shadow:inset 0 0 0 3px var(--surface),inset 0 0 0 8px var(--accent)}
+.empty{padding:30px;text-align:center;color:var(--dim)}
+
+/* ---------- cores ---------- */
+.ctiles{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
+.ctile{position:relative;transition:.2s}
+.ctile.is-active{border-color:var(--c);box-shadow:0 0 0 3px color-mix(in srgb,var(--c) 15%,transparent)}
+.ctile.pick{cursor:pointer}
+.ctile .top{display:flex;gap:12px;align-items:center}
+.ctile .nm{font-weight:650}
+.spill{position:absolute;top:14px;right:14px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;background:var(--surface3);color:var(--muted)}
+.spill.run{background:rgba(52,211,153,.14);color:var(--ok)}
+.spill.fail{background:rgba(248,113,113,.14);color:var(--err)}
+.ctile .cov{margin:14px 0 6px;font-size:12px;color:var(--muted);display:flex;justify-content:space-between}
+.ctile .bar i{background:var(--c)}
+.ctile .acts{display:flex;align-items:center;gap:8px;margin-top:12px;min-height:28px}
+.ctile.addcore{border-style:dashed;background:transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--muted);text-align:center;cursor:pointer}
+.ctile.addcore:hover{color:var(--text)}
+.two{display:grid;grid-template-columns:1fr 1.25fr;gap:18px;margin-bottom:18px}
+.prio{display:flex;flex-direction:column;gap:8px}
+.pitem{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:11px;background:var(--surface2);border:1px solid var(--border)}
+.pitem .n{font-family:var(--mono);color:var(--dim);width:14px}
+.pitem .grip{color:var(--dim);cursor:grab}
+.pitem .nm{font-weight:600}
+.pitem .btns{margin-left:auto;display:flex;gap:4px}
+.pitem .btns button{width:28px;height:28px;border-radius:7px;border:1px solid var(--border);background:var(--surface);cursor:pointer;display:grid;place-items:center;color:var(--muted)}
+.pitem .btns button:hover:not(:disabled){color:var(--text);background:var(--surface3)}
+.pitem .btns button:disabled{opacity:.3;cursor:default}
+.hint{font-size:12px;color:var(--dim);margin-top:12px;line-height:1.5}
+.rules{display:flex;flex-direction:column}
+.rule{display:flex;align-items:center;gap:14px;padding:11px 0;border-top:1px solid var(--border)}
+.rule:first-of-type{border-top:0;padding-top:2px}
+.rule .t{font-weight:500}
+.rule .d{font-size:12px;color:var(--muted);margin-top:1px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.rule .d .field{padding:2px 6px;width:52px;font-size:12px;text-align:center}
+.rule .body{flex:1;min-width:0}
+.rsec{font-size:11px;text-transform:uppercase;letter-spacing:.7px;color:var(--dim);font-weight:600;margin:14px 0 2px}
+table.matrix{width:100%;border-collapse:collapse;font-size:13px}
+.matrix th,.matrix td{padding:9px 12px;text-align:center;border-top:1px solid var(--border)}
+.matrix th{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);font-weight:600;border-top:0}
+.matrix td:first-child,.matrix th:first-child{text-align:left}
+.matrix tr:hover td{background:var(--surface2)}
+.mk{display:inline-block;min-width:26px;font-size:12px;font-weight:600;padding:2px 8px;border-radius:6px}
+.mk.y{background:rgba(52,211,153,.13);color:var(--ok)}
+.mk.p{background:rgba(251,191,36,.13);color:var(--warn)}
+.mk.n{color:var(--dim)}
+
+/* ---------- routing / settings ---------- */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.srow{display:flex;align-items:center;gap:14px;padding:12px 0;border-top:1px solid var(--border)}
+.card .srow:first-of-type{border-top:0;padding-top:0}
+.srow .body{flex:1;min-width:0}
+.srow .t{font-weight:500}
+.srow .d{font-size:12px;color:var(--muted);margin-top:1px}
+.rtable{width:100%;border-collapse:collapse;font-size:13px}
+.rtable td,.rtable th{padding:9px 10px;border-top:1px solid var(--border);text-align:left}
+.rtable th{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);font-weight:600;border-top:0}
+.act{font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;letter-spacing:.4px}
+.act.proxy{background:rgba(109,140,255,.15);color:var(--accent)}
+.act.direct{background:rgba(52,211,153,.13);color:var(--ok)}
+.act.block{background:rgba(248,113,113,.13);color:var(--err)}
+.note{display:flex;gap:10px;padding:12px 14px;border-radius:12px;border:1px solid rgba(192,132,252,.3);background:rgba(192,132,252,.07);font-size:13px;color:var(--muted);margin-bottom:18px}
+.note svg{color:var(--swap);flex:none;margin-top:1px}
+.note b{color:var(--text);font-weight:600}
+
+/* ---------- logs ---------- */
+.console{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);font-family:var(--mono);font-size:12.5px;padding:12px 0;height:calc(100vh - 210px);overflow:auto}
+.ll{display:grid;grid-template-columns:78px 92px 1fr;gap:10px;padding:2px 16px}
+.ll:hover{background:var(--surface)}
+.ll .tm{color:var(--dim)}
+.ll .src{font-weight:500}
+.ll.err .msg{color:var(--err)} .ll.warn .msg{color:var(--warn)} .ll.ok .msg{color:var(--ok)}
+.ll.swap{background:rgba(192,132,252,.08)} .ll.swap .msg{color:var(--swap);font-weight:500}
+
+/* ---------- overlays ---------- */
+.toasts{position:fixed;right:20px;bottom:20px;display:flex;flex-direction:column;gap:8px;z-index:50}
+.toast{display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:12px;background:var(--surface2);border:1px solid var(--border2);box-shadow:0 14px 40px -12px rgba(0,0,0,.6);font-size:13px;animation:tin .25s ease;max-width:380px}
+.toast.swap{border-color:rgba(192,132,252,.5)} .toast.swap svg{color:var(--swap)}
+.toast.err{border-color:rgba(248,113,113,.5)}
+.toast.ok{border-color:rgba(52,211,153,.45)}
+.toast.out{opacity:0;transform:translateY(6px);transition:.3s}
+.modal-bg{position:fixed;inset:0;background:rgba(5,7,10,.6);backdrop-filter:blur(3px);display:none;place-items:center;z-index:40}
+.modal-bg.open{display:grid;animation:fade .15s}
+.modal{width:min(520px,calc(100vw - 32px));background:var(--surface);border:1px solid var(--border2);border-radius:16px;padding:22px;box-shadow:0 30px 80px -20px rgba(0,0,0,.7)}
+.modal h3{margin:0 0 4px;font-size:17px}
+.modal label{display:block;font-size:12px;color:var(--muted);margin:14px 0 6px;font-weight:500}
+.modal textarea,.modal input.field{width:100%}
+.modal textarea{min-height:78px;resize:vertical;font-family:var(--mono);font-size:12.5px}
+.detect{margin-top:8px;font-size:12px;color:var(--muted);min-height:18px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.modal .acts{display:flex;gap:8px;margin-top:20px;align-items:center}
+
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{0%{transform:scale(1);opacity:.8}100%{transform:scale(1.35);opacity:0}}
+@keyframes blink{50%{opacity:.35}}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+@keyframes tin{from{opacity:0;transform:translateY(8px)}}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:10px;border:3px solid var(--bg)}
+::-webkit-scrollbar-track{background:transparent}
+
+@media (max-width:1100px){
+  .home{grid-template-columns:1fr}
+  .ctiles{grid-template-columns:repeat(2,1fr)}
+  .two,.grid2{grid-template-columns:1fr}
+  .stats{grid-template-columns:repeat(2,1fr)}
+}
+</style>
+</head>
+<body data-state="off">
+<div class="app">
+  <!-- ===== Titlebar (frameless window) ===== -->
+  <header class="titlebar">
+    <div class="logo"><div class="logo-mark"></div>CoreShift <small>0.1.0</small></div>
+    <div class="tb-status"><span class="dot"></span><span id="tbText">Отключено</span></div>
+    <div class="win-btns">
+      <button title="Свернуть"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 5h10" stroke="currentColor"/></svg></button>
+      <button title="Развернуть"><svg width="10" height="10" viewBox="0 0 10 10"><rect x=".5" y=".5" width="9" height="9" fill="none" stroke="currentColor"/></svg></button>
+      <button class="close" title="Скрыть в трей"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10" stroke="currentColor"/></svg></button>
+    </div>
+  </header>
+
+  <!-- ===== Sidebar ===== -->
+  <aside class="sidebar">
+    <button class="nav active" data-page="home"><i data-i="home"></i>Главная</button>
+    <button class="nav" data-page="servers"><i data-i="globe"></i>Серверы<span class="count" id="navCount"></span></button>
+    <button class="nav" data-page="cores"><i data-i="cpu"></i>Ядра</button>
+    <button class="nav" data-page="routing"><i data-i="route"></i>Маршрутизация</button>
+    <button class="nav" data-page="logs"><i data-i="logs"></i>Журнал</button>
+    <button class="nav" data-page="settings"><i data-i="gear"></i>Настройки</button>
+    <div class="side-foot">
+      <div class="lbl">Ядро</div>
+      <div class="row" id="sideCore"></div>
+    </div>
+  </aside>
+
+  <main>
+    <!-- ===================== HOME ===================== -->
+    <section class="page active" id="p-home">
+      <div class="home">
+        <div class="card hero">
+          <div class="conn" id="connBtn" title="Подключить / отключить"><i data-i="power" data-s="56"></i></div>
+          <div class="conn-state" id="connState">Отключено</div>
+          <div class="conn-sub" id="connSub">Нажмите, чтобы подключиться</div>
+
+          <button class="server-pick" data-go="servers">
+            <span class="cc" id="pickCC"></span>
+            <span style="flex:1;min-width:0">
+              <div class="nm" id="pickName"></div>
+              <div class="meta" id="pickMeta"></div>
+            </span>
+            <span class="ping" id="pickPing"></span>
+            <i data-i="chev" class="dim"></i>
+          </button>
+
+          <div class="opt-rows">
+            <div class="opt-row">Режим
+              <div class="seg" data-seg="inbound"><button data-v="proxy" class="on">Системный прокси</button><button data-v="tun">TUN</button></div>
+            </div>
+            <div class="opt-row">Трафик
+              <div class="seg" data-seg="routing"><button data-v="rules" class="on">По правилам</button><button data-v="global">Весь</button><button data-v="direct">Напрямую</button></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="right-col">
+          <div class="card" id="coreCard">
+            <div class="card-h"><span id="coreCardTitle">Будет запущено</span><span class="right" id="coreModeBadge"></span></div>
+            <div class="core-main" id="coreMain"></div>
+            <div class="reason" id="coreReason"></div>
+            <div class="lbl">Цепочка фолбэка для узла</div>
+            <div class="chain" id="chain"></div>
+            <div class="core-actions">
+              <button class="btn sm" id="simFail"><i data-i="bolt" data-s="15"></i>Симулировать сбой ядра</button>
+              <button class="btn sm ghost" id="backPrimary"><i data-i="undo" data-s="15"></i>Вернуть приоритетное</button>
+              <span class="spacer"></span>
+              <button class="btn sm ghost" data-go="cores">Настроить автосвап<i data-i="chev" data-s="14"></i></button>
+            </div>
+          </div>
+
+          <div class="stats">
+            <div class="stat"><div class="k"><i data-i="down" data-s="14"></i>Загрузка</div><div class="v" id="stDown">0<small>МБ/с</small></div></div>
+            <div class="stat"><div class="k"><i data-i="up" data-s="14"></i>Отдача</div><div class="v" id="stUp">0<small>МБ/с</small></div></div>
+            <div class="stat"><div class="k"><i data-i="pulse" data-s="14"></i>Задержка</div><div class="v" id="stPing">—</div></div>
+            <div class="stat"><div class="k"><i data-i="db" data-s="14"></i>За сессию</div><div class="v" id="stTotal">0<small>МБ</small></div></div>
+          </div>
+
+          <div class="card">
+            <div class="card-h">Трафик<span class="sub">последние 60 с</span>
+              <span class="right legend"><span><i style="background:#34d399"></i>загрузка</span><span><i style="background:#6d8cff"></i>отдача</span></span>
+            </div>
+            <canvas id="chart"></canvas>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== SERVERS ===================== -->
+    <section class="page" id="p-servers">
+      <div class="page-h">
+        <div><h1>Серверы</h1><p>Подписки и узлы. Для каждого узла видно, какие ядра его поддерживают.</p></div>
+        <div class="actions">
+          <button class="btn" id="updAll"><i data-i="refresh" data-s="15"></i>Обновить все</button>
+          <button class="btn primary" data-modal="open"><i data-i="plus" data-s="15"></i>Добавить подписку</button>
+        </div>
+      </div>
+      <div class="subs" id="subs"></div>
+      <div class="toolbar">
+        <label class="search"><i data-i="search" data-s="15"></i><input id="q" placeholder="Поиск по имени, стране, протоколу"></label>
+        <div class="chips" id="protoChips"></div>
+        <span class="spacer"></span>
+        <button class="btn sm" id="pingAll"><i data-i="pulse" data-s="14"></i>Тест задержки</button>
+      </div>
+      <div class="card nodes" id="nodes"></div>
+    </section>
+
+    <!-- ===================== CORES ===================== -->
+    <section class="page" id="p-cores">
+      <div class="page-h">
+        <div><h1>Ядра</h1><p>Установленные ядра, их приоритет и правила автоматического переключения.</p></div>
+        <div class="actions">
+          <div class="seg" data-seg="mode"><button data-v="auto" class="on">Автосвап</button><button data-v="manual">Вручную</button></div>
+        </div>
+      </div>
+      <div class="ctiles" id="ctiles"></div>
+
+      <div class="two">
+        <div class="card">
+          <div class="card-h">Приоритет ядер<span class="sub">сверху — предпочтительное</span></div>
+          <div class="prio" id="prio"></div>
+          <div class="hint">При подключении берётся первое ядро из списка, которое поддерживает протокол узла. Несовместимые пропускаются, остальные становятся резервом.</div>
+        </div>
+        <div class="card">
+          <div class="card-h">Правила переключения</div>
+          <div class="rules">
+            <div class="rsec" style="margin-top:0">Триггеры</div>
+            <div class="rule"><div class="body"><div class="t">Процесс ядра упал</div><div class="d">Ненулевой код выхода или зависание процесса</div></div><label class="sw"><input type="checkbox" checked><span></span></label></div>
+            <div class="rule"><div class="body"><div class="t">Протокол не поддерживается</div><div class="d">Выбирать совместимое ядро при подключении и смене узла</div></div><label class="sw"><input type="checkbox" checked><span></span></label></div>
+            <div class="rule"><div class="body"><div class="t">Health-check не прошёл</div><div class="d">после <input class="field" value="3"> неудач подряд, интервал <input class="field" value="15"> с</div></div><label class="sw"><input type="checkbox" checked><span></span></label></div>
+            <div class="rule"><div class="body"><div class="t">Деградация задержки</div><div class="d">если выше <input class="field" value="800"> мс дольше <input class="field" value="30"> с</div></div><label class="sw"><input type="checkbox"><span></span></label></div>
+            <div class="rule"><div class="body"><div class="t">Ошибка конфига</div><div class="d">Ядро отвергло сгенерированный конфиг (неизвестное поле, версия)</div></div><label class="sw"><input type="checkbox" checked><span></span></label></div>
+            <div class="rsec">Поведение</div>
+            <div class="rule"><div class="body"><div class="t">Возвращаться к приоритетному</div><div class="d">через <input class="field" value="10"> мин стабильной работы</div></div><label class="sw"><input type="checkbox" checked><span></span></label></div>
+            <div class="rule"><div class="body"><div class="t">Пробовать другой узел, если ядра кончились</div><div class="d">Из той же подписки, с наименьшей задержкой</div></div><label class="sw"><input type="checkbox"><span></span></label></div>
+            <div class="rule"><div class="body"><div class="t">Уведомлять о переключении</div><div class="d">Системное уведомление + запись в журнал</div></div><label class="sw"><input type="checkbox" checked><span></span></label></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h">Совместимость протоколов<span class="sub">генерируется из манифестов ядер · значения примерные</span></div>
+        <table class="matrix" id="matrix"></table>
+      </div>
+    </section>
+
+    <!-- ===================== ROUTING ===================== -->
+    <section class="page" id="p-routing">
+      <div class="page-h">
+        <div><h1>Маршрутизация</h1><p>Правила задаются один раз и переводятся в формат активного ядра.</p></div>
+        <div class="actions"><button class="btn primary"><i data-i="plus" data-s="15"></i>Правило</button></div>
+      </div>
+      <div class="note"><i data-i="swap" data-s="16"></i><div><b>Единая модель правил.</b> При автосвапе правила не теряются: из одного описания генерируются <span class="mono">routing</span> для Xray, <span class="mono">route.rules</span> для sing-box и <span class="mono">rules</span> для mihomo.</div></div>
+      <div class="grid2">
+        <div class="card">
+          <div class="card-h">Пресеты</div>
+          <div class="srow"><div class="body"><div class="t">Российские сайты напрямую</div><div class="d mono">geosite:category-ru, geoip:ru</div></div><label class="sw"><input type="checkbox" checked><span></span></label></div>
+          <div class="srow"><div class="body"><div class="t">Блокировка рекламы</div><div class="d mono">geosite:category-ads-all</div></div><label class="sw"><input type="checkbox" checked><span></span></label></div>
+          <div class="srow"><div class="body"><div class="t">Локальная сеть напрямую</div><div class="d mono">geoip:private</div></div><label class="sw"><input type="checkbox" checked><span></span></label></div>
+          <div class="srow"><div class="body"><div class="t">Обновлять geo-базы</div><div class="d">Раз в сутки, runetfreedom / Loyalsoldier</div></div><label class="sw"><input type="checkbox" checked><span></span></label></div>
+        </div>
+        <div class="card">
+          <div class="card-h">Приложения (split tunneling)<span class="sub">только в режиме TUN</span></div>
+          <div class="srow"><span class="cc">TG</span><div class="body"><div class="t">Telegram.exe</div></div><span class="act proxy">PROXY</span></div>
+          <div class="srow"><span class="cc">ST</span><div class="body"><div class="t">steam.exe</div></div><span class="act direct">DIRECT</span></div>
+          <div class="srow"><span class="cc">DC</span><div class="body"><div class="t">Discord.exe</div></div><span class="act proxy">PROXY</span></div>
+          <div class="srow"><span class="cc">+</span><div class="body"><div class="t muted">Добавить приложение…</div></div></div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:18px">
+        <div class="card-h">Пользовательские правила<span class="sub">сверху вниз, первое совпадение</span></div>
+        <table class="rtable">
+          <tr><th>Тип</th><th>Значение</th><th>Действие</th><th style="width:40px"></th></tr>
+          <tr><td class="muted">domain_suffix</td><td class="mono">openai.com</td><td><span class="act proxy">PROXY</span></td><td class="dim">⋮</td></tr>
+          <tr><td class="muted">domain_suffix</td><td class="mono">gosuslugi.ru</td><td><span class="act direct">DIRECT</span></td><td class="dim">⋮</td></tr>
+          <tr><td class="muted">ip_cidr</td><td class="mono">10.0.0.0/8</td><td><span class="act direct">DIRECT</span></td><td class="dim">⋮</td></tr>
+          <tr><td class="muted">geosite</td><td class="mono">category-ads-all</td><td><span class="act block">BLOCK</span></td><td class="dim">⋮</td></tr>
+          <tr><td class="muted">final</td><td class="mono dim">всё остальное</td><td><span class="act proxy">PROXY</span></td><td></td></tr>
+        </table>
+      </div>
+    </section>
+
+    <!-- ===================== LOGS ===================== -->
+    <section class="page" id="p-logs">
+      <div class="page-h">
+        <div><h1>Журнал</h1><p>События приложения, ядер и автосвапа.</p></div>
+        <div class="actions">
+          <div class="chips" id="logChips">
+            <button class="chip on" data-f="all">Все</button><button class="chip" data-f="swap">Автосвап</button><button class="chip" data-f="core">Ядра</button><button class="chip" data-f="err">Ошибки</button>
+          </div>
+          <button class="btn sm" id="clearLogs">Очистить</button>
+        </div>
+      </div>
+      <div class="console" id="console"></div>
+    </section>
+
+    <!-- ===================== SETTINGS ===================== -->
+    <section class="page" id="p-settings">
+      <div class="page-h"><div><h1>Настройки</h1></div></div>
+      <div class="grid2">
+        <div class="card">
+          <div class="card-h">Общие</div>
+          <div class="srow"><div class="body"><div class="t">Запускать вместе с Windows</div></div><label class="sw"><input type="checkbox" checked><span></span></label></div>
+          <div class="srow"><div class="body"><div class="t">Подключаться при запуске</div><div class="d">К последнему узлу</div></div><label class="sw"><input type="checkbox"><span></span></label></div>
+          <div class="srow"><div class="body"><div class="t">Закрытие окна сворачивает в трей</div></div><label class="sw"><input type="checkbox" checked><span></span></label></div>
+          <div class="srow"><div class="body"><div class="t">Тема</div></div><div class="seg" data-seg="theme"><button data-v="dark" class="on">Тёмная</button><button data-v="light">Светлая</button></div></div>
+          <div class="srow"><div class="body"><div class="t">Язык</div></div><div class="seg"><button class="on">RU</button><button>EN</button></div></div>
+        </div>
+        <div class="card">
+          <div class="card-h">Сеть</div>
+          <div class="srow"><div class="body"><div class="t">Mixed-порт (HTTP + SOCKS5)</div></div><input class="field num mono" value="7890"></div>
+          <div class="srow"><div class="body"><div class="t">Разрешить подключения из LAN</div></div><label class="sw"><input type="checkbox"><span></span></label></div>
+          <div class="srow"><div class="body"><div class="t">IPv6</div></div><label class="sw"><input type="checkbox"><span></span></label></div>
+          <div class="srow"><div class="body"><div class="t">DNS</div><div class="d mono">https://1.1.1.1/dns-query · fake-ip</div></div><button class="btn sm">Изменить</button></div>
+          <div class="srow"><div class="body"><div class="t">TUN-стек</div></div><div class="seg"><button class="on">system</button><button>gvisor</button><button>mixed</button></div></div>
+        </div>
+        <div class="card">
+          <div class="card-h">Ядра</div>
+          <div class="srow"><div class="body"><div class="t">Папка ядер</div><div class="d mono">%APPDATA%\CoreShift\cores</div></div><button class="btn sm">Открыть</button></div>
+          <div class="srow"><div class="body"><div class="t">Автообновление ядер</div><div class="d">С проверкой SHA-256 из GitHub Releases</div></div><label class="sw"><input type="checkbox" checked><span></span></label></div>
+          <div class="srow"><div class="body"><div class="t">Канал</div></div><div class="seg"><button class="on">Stable</button><button>Pre-release</button></div></div>
+        </div>
+        <div class="card">
+          <div class="card-h">Подписки</div>
+          <div class="srow"><div class="body"><div class="t">Автообновление</div><div class="d">каждые 12 ч</div></div><label class="sw"><input type="checkbox" checked><span></span></label></div>
+          <div class="srow"><div class="body"><div class="t">User-Agent</div><div class="d">Некоторые панели отдают разный формат в зависимости от UA</div></div><input class="field mono" style="width:150px" value="CoreShift/0.1"></div>
+          <div class="srow"><div class="body"><div class="t">Обновлять через прокси</div></div><label class="sw"><input type="checkbox" checked><span></span></label></div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ===== Add subscription modal ===== -->
+<div class="modal-bg" id="modal">
+  <div class="modal">
+    <h3>Добавить подписку</h3>
+    <div class="muted small">Ссылка на подписку или отдельный узел: https://, vless://, vmess://, trojan://, ss://, hysteria2://, tuic://</div>
+    <label>Ссылка</label>
+    <textarea class="field" id="subUrl" placeholder="https://… или vless://…"></textarea>
+    <div class="detect" id="subDetect"></div>
+    <label>Название</label>
+    <input class="field" id="subName" placeholder="Необязательно — возьмём из заголовка ответа">
+    <div class="acts">
+      <button class="btn ghost" id="fromClip"><i data-i="clip" data-s="15"></i>Из буфера</button>
+      <span class="spacer"></span>
+      <button class="btn" data-modal="close">Отмена</button>
+      <button class="btn primary" id="addSubBtn">Добавить</button>
+    </div>
+  </div>
+</div>
+<div class="toasts" id="toasts"></div>
+
+<script>
+/* ================= icons ================= */
+const I={
+  home:'<path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/>',
+  globe:'<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18"/>',
+  cpu:'<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M10 10h4v4h-4zM9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>',
+  route:'<circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M6 17V10a4 4 0 014-4h6M18 7v7a4 4 0 01-4 4H8"/>',
+  logs:'<path d="M4 6h16M4 12h16M4 18h10"/>',
+  gear:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/>',
+  power:'<path d="M12 3v9"/><path d="M6.3 6.3a8 8 0 1011.4 0"/>',
+  chev:'<path d="M9 6l6 6-6 6"/>',
+  bolt:'<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',
+  undo:'<path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 010 10h-3"/>',
+  swap:'<path d="M7 4L3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7"/>',
+  down:'<path d="M12 4v16M6 14l6 6 6-6"/>', up:'<path d="M12 20V4M6 10l6-6 6 6"/>',
+  pulse:'<path d="M3 12h4l3-8 4 16 3-8h4"/>',
+  db:'<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
+  refresh:'<path d="M20 12a8 8 0 11-2.3-5.7L20 8"/><path d="M20 3v5h-5"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',
+  search:'<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
+  info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
+  warn:'<path d="M12 3l10 18H2z"/><path d="M12 10v4M12 17h.01"/>',
+  arrow:'<path d="M5 12h14M13 6l6 6-6 6"/>',
+  aup:'<path d="M6 15l6-6 6 6"/>', adown:'<path d="M6 9l6 6 6-6"/>',
+  grip:'<circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/>',
+  clip:'<rect x="8" y="3" width="8" height="4" rx="1"/><path d="M16 5h2a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2h2"/>',
+  check:'<path d="M5 12l5 5 9-10"/>',
+};
+const svg=(n,s=18)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:block">${I[n]}</svg>`;
+const hydrate=(root=document)=>root.querySelectorAll('[data-i]').forEach(el=>{el.innerHTML=svg(el.dataset.i,+el.dataset.s||18);el.style.display='inline-grid'});
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+
+/* ================= data ================= */
+const CORES={
+  xray:   {name:'Xray-core',letter:'X',ver:'25.9.11',latest:'25.9.11',mem:'41 МБ',color:'var(--xray)'},
+  singbox:{name:'sing-box', letter:'S',ver:'1.12.8', latest:'1.13.0', mem:'33 МБ',color:'var(--singbox)'},
+  mihomo: {name:'mihomo',   letter:'M',ver:'1.19.14',latest:'1.19.14',mem:'29 МБ',color:'var(--mihomo)'},
+};
+const MATRIX=[
+  ['VLESS · Reality · Vision',{xray:'y',singbox:'y',mihomo:'y'}],
+  ['VLESS · XHTTP',           {xray:'y',singbox:'n',mihomo:'p'}],
+  ['VMess · WS / gRPC',       {xray:'y',singbox:'y',mihomo:'y'}],
+  ['Trojan',                  {xray:'y',singbox:'y',mihomo:'y'}],
+  ['Shadowsocks 2022',        {xray:'y',singbox:'y',mihomo:'y'}],
+  ['Hysteria2',               {xray:'p',singbox:'y',mihomo:'y'}],
+  ['TUIC v5',                 {xray:'n',singbox:'y',mihomo:'y'}],
+  ['AnyTLS',                  {xray:'n',singbox:'y',mihomo:'y'}],
+  ['ShadowTLS v3',            {xray:'n',singbox:'y',mihomo:'y'}],
+  ['WireGuard',               {xray:'y',singbox:'y',mihomo:'y'}],
+];
+const PC={VLESS:'#6d8cff',VMess:'#60a5fa',Trojan:'#f472b6',Shadowsocks:'#a3e635',Hysteria2:'#fb923c',TUIC:'#22d3ee',WireGuard:'#f87171',AnyTLS:'#c084fc'};
+const SUBS=[
+  {id:'s1',name:'NorthLink Premium',host:'sub.northlink.example/api/v1/…',used:142,total:500,expire:'12.11.2026',updated:'12 мин назад',fmt:'base64'},
+  {id:'s2',name:'Резерв',host:'panel.backup.example/sub/…',used:18,total:100,expire:'03.10.2026',updated:'2 ч назад',fmt:'Clash YAML'},
+];
+const NODES=[
+  {id:'n1', sub:'s1',cc:'NL',name:'Amsterdam', proto:'VLESS',      sec:'Reality',     net:'TCP · Vision',ping:38, cores:['xray','singbox','mihomo']},
+  {id:'n2', sub:'s1',cc:'DE',name:'Frankfurt', proto:'VLESS',      sec:'Reality',     net:'XHTTP',       ping:52, cores:['xray']},
+  {id:'n3', sub:'s1',cc:'FI',name:'Helsinki',  proto:'Hysteria2',  sec:'TLS',         net:'QUIC',        ping:61, cores:['singbox','mihomo']},
+  {id:'n4', sub:'s1',cc:'SE',name:'Stockholm', proto:'TUIC',       sec:'TLS',         net:'QUIC',        ping:74, cores:['singbox','mihomo']},
+  {id:'n5', sub:'s1',cc:'US',name:'New York',  proto:'Trojan',     sec:'TLS',         net:'gRPC',        ping:128,cores:['xray','singbox','mihomo']},
+  {id:'n6', sub:'s1',cc:'TR',name:'Istanbul',  proto:'VMess',      sec:'TLS',         net:'WebSocket',   ping:89, cores:['xray','singbox','mihomo']},
+  {id:'n7', sub:'s1',cc:'KZ',name:'Almaty',    proto:'Shadowsocks',sec:'2022-blake3', net:'TCP',         ping:45, cores:['xray','singbox','mihomo']},
+  {id:'n8', sub:'s1',cc:'JP',name:'Tokyo',     proto:'AnyTLS',     sec:'TLS',         net:'TCP',         ping:210,cores:['singbox','mihomo']},
+  {id:'n9', sub:'s2',cc:'PL',name:'Warsaw',    proto:'VLESS',      sec:'Reality',     net:'gRPC',        ping:57, cores:['xray','singbox','mihomo']},
+  {id:'n10',sub:'s2',cc:'LV',name:'Riga',      proto:'WireGuard',  sec:'—',           net:'UDP',         ping:49, cores:['xray','singbox','mihomo']},
+  {id:'n11',sub:'s2',cc:'GB',name:'London',    proto:'Shadowsocks',sec:'ShadowTLS v3',net:'TCP',         ping:95, cores:['singbox','mihomo']},
+];
+
+/* ================= state ================= */
+const S={connected:false,connecting:false,swapping:false,node:'n1',activeCore:null,failed:new Set(),
+  mode:'auto',manualCore:'xray',priority:['xray','singbox','mihomo'],inbound:'proxy',routing:'rules',
+  subFilter:'all',proto:'all',q:'',logFilter:'all',startTs:0,
+  down:Array(60).fill(0),up:Array(60).fill(0),curDown:0,curUp:0,session:0};
+const node=()=>NODES.find(n=>n.id===S.node);
+const chainFor=n=>S.priority.filter(c=>n.cores.includes(c));
+const pingCls=p=>p<80?'g':p<150?'y':'r';
+const protoBadge=n=>`<span class="proto" style="--pc:${PC[n.proto]}">${n.proto}</span>`;
+const plannedCore=()=>{
+  if((S.connected||S.connecting)&&S.activeCore) return S.activeCore;
+  return S.mode==='manual'?S.manualCore:chainFor(node())[0];
+};
+
+/* ================= logs ================= */
+const LOGS=[];
+function log(src,msg,lvl='info'){
+  LOGS.push({t:new Date().toTimeString().slice(0,8),src,msg,lvl});
+  if(LOGS.length>400) LOGS.shift();
+  renderLogs();
+}
+function renderLogs(){
+  const f=S.logFilter, el=$('#console');
+  const rows=LOGS.filter(l=>f==='all'||(f==='swap'&&l.src==='auto-swap')||(f==='core'&&CORES[l.src])||(f==='err'&&l.lvl==='err'));
+  el.innerHTML=rows.map(l=>{
+    const col=CORES[l.src]?CORES[l.src].color:l.src==='auto-swap'?'var(--swap)':'var(--muted)';
+    return `<div class="ll ${l.lvl}"><span class="tm">${l.t}</span><span class="src" style="color:${col}">${CORES[l.src]?CORES[l.src].name:l.src}</span><span class="msg">${l.msg}</span></div>`;
+  }).join('')||'<div class="empty">Пусто</div>';
+  el.scrollTop=el.scrollHeight;
+}
+
+/* ================= toasts ================= */
+function toast(html,kind='info'){
+  const t=document.createElement('div');
+  t.className='toast '+kind; t.innerHTML=html;
+  $('#toasts').append(t);
+  setTimeout(()=>t.classList.add('out'),3400); setTimeout(()=>t.remove(),3800);
+}
+
+/* ================= connection flow (simulation) ================= */
+function launch(core,{swap=false,from=null}={}){
+  S.connecting=true; S.swapping=swap; S.activeCore=core; render();
+  const C=CORES[core], n=node();
+  log(core,`Конфиг сгенерирован из общей модели узла → ${core}.json (${3+Math.floor(Math.random()*6)} мс)`);
+  setTimeout(()=>log(core,`Процесс запущен, PID ${10000+Math.floor(Math.random()*20000)}`),300);
+  setTimeout(()=>log(core,S.inbound==='tun'?'TUN-интерфейс поднят (172.19.0.1/30)':'Inbound mixed 127.0.0.1:7890 готов'),600);
+  setTimeout(()=>{
+    log('health',`generate_204 → 204 за ${n.ping+Math.round(Math.random()*9)} мс`,'ok');
+    S.connecting=false; S.swapping=false; S.connected=true;
+    if(!S.startTs) S.startTs=Date.now();
+    if(S.curDown<1){S.curDown=6;S.curUp=1.2;}
+    if(swap){
+      log('auto-swap',`Переключено: ${CORES[from].name} → ${C.name}`,'swap');
+      toast(`${svg('swap',16)}<span>Ядро переключено: <b>${CORES[from].name}</b> → <b>${C.name}</b></span>`,'swap');
+    } else log('app',`Подключено: ${n.name} через ${C.name}`,'ok');
+    render();
+  },1100);
+}
+function disconnect(msg='Отключено',lvl='info'){
+  if(S.activeCore) log(S.activeCore,'Процесс остановлен');
+  log('app',msg,lvl);
+  S.connected=false; S.connecting=false; S.activeCore=null; S.startTs=0; S.failed.clear();
+  render();
+}
+function toggleConnect(){
+  if(S.connecting) return;
+  if(S.connected) return disconnect();
+  const n=node(), ch=chainFor(n);
+  S.failed.clear(); S.session=0;
+  if(S.mode==='manual'){
+    if(!n.cores.includes(S.manualCore)){
+      const m=`${CORES[S.manualCore].name} не поддерживает ${n.proto} · ${n.net}`;
+      log('app',m,'err'); toast(`${svg('warn',16)}<span>${m}. Включите автосвап или выберите другое ядро.</span>`,'err'); return;
+    }
+    return launch(S.manualCore);
+  }
+  if(!ch.length){toast('Нет совместимого ядра','err');return;}
+  const skipped=S.priority.filter(c=>!n.cores.includes(c));
+  log('auto-swap',`${n.name} (${n.proto} · ${n.sec} · ${n.net}): совместимы ${ch.map(c=>CORES[c].name).join(', ')}`);
+  if(skipped.length) log('auto-swap',`Пропущены: ${skipped.map(c=>CORES[c].name).join(', ')} — протокол не поддерживается`,'warn');
+  log('auto-swap',`Выбрано ${CORES[ch[0]].name} (первое совместимое по приоритету)`);
+  launch(ch[0]);
+}
+function simFail(){
+  if(!S.connected||S.connecting){toast(`${svg('info',16)}<span>Сначала подключитесь</span>`);return;}
+  const cur=S.activeCore; S.failed.add(cur);
+  log(cur,'Процесс завершился с кодом 2: panic: runtime error','err');
+  if(S.mode==='manual'){
+    S.activeCore=null;
+    disconnect('Ручной режим — автосвап выключен, соединение разорвано','err');
+    toast(`${svg('warn',16)}<span>${CORES[cur].name} упал. В ручном режиме переключения нет.</span>`,'err'); return;
+  }
+  log('auto-swap','Сработал триггер «процесс ядра упал»','warn');
+  const next=chainFor(node()).find(c=>!S.failed.has(c));
+  if(!next){
+    S.activeCore=null;
+    disconnect('Все совместимые ядра недоступны — отключено','err');
+    toast(`${svg('warn',16)}<span>Для этого узла больше нет ядер в цепочке</span>`,'err'); return;
+  }
+  log('auto-swap',`Следующее в цепочке: ${CORES[next].name}`);
+  S.connected=false; launch(next,{swap:true,from:cur});
+}
+function backToPrimary(){
+  const first=chainFor(node())[0];
+  if(!S.connected||S.connecting||S.activeCore===first||S.mode==='manual') return;
+  const from=S.activeCore; S.failed.clear();
+  log('auto-swap',`Возврат к приоритетному ядру ${CORES[first].name}`);
+  S.connected=false; launch(first,{swap:true,from});
+}
+function selectNode(id){
+  if(S.connecting) return;
+  const was=S.node; S.node=id; const n=node();
+  if(S.connected&&was!==id){
+    const from=S.activeCore; S.failed.clear();
+    log('app',`Переподключение к ${n.name}`);
+    if(S.mode==='manual'){
+      if(!n.cores.includes(from)){S.activeCore=null;disconnect(`${CORES[from].name} не поддерживает ${n.proto} · ${n.net} — отключено`,'err');return;}
+      S.connected=false; launch(from);
+    } else {
+      const next=chainFor(n)[0];
+      S.connected=false;
+      if(next!==from){
+        log('auto-swap',`${CORES[from].name} ${n.cores.includes(from)?'ниже по приоритету для этого узла':`не поддерживает ${n.proto} · ${n.net}`} → ${CORES[next].name}`,'warn');
+        launch(next,{swap:true,from});
+      } else launch(next);
+    }
+  }
+  render();
+}
+
+/* ================= render ================= */
+function render(){renderHome();renderSubs();renderNodes();renderCores();renderSide();}
+
+function renderHome(){
+  const st=S.connecting?'connecting':S.connected?'on':'off';
+  document.body.dataset.state=st;
+  const n=node(), core=plannedCore(), C=CORES[core];
+  $('#connState').textContent={off:'Отключено',connecting:S.swapping?'Переключение ядра…':'Подключение…',on:'Подключено'}[st];
+  $('#tbText').textContent=st==='on'?`${n.name} · ${C.name}`:st==='connecting'?'Подключение…':'Отключено';
+  if(st==='off') $('#connSub').textContent='Нажмите, чтобы подключиться';
+  if(st==='connecting') $('#connSub').textContent=`Запуск ${C.name}`;
+  $('#pickCC').textContent=n.cc;
+  $('#pickName').textContent=n.name;
+  $('#pickMeta').innerHTML=`${protoBadge(n)}<span>${n.sec} · ${n.net}</span>`;
+  $('#pickPing').className='ping '+pingCls(n.ping); $('#pickPing').textContent=n.ping+' мс';
+
+  $('#coreCardTitle').textContent=S.connected||S.connecting?'Активное ядро':'Будет запущено';
+  $('#coreModeBadge').innerHTML=S.mode==='auto'?`<span class="badge auto">${svg('swap',12)}AUTO</span>`:'<span class="badge manual">ВРУЧНУЮ</span>';
+  const running=S.connected&&!S.connecting;
+  $('#coreMain').innerHTML=`<div class="clogo" style="--c:${C.color}">${C.letter}</div>
+    <div><div class="nm">${C.name}</div><div class="ver">v${C.ver} · ${running?'работает, '+C.mem:S.connecting?'запускается…':'остановлено'}</div></div>`;
+
+  const ch=chainFor(n); let reason, warn=false;
+  if(S.mode==='manual'){
+    if(n.cores.includes(core)) reason='Выбрано вручную. Автосвап выключен — при сбое соединение будет разорвано.';
+    else {reason=`${C.name} не поддерживает ${n.proto} · ${n.net}. Подключение невозможно.`;warn=true;}
+  } else if(S.failed.size){
+    reason=`Работает резервное ядро после сбоя: ${[...S.failed].map(c=>CORES[c].name).join(', ')}.`;warn=true;
+  } else if(ch.length===1){
+    reason=`${n.proto} · ${n.net} поддерживает только ${C.name}. Резерва для этого узла нет.`;
+  } else {
+    const skipped=S.priority.length-ch.length;
+    reason=`Первое совместимое по приоритету. В резерве: ${ch.slice(1).map(c=>CORES[c].name).join(', ')}${skipped?`; пропущено несовместимых: ${skipped}`:''}.`;
+  }
+  $('#coreReason').className='reason'+(warn?' warn':'');
+  $('#coreReason').innerHTML=svg(warn?'warn':'info',16)+`<span>${reason}</span>`;
+
+  $('#chain').innerHTML=S.priority.map((c,i)=>{
+    const K=CORES[c]; let cls='',stt='резерв';
+    if(!n.cores.includes(c)){cls='skipped';stt='не поддерж.';}
+    else if(S.failed.has(c)){cls='failed';stt='сбой';}
+    else if(c===S.activeCore&&(S.connected||S.connecting)){cls='active';stt=S.connecting?'запуск':'активно';}
+    else if(!S.connected&&!S.connecting&&c===core){stt='первое';}
+    if(S.mode==='manual'&&c!==S.manualCore&&cls!=='skipped'){stt='выкл.';cls+=' skipped';}
+    return (i?`<span class="arr">${svg('arrow',14)}</span>`:'')+
+      `<span class="cchip ${cls}" style="--c:${K.color}"><span class="clogo sm" style="--c:${K.color}">${K.letter}</span>${K.name}<span class="st">${stt}</span></span>`;
+  }).join('');
+  $('#simFail').disabled=!running;
+  $('#backPrimary').disabled=!running||S.mode==='manual'||S.activeCore===ch[0];
+}
+
+function renderSide(){
+  const core=plannedCore(), C=CORES[core];
+  const running=S.connected&&!S.connecting;
+  $('#sideCore').innerHTML=`<span class="clogo sm" style="--c:${C.color}">${C.letter}</span><div style="flex:1"><div style="font-weight:600">${C.name}</div><div class="dim" style="font-size:11px">${running?'работает':'ожидание'} · ${S.mode==='auto'?'автосвап':'вручную'}</div></div>`;
+  $('#navCount').textContent=NODES.length;
+}
+
+function renderSubs(){
+  $('#subs').innerHTML=SUBS.map(s=>{
+    const cnt=NODES.filter(n=>n.sub===s.id).length, pct=s.total?Math.round(s.used/s.total*100):0;
+    return `<div class="card sub ${S.subFilter===s.id?'on':''}" data-sub="${s.id}">
+      <div class="top"><span class="nm">${s.name}</span><span class="spacer"></span><span class="small muted">${cnt} узл.</span>
+        <button class="btn icon sm ghost" data-refresh="${s.id}" title="Обновить">${svg('refresh',14)}</button></div>
+      <div class="host">${s.host}</div>
+      <div class="bar"><i style="width:${pct}%"></i></div>
+      <div class="foot"><span>${s.total?`${s.used} / ${s.total} ГБ`:'трафик —'}</span><span>до ${s.expire}</span></div>
+      <div class="foot" style="margin-top:4px"><span class="dim">${s.fmt}</span><span class="dim">${s.updated}</span></div>
+    </div>`;
+  }).join('')+`<div class="card sub add" data-modal="open">${svg('plus',16)}Добавить подписку</div>`;
+  const protos=['all',...new Set(NODES.map(n=>n.proto))];
+  $('#protoChips').innerHTML=protos.map(p=>`<button class="chip ${S.proto===p?'on':''}" data-proto="${p}">${p==='all'?'Все':p}</button>`).join('');
+}
+
+function renderNodes(){
+  const q=S.q.toLowerCase();
+  const list=NODES.filter(n=>(S.subFilter==='all'||n.sub===S.subFilter)&&(S.proto==='all'||n.proto===S.proto)&&
+    (!q||[n.name,n.cc,n.proto,n.net,n.sec].join(' ').toLowerCase().includes(q)));
+  const head=`<div class="nrow head"><span></span><span>Узел</span><span>Протокол</span><span>Транспорт</span><span>Ядра</span><span>Пинг</span><span></span></div>`;
+  $('#nodes').innerHTML=head+(list.map(n=>`
+    <div class="nrow ${n.id===S.node?'sel':''}" data-node="${n.id}">
+      <span class="cc">${n.cc}</span>
+      <span><div class="nm">${n.name}</div><div class="tag">${SUBS.find(s=>s.id===n.sub).name}</div></span>
+      <span>${protoBadge(n)}</span>
+      <span class="tag">${n.sec} · ${n.net}</span>
+      <span class="cdots">${['xray','singbox','mihomo'].map(c=>`<span class="cdot ${n.cores.includes(c)?'':'off'}" style="--c:${CORES[c].color}" title="${CORES[c].name}${n.cores.includes(c)?'':' — не поддерживает'}">${CORES[c].letter}</span>`).join('')}</span>
+      <span class="ping ${n.ping==null?'':pingCls(n.ping)}">${n.ping==null?'…':n.ping+' мс'}</span>
+      <span class="radio"></span>
+    </div>`).join('')||'<div class="empty">Ничего не найдено</div>');
+}
+
+function renderCores(){
+  const running=S.connected&&!S.connecting;
+  $('#ctiles').innerHTML=Object.entries(CORES).map(([id,C])=>{
+    const sup=MATRIX.filter(r=>r[1][id]==='y').length, part=MATRIX.filter(r=>r[1][id]==='p').length;
+    const active=(S.connected||S.connecting)&&S.activeCore===id;
+    const pill=S.failed.has(id)?'<span class="spill fail">Сбой</span>':active?`<span class="spill run">${running?'Работает':'Запуск'}</span>`:'<span class="spill">Резерв</span>';
+    const upd=C.latest!==C.ver;
+    const chosen=S.mode==='manual'&&S.manualCore===id;
+    return `<div class="card ctile ${active||chosen?'is-active':''} ${S.mode==='manual'?'pick':''}" style="--c:${C.color}" data-core="${id}">
+      ${pill}
+      <div class="top"><div class="clogo" style="--c:${C.color}">${C.letter}</div><div><div class="nm">${C.name}</div><div class="small muted">v${C.ver}${active&&running?' · '+C.mem:''}</div></div></div>
+      <div class="cov"><span>Протоколы</span><span>${sup}${part?` + ${part} частично`:''} из ${MATRIX.length}</span></div>
+      <div class="bar"><i style="width:${(sup+part*.5)/MATRIX.length*100}%"></i></div>
+      <div class="acts">${upd?`<button class="btn sm primary" data-upd="${id}">${svg('down',13)}Обновить до ${C.latest}</button>`:`<span class="small dim" style="display:flex;gap:5px;align-items:center">${svg('check',14)}Актуальная версия</span>`}
+        ${S.mode==='manual'?`<span class="spacer"></span><span class="small" style="color:${chosen?'var(--ok)':'var(--dim)'}">${chosen?'выбрано':'выбрать'}</span>`:''}</div>
+    </div>`;
+  }).join('')+`<div class="card ctile addcore">${svg('plus',20)}<div style="font-weight:600">Добавить ядро</div><div class="small dim">hysteria, naive, свой бинарник + адаптер</div></div>`;
+
+  $('#prio').innerHTML=S.priority.map((id,i)=>{const C=CORES[id];return `
+    <div class="pitem"><span class="grip">${svg('grip',16)}</span><span class="n">${i+1}</span>
+      <span class="clogo sm" style="--c:${C.color}">${C.letter}</span><span class="nm">${C.name}</span>
+      <span class="btns"><button data-mv="${i}" data-d="-1" ${i===0?'disabled':''}>${svg('aup',15)}</button><button data-mv="${i}" data-d="1" ${i===S.priority.length-1?'disabled':''}>${svg('adown',15)}</button></span>
+    </div>`}).join('');
+
+  const mk={y:'<span class="mk y">✓</span>',p:'<span class="mk p">частично</span>',n:'<span class="mk n">—</span>'};
+  $('#matrix').innerHTML=`<tr><th>Протокол / транспорт</th>${S.priority.map(c=>`<th style="color:${CORES[c].color}">${CORES[c].name}</th>`).join('')}</tr>`+
+    MATRIX.map(([name,m])=>`<tr><td>${name}</td>${S.priority.map(c=>`<td>${mk[m[c]]}</td>`).join('')}</tr>`).join('');
+}
+
+/* ================= chart ================= */
+function drawChart(){
+  const c=$('#chart'); const r=c.getBoundingClientRect(); if(!r.width) return;
+  const dpr=devicePixelRatio||1; c.width=r.width*dpr; c.height=r.height*dpr;
+  const g=c.getContext('2d'); g.scale(dpr,dpr);
+  const W=r.width,H=r.height, max=Math.max(5,...S.down,...S.up)*1.15;
+  g.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--border').trim(); g.lineWidth=1;
+  for(let i=1;i<4;i++){const y=Math.round(H*i/4)+.5;g.beginPath();g.moveTo(0,y);g.lineTo(W,y);g.stroke();}
+  const series=(arr,col)=>{
+    const step=W/(arr.length-1); g.beginPath();
+    arr.forEach((v,i)=>{const x=i*step,y=H-(v/max)*(H-10)-2;i?g.lineTo(x,y):g.moveTo(x,y);});
+    g.strokeStyle=col; g.lineWidth=2; g.lineJoin='round'; g.stroke();
+    g.lineTo(W,H); g.lineTo(0,H); g.closePath();
+    const gr=g.createLinearGradient(0,0,0,H); gr.addColorStop(0,col+'40'); gr.addColorStop(1,col+'00');
+    g.fillStyle=gr; g.fill();
+  };
+  series(S.down,'#34d399'); series(S.up,'#6d8cff');
+}
+const fmtT=ms=>{const s=Math.floor(ms/1000);return [s/3600,s%3600/60,s%60].map(v=>String(Math.floor(v)).padStart(2,'0')).join(':');};
+function tick(){
+  const on=S.connected&&!S.connecting;
+  if(on){
+    S.curDown=clamp(S.curDown+(Math.random()-.46)*4,.3,38);
+    S.curUp=clamp(S.curUp+(Math.random()-.5)*1.1,.1,8);
+    S.session+=S.curDown+S.curUp;
+    $('#connSub').textContent=`${fmtT(Date.now()-S.startTs)} · ${CORES[S.activeCore].name}`;
+  } else {S.curDown*=.4;S.curUp*=.4;}
+  S.down.push(S.curDown);S.down.shift();S.up.push(S.curUp);S.up.shift();
+  $('#stDown').innerHTML=S.curDown.toFixed(1)+'<small>МБ/с</small>';
+  $('#stUp').innerHTML=S.curUp.toFixed(1)+'<small>МБ/с</small>';
+  $('#stPing').innerHTML=on?(node().ping+Math.round(Math.random()*7))+'<small>мс</small>':'—';
+  $('#stTotal').innerHTML=S.session>1024?(S.session/1024).toFixed(2)+'<small>ГБ</small>':Math.round(S.session)+'<small>МБ</small>';
+  drawChart();
+}
+
+/* ================= events ================= */
+function go(page){
+  $$('.nav').forEach(n=>n.classList.toggle('active',n.dataset.page===page));
+  $$('.page').forEach(p=>p.classList.toggle('active',p.id==='p-'+page));
+  if(page==='home') requestAnimationFrame(drawChart);
+  if(page==='logs') renderLogs();
+}
+document.addEventListener('click',e=>{
+  const t=e.target.closest('[data-page],[data-go],[data-node],[data-sub],[data-proto],[data-mv],[data-core],[data-modal],[data-refresh],[data-upd],.seg button,#logChips .chip');
+  if(!t) return;
+  if(t.dataset.page) return go(t.dataset.page);
+  if(t.dataset.go) return go(t.dataset.go);
+  if(t.dataset.refresh){e.stopPropagation();const s=SUBS.find(x=>x.id===t.dataset.refresh);s.updated='только что';log('sub',`${s.name}: обновлено, формат ${s.fmt}`,'ok');toast(`${svg('check',16)}<span>${s.name} обновлена</span>`,'ok');return render();}
+  if(t.dataset.upd){const C=CORES[t.dataset.upd];log(t.dataset.upd,`Обновление ${C.ver} → ${C.latest}: загрузка, проверка SHA-256, замена бинарника`,'ok');C.ver=C.latest;toast(`${svg('check',16)}<span>${C.name} обновлён до ${C.latest}</span>`,'ok');return render();}
+  if(t.dataset.node) return selectNode(t.dataset.node);
+  if(t.dataset.sub){S.subFilter=S.subFilter===t.dataset.sub?'all':t.dataset.sub;return render();}
+  if(t.dataset.proto){S.proto=t.dataset.proto;return render();}
+  if(t.dataset.mv!=null){const i=+t.dataset.mv,j=i+ +t.dataset.d;[S.priority[i],S.priority[j]]=[S.priority[j],S.priority[i]];log('app',`Приоритет ядер: ${S.priority.map(c=>CORES[c].name).join(' → ')}`);return render();}
+  if(t.dataset.core){if(S.mode!=='manual')return;if(S.connected||S.connecting){toast(`${svg('info',16)}<span>Отключитесь, чтобы сменить ядро вручную</span>`);return;}S.manualCore=t.dataset.core;return render();}
+  if(t.dataset.modal){$('#modal').classList.toggle('open',t.dataset.modal==='open');if(t.dataset.modal==='open')setTimeout(()=>$('#subUrl').focus(),50);return;}
+  if(t.matches('#logChips .chip')){S.logFilter=t.dataset.f;$$('#logChips .chip').forEach(c=>c.classList.toggle('on',c===t));return renderLogs();}
+  if(t.matches('.seg button')){
+    const seg=t.parentElement; seg.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b===t));
+    const key=seg.dataset.seg, v=t.dataset.v; if(!key) return;
+    if(key==='mode'&&(S.connected||S.connecting)){seg.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.v===S.mode));toast(`${svg('info',16)}<span>Режим меняется после отключения</span>`);return;}
+    if(key==='theme'){document.documentElement.dataset.theme=v;return drawChart();}
+    S[key]=v;
+    if(key==='mode'){ $$('[data-seg=mode] button').forEach(b=>b.classList.toggle('on',b.dataset.v===v)); log('app',v==='auto'?'Автосвап включён':'Ручной выбор ядра');}
+    if(key==='inbound'&&S.connected) log(S.activeCore,v==='tun'?'Переключение на TUN (нужны права администратора)':'Переключение на системный прокси');
+    return render();
+  }
+});
+$('#connBtn').onclick=toggleConnect;
+$('#simFail').onclick=simFail;
+$('#backPrimary').onclick=backToPrimary;
+$('#q').oninput=e=>{S.q=e.target.value;renderNodes();};
+$('#clearLogs').onclick=()=>{LOGS.length=0;renderLogs();};
+$('#modal').onclick=e=>{if(e.target.id==='modal')$('#modal').classList.remove('open');};
+$('#pingAll').onclick=()=>{
+  NODES.forEach(n=>n.ping=null); renderNodes();
+  NODES.forEach((n,i)=>setTimeout(()=>{n.ping=Math.max(20,Math.round(n.ping??(30+Math.random()*180)));renderNodes();renderHome();},250+i*120));
+  log('app',`Тест задержки: ${NODES.length} узлов (TCP + URL-test через текущее ядро)`);
+};
+$('#updAll').onclick=()=>{SUBS.forEach(s=>s.updated='только что');log('sub','Все подписки обновлены','ok');toast(`${svg('check',16)}<span>Подписки обновлены</span>`,'ok');render();};
+
+/* modal: link detection */
+function detect(){
+  const v=$('#subUrl').value.trim(); let h='';
+  const m=v.match(/^(vless|vmess|trojan|ss|hysteria2|hy2|tuic|wireguard|anytls):\/\//i);
+  if(m){
+    let extra='';
+    try{const u=new URL(v.replace(/^[a-z0-9]+:/i,'http:'));const p=u.searchParams;
+      extra=[p.get('security'),p.get('type'),p.get('flow')].filter(Boolean).join(' · ');}catch{}
+    h=`<span class="proto" style="--pc:#6d8cff">${m[1].toUpperCase()}</span><span>Одиночный узел${extra?' · '+extra:''}</span>`;
+  } else if(/^https?:\/\//i.test(v)){
+    h=`${svg('check',14)}<span>Подписка. Формат определится автоматически: base64-список, Clash YAML, sing-box JSON или Xray JSON</span>`;
+  } else if(v) h=`${svg('warn',14)}<span>Не похоже на ссылку подписки или узла</span>`;
+  $('#subDetect').innerHTML=h;
+}
+$('#subUrl').oninput=detect;
+$('#fromClip').onclick=async()=>{try{$('#subUrl').value=await navigator.clipboard.readText();detect();}catch{toast('Нет доступа к буферу обмена','err');}};
+$('#addSubBtn').onclick=()=>{
+  const v=$('#subUrl').value.trim(); if(!v){$('#subUrl').focus();return;}
+  let host=v; try{host=new URL(v).host;}catch{}
+  const name=$('#subName').value.trim()||host.slice(0,28);
+  SUBS.push({id:'s'+Date.now(),name,host:v.slice(0,40)+(v.length>40?'…':''),used:0,total:0,expire:'—',updated:'только что',fmt:'авто'});
+  log('sub',`Добавлена подписка «${name}»`,'ok');
+  toast(`${svg('check',16)}<span>Подписка «${name}» добавлена</span>`,'ok');
+  $('#modal').classList.remove('open'); $('#subUrl').value=''; $('#subName').value=''; detect(); render();
+};
+window.addEventListener('resize',drawChart);
+
+/* ================= boot ================= */
+log('app','CoreShift 0.1.0 запущен');
+log('app',`Найдены ядра: ${Object.values(CORES).map(c=>c.name+' '+c.ver).join(', ')}`);
+log('sub','NorthLink Premium: 8 узлов (base64)','ok');
+log('sub','Резерв: 3 узла (Clash YAML)','ok');
+log('singbox','Доступно обновление 1.13.0','warn');
+hydrate(); render(); tick(); setInterval(tick,1000);
+</script>
+</body>
+</html>

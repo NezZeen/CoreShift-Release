@@ -1,0 +1,180 @@
+// Command fakecore imitates a proxy core for supervisor tests. It is copied
+// under the name of each core (xray, sing-box, mihomo) and reads its
+// behaviour from FAKECORE_<NAME>, e.g. FAKECORE_SING_BOX:
+//
+//	ok (default)            serve forever
+//	crash-start             print an error and exit before listening
+//	crash-start-once:<file> crash-start unless <file> exists, then create it
+//	crash-after:<duration>  serve, then exit with a panic message
+//	unhealthy               accept SOCKS but answer health checks with 503
+//	unhealthy-after:<dur>   healthy at first, 503 afterwards
+//
+// The SOCKS port is read from the config the supervisor generated, so the
+// real adapters and config files are exercised. With a Clash API address in
+// the config (sing-box, mihomo) it also answers /connections with traffic
+// that grows on every call. "version" and "-v" print a version.
+package main
+
+import (
+	"bufio"
+	"encoding/binary"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"time"
+)
+
+func main() {
+	name := strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe")
+	if len(os.Args) == 2 && (os.Args[1] == "version" || os.Args[1] == "-v") {
+		fmt.Println(name, "version 1.2.3")
+		return
+	}
+	go serveStats()
+	mode := os.Getenv("FAKECORE_" + strings.ToUpper(strings.ReplaceAll(name, "-", "_")))
+	port, err := configPort()
+	if err != nil {
+		fmt.Println("fatal:", err)
+		os.Exit(1)
+	}
+	fmt.Printf("%s starting, socks port %s, mode %q\n", name, port, mode)
+
+	verb, arg, _ := strings.Cut(mode, ":")
+	healthyUntil := time.Time{} // zero: forever
+	switch verb {
+	case "crash-start":
+		fmt.Println("fatal: config rejected by fake core")
+		os.Exit(1)
+	case "crash-start-once":
+		if _, err := os.Stat(arg); err != nil {
+			os.WriteFile(arg, nil, 0o600)
+			fmt.Println("fatal: config rejected by fake core (first run)")
+			os.Exit(1)
+		}
+	case "crash-after":
+		d, _ := time.ParseDuration(arg)
+		go func() {
+			time.Sleep(d)
+			fmt.Println("panic: simulated crash")
+			os.Exit(2)
+		}()
+	case "unhealthy":
+		healthyUntil = time.Now()
+	case "unhealthy-after":
+		d, _ := time.ParseDuration(arg)
+		healthyUntil = time.Now().Add(d)
+	}
+
+	ln, err := net.Listen("tcp", "127.0.0.1:"+port)
+	if err != nil {
+		fmt.Println("fatal:", err)
+		os.Exit(1)
+	}
+	for {
+		c, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		healthy := healthyUntil.IsZero() || time.Now().Before(healthyUntil)
+		go serve(c, healthy)
+	}
+}
+
+var portRE = []*regexp.Regexp{
+	regexp.MustCompile(`"(?:port|listen_port)":\s*(\d+)`), // xray, sing-box: the inbound sorts first
+	regexp.MustCompile(`socks-port:\s*(\d+)`),             // mihomo
+}
+
+var statsRE = regexp.MustCompile(`"?external[-_]controller"?\s*:\s*"?([0-9.]+:[0-9]+)`)
+
+// serveStats imitates the Clash API's traffic totals.
+func serveStats() {
+	b, err := os.ReadFile(configPath())
+	if err != nil {
+		return
+	}
+	m := statsRE.FindSubmatch(b)
+	if m == nil {
+		return
+	}
+	calls := 0
+	http.ListenAndServe(string(m[1]), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		fmt.Fprintf(w, `{"uploadTotal":%d,"downloadTotal":%d,"connections":[]}`, calls*100, calls*1000)
+	}))
+}
+
+func configPath() string {
+	for i, a := range os.Args {
+		if (a == "-c" || a == "-f") && i+1 < len(os.Args) {
+			return os.Args[i+1]
+		}
+	}
+	return ""
+}
+
+func configPort() (string, error) {
+	path := configPath()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	for _, re := range portRE {
+		if m := re.FindSubmatch(b); m != nil {
+			return string(m[1]), nil
+		}
+	}
+	return "", fmt.Errorf("no socks port in %s", path)
+}
+
+// serve speaks just enough SOCKS5 for a CONNECT, then answers one HTTP request.
+func serve(c net.Conn, healthy bool) {
+	defer c.Close()
+	c.SetDeadline(time.Now().Add(5 * time.Second))
+	r := bufio.NewReader(c)
+	hdr := make([]byte, 2)
+	if _, err := io.ReadFull(r, hdr); err != nil {
+		return
+	}
+	if _, err := io.ReadFull(r, make([]byte, hdr[1])); err != nil {
+		return
+	}
+	c.Write([]byte{5, 0})
+	req := make([]byte, 4)
+	if _, err := io.ReadFull(r, req); err != nil {
+		return
+	}
+	var addrLen int
+	switch req[3] {
+	case 1:
+		addrLen = 4
+	case 4:
+		addrLen = 16
+	case 3:
+		l, err := r.ReadByte()
+		if err != nil {
+			return
+		}
+		addrLen = int(l)
+	}
+	if _, err := io.ReadFull(r, make([]byte, addrLen+2)); err != nil {
+		return
+	}
+	reply := []byte{5, 0, 0, 1, 0, 0, 0, 0, 0, 0}
+	binary.BigEndian.PutUint16(reply[8:], 0)
+	c.Write(reply)
+
+	if _, err := http.ReadRequest(r); err != nil {
+		return
+	}
+	if healthy {
+		io.WriteString(c, "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n")
+	} else {
+		io.WriteString(c, "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+	}
+}
