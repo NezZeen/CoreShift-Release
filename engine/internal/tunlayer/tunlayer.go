@@ -110,7 +110,15 @@ type Options struct {
 
 	// CacheFile persists fake-IP mappings across restarts; empty disables it.
 	CacheFile string
-	LogLevel  string
+
+	// Platform: the TUN comes from the platform (Android's VpnService), which
+	// keeps the app itself, and so the cores it starts, outside the VPN.
+	// Outbound sockets then need no binding to the physical interface, and
+	// matching processes is left to the platform: the process lists are
+	// ignored.
+	Platform bool
+
+	LogLevel string
 }
 
 type DNSOptions struct {
@@ -185,6 +193,10 @@ func Build(o Options) ([]byte, error) {
 }
 
 func (o Options) withDefaults() Options {
+	if o.Platform {
+		o.BypassProcesses, o.DirectDNSProcesses, o.DirectApps, o.ProxyApps = nil, nil, nil, nil
+		o.BypassAddresses = nil
+	}
 	if o.InterfaceName == "" {
 		o.InterfaceName = DefaultInterface
 	}
@@ -477,7 +489,7 @@ func route(o Options, rules []any, final string) obj {
 	route := obj{
 		"rules":                   rules,
 		"final":                   final,
-		"auto_detect_interface":   true,
+		"auto_detect_interface":   !o.Platform,
 		"default_domain_resolver": tagDNSDirect,
 	}
 	used := o.DNS.ProxyRuleSets

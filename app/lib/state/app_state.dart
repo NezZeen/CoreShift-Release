@@ -503,10 +503,23 @@ class AppState extends ChangeNotifier {
   /// says why the connection changed.
   void _logAction(String text) => _log(DateTime.now(), 'действие', text, LogLevel.info);
 
+  /// Android asks the user once before the app may run a VPN.
+  Future<bool> _vpnAllowed() async {
+    if (backend is DemoBackend || !setting('tun', false)) return true;
+    if (await platform.prepareVpn()) return true;
+    toast('Android не разрешил VPN: без этого подключиться нельзя', ToastKind.err);
+    return false;
+  }
+
   Future<void> connect({String? subscription, String? fingerprint, String? name}) async {
     busy = true;
     _logAction(name != null && name.isNotEmpty ? 'подключить: $name' : 'подключить${selection.name.isEmpty ? '' : ': ${selection.name}'}');
     _notify();
+    if (!await _vpnAllowed()) {
+      busy = false;
+      _notify();
+      return;
+    }
     await _act(() async {
       final body = subscription != null ? {'subscription': subscription, 'fingerprint': fingerprint, 'name': ?name} : null;
       status = Status.fromJson(await backend.call('POST', '/v1/connect', body) as Json);
@@ -519,6 +532,11 @@ class AppState extends ChangeNotifier {
     busy = true;
     _logAction(status.settingsPending ? 'переподключить, чтобы применить настройки' : 'переподключить');
     _notify();
+    if (!await _vpnAllowed()) {
+      busy = false;
+      _notify();
+      return;
+    }
     await _act(() async => status = Status.fromJson(await backend.call('POST', '/v1/reconnect') as Json));
     busy = false;
     _notify();

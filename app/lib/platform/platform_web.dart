@@ -17,3 +17,9 @@ Future<List<Map<String, dynamic>>> dnsLeakTest() async => throw UnsupportedError
 
 /// The system, for the journal's header.
 String get osDescription => 'браузер (демо)';
+
+bool get isAndroid => false;
+
+Future<void> initPlatform() async {}
+
+Future<bool> prepareVpn() async => true;

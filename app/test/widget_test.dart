@@ -520,4 +520,37 @@ void main() {
     expect(header.join('\n'), isNot(contains('https://')));
     await tester.pump(const Duration(seconds: 6));
   });
+
+  testWidgets('every page fits a phone', (tester) async {
+    final state = await pumpApp(tester, size: const Size(390, 844));
+    expect(find.byType(NavigationBar), findsOneWidget);
+    final problems = <String>[];
+    Future<void> check(String page) async {
+      await tester.pump();
+      for (Object? e = tester.takeException(); e != null; e = tester.takeException()) {
+        problems.add('$page: ${'$e'.split('\n').first}');
+      }
+    }
+
+    for (final page in ['Серверы', 'Исключения', 'Настройки', 'Главная']) {
+      await tester.tap(find.descendant(of: find.byType(NavigationBar), matching: find.text(page)));
+      await check(page);
+      // Scroll through the page, so rows further down are laid out too.
+      final scrollable = find.byType(Scrollable);
+      if (scrollable.evaluate().isNotEmpty) {
+        await tester.drag(scrollable.first, const Offset(0, -2000));
+        await check('$page (scrolled)');
+      }
+    }
+    for (final page in ['Ядра', 'Журнал']) {
+      await tester.tap(find.text('Ещё'));
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.tap(find.text(page).last);
+      await tester.pump(const Duration(milliseconds: 600));
+      await check(page);
+    }
+    expect(problems, isEmpty);
+    expect(state.loaded, isTrue);
+    await tester.pump(const Duration(seconds: 30));
+  });
 }
