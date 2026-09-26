@@ -668,11 +668,11 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 	}
 
 	suffixes := mergeSuffixes(alwaysDirect, o.DNS.DirectSuffixes)
-	var domainSets, ipSets []tunlayer.RuleSet
+	var domainSets, ipSets, proxySets []tunlayer.RuleSet
 	if o.DNS.RussiaDirect && !o.Selective {
 		suffixes = mergeSuffixes(suffixes, russiaSuffixes)
 		// The core is up, so a blocked source can be reached through it.
-		domainSets, ipSets = s.rules.get(ctx, russiaSets, s.cfg.Listen)
+		domainSets, ipSets, proxySets = s.rules.get(ctx, russiaSets, s.cfg.Listen)
 	}
 	opts := tunlayer.Options{
 		StrictRoute:     true,
@@ -692,6 +692,7 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 			BlockSuffixes:    o.BlockDomains,
 			DirectRuleSets:   domainSets,
 			DirectIPRuleSets: ipSets,
+			ProxyRuleSets:    proxySets,
 			BlockBrowserDoH:  o.DNS.BlockBrowserDoH,
 			BlockDoT:         o.DNS.BlockDoT,
 		},
