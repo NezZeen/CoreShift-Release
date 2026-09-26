@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -22,7 +24,7 @@ const (
 	policyPrefix    = `SOFTWARE\Policies\`
 
 	// ruleComment tags NRPT rules we create, so they can be found and removed
-	// even if the journal is lost.
+	// even if the journal is lost. See ruleCommentFor.
 	ruleComment = "CoreShift"
 
 	kindNRPTRule = "win.nrpt"
@@ -57,6 +59,7 @@ type regDWORDChange struct {
 type windowsGuard struct {
 	reg           registry
 	journal       *Journal
+	comment       string // the tag of our NRPT rules, from ruleCommentFor
 	flushCache    func() error
 	refreshPolicy func() error
 	newRuleID     func() (string, error)
@@ -154,7 +157,7 @@ func (g *windowsGuard) addRule(base string, servers []netip.Addr) error {
 		func() error { return g.reg.SetDWORD(key, "ConfigOptions", 0x8) }, // use GenericDNSServers
 		func() error { return g.reg.SetString(key, "IPSECCARestriction", "") },
 		func() error { return g.reg.SetString(key, "DisplayName", "CoreShift tunnel DNS") },
-		func() error { return g.reg.SetString(key, "Comment", ruleComment) },
+		func() error { return g.reg.SetString(key, "Comment", g.comment) },
 	}
 	for _, step := range steps {
 		if err := step(); err != nil {
@@ -218,7 +221,7 @@ func (g *windowsGuard) foreignPolicyRules() (bool, error) {
 		if err != nil {
 			return false, fmt.Errorf("dnsguard: read policy NRPT rule %s: %w", k, err)
 		}
-		if c != ruleComment {
+		if !strings.HasPrefix(c, ruleComment) {
 			return true, nil
 		}
 	}
@@ -242,7 +245,7 @@ func (g *windowsGuard) sweep() (int, error) {
 				errs = append(errs, err)
 				continue
 			}
-			if c != ruleComment {
+			if c != g.comment {
 				continue
 			}
 			if err := g.reg.DeleteKey(key); err != nil {
@@ -277,4 +280,16 @@ func newGUID() (string, error) {
 	b[6] = b[6]&0x0f | 0x40
 	b[8] = b[8]&0x3f | 0x80
 	return fmt.Sprintf("{%X-%X-%X-%X-%X}", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16]), nil
+}
+
+// ruleCommentFor tags NRPT rules by the data directory whose journal made
+// them. The service's own rules keep the plain tag older versions wrote; a
+// second daemon with another -data-dir, such as a developer's test run,
+// adds its directory, so neither sweeps away the other's live rule.
+func ruleCommentFor(journalPath string) string {
+	dir := filepath.Clean(filepath.Dir(journalPath))
+	if pd := os.Getenv("ProgramData"); pd != "" && strings.EqualFold(dir, filepath.Join(pd, "CoreShift")) {
+		return ruleComment
+	}
+	return ruleComment + " " + dir
 }

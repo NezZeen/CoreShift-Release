@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -96,6 +97,7 @@ func newWinHarness(t *testing.T, reg *fakeRegistry, journalPath string) *winHarn
 	h.g = &windowsGuard{
 		reg:           reg,
 		journal:       j,
+		comment:       ruleComment,
 		flushCache:    func() error { h.flushes++; return nil },
 		refreshPolicy: func() error { h.refreshes++; return nil },
 		newRuleID:     newGUID,
@@ -222,6 +224,27 @@ func TestWindowsRecoverSweepsOrphanRulesOnly(t *testing.T) {
 	}
 	if rules, _ := reg.SubKeys(nrptLocalBase); !slices.Equal(rules, []string{"{THEIRS}"}) {
 		t.Errorf("rules after sweep = %v, want only {THEIRS}", rules)
+	}
+}
+
+func TestWindowsRecoverLeavesAnotherDaemonsRules(t *testing.T) {
+	reg := newFakeRegistry()
+	service := nrptLocalBase + `\{SERVICE}`
+	reg.CreateKey(service)
+	reg.SetString(service, "Comment", ruleComment)
+	h := newWinHarness(t, reg, filepath.Join(t.TempDir(), "j.json"))
+	h.g.comment = ruleCommentFor(filepath.Join(t.TempDir(), "dnsguard.json"))
+
+	// A test daemon with its own data directory starts while the service
+	// is connected: the service's rule is not an orphan of this daemon.
+	if err := h.g.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if rules, _ := reg.SubKeys(nrptLocalBase); !slices.Equal(rules, []string{"{SERVICE}"}) {
+		t.Errorf("rules after sweep = %v, want the service's {SERVICE} kept", rules)
+	}
+	if got := ruleCommentFor(filepath.Join(os.Getenv("ProgramData"), "CoreShift", "dnsguard.json")); os.Getenv("ProgramData") != "" && got != ruleComment {
+		t.Errorf("the service's tag = %q, want %q as older versions wrote", got, ruleComment)
 	}
 }
 

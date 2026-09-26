@@ -27,6 +27,7 @@ func New(journalPath string) (Guard, error) {
 	return &windowsGuard{
 		reg:           hklm{},
 		journal:       j,
+		comment:       ruleCommentFor(journalPath),
 		flushCache:    flushResolverCache,
 		refreshPolicy: refreshMachinePolicy,
 		newRuleID:     newGUID,
