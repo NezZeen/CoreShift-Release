@@ -441,4 +441,42 @@ void main() {
     expect(tester.takeException(), isNull);
     await tester.pump(const Duration(seconds: 6));
   });
+
+  testWidgets('finds, offers and installs an update of CoreShift', (tester) async {
+    final state = await pumpApp(tester);
+    await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 300)));
+    expect(state.appUpdate.state, 'idle');
+    await tester.tap(find.text('Настройки').first);
+    await tester.pump();
+    await tester.ensureVisible(find.text('Обновления'));
+    expect(find.text('Устанавливать обновления автоматически'), findsOneWidget);
+
+    await tester.tap(find.text('Проверить сейчас'));
+    // The check runs on the test's clock, the events on the real one.
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 100)));
+    }
+    await tester.pump();
+    expect(state.appUpdate.state, 'ready');
+    expect(find.textContaining('Скачана версия 0.3.0 (сборка 9)'), findsOneWidget);
+
+    await tester.tap(find.text('Установить сейчас'));
+    // The check runs on the test's clock, the events on the real one.
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 100)));
+    }
+    await tester.pump();
+    expect(state.appUpdate.state, 'installing');
+    expect(find.textContaining('CoreShift перезапустится сам'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(seconds: 6));
+  });
+
+  test('update errors are explained', () {
+    expect(humanError('check for updates: the releases token is invalid or expired (401)'), contains('Доступ к обновлениям истёк'));
+    expect(humanError('update signature does not match the release key'), contains('подпись'));
+    expect(humanError('check for updates: dial tcp: i/o timeout'), contains('нет связи с GitHub'));
+  });
 }

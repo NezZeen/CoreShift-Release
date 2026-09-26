@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"coreshift/engine/internal/core"
+	"coreshift/engine/internal/selfupdate"
 	"coreshift/engine/internal/tunlayer"
 )
 
@@ -29,6 +30,7 @@ type Settings struct {
 	DNS         DNSSettings    `json:"dns"`
 	Routing     Routing        `json:"routing"`
 	Updates     UpdateSettings `json:"updates"`
+	AppUpdate   AppUpdate      `json:"app_update"`
 }
 
 type CoreSettings struct {
@@ -102,6 +104,15 @@ type UpdateSettings struct {
 	UserAgent string `json:"user_agent"`
 }
 
+// AppUpdate is about updates of CoreShift itself.
+type AppUpdate struct {
+	// Auto installs a new version by itself while the VPN is off.
+	Auto bool `json:"auto"`
+	// Source is where releases come from, "github:OWNER/REPO" or a folder;
+	// empty means the official releases.
+	Source string `json:"source"`
+}
+
 const (
 	ModeAuto   = "auto"
 	ModeManual = "manual"
@@ -138,7 +149,8 @@ func Defaults() Settings {
 			ProxyDomains: []string{}, ProxyIPs: []string{}, ProxyApps: []string{},
 			BlockDomains: []string{},
 		},
-		Updates: UpdateSettings{Auto: true, IntervalHours: 12},
+		Updates:   UpdateSettings{Auto: true, IntervalHours: 12},
+		AppUpdate: AppUpdate{Auto: true},
 	}
 }
 
@@ -237,6 +249,12 @@ func (s Settings) normalize() (Settings, error) {
 	s.Updates.UserAgent = strings.TrimSpace(s.Updates.UserAgent)
 	if strings.ContainsAny(s.Updates.UserAgent, "\r\n") {
 		errs = append(errs, errors.New("updates.user_agent: must be one line"))
+	}
+	s.AppUpdate.Source = strings.TrimSpace(s.AppUpdate.Source)
+	if s.AppUpdate.Source != "" {
+		if _, err := selfupdate.ParseSource(s.AppUpdate.Source); err != nil {
+			errs = append(errs, fmt.Errorf("app_update.source: %w", err))
+		}
 	}
 	return s, errors.Join(errs...)
 }

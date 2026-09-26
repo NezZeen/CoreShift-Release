@@ -48,4 +48,25 @@ try {
 
 if (-not $NoBuild) {
     & "$root\packaging\windows\build.ps1"
+
+    # The self-update files: latest.json, its signature and the installer,
+    # in dist\release\<version>, ready for packaging\publish.ps1.
+    $key = Join-Path $env:USERPROFILE '.coreshift\update-signing.key'
+    if (-not (Test-Path $key)) {
+        Write-Warning "no signing key ($key): no self-update files; installed copies will not see this release"
+    } else {
+        Push-Location $root
+        try {
+            $build = [int](git rev-list --count HEAD)
+            $commit = (git rev-parse --short=7 HEAD).Trim()
+        } finally { Pop-Location }
+        $out = Join-Path $root "dist\release\$Version"
+        Push-Location "$root\engine"
+        try {
+            go run ./cmd/coreshift-release manifest -installer "$root\dist\coreshift-setup-$Version-b$build.exe" `
+                -version $Version -build $build -commit $commit -key $key -out $out
+            Check 'coreshift-release manifest'
+        } finally { Pop-Location }
+        Write-Host "Release files: $out (publish: packaging\publish.ps1 -Version $Version)" -ForegroundColor Green
+    }
 }

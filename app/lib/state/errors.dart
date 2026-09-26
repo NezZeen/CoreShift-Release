@@ -68,6 +68,14 @@ String humanError(String raw) {
   if (has('another core is being updated')) return 'Уже идёт обновление другого ядра.';
   if (has('checksum mismatch')) return 'Скачанный файл повреждён: не совпала контрольная сумма. Попробуйте ещё раз.';
   if (has('does not start, kept the old one')) return 'Новая версия ядра не запустилась, оставлена прежняя.';
+  // Updates of CoreShift itself.
+  if (has('no token for the private releases')) return 'Эта сборка собрана без доступа к обновлениям: новые версии ставьте установщиком.';
+  if (has('releases token is invalid or expired')) return 'Доступ к обновлениям истёк. Установите новую версию CoreShift вручную.';
+  if (has('no release found, or the token has no access')) return 'Обновлений не найдено: версии ещё не выложены или нет доступа к ним.';
+  if (has('update signature')) return 'Обновление отклонено: его подпись не совпадает. Устанавливаются только проверенные версии.';
+  if (has('did not install')) return 'Обновление не установилось. Попробуйте кнопкой «Установить сейчас» или поставьте версию вручную.';
+  if (has('downloaded update changed or is gone')) return 'Скачанное обновление повреждено, оно будет скачано заново.';
+  if (has('start the installer')) return 'Не удалось запустить установку обновления.';
   if (has('check for updates')) {
     if (has('403') || has('429')) return 'GitHub временно ограничил проверки обновлений. Попробуйте через час.';
     return 'Не удалось проверить обновления: нет связи с GitHub.';

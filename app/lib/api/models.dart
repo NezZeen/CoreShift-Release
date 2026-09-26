@@ -325,6 +325,47 @@ class CoreUpdate {
   );
 }
 
+/// Updates of CoreShift itself (GET /v1/app-update).
+class AppUpdateInfo {
+  /// off, idle, checking, downloading, ready, installing or error.
+  final String state;
+  final String reason;
+  final String version;
+  final int build;
+  final String notes;
+  final String error;
+  final DateTime? checkedAt;
+
+  /// Downloaded; installs by itself once the VPN is off.
+  final bool waiting;
+
+  const AppUpdateInfo({
+    this.state = 'off',
+    this.reason = '',
+    this.version = '',
+    this.build = 0,
+    this.notes = '',
+    this.error = '',
+    this.checkedAt,
+    this.waiting = false,
+  });
+
+  factory AppUpdateInfo.fromJson(Json j) => AppUpdateInfo(
+    state: j['state'] ?? 'off',
+    reason: j['reason'] ?? '',
+    version: j['version'] ?? '',
+    build: (j['build'] as num?)?.toInt() ?? 0,
+    notes: j['notes'] ?? '',
+    error: j['error'] ?? '',
+    checkedAt: DateTime.tryParse(j['checked_at'] ?? '')?.toLocal(),
+    waiting: j['waiting'] == true,
+  );
+
+  bool get off => state == 'off';
+  bool get busy => state == 'checking' || state == 'downloading' || state == 'installing';
+  String get label => BuildVersion(version, build).label;
+}
+
 /// A program running on the computer (GET /v1/apps).
 class RunningApp {
   final String name;

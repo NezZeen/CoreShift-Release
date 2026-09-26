@@ -148,6 +148,7 @@ func serve(ctx context.Context, cfg service.Config, apiAddr string, log io.Write
 		addr, infoPath, len(st.Subscriptions()), set.TUN && cfg.TUNUnavailable == "")
 
 	go st.RunUpdater(ctx, time.Minute)
+	go svc.RunAppUpdates(ctx)
 	if set.AutoConnect {
 		go autoConnect(ctx, svc, log)
 	}
@@ -206,6 +207,9 @@ func printServiceEvent(w io.Writer, e service.Event, verbose bool) {
 		fmt.Fprintf(w, "%s  SWAP       %s -> %s  (%s)\n", ts, e.From, e.Core, e.Reason)
 	case "core-failed":
 		fmt.Fprintf(w, "%s  DROPPED    %s (%s): %s\n", ts, e.Core, e.Reason, e.Error)
+	case "app-update":
+		// The service's log is where a failed self-update is looked into.
+		fmt.Fprintf(w, "%s  update     %s %s %s\n", ts, e.Reason, e.Line, e.Error)
 	case "tun", "dns":
 		if e.Error != "" {
 			fmt.Fprintf(w, "%s  %-10s %s\n", ts, e.Kind, e.Error)
