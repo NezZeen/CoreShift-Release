@@ -12,6 +12,9 @@
 //	coreshiftd serve [flags]                  the daemon with its UI API, in the foreground;
 //	                                          settings and subscriptions live in its store
 //	coreshiftd service {install|uninstall|start|stop|run}   the Windows service
+//	coreshiftd update check [-source github:OWNER/REPO|DIR] [-download DIR]
+//	                                          find and verify the latest release of
+//	                                          CoreShift, without installing it
 package main
 
 import (
@@ -60,6 +63,8 @@ func main() {
 		err = runServe(ctx, os.Args[2:])
 	case "service":
 		err = runService(ctx, os.Args[2:])
+	case "update":
+		err = runUpdate(ctx, os.Args[2:])
 	case "version", "-v", "--version":
 		fmt.Println("coreshiftd", service.VersionString())
 	default:

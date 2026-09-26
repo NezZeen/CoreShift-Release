@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"coreshift/engine/internal/service"
+
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/mgr"
@@ -176,6 +178,9 @@ func (w *winService) Execute(_ []string, requests <-chan svc.ChangeRequest, stat
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)
+	// Only the installed service of a release build updates CoreShift;
+	// `go run ... serve` never runs an installer over a working copy.
+	cfg.SelfUpdate = service.Version != "dev"
 	go func() { done <- serve(ctx, cfg, *apiAddr, log, false) }()
 	status <- svc.Status{State: svc.Running, Accepts: svc.AcceptStop | svc.AcceptShutdown}
 

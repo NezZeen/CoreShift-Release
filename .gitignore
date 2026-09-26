@@ -7,3 +7,6 @@
 
 # Claude Code's per-user settings.
 /.claude/settings.local.json
+
+# The releases token, built in by build.ps1 for the duration of a build.
+/engine/internal/selfupdate/token_gen.go

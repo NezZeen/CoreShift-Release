@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"maps"
 	"net"
+	"net/http"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -38,6 +39,7 @@ import (
 	"coreshift/engine/internal/node"
 	"coreshift/engine/internal/ping"
 	"coreshift/engine/internal/proc"
+	"coreshift/engine/internal/selfupdate"
 	"coreshift/engine/internal/store"
 	"coreshift/engine/internal/supervisor"
 	"coreshift/engine/internal/tunlayer"
@@ -117,6 +119,9 @@ type Config struct {
 	// TUNUnavailable, if set, is why TUN mode cannot work here, e.g. missing
 	// privileges; connecting with TUN on then fails with it.
 	TUNUnavailable string
+	// SelfUpdate lets the service update CoreShift: only the installed
+	// service of a release build may run an installer over itself.
+	SelfUpdate bool
 
 	// Test seams; nil means the real implementation.
 	guard     dnsguard.Guard
@@ -132,6 +137,14 @@ type Config struct {
 	tcpPing      func(ctx context.Context, ap netip.AddrPort, b ping.Bind) (time.Duration, error)
 	pingInterval time.Duration
 	netInterval  time.Duration
+
+	checkRelease     func(ctx context.Context, client *http.Client, src selfupdate.Source) (selfupdate.Release, error)
+	downloadRelease  func(ctx context.Context, client *http.Client, rel selfupdate.Release, dir string) (string, error)
+	launchInstaller  func(path, logPath string) error
+	appSessions      func() []uint32
+	startApp         func(sessions []uint32) error
+	updateFirstCheck time.Duration
+	updateTick       time.Duration
 }
 
 // DefaultDataDir is where the daemon keeps its state.
@@ -250,6 +263,7 @@ type Service struct {
 	rules   *ruleSets
 	latency latencyState
 	cores   coreState
+	upd     appUpdater
 
 	op       sync.Mutex // serialises connect, disconnect and teardown
 	tun      tunInstance
@@ -314,6 +328,29 @@ func New(cfg Config) (*Service, error) {
 	if cfg.netInterval == 0 {
 		cfg.netInterval = networkCheckInterval
 	}
+	if cfg.checkRelease == nil {
+		cfg.checkRelease = func(ctx context.Context, c *http.Client, src selfupdate.Source) (selfupdate.Release, error) {
+			return selfupdate.Check(ctx, c, src, selfupdate.PublicKeys)
+		}
+	}
+	if cfg.downloadRelease == nil {
+		cfg.downloadRelease = selfupdate.Download
+	}
+	if cfg.launchInstaller == nil {
+		cfg.launchInstaller = launchInstaller
+	}
+	if cfg.appSessions == nil {
+		cfg.appSessions = appSessions
+	}
+	if cfg.startApp == nil {
+		cfg.startApp = startApp
+	}
+	if cfg.updateFirstCheck == 0 {
+		cfg.updateFirstCheck = appUpdateFirstCheck
+	}
+	if cfg.updateTick == 0 {
+		cfg.updateTick = appUpdateTick
+	}
 	// The TUN layer matches core processes by full path.
 	bins := make(map[core.Kind]string, len(cfg.Binaries))
 	for k, p := range cfg.Binaries {
@@ -338,6 +375,11 @@ func New(cfg Config) (*Service, error) {
 
 	s := &Service{cfg: cfg, hub: newHub(), opts: cfg.Options, status: Status{State: Idle, TUN: cfg.TUN}}
 	s.rules = newRuleSets(filepath.Join(cfg.DataDir, "rules"), s.hub.publish)
+	s.upd.checkNow = make(chan struct{}, 1)
+	s.upd.state = AppUpdate{State: UpdateIdle}
+	if !cfg.SelfUpdate {
+		s.upd.state = AppUpdate{State: UpdateOff, Reason: "only the installed service of a release build updates itself"}
+	}
 	if cfg.fetchRuleSet != nil {
 		s.rules.fetch = cfg.fetchRuleSet
 	}

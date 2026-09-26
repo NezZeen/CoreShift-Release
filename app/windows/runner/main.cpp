@@ -23,6 +23,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   HANDLE instance_mutex =
       ::CreateMutex(nullptr, TRUE, L"Local\\CoreShift.UI.SingleInstance");
   if (::GetLastError() == ERROR_ALREADY_EXISTS) {
+    // Started for the tray, where the running one already is.
+    if (wcsstr(command_line, L"--tray") != nullptr) {
+      return EXIT_SUCCESS;
+    }
     // The first instance may still be creating its window.
     for (int i = 0; i < 20 && !ActivateRunningInstance(); i++) {
       ::Sleep(100);

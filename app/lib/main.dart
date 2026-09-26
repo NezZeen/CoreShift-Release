@@ -12,9 +12,11 @@ import 'ui/theme.dart';
 /// daemon.
 const demo = bool.fromEnvironment('DEMO');
 
-Future<void> main() async {
+/// `--tray` starts hidden in the tray: the service starts the app so after
+/// updating CoreShift.
+Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
-  await desktop.initWindow();
+  await desktop.initWindow(hidden: args.contains('--tray'));
   final prefs = await platform.loadPrefs();
   final Backend backend = demo ? DemoBackend() : platform.createBackend();
   runApp(

@@ -17,12 +17,14 @@ bool _enabled = false;
 bool get canNotify => Platform.isWindows || Platform.isLinux;
 
 /// Takes over the window: CoreShift draws its own title bar, and closing the
-/// window hides it to the tray. Returns false where there is no such window,
-/// and then [DesktopFrame] adds nothing.
-Future<bool> initWindow() async {
+/// window hides it to the tray. [hidden] starts in the tray, as after a
+/// self-update. Returns false where there is no such window, and then
+/// [DesktopFrame] adds nothing.
+Future<bool> initWindow({bool hidden = false}) async {
   if (!Platform.isWindows && !Platform.isLinux) return false;
   await windowManager.ensureInitialized();
   await windowManager.waitUntilReadyToShow(const WindowOptions(title: 'CoreShift', titleBarStyle: TitleBarStyle.hidden, minimumSize: Size(960, 640)), () async {
+    if (hidden) return;
     await windowManager.show();
     await windowManager.focus();
   });

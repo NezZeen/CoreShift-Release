@@ -2,9 +2,28 @@ import 'package:flutter/material.dart';
 
 import '../../platform/desktop.dart' as desktop;
 import '../../state/app_state.dart';
+import '../../state/errors.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'leak_check.dart';
+
+/// What the self-update is doing, in words.
+String _appUpdateText(AppState state) {
+  final u = state.appUpdate;
+  String when(DateTime t) =>
+      '${t.day.toString().padLeft(2, '0')}.${t.month.toString().padLeft(2, '0')} '
+      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+  return switch (u.state) {
+    'off' => 'Эта копия не обновляется сама: так бывает у сборки для разработки или у службы старше 0.3.0.',
+    'checking' => 'Проверяю…',
+    'downloading' => 'Скачиваю версию ${u.label}…',
+    'ready' when u.waiting => 'Скачана версия ${u.label}. Установится сама после отключения VPN.',
+    'ready' => 'Скачана версия ${u.label}.',
+    'installing' => 'Устанавливаю ${u.label}. CoreShift перезапустится сам.',
+    'error' => humanError(u.error),
+    _ => u.checkedAt == null ? 'Проверка ещё не проводилась.' : 'Установлена последняя версия. Проверено ${when(u.checkedAt!)}.',
+  };
+}
 
 class SettingsPage extends StatelessWidget {
   final AppState state;
@@ -204,6 +223,40 @@ class SettingsPage extends StatelessWidget {
               style: TextStyle(color: state.versionMismatch ? warnColor : p.muted, fontFamily: monoFont),
             ),
           ),
+          SettingRow(
+            title: 'Обновления',
+            description: _appUpdateText(state),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (state.appUpdate.state == 'ready') ...[
+                  Btn(
+                    label: 'Установить сейчас',
+                    icon: Icons.system_update_alt,
+                    kind: BtnKind.primary,
+                    small: true,
+                    tooltip: state.status.active ? 'VPN отключится на время установки и подключится снова' : null,
+                    onPressed: state.online ? state.installAppUpdate : null,
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                Btn(
+                  label: 'Проверить сейчас',
+                  small: true,
+                  loading: state.appUpdate.busy,
+                  onPressed: state.online && !state.appUpdate.off ? state.checkAppUpdate : null,
+                ),
+              ],
+            ),
+          ),
+          if (state.hasSetting('app_update.auto'))
+            SettingRow(
+              title: 'Устанавливать обновления автоматически',
+              description:
+                  'Раз в день CoreShift проверяет новую версию и ставит её сам, когда VPN выключен. '
+                  'Если VPN включён, установка подождёт.',
+              trailing: _switch('app_update.auto'),
+            ),
           if (state.updateNotice.isNotEmpty)
             SettingRow(
               title: 'После запуска',
