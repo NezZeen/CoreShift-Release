@@ -18,6 +18,18 @@ class HomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (state.subscriptions.isEmpty) return PageFrame(children: [_Welcome(state: state)]);
+    if (isCompact(context)) {
+      // Room above for the page to sit mid-screen when connected, the
+      // tallest it gets, so the button stays put as the numbers come in.
+      return LayoutBuilder(
+        builder: (context, c) => PageFrame(
+          children: [
+            SizedBox(height: max(0, (c.maxHeight - 560) / 2)),
+            _CompactHome(state: state),
+          ],
+        ),
+      );
+    }
     return PageFrame(
       children: [
         LayoutBuilder(
@@ -111,25 +123,7 @@ class _Hero extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           _NodePick(state: state),
-          if (st.settingsPending) ...[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
-              decoration: BoxDecoration(
-                color: warnColor.withValues(alpha: .08),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: warnColor.withValues(alpha: .35)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.info_outline, size: 16, color: warnColor),
-                  const SizedBox(width: 9),
-                  const Expanded(child: Text('Настройки изменены и применятся после переподключения', style: TextStyle(fontSize: 12))),
-                  Btn(label: 'Применить', small: true, onPressed: state.busy ? null : state.reconnect),
-                ],
-              ),
-            ),
-          ],
+          if (st.settingsPending) ...[const SizedBox(height: 12), _PendingBanner(state: state)],
           const SizedBox(height: 16),
           _OptRow(
             label: 'Через VPN',
@@ -148,6 +142,223 @@ class _Hero extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The home page on a phone: the button, the server, and while connected
+/// the few numbers worth a glance. The charts, the core queue and the mode
+/// switch stay on the desktop; the mode is in the settings.
+class _CompactHome extends StatelessWidget {
+  final AppState state;
+  const _CompactHome({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    final st = state.status;
+    final sel = state.selection;
+    final (title, color) = switch (st.state) {
+      ConnState.connected => ('Подключено', okColor),
+      ConnState.connecting => ('Подключение…', accent),
+      ConnState.disconnecting => ('Отключение…', p.muted),
+      ConnState.failed => ('Ошибка подключения', errColor),
+      ConnState.idle => ('Отключено', p.text),
+    };
+    final canConnect = state.online && (st.active || (sel.available && !state.busy));
+    final muted = TextStyle(color: p.muted, fontSize: 13);
+    final Widget line = switch (st.state) {
+      ConnState.connected when st.since != null => _Elapsed(since: st.since!, tun: st.tun, short: true),
+      ConnState.failed => Text(humanError(st.error), textAlign: TextAlign.center, maxLines: 3, overflow: TextOverflow.ellipsis, style: muted),
+      ConnState.idle when sel.isEmpty => Text('Сначала выберите сервер', style: muted),
+      ConnState.idle when !sel.available => Text(
+        'Сервер «${sel.name}» пропал из подписки',
+        textAlign: TextAlign.center,
+        style: const TextStyle(color: warnColor, fontSize: 13),
+      ),
+      ConnState.idle => Text('Нажмите, чтобы подключиться', style: muted),
+      _ => const SizedBox(),
+    };
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 16),
+        Center(
+          child: _ConnectButton(state: st.state, enabled: canConnect, onTap: state.toggleConnect, size: 150),
+        ),
+        const SizedBox(height: 26),
+        Text(
+          title,
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: st.state == ConnState.idle ? p.text : color),
+        ),
+        const SizedBox(height: 4),
+        ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 20),
+          child: Center(child: line),
+        ),
+        const SizedBox(height: 22),
+        if (st.settingsPending) ...[_PendingBanner(state: state), const SizedBox(height: 10)],
+        _NodePick(state: state),
+        if (st.state == ConnState.connected) ...[const SizedBox(height: 10), _CompactStats(state: state)],
+        _SubscriptionLine(state: state),
+      ],
+    );
+  }
+}
+
+/// While connected: speed and ping in one row, the running core under them.
+class _CompactStats extends StatelessWidget {
+  final AppState state;
+  const _CompactStats({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    final st = state.status;
+    final (up, down) = state.speed.isEmpty ? (0, 0) : state.speed.last;
+    final pings = _latencyData(state).$1;
+    final manual = state.setting('cores.mode', 'auto') == 'manual';
+    final chain = st.chain;
+    final core = st.core;
+    final onBackup = !manual && chain.length > 1 && core.isNotEmpty && core != chain.first;
+    final failures = st.failed;
+
+    Widget metric(IconData icon, Color color, String label, String value) => Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 13, color: color),
+              const SizedBox(width: 4),
+              Text(label, style: TextStyle(fontSize: 11, color: p.muted)),
+            ],
+          ),
+          const SizedBox(height: 3),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontFamily: monoFont, fontFamilyFallback: monoFallback, fontSize: 15, fontWeight: FontWeight.w500),
+          ),
+        ],
+      ),
+    );
+
+    return Panel(
+      padding: const EdgeInsets.fromLTRB(14, 12, 10, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              metric(Icons.south, okColor, 'Загрузка', formatRate(down)),
+              metric(Icons.north, accent, 'Отдача', formatRate(up)),
+              metric(Icons.monitor_heart_outlined, p.muted, 'Пинг', pings.isEmpty ? '—' : '${pings.last} мс'),
+            ],
+          ),
+          Divider(height: 20, color: p.border),
+          InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () => Nav.to(context, PageId.cores),
+            child: Row(
+              children: [
+                if (core.isNotEmpty) CoreLogo(core, size: 22) else CoreLogo('?', size: 22, off: true),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: core.isEmpty ? 'Ядро запускается…' : coreStyle(core).name,
+                          style: const TextStyle(fontWeight: FontWeight.w500),
+                        ),
+                        if (failures.isNotEmpty)
+                          TextSpan(
+                            text: '  ${failures.keys.map((k) => coreStyle(k).name).join(', ')}: сбой',
+                            style: const TextStyle(fontSize: 12, color: warnColor),
+                          )
+                        else if (onBackup)
+                          TextSpan(
+                            text: '  резерв',
+                            style: TextStyle(fontSize: 12, color: p.muted),
+                          ),
+                      ],
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (onBackup)
+                  Btn(
+                    label: 'Вернуть ${coreStyle(chain.first).name}',
+                    small: true,
+                    loading: state.returning,
+                    onPressed: state.busy ? null : state.returnToPrimary,
+                  )
+                else ...[
+                  Pill(manual ? 'ВРУЧНУЮ' : 'АВТОСВАП', color: manual ? p.muted : swapColor),
+                  Icon(Icons.chevron_right, size: 18, color: p.dim),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The selected subscription's days and traffic left, in one quiet line
+/// that turns yellow or red when they run out.
+class _SubscriptionLine extends StatelessWidget {
+  final AppState state;
+  const _SubscriptionLine({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    final info = state.subscriptionById(state.selection.subscription)?.info;
+    if (info == null) return const SizedBox();
+    final days = info.expire?.difference(DateTime.now()).inDays;
+    final parts = <String>[
+      if (days != null) days < 0 ? 'подписка истекла' : 'подписка ещё $days дн.',
+      if (info.total > 0) '${formatBytes(info.used)} из ${formatBytes(info.total)}',
+    ];
+    if (parts.isEmpty) return const SizedBox();
+    final bad = (days != null && days < 0) || (info.total > 0 && info.used / info.total > .9);
+    final soon = days != null && days < 7;
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: Text(
+        parts.join(' · '),
+        textAlign: TextAlign.center,
+        style: TextStyle(fontSize: 12, color: bad ? errColor : (soon ? warnColor : p.dim)),
+      ),
+    );
+  }
+}
+
+class _PendingBanner extends StatelessWidget {
+  final AppState state;
+  const _PendingBanner({required this.state});
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+    decoration: BoxDecoration(
+      color: warnColor.withValues(alpha: .08),
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(color: warnColor.withValues(alpha: .35)),
+    ),
+    child: Row(
+      children: [
+        const Icon(Icons.info_outline, size: 16, color: warnColor),
+        const SizedBox(width: 9),
+        const Expanded(child: Text('Настройки изменены и применятся после переподключения', style: TextStyle(fontSize: 12))),
+        Btn(label: 'Применить', small: true, onPressed: state.busy ? null : state.reconnect),
+      ],
+    ),
+  );
 }
 
 /// The first screen before any subscription is added: what to do, in order.
@@ -235,7 +446,8 @@ class _OptRow extends StatelessWidget {
 class _Elapsed extends StatefulWidget {
   final DateTime since;
   final bool tun;
-  const _Elapsed({required this.since, required this.tun});
+  final bool short;
+  const _Elapsed({required this.since, required this.tun, this.short = false});
 
   @override
   State<_Elapsed> createState() => _ElapsedState();
@@ -253,8 +465,9 @@ class _ElapsedState extends State<_Elapsed> {
   @override
   Widget build(BuildContext context) {
     final d = DateTime.now().difference(widget.since);
+    final mode = widget.short ? (widget.tun ? '' : ' · только прокси') : ' · ${widget.tun ? 'все приложения через VPN' : 'прокси SOCKS5 127.0.0.1:17890'}';
     return Text(
-      '${formatDuration(d.isNegative ? Duration.zero : d)} · ${widget.tun ? 'все приложения через VPN' : 'прокси SOCKS5 127.0.0.1:17890'}',
+      '${formatDuration(d.isNegative ? Duration.zero : d)}$mode',
       style: TextStyle(color: context.pal.muted, fontSize: 13, fontFeatures: const [FontFeature.tabularFigures()]),
     );
   }
@@ -264,7 +477,8 @@ class _ConnectButton extends StatefulWidget {
   final ConnState state;
   final bool enabled;
   final VoidCallback onTap;
-  const _ConnectButton({required this.state, required this.enabled, required this.onTap});
+  final double size;
+  const _ConnectButton({required this.state, required this.enabled, required this.onTap, this.size = 176});
 
   @override
   State<_ConnectButton> createState() => _ConnectButtonState();
@@ -300,8 +514,8 @@ class _ConnectButtonState extends State<_ConnectButton> with SingleTickerProvide
               duration: const Duration(milliseconds: 200),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 350),
-                width: 176,
-                height: 176,
+                width: widget.size,
+                height: widget.size,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(color: on ? const Color(0xFF2E8566) : p.border2),
@@ -317,7 +531,7 @@ class _ConnectButtonState extends State<_ConnectButton> with SingleTickerProvide
                 ),
                 child: Icon(
                   Icons.power_settings_new,
-                  size: 56,
+                  size: widget.size * .32,
                   color: on ? const Color(0xFFB8F5DC) : (busy ? accent : p.muted.withValues(alpha: widget.enabled ? 1 : .5)),
                 ),
               ),

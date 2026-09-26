@@ -62,8 +62,10 @@ class SettingsPage extends StatelessWidget {
           const PanelTitle('Общие'),
           SettingRow(
             first: true,
-            title: 'Подключаться при запуске',
-            description: 'Служба подключит выбранный узел сама, как только запустится вместе с системой',
+            title: platform.isAndroid ? 'Подключаться при открытии' : 'Подключаться при запуске',
+            description: platform.isAndroid
+                ? 'Подключить выбранный сервер, как только CoreShift откроется'
+                : 'Служба подключит выбранный узел сама, как только запустится вместе с системой',
             trailing: _switch('auto_connect'),
           ),
           if (desktop.canNotify)
@@ -89,16 +91,20 @@ class SettingsPage extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const PanelTitle('Сеть'),
-          SettingRow(
-            first: true,
-            title: 'Все приложения через VPN',
-            description: info.tunAvailable
-                ? 'Режим TUN. Если выключить, через VPN пойдут только программы с прокси SOCKS5 127.0.0.1:17890'
-                : info.tunUnavailable,
-            trailing: _switch('tun', enabled: info.tunAvailable || state.setting('tun', false)),
-          ),
+          // On Android every app goes through the VPN: the switch shows
+          // only to undo a proxy-only mode chosen somehow.
+          if (!platform.isAndroid || !state.setting('tun', true))
+            SettingRow(
+              first: true,
+              title: 'Все приложения через VPN',
+              description: info.tunAvailable
+                  ? 'Режим TUN. Если выключить, через VPN пойдут только программы с прокси SOCKS5 127.0.0.1:17890'
+                  : info.tunUnavailable,
+              trailing: _switch('tun', enabled: info.tunAvailable || state.setting('tun', false)),
+            ),
           if (state.hasSetting('ipv6'))
             SettingRow(
+              first: platform.isAndroid && state.setting('tun', true),
               title: 'IPv6 через туннель',
               description: 'IPv6-трафик тоже идёт через VPN, а не мимо него. Выключите, если какие-то сайты перестали открываться',
               trailing: _switch('ipv6'),
@@ -142,11 +148,12 @@ class SettingsPage extends StatelessWidget {
             trailing: _switch('dns.block_browser_doh'),
           ),
           SettingRow(title: 'Блокировать DNS-over-TLS (порт 853)', trailing: _switch('dns.block_dot')),
-          SettingRow(
-            title: 'Строгий DNS в Windows',
-            description: 'Запретить Windows опрашивать DNS других сетевых адаптеров в обход туннеля',
-            trailing: _switch('dns.strict'),
-          ),
+          if (!platform.isAndroid)
+            SettingRow(
+              title: 'Строгий DNS в Windows',
+              description: 'Запретить Windows опрашивать DNS других сетевых адаптеров в обход туннеля',
+              trailing: _switch('dns.strict'),
+            ),
         ],
       ),
     );
@@ -265,13 +272,14 @@ class SettingsPage extends StatelessWidget {
               description: state.updateNotice,
               trailing: const Icon(Icons.system_update_alt, size: 18, color: okColor),
             ),
-          SettingRow(
-            title: 'Служба',
-            trailing: Text(
-              state.backend.description,
-              style: TextStyle(color: p.muted, fontFamily: monoFont),
+          if (!platform.isAndroid)
+            SettingRow(
+              title: 'Служба',
+              trailing: Text(
+                state.backend.description,
+                style: TextStyle(color: p.muted, fontFamily: monoFont),
+              ),
             ),
-          ),
           SettingRow(
             title: 'Ядра',
             trailing: Row(
