@@ -146,7 +146,7 @@ class _BottomNav extends StatelessWidget {
           icon: Badge(isLabelVisible: state.nodeCount > 0, label: Text('${state.nodeCount}'), child: const Icon(Icons.public)),
           label: 'Серверы',
         ),
-        const NavigationDestination(icon: Icon(Icons.alt_route), label: 'Исключения'),
+        const NavigationDestination(icon: Icon(Icons.alt_route), label: 'Правила'),
         const NavigationDestination(icon: Icon(Icons.settings_outlined), label: 'Настройки'),
         const NavigationDestination(icon: Icon(Icons.more_horiz), label: 'Ещё'),
       ],
@@ -167,7 +167,7 @@ class _Sidebar extends StatelessWidget {
     final main = [
       (PageId.home, Icons.home_outlined, 'Главная', null),
       (PageId.servers, Icons.public, 'Серверы', nodes > 0 ? '$nodes' : null),
-      (PageId.routing, Icons.alt_route, 'Исключения', null),
+      (PageId.routing, Icons.alt_route, 'Правила', null),
       (PageId.settings, Icons.settings_outlined, 'Настройки', null),
     ];
     final advanced = [(PageId.cores, Icons.memory, 'Ядра', null), (PageId.logs, Icons.notes, 'Журнал', null)];
@@ -370,7 +370,7 @@ class _CoreFooter extends StatelessWidget {
                   style: TextStyle(fontSize: 12, color: core.isNotEmpty ? p.text : p.muted, fontWeight: FontWeight.w500),
                 ),
               ),
-              if (core.isNotEmpty && state.setting('cores.mode', 'auto') == 'auto') const Pill('AUTO', color: swapColor),
+              if (core.isNotEmpty && state.setting('cores.mode', 'auto') == 'auto') const Pill('АВТОСВАП', color: swapColor),
             ],
           ),
         ],

@@ -42,17 +42,20 @@ class HomePage extends StatelessWidget {
                 _SpeedCard(state: state),
               ],
             );
+            final wide = c.maxWidth >= 1000;
+            final rightWidth = wide ? c.maxWidth - max(340, c.maxWidth * .4) - 18 : c.maxWidth;
             final right = Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _CoreCard(state: state),
                 const SizedBox(height: 18),
-                _Stats(state: state, columns: c.maxWidth >= 1000 ? 4 : 2),
+                // Four tiles in a row only where each gets room for "142 ГБ / 500 ГБ".
+                _Stats(state: state, columns: rightWidth >= 720 ? 4 : 2),
                 const SizedBox(height: 18),
                 _LatencyCard(state: state),
               ],
             );
-            if (c.maxWidth < 1000) {
+            if (!wide) {
               return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [hero, const SizedBox(height: 18), right]);
             }
             return Row(
@@ -860,7 +863,7 @@ class _Stats extends StatelessWidget {
       (Icons.monitor_heart_outlined, 'Пинг', lat == null ? '—' : '$lat', lat == null ? '' : 'мс', null),
       (
         Icons.data_usage,
-        'Трафик подписки',
+        'Трафик',
         info == null || (info.used == 0 && info.total == 0) ? '—' : formatBytes(info.used),
         info != null && info.total > 0 ? '/ ${formatBytes(info.total)}' : '',
         info != null && info.total > 0 && info.used / info.total > .9 ? errColor : null,
@@ -986,7 +989,7 @@ class _SpeedCard extends StatelessWidget {
         children: [
           PanelTitle(
             'Скорость',
-            sub: 'через VPN, последние 2 минуты',
+            sub: 'за 2 минуты',
             trailing: active && (state.sessionDown > 0 || state.sessionUp > 0)
                 ? Tooltip(
                     message: 'Скачано и отправлено за это подключение',
