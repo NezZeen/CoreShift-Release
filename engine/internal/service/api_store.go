@@ -36,12 +36,18 @@ import (
 //	POST   /v1/cores/return                    move back to the primary core now
 //	GET    /v1/cores/updates                   the latest release of each installed core
 //	POST   /v1/cores/{kind}/update             install the latest release of a core
+//	GET    /v1/app-update                      the state of updates of CoreShift itself
+//	POST   /v1/app-update/check                check now; the result arrives as app-update events
+//	POST   /v1/app-update/install              install the downloaded update now
 func (a *api) routeStore(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/apps", a.runningApps)
 	mux.HandleFunc("POST /v1/cores/return", a.returnToPrimary)
 	mux.HandleFunc("GET /v1/cores/updates", a.coreUpdates)
 	mux.HandleFunc("POST /v1/cores/{kind}/update", a.updateCore)
 	mux.HandleFunc("GET /v1/info", a.info)
+	mux.HandleFunc("GET /v1/app-update", a.appUpdate)
+	mux.HandleFunc("POST /v1/app-update/check", a.checkAppUpdate)
+	mux.HandleFunc("POST /v1/app-update/install", a.installAppUpdate)
 	mux.HandleFunc("GET /v1/settings", a.withStore(a.getSettings))
 	mux.HandleFunc("PUT /v1/settings", a.withStore(a.putSettings))
 	mux.HandleFunc("GET /v1/subscriptions", a.withStore(a.listSubscriptions))
@@ -145,6 +151,26 @@ func (a *api) updateCore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"kind": string(k), "version": v})
+}
+
+func (a *api) appUpdate(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, a.svc.AppUpdateState())
+}
+
+func (a *api) checkAppUpdate(w http.ResponseWriter, r *http.Request) {
+	if err := a.svc.CheckAppUpdate(); err != nil {
+		writeError(w, http.StatusConflict, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, a.svc.AppUpdateState())
+}
+
+func (a *api) installAppUpdate(w http.ResponseWriter, r *http.Request) {
+	if err := a.svc.InstallAppUpdate(); err != nil {
+		writeError(w, http.StatusConflict, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, a.svc.AppUpdateState())
 }
 
 func (a *api) getSettings(w http.ResponseWriter, r *http.Request, st *store.Store) {

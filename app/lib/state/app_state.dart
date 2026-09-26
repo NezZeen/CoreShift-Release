@@ -89,6 +89,9 @@ class AppState extends ChangeNotifier {
 
   /// The latest release of each core, once checked.
   List<CoreUpdate> coreUpdates = [];
+
+  /// Updates of CoreShift itself; off with a service that cannot update.
+  AppUpdateInfo appUpdate = const AppUpdateInfo();
   bool checkingUpdates = false;
   String updatingCore = '';
 
@@ -152,6 +155,8 @@ class AppState extends ChangeNotifier {
           : 'CoreShift пересобран';
       updateNotice = '$what: ${old.label} → ${version.label}';
       toast(updateNotice, ToastKind.ok);
+      // After a self-update the app starts hidden in the tray.
+      if (cmp > 0) _alerts.add(Alert('CoreShift обновлён', '${old.label} → ${version.label}'));
       _log(DateTime.now(), 'версия', updateNotice, LogLevel.info);
     }
     if (prev != version.key) setPref('last_version', version.key);
@@ -204,7 +209,29 @@ class AppState extends ChangeNotifier {
     subscriptions = _subs(results[3]);
     selection = Selection.fromJson(results[4] as Json);
     loaded = true;
+    // Optional, so it does not hold up the rest.
+    unawaited(_loadAppUpdate().then((_) => _notify()));
   }
+
+  /// Services before 0.3.0 have no self-update: it stays off for them.
+  Future<void> _loadAppUpdate() async {
+    try {
+      appUpdate = AppUpdateInfo.fromJson(await backend.call('GET', '/v1/app-update') as Json);
+    } catch (_) {
+      appUpdate = const AppUpdateInfo();
+    }
+  }
+
+  Future<bool> checkAppUpdate() => _act(() async {
+    appUpdate = AppUpdateInfo.fromJson(await backend.call('POST', '/v1/app-update/check') as Json);
+    _notify();
+  });
+
+  /// Installs the downloaded update now; a connection comes back after it.
+  Future<bool> installAppUpdate() => _act(() async {
+    appUpdate = AppUpdateInfo.fromJson(await backend.call('POST', '/v1/app-update/install') as Json);
+    _notify();
+  });
 
   List<Subscription> _subs(dynamic j) {
     final subs = (j as List).map((s) => Subscription.fromJson((s as Map).cast())).toList();
@@ -308,6 +335,8 @@ class AppState extends ChangeNotifier {
         _notify();
       case 'log':
         _log(e.time, e.source, e.line, LogLevel.info, quiet: true);
+      case 'app-update':
+        _onAppUpdate(e, live);
       case 'tun':
       case 'dns':
         _log(e.time, e.kind.toUpperCase(), e.error.isNotEmpty ? e.error : _layerText(e.kind, e.reason), e.error.isNotEmpty ? LogLevel.warn : LogLevel.info);
@@ -387,6 +416,22 @@ class AppState extends ChangeNotifier {
     'xray' => 'Xray-core',
     _ => k,
   };
+
+  Future<void> _onAppUpdate(Event e, bool live) async {
+    if (e.error.isNotEmpty) _log(e.time, 'обновление', e.error, LogLevel.warn);
+    if (e.reason == 'installed') return; // the new app says so itself
+    await _loadAppUpdate();
+    if (live && e.reason == 'ready') {
+      final label = appUpdate.label;
+      if (appUpdate.waiting) {
+        _log(e.time, 'обновление', 'скачана версия $label, установится после отключения VPN', LogLevel.info);
+        toast('Скачана версия $label — установится после отключения VPN');
+      } else {
+        _log(e.time, 'обновление', 'скачана версия $label, устанавливается', LogLevel.info);
+      }
+    }
+    _notify();
+  }
 
   static String _layerText(String kind, String reason) => switch ((kind, reason)) {
     ('tun', 'up') => 'интерфейс поднят',

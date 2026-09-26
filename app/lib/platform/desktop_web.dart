@@ -3,7 +3,7 @@ import 'package:flutter/widgets.dart';
 import '../state/app_state.dart';
 
 /// Nothing to set up in a browser.
-Future<bool> initWindow() async => false;
+Future<bool> initWindow({bool hidden = false}) async => false;
 
 /// In a browser the page is the frame.
 class DesktopFrame extends StatelessWidget {

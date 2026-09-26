@@ -45,7 +45,25 @@ class DemoBackend implements Backend {
       'block_domains': <String>[],
     },
     'updates': {'auto': true, 'interval_hours': 12, 'user_agent': ''},
+    'app_update': {'auto': true, 'source': ''},
   };
+
+  Json _appUpdate = {'state': 'idle', 'checked_at': DateTime.now().toUtc().toIso8601String()};
+
+  /// A release appears on checking; it waits while the demo is connected.
+  Future<void> _demoAppUpdate() async {
+    _appUpdate = {..._appUpdate, 'state': 'checking'};
+    _emit({'kind': 'app-update', 'reason': 'checking'});
+    await Future.delayed(const Duration(milliseconds: 800));
+    _appUpdate = {
+      'state': 'ready',
+      'version': '0.3.0',
+      'build': 9,
+      'checked_at': DateTime.now().toUtc().toIso8601String(),
+      'waiting': _status['state'] == 'connected',
+    };
+    _emit({'kind': 'app-update', 'reason': 'ready', 'line': '0.3.0'});
+  }
 
   static const _features = {
     'xray': ['vless', 'vmess', 'trojan', 'shadowsocks', 'wireguard', 'ws', 'grpc', 'httpupgrade', 'xhttp', 'reality'],
@@ -457,6 +475,16 @@ class DemoBackend implements Backend {
         _emit({'kind': 'swap', 'core': chain.first, 'from': from, 'reason': 'return-to-primary'});
         _emit({'kind': 'core-state', 'core': chain.first, 'reason': 'connected'});
         return _statusJson();
+      case 'GET /app-update':
+        return _appUpdate;
+      case 'POST /app-update/check':
+        _demoAppUpdate();
+        return {..._appUpdate, 'state': 'checking'};
+      case 'POST /app-update/install':
+        if (_appUpdate['state'] != 'ready') throw const ApiError(409, 'no update is ready to install');
+        _appUpdate = {..._appUpdate, 'state': 'installing', 'waiting': false};
+        _emit({'kind': 'app-update', 'reason': 'installing', 'line': '0.3.0'});
+        return _appUpdate;
       case 'GET /cores/updates':
         await Future.delayed(const Duration(milliseconds: 700));
         return [
