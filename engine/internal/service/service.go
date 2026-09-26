@@ -30,6 +30,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -481,9 +482,21 @@ func (s *Service) tunLayer() (tunLayer, error) {
 	}
 	s.cfg.tun = &singBoxTUN{
 		group: group, bin: bin, dir: filepath.Join(s.cfg.DataDir, "tun"),
-		onLine: func(l string) { s.hub.publish(Event{Kind: "log", Source: "tun", Line: l}) },
+		onLine: func(l string) {
+			if !noiseLine(l) {
+				s.hub.publish(Event{Kind: "log", Source: "tun", Line: l})
+			}
+		},
 	}
 	return s.cfg.tun, nil
+}
+
+// noiseLine recognises TUN layer errors that are no fault of the tunnel: a
+// name that does not exist (NXDOMAIN, often an ad or tracker host). The
+// layer resolves names to match addresses against geoip, and reports every
+// such failure as an error, which read like the VPN breaking.
+func noiseLine(l string) bool {
+	return strings.Contains(l, "NXDOMAIN") && (strings.Contains(l, "dns: lookup failed") || strings.Contains(l, "router: lookup"))
 }
 
 // Recover undoes system changes left by a daemon that did not shut down
@@ -802,6 +815,9 @@ func (s *Service) stopLocked() {
 	s.hub.clearTraffic()
 	if err := s.cfg.guard.Revert(context.Background()); err != nil {
 		s.hub.publish(Event{Kind: "dns", Error: "restore system DNS: " + err.Error()})
+	} else if s.tun != nil {
+		// Said aloud, so a journal shows the system got its DNS back.
+		s.hub.publish(Event{Kind: "dns", Reason: "reverted"})
 	}
 	if s.tun != nil {
 		s.tun.Stop()

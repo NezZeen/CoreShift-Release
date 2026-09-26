@@ -909,3 +909,17 @@ func TestResolverOfAnotherTunnelIsSkipped(t *testing.T) {
 		t.Errorf("direct DNS = %s", d)
 	}
 }
+
+func TestNoiseLines(t *testing.T) {
+	for _, l := range []string{
+		"+0400 2026-09-27 02:05:44 ERROR [612468618 83ms] dns: lookup failed for cookie.lmgssp.com: (exchange4: NXDOMAIN | exchange6: NXDOMAIN)",
+		"+0400 2026-09-27 02:05:44 ERROR [612468618 84ms] router: lookup cookie.lmgssp.com: (exchange4: NXDOMAIN | exchange6: NXDOMAIN)",
+	} {
+		if !noiseLine(l) {
+			t.Errorf("not noise: %s", l)
+		}
+	}
+	if noiseLine("ERROR [3035781270 5.30s] connection: open connection to 198.51.100.14:80 using outbound/direct[direct]: dial tcp 198.51.100.14:80: i/o timeout") {
+		t.Error("a failed connection is not noise")
+	}
+}
