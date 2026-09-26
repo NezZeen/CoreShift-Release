@@ -84,7 +84,7 @@ class RoutingPage extends StatelessWidget {
     return PageFrame(
       children: [
         PageHeader(
-          'Исключения',
+          'Правила',
           subtitle: selected
               ? 'Через VPN идут только выбранные сайты и программы, остальное — напрямую.'
               : 'Сайты и программы, которые работают напрямую, без VPN. Всё остальное идёт через VPN.',
@@ -141,7 +141,7 @@ class RoutingPage extends StatelessWidget {
                         ),
                         const TextSpan(
                           text:
-                              'Исключения не зависят от ядра и не теряются при его смене. '
+                              'Правила не зависят от ядра и не теряются при его смене. '
                               'Изменения применяются при следующем подключении.',
                         ),
                       ]

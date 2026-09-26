@@ -432,28 +432,34 @@ class _NodeTable extends StatelessWidget {
       );
     }
     final headStyle = TextStyle(fontSize: 11, color: p.dim, letterSpacing: .6, fontWeight: FontWeight.w600);
-    return Column(
-      children: [
-        _row(
-          context,
-          header: true,
-          cells: [
-            const SizedBox(),
-            Text('СЕРВЕР', style: headStyle),
-            Text('ПРОТОКОЛ', style: headStyle),
-            Text('ТРАНСПОРТ', style: headStyle),
-            Text('ЯДРА', style: headStyle),
-            Text('ПИНГ', style: headStyle),
-            const SizedBox(),
+    // The columns need about 640 points; narrower, the rows become a list.
+    return LayoutBuilder(
+      builder: (context, c) {
+        final narrow = isCompact(context) || c.maxWidth < 640;
+        return Column(
+          children: [
+            _row(
+              narrow: narrow,
+              header: true,
+              cells: [
+                const SizedBox(),
+                Text('СЕРВЕР', style: headStyle),
+                Text('ПРОТОКОЛ', style: headStyle),
+                Text('ТРАНСПОРТ', style: headStyle),
+                Text('ЯДРА', style: headStyle),
+                Text('ПИНГ', style: headStyle),
+                const SizedBox(),
+              ],
+            ),
+            for (final (sub, n) in rows) _NodeRow(state: state, sub: sub, node: n, showSub: showSub, narrow: narrow),
           ],
-        ),
-        for (final (sub, n) in rows) _NodeRow(state: state, sub: sub, node: n, showSub: showSub),
-      ],
+        );
+      },
     );
   }
 
-  static Widget _row(BuildContext context, {required List<Widget> cells, bool header = false}) {
-    if (isCompact(context)) {
+  static Widget _row({required bool narrow, required List<Widget> cells, bool header = false}) {
+    if (narrow) {
       // A phone: the name over the protocol and transport, then the ping
       // and the action; the column headings and the cores are left out.
       if (header) return const SizedBox.shrink();
@@ -516,7 +522,8 @@ class _NodeRow extends StatefulWidget {
   final Subscription sub;
   final NodeView node;
   final bool showSub;
-  const _NodeRow({required this.state, required this.sub, required this.node, required this.showSub});
+  final bool narrow;
+  const _NodeRow({required this.state, required this.sub, required this.node, required this.showSub, required this.narrow});
 
   @override
   State<_NodeRow> createState() => _NodeRowState();
@@ -536,7 +543,7 @@ class _NodeRowState extends State<_NodeRow> {
     final unusable = n.cores.isEmpty;
 
     final row = _NodeTable._row(
-      context,
+      narrow: widget.narrow,
       cells: [
         _Radio(on: sel),
         Row(
