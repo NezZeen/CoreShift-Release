@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../platform/platform.dart' as platform;
 import '../../state/app_state.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -38,10 +39,11 @@ class RoutingPage extends StatelessWidget {
         ),
       ];
       right = [
-        AppsPanel.proxy(
-          state: s,
-          description: 'Весь трафик этих программ идёт через VPN, куда бы они ни подключались. Удобно для мессенджеров и игр, заблокированных целиком.',
-        ),
+        if (!platform.isAndroid)
+          AppsPanel.proxy(
+            state: s,
+            description: 'Весь трафик этих программ идёт через VPN, куда бы они ни подключались. Удобно для мессенджеров и игр, заблокированных целиком.',
+          ),
         _blockPanel(),
         _localPanel(context),
       ];
@@ -75,7 +77,8 @@ class RoutingPage extends StatelessWidget {
             chipColor: accent,
           ),
       ];
-      right = [if (s.hasSetting('routing.direct_apps')) AppsPanel.direct(state: s), if (full) _blockPanel()];
+      // Programs are matched by their .exe; Android has no such thing.
+      right = [if (s.hasSetting('routing.direct_apps') && !platform.isAndroid) AppsPanel.direct(state: s), if (full) _blockPanel()];
     }
 
     return PageFrame(

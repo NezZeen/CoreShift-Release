@@ -13,13 +13,14 @@ import (
 	"coreshift/engine/internal/tunlayer"
 )
 
-// tunLayer starts the TUN + DNS layer; it is an interface so tests can
+// TUNLayer starts the TUN + DNS layer. It is an interface so that tests, and
+// Android, where the layer runs inside the app on the VpnService's TUN, can
 // replace it (creating a real TUN needs administrator rights).
-type tunLayer interface {
-	Start(ctx context.Context, o tunlayer.Options) (tunInstance, error)
+type TUNLayer interface {
+	Start(ctx context.Context, o tunlayer.Options) (TUNInstance, error)
 }
 
-type tunInstance interface {
+type TUNInstance interface {
 	Exited() <-chan struct{}
 	ExitError() error
 	Stop()
@@ -45,7 +46,7 @@ const (
 	adapterRetries       = 3
 )
 
-func (t *singBoxTUN) Start(ctx context.Context, o tunlayer.Options) (tunInstance, error) {
+func (t *singBoxTUN) Start(ctx context.Context, o tunlayer.Options) (TUNInstance, error) {
 	cfg, err := tunlayer.Build(o)
 	if err != nil {
 		return nil, err

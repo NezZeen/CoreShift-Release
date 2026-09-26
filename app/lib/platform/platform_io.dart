@@ -2,8 +2,31 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/services.dart';
+
 import '../api/backend.dart';
 import '../api/models.dart';
+
+/// On Android the engine runs inside the app; this channel reaches its
+/// Kotlin side (MainActivity.kt).
+const _android = MethodChannel('coreshift/android');
+
+/// Where the Android engine keeps its API file; set by [initPlatform].
+String? _androidApiFile;
+
+bool get isAndroid => Platform.isAndroid;
+
+/// Asks the platform what the app needs before it starts.
+Future<void> initPlatform() async {
+  if (Platform.isAndroid) _androidApiFile = await _android.invokeMethod<String>('apiFile');
+}
+
+/// Gets the user's consent to the VPN when Android needs it; false if the
+/// user declined. Elsewhere the service has the rights it needs.
+Future<bool> prepareVpn() async {
+  if (!Platform.isAndroid) return true;
+  return await _android.invokeMethod<bool>('prepareVpn') ?? false;
+}
 
 Backend createBackend() => HttpBackend(apiFile());
 
@@ -11,6 +34,7 @@ Backend createBackend() => HttpBackend(apiFile());
 String apiFile() {
   final override = Platform.environment['CORESHIFT_API_FILE'];
   if (override != null && override.isNotEmpty) return override;
+  if (Platform.isAndroid) return _androidApiFile ?? '';
   if (Platform.isWindows) {
     final pd = Platform.environment['ProgramData'] ?? r'C:\ProgramData';
     return '$pd\\CoreShift\\api.json';
@@ -159,6 +183,7 @@ Future<String?> startService() async {
 }
 
 File _prefsFile() {
+  if (Platform.isAndroid) return File('${File(apiFile()).parent.parent.path}/ui.json');
   if (Platform.isWindows) {
     final appData = Platform.environment['APPDATA'] ?? '.';
     return File('$appData\\CoreShift\\ui.json');

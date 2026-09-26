@@ -1,3 +1,11 @@
+import java.util.Properties
+
+// Release signing: the key lives outside the repository, next to the other
+// release secrets (packaging/README.md). Every APK must be signed with the
+// same key, or Android refuses to install it over the previous one.
+val signingFile = file("${System.getProperty("user.home")}/.coreshift/android-signing.properties")
+val signing = Properties().apply { if (signingFile.exists()) signingFile.inputStream().use { load(it) } }
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
@@ -27,13 +35,31 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // The engine and the cores are built for 64-bit ARM, which every
+        // phone of the last years has.
+        ndk { abiFilters += "arm64-v8a" }
+    }
+
+    signingConfigs {
+        if (signingFile.exists()) {
+            create("release") {
+                storeFile = file(signing.getProperty("storeFile"))
+                storePassword = signing.getProperty("storePassword")
+                keyAlias = signing.getProperty("keyAlias")
+                keyPassword = signing.getProperty("keyPassword")
+            }
+        }
+    }
+
+    packaging {
+        // The cores are programs named lib*.so: they must be extracted to
+        // run (extractNativeLibs in the manifest).
+        jniLibs { useLegacyPackaging = true }
     }
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
 }
@@ -46,4 +72,9 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // The Go engine, bound by gomobile (packaging/android/build.ps1).
+    implementation(files("libs/coreshift-engine.aar"))
 }

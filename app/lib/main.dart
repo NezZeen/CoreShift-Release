@@ -17,6 +17,7 @@ const demo = bool.fromEnvironment('DEMO');
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   await desktop.initWindow(hidden: args.contains('--tray'));
+  if (!demo) await platform.initPlatform();
   final prefs = await platform.loadPrefs();
   final Backend backend = demo ? DemoBackend() : platform.createBackend();
   runApp(
