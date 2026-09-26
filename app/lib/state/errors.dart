@@ -1,3 +1,5 @@
+import '../platform/platform.dart' as platform;
+
 /// Turns the daemon's English errors into Russian a user can act on. The
 /// journal keeps the original text; this is for toasts, dialogs and status.
 String humanError(String raw) {
@@ -51,9 +53,17 @@ String humanError(String raw) {
   // excludedportrange protocol=tcp), which changes after a reboot.
   if (has('already in use') || has('forbidden by its access permissions') || has('only one usage of each socket address')) {
     final port = RegExp(r'127\.0\.0\.1:(\d+)').firstMatch(e)?.group(1) ?? '17890';
+    if (platform.isAndroid) {
+      return 'Порт $port на телефоне занят другим приложением, скорее всего другим VPN-клиентом. Закройте его и подключитесь снова.';
+    }
     return 'Порт $port на этом компьютере занят другой программой (например, другим VPN-клиентом) или зарезервирован Windows '
         'для Hyper-V, WSL или Docker. Закройте другой VPN-клиент; если не поможет — перезагрузите компьютер.';
   }
+  // Android's VpnService (engine/mobile).
+  if (has('android turned the vpn off')) return 'Android выключил VPN: запущен другой VPN-клиент или CoreShift отключён в настройках системы.';
+  if (has('vpn permission is not granted')) return 'Нет разрешения на VPN. Нажмите «Подключить» и разрешите запрос Android.';
+  if (has('the vpn service did not start')) return 'Android не запустил VPN. Попробуйте ещё раз; если повторится — перезапустите CoreShift.';
+  if (has('the network reported no dns servers')) return 'Нет сети: телефон не получил адреса DNS. Проверьте Wi-Fi или мобильный интернет.';
   if (has('every compatible core failed')) return 'Сервер не отвечает ни через одно ядро. Попробуйте другой сервер.';
   if (has('tun mode needs the sing-box')) return 'Для режима «Все приложения» нужно ядро sing-box.';
   if (has('tun layer stopped')) return 'Сетевой адаптер VPN неожиданно остановился.';

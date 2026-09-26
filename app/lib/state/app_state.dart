@@ -575,7 +575,7 @@ class AppState extends ChangeNotifier {
         await backend.call('POST', '/v1/subscriptions', {'name': name.trim(), if (isUrl) 'url': source.trim() else 'content': source}) as Json,
       );
       subscriptions = [...subscriptions.where((s) => s.id != sub.id), sub];
-      toast('Добавлено: ${sub.displayName}, узлов ${sub.nodes.length}', ToastKind.ok);
+      toast('Добавлено: ${sub.displayName}, серверов: ${sub.nodes.length}', ToastKind.ok);
       _notify();
       return null;
     } catch (e) {

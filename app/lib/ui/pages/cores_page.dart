@@ -143,7 +143,7 @@ class _CoreTile extends StatelessWidget {
                     children: [
                       Text(s.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
                       Text(
-                        !installed ? 'нет в папке ядер' : (version.isEmpty ? 'установлено' : 'версия $version'),
+                        !installed ? (platform.isAndroid ? 'нет в этой сборке' : 'нет в папке ядер') : (version.isEmpty ? 'установлено' : 'версия $version'),
                         style: TextStyle(fontSize: 12, color: p.muted, fontFamily: version.isEmpty ? null : monoFont),
                       ),
                     ],
@@ -327,7 +327,7 @@ class _PriorityCard extends StatelessWidget {
           for (final k in off) item(k, null),
           const SizedBox(height: 4),
           Text(
-            'При подключении берётся первое ядро из списка, которое поддерживает протокол узла. '
+            'При подключении берётся первое ядро из списка, которое поддерживает протокол сервера. '
             'Несовместимые пропускаются, остальные становятся резервом.',
             style: TextStyle(fontSize: 12, color: p.dim, height: 1.5),
           ),

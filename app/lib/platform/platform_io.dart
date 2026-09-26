@@ -16,6 +16,11 @@ String? _androidApiFile;
 
 bool get isAndroid => Platform.isAndroid;
 
+/// What runs the VPN, for messages: a Windows service, or on Android the
+/// engine inside the app.
+String get _engine => Platform.isAndroid ? 'Движок CoreShift' : 'Служба CoreShift';
+String get _ending => Platform.isAndroid ? '' : 'а';
+
 /// Asks the platform what the app needs before it starts.
 Future<void> initPlatform() async {
   if (Platform.isAndroid) _androidApiFile = await _android.invokeMethod<String>('apiFile');
@@ -66,7 +71,7 @@ class HttpBackend implements Backend {
     if (_ep != null && !reload) return _ep!;
     final f = File(file);
     if (!await f.exists()) {
-      throw const DaemonOffline('Служба CoreShift не запущена');
+      throw DaemonOffline('$_engine не запущен$_ending');
     }
     try {
       final j = jsonDecode(await f.readAsString()) as Map<String, dynamic>;
@@ -102,10 +107,10 @@ class HttpBackend implements Backend {
         return decoded;
       } on SocketException {
         if (attempt == 0) continue;
-        throw const DaemonOffline('Служба CoreShift не отвечает');
+        throw DaemonOffline('$_engine не отвечает');
       } on HttpException {
         if (attempt == 0) continue;
-        throw const DaemonOffline('Соединение со службой прервалось');
+        throw DaemonOffline('Соединение ${Platform.isAndroid ? 'с движком' : 'со службой'} прервалось');
       }
     }
   }
@@ -142,12 +147,12 @@ class HttpBackend implements Backend {
                     // One unreadable event must not end the stream.
                   }
                 },
-                onError: (Object e) => out.addError(const DaemonOffline('Соединение со службой прервалось')),
+                onError: (Object e) => out.addError(DaemonOffline('Соединение ${Platform.isAndroid ? 'с движком' : 'со службой'} прервалось')),
                 onDone: out.close,
               );
         } catch (e) {
           if (cancelled) return;
-          out.addError(e is SocketException || e is HttpException ? const DaemonOffline('Служба CoreShift не отвечает') : e);
+          out.addError(e is SocketException || e is HttpException ? DaemonOffline('$_engine не отвечает') : e);
           out.close();
         }
       },
