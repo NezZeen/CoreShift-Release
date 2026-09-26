@@ -1,0 +1,18 @@
+# systemd unit for the CoreShift daemon.
+# Install: copy to /etc/systemd/system/, adjust paths, then
+#   systemctl daemon-reload && systemctl enable --now coreshiftd
+[Unit]
+Description=CoreShift VPN daemon
+After=network-online.target systemd-resolved.service
+Wants=network-online.target
+
+[Service]
+ExecStart=/opt/coreshift/coreshiftd serve -cores-dir /opt/coreshift/cores -data-dir /var/lib/coreshift
+Restart=on-failure
+RestartSec=2
+# TUN, routing and resolvectl.
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
+StateDirectory=coreshift
+
+[Install]
+WantedBy=multi-user.target

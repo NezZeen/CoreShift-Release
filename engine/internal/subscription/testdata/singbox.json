@@ -1,0 +1,48 @@
+{
+  "outbounds": [
+    { "type": "selector", "tag": "proxy", "outbounds": ["🇳🇱 Amsterdam", "Helsinki"] },
+    { "type": "urltest", "tag": "auto", "outbounds": ["🇳🇱 Amsterdam"] },
+    {
+      "type": "vless", "tag": "🇳🇱 Amsterdam", "server": "203.0.113.1", "server_port": 443,
+      "uuid": "11111111-2222-3333-4444-555555555555", "flow": "xtls-rprx-vision",
+      "tls": {
+        "enabled": true, "server_name": "www.example.com",
+        "utls": { "enabled": true, "fingerprint": "chrome" },
+        "reality": { "enabled": true, "public_key": "PUBKEYbase64url_-", "short_id": "6ba85179e30d4fc2" }
+      }
+    },
+    {
+      "type": "vmess", "tag": "Istanbul", "server": "203.0.113.6", "server_port": 443,
+      "uuid": "22222222-2222-3333-4444-555555555555", "security": "auto", "alter_id": 0,
+      "tls": { "enabled": true, "server_name": "v.example.com" },
+      "transport": { "type": "ws", "path": "/vm", "headers": { "Host": "v.example.com" } }
+    },
+    {
+      "type": "hysteria2", "tag": "Helsinki", "server": "203.0.113.10", "server_port": 443,
+      "server_ports": ["20000:30000"], "password": "auth",
+      "obfs": { "type": "salamander", "password": "ob" },
+      "tls": { "enabled": true, "server_name": "h.example.com" }
+    },
+    {
+      "type": "tuic", "tag": "Stockholm", "server": "203.0.113.11", "server_port": 443,
+      "uuid": "33333333-2222-3333-4444-555555555555", "password": "pa$s",
+      "congestion_control": "bbr", "udp_relay_mode": "native",
+      "tls": { "enabled": true, "server_name": "tu.example.com", "alpn": ["h3"] }
+    },
+    {
+      "type": "shadowsocks", "tag": "Almaty", "server": "203.0.113.7", "server_port": 8388,
+      "method": "aes-256-gcm", "password": "secret"
+    },
+    { "type": "naive", "tag": "Naive", "server": "203.0.113.98", "server_port": 443, "username": "u", "password": "p" },
+    { "type": "direct", "tag": "direct" }
+  ],
+  "endpoints": [
+    {
+      "type": "wireguard", "tag": "Riga", "address": ["10.7.0.2/32", "fd00::2/128"],
+      "private_key": "aGVsbG8/d29y+bGQ=", "mtu": 1280,
+      "peers": [
+        { "address": "203.0.113.13", "port": 51820, "public_key": "UEVFUg==", "reserved": [1, 2, 3], "allowed_ips": ["0.0.0.0/0"] }
+      ]
+    }
+  ]
+}
