@@ -133,6 +133,11 @@ type DNSOptions struct {
 	BlockSuffixes []string
 	// DirectRuleSets are domain rule sets (geosite) resolved and routed direct.
 	DirectRuleSets []RuleSet
+	// ProxyRuleSets are domain rule sets resolved through the tunnel and
+	// routed through the proxy even when a direct suffix or rule set also
+	// matches them: sites blocked where the user is, on domains that go
+	// direct otherwise (novayagazeta.ru under "ru").
+	ProxyRuleSets []RuleSet
 	// DirectIPRuleSets are IP rule sets (geoip) routed direct. Matching them
 	// needs the real address, so connections by name are resolved through
 	// the remote DNS first; the proxy then gets the address instead of the
@@ -223,7 +228,7 @@ func (o Options) validate() error {
 	if o.DNS.Direct == "" {
 		return errors.New("tunlayer: direct DNS server is required")
 	}
-	for _, rs := range slices.Concat(o.DNS.DirectRuleSets, o.DNS.DirectIPRuleSets) {
+	for _, rs := range slices.Concat(o.DNS.DirectRuleSets, o.DNS.DirectIPRuleSets, o.DNS.ProxyRuleSets) {
 		if rs.Tag == "" || (rs.Path == "") == (rs.URL == "") {
 			return errors.New("tunlayer: rule set needs a tag and either a path or a URL")
 		}
@@ -368,6 +373,9 @@ func buildDNS(o Options) (obj, error) {
 	if len(o.DNS.ProxySuffixes) > 0 {
 		proxied("domain_suffix", o.DNS.ProxySuffixes)
 	}
+	if len(o.DNS.ProxyRuleSets) > 0 {
+		proxied("rule_set", ruleSetTags(o.DNS.ProxyRuleSets))
+	}
 	final := tagDNSRemote
 	if o.Selective {
 		direct("", nil)
@@ -430,6 +438,9 @@ func buildRoute(o Options) obj {
 	if len(o.DNS.ProxySuffixes) > 0 {
 		rules = append(rules, obj{"domain_suffix": o.DNS.ProxySuffixes, "outbound": tagProxy})
 	}
+	if len(o.DNS.ProxyRuleSets) > 0 {
+		rules = append(rules, obj{"rule_set": ruleSetTags(o.DNS.ProxyRuleSets), "outbound": tagProxy})
+	}
 	if len(o.ProxyIPs) > 0 {
 		rules = append(rules, obj{"ip_cidr": prefixStrings(o.ProxyIPs), "outbound": tagProxy})
 	}
@@ -469,12 +480,13 @@ func route(o Options, rules []any, final string) obj {
 		"auto_detect_interface":   true,
 		"default_domain_resolver": tagDNSDirect,
 	}
-	if o.Selective {
-		// Nothing refers to them.
-		return route
+	used := o.DNS.ProxyRuleSets
+	if !o.Selective {
+		// Selective mode never refers to the direct ones.
+		used = slices.Concat(used, o.DNS.DirectRuleSets, o.DNS.DirectIPRuleSets)
 	}
 	var sets []any
-	for _, rs := range slices.Concat(o.DNS.DirectRuleSets, o.DNS.DirectIPRuleSets) {
+	for _, rs := range used {
 		if rs.Path != "" {
 			sets = append(sets, obj{"type": "local", "tag": rs.Tag, "format": "binary", "path": rs.Path})
 		} else {

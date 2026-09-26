@@ -243,7 +243,8 @@ class RoutingPage extends StatelessWidget {
               title: 'Российские сайты напрямую',
               description:
                   'Госуслуги, банки, Яндекс, VK и другие российские сервисы откроются без VPN — '
-                  'быстрее и без блокировок «из-за границы». Списки обновляются сами раз в неделю.',
+                  'быстрее и без блокировок «из-за границы». Заблокированные в России СМИ остаются в VPN, даже на .ru. '
+                  'Списки обновляются сами раз в неделю.',
               trailing: Switch(value: s.setting('routing.russia_direct', false), onChanged: (v) => s.updateSettings((x) => x['routing']['russia_direct'] = v)),
             ),
           SettingRow(

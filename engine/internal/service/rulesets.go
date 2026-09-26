@@ -24,16 +24,24 @@ type geoSet struct {
 	// IP marks address-based sets (geoip), which the TUN layer matches after
 	// resolving names.
 	IP bool
+	// Proxy marks sets that go through the tunnel even when a direct list
+	// also has them.
+	Proxy bool
 }
 
 // russiaSuffixes and russiaSets make up the "Russian sites direct" preset:
 // the national domains, Russian services on other domains (geosite) and
-// servers located in Russia (geoip).
+// servers located in Russia (geoip). Media blocked in Russia stay in the
+// tunnel, many of them are on .ru (novayagazeta.ru, tvrain.ru): direct,
+// they would not open.
 var (
 	russiaSuffixes = []string{"ru", "su", "xn--p1ai"}
 	russiaSets     = []geoSet{
 		{Tag: "geosite-category-ru", URL: "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ru.srs"},
 		{Tag: "geoip-ru", URL: "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-ru.srs", IP: true},
+		{Tag: "geosite-category-media-ru-blocked",
+			URL:   "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-media-ru-blocked.srs",
+			Proxy: true},
 	}
 )
 
@@ -58,11 +66,12 @@ func newRuleSets(dir string, publish func(Event)) *ruleSets {
 	return &ruleSets{dir: dir, fetch: fetchRuleSet, publish: publish, refreshing: map[string]bool{}}
 }
 
-// get returns the sets available on disk, split into domain and IP sets. A
+// get returns the sets available on disk, split into direct domain, direct
+// IP and proxy sets. A
 // missing set is downloaded now, through proxy (the active core) and then
 // directly; one that cannot be had is reported and left out, so connecting
 // still works, only with fewer names going direct.
-func (r *ruleSets) get(ctx context.Context, sets []geoSet, proxy netip.AddrPort) (domain, ip []tunlayer.RuleSet) {
+func (r *ruleSets) get(ctx context.Context, sets []geoSet, proxy netip.AddrPort) (domain, ip, proxied []tunlayer.RuleSet) {
 	for _, gs := range sets {
 		path := filepath.Join(r.dir, gs.Tag+".srs")
 		fi, err := os.Stat(path)
@@ -78,13 +87,16 @@ func (r *ruleSets) get(ctx context.Context, sets []geoSet, proxy netip.AddrPort)
 			go r.refresh(gs, path, proxy)
 		}
 		rs := tunlayer.RuleSet{Tag: gs.Tag, Path: path}
-		if gs.IP {
+		switch {
+		case gs.Proxy:
+			proxied = append(proxied, rs)
+		case gs.IP:
 			ip = append(ip, rs)
-		} else {
+		default:
 			domain = append(domain, rs)
 		}
 	}
-	return domain, ip
+	return domain, ip, proxied
 }
 
 // refresh replaces an old file in the background; the TUN layer picks the

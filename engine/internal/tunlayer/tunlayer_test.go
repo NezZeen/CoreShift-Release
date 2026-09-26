@@ -212,6 +212,31 @@ func TestBuildIPv6(t *testing.T) {
 	}
 }
 
+// Sites blocked in Russia on .ru must not go direct with the Russia preset.
+func TestProxyRuleSetsWinOverDirect(t *testing.T) {
+	o := baseOptions()
+	o.DNS.DirectSuffixes = []string{"ru"}
+	o.DNS.DirectRuleSets = []RuleSet{{Tag: "geosite-ru", Path: "ru.srs"}}
+	o.DNS.ProxyRuleSets = []RuleSet{{Tag: "media-blocked", Path: "blocked.srs"}}
+	cfg := render(t, o)
+	route := sub(cfg, "route")
+	if find(list(route, "rule_set"), map[string]any{"tag": "media-blocked", "type": "local"}) == nil {
+		t.Error("proxy rule set not defined")
+	}
+	rules := list(route, "rules")
+	proxy := ruleIndex(rules, map[string]any{"rule_set": []any{"media-blocked"}, "outbound": "proxy"})
+	direct := ruleIndex(rules, map[string]any{"domain_suffix": []any{"ru"}, "outbound": "direct"})
+	if proxy < 0 || proxy > direct {
+		t.Errorf("proxy rule set at %d, direct suffixes at %d", proxy, direct)
+	}
+	dns := list(sub(cfg, "dns"), "rules")
+	fake := ruleIndex(dns, map[string]any{"rule_set": []any{"media-blocked"}, "server": "fakeip"})
+	directDNS := ruleIndex(dns, map[string]any{"domain_suffix": []any{"ru"}, "server": "direct"})
+	if fake < 0 || fake > directDNS {
+		t.Errorf("proxy rule set DNS rule at %d, direct suffixes at %d", fake, directDNS)
+	}
+}
+
 func TestBuildRuleSets(t *testing.T) {
 	o := baseOptions()
 	o.DNS.DirectSuffixes = []string{"ru", "lan"}
