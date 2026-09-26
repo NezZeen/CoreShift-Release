@@ -486,7 +486,8 @@ func TestRussiaDirectDownloadsRuleSets(t *testing.T) {
 	h.tun.mu.Lock()
 	o := h.tun.opts
 	h.tun.mu.Unlock()
-	if !slices.Contains(o.DNS.DirectSuffixes, "xn--p1ai") || len(o.DNS.DirectRuleSets) != 1 || len(o.DNS.DirectIPRuleSets) != 1 {
+	if !slices.Contains(o.DNS.DirectSuffixes, "xn--p1ai") || len(o.DNS.DirectRuleSets) != 1 || len(o.DNS.DirectIPRuleSets) != 1 ||
+		len(o.DNS.ProxyRuleSets) != 1 || o.DNS.ProxyRuleSets[0].Tag != "geosite-category-media-ru-blocked" {
 		t.Fatalf("dns options = %+v", o.DNS)
 	}
 	if _, err := os.Stat(o.DNS.DirectIPRuleSets[0].Path); err != nil {
@@ -520,7 +521,7 @@ func TestRussiaDirectWithoutRuleSetsStillConnects(t *testing.T) {
 	h.tun.mu.Lock()
 	o := h.tun.opts
 	h.tun.mu.Unlock()
-	if !slices.Contains(o.DNS.DirectSuffixes, "ru") || len(o.DNS.DirectRuleSets)+len(o.DNS.DirectIPRuleSets) != 0 {
+	if !slices.Contains(o.DNS.DirectSuffixes, "ru") || len(o.DNS.DirectRuleSets)+len(o.DNS.DirectIPRuleSets)+len(o.DNS.ProxyRuleSets) != 0 {
 		t.Errorf("dns options = %+v", o.DNS)
 	}
 	warned := false

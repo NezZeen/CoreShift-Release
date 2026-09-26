@@ -69,6 +69,11 @@ func TestSingBoxAcceptsConfig(t *testing.T) {
 			o.DNS.DirectSuffixes = []string{"ru"}
 			o.DNS.DirectRuleSets = []RuleSet{{Tag: "geosite-ru", Path: geosite}}
 			o.DNS.DirectIPRuleSets = []RuleSet{{Tag: "geoip-ru", Path: geoip}}
+			o.DNS.ProxyRuleSets = []RuleSet{{Tag: "geosite-media-ru-blocked", Path: geosite}}
+		},
+		"proxy rule set in selective mode": func(o *Options) {
+			o.Selective = true
+			o.DNS.ProxyRuleSets = []RuleSet{{Tag: "geosite-media-ru-blocked", Path: geosite}}
 		},
 		"ipv6": func(o *Options) {
 			o.Address6 = netip.MustParsePrefix("fdfe:dcba:9876::1/126")
