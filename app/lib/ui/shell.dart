@@ -422,15 +422,26 @@ class _OfflineState extends State<_Offline> {
                 children: [
                   SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: p.muted)),
                   const SizedBox(width: 12),
-                  const Text('Подключение к службе…', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+                  Flexible(
+                    child: Text(
+                      platform.isAndroid ? 'Запуск CoreShift…' : 'Подключение к службе…',
+                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 12),
-              Text(state.offlineReason.isEmpty ? 'Ищем службу CoreShift' : state.offlineReason, style: TextStyle(color: p.muted)),
+              Text(
+                state.offlineReason.isEmpty ? (platform.isAndroid ? 'Запускаем движок' : 'Ищем службу CoreShift') : state.offlineReason,
+                style: TextStyle(color: p.muted),
+              ),
               const SizedBox(height: 14),
               Text(
-                'VPN работает через фоновую службу CoreShift. Обычно она запускается вместе с Windows. '
-                'Если служба остановлена, запустите её — окно подключится само.',
+                platform.isAndroid
+                    ? 'Движок VPN работает внутри приложения и обычно запускается за секунду. '
+                          'Если этот экран не пропадает, закройте CoreShift в списке недавних приложений и откройте снова.'
+                    : 'VPN работает через фоновую службу CoreShift. Обычно она запускается вместе с Windows. '
+                          'Если служба остановлена, запустите её — окно подключится само.',
                 style: TextStyle(color: p.muted, fontSize: 13, height: 1.5),
               ),
               if (platform.canStartService) ...[
@@ -446,11 +457,13 @@ class _OfflineState extends State<_Offline> {
                 ),
                 if (error != null) ...[const SizedBox(height: 8), Text(error!, style: const TextStyle(color: errColor, fontSize: 12))],
               ],
-              const SizedBox(height: 16),
-              Text(
-                'Адрес службы берётся из ${state.backend.description}',
-                style: TextStyle(color: p.dim, fontSize: 11, fontFamily: monoFont, fontFamilyFallback: monoFallback),
-              ),
+              if (!platform.isAndroid) ...[
+                const SizedBox(height: 16),
+                Text(
+                  'Адрес службы берётся из ${state.backend.description}',
+                  style: TextStyle(color: p.dim, fontSize: 11, fontFamily: monoFont, fontFamilyFallback: monoFallback),
+                ),
+              ],
             ],
           ),
         ),

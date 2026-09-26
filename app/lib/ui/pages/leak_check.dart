@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../api/models.dart';
+import '../../platform/platform.dart' as platform;
 import '../../state/app_state.dart';
 import '../../state/leak.dart';
 import '../theme.dart';
@@ -85,7 +86,8 @@ class _Result extends StatelessWidget {
         Text(
           report.leaks
               ? 'Часть запросов обрабатывают DNS-серверы не из страны VPN-сервера — возможно, это DNS вашего провайдера. '
-                    'Включите «Строгий DNS в Windows» и блокировку DNS-over-HTTPS браузеров в разделе DNS, переподключитесь и проверьте снова.'
+                    '${platform.isAndroid ? 'Проверьте, не задан ли в Android «Частный DNS» вручную, и включите' : 'Включите «Строгий DNS в Windows» и'} '
+                    'блокировку DNS-over-HTTPS браузеров в разделе DNS, переподключитесь и проверьте снова.'
               : report.dns.isEmpty
               ? 'Ни один DNS-сервер не увидел проверочных запросов в обход VPN.'
               : 'Запросы обрабатывают DNS-серверы на стороне VPN, провайдер их не видит.',

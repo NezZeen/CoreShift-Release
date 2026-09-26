@@ -65,7 +65,7 @@ class SettingsPage extends StatelessWidget {
             title: platform.isAndroid ? 'Подключаться при открытии' : 'Подключаться при запуске',
             description: platform.isAndroid
                 ? 'Подключить выбранный сервер, как только CoreShift откроется'
-                : 'Служба подключит выбранный узел сама, как только запустится вместе с системой',
+                : 'Служба подключит выбранный сервер сама, как только запустится вместе с системой',
             trailing: _switch('auto_connect'),
           ),
           if (desktop.canNotify)
@@ -147,7 +147,13 @@ class SettingsPage extends StatelessWidget {
             description: 'Firefox не включает свой DNS-over-HTTPS сам, а если он включён вручную, его запросы идут через туннель',
             trailing: _switch('dns.block_browser_doh'),
           ),
-          SettingRow(title: 'Блокировать DNS-over-TLS (порт 853)', trailing: _switch('dns.block_dot')),
+          SettingRow(
+            title: 'Блокировать DNS-over-TLS (порт 853)',
+            description: platform.isAndroid
+                ? 'Android в режиме «Частный DNS: автоматически» перейдёт на обычный DNS. Если «Частный DNS» задан вручную, сайты перестанут открываться'
+                : null,
+            trailing: _switch('dns.block_dot'),
+          ),
           if (!platform.isAndroid)
             SettingRow(
               title: 'Строгий DNS в Windows',
@@ -195,7 +201,7 @@ class SettingsPage extends StatelessWidget {
             SettingRow(
               title: 'Проверка пинга',
               description: state.setting('cores.latency_test', 'ping') == 'proxy'
-                  ? 'Запрос через ядро: реальная задержка с учётом шифрования, заодно видно, работает ли узел. Цифры больше пинга'
+                  ? 'Запрос через ядро: реальная задержка с учётом шифрования, заодно видно, работает ли сервер. Цифры больше пинга'
                   : 'ICMP-пинг до сервера, где он закрыт — время TCP-подключения. Узлы, которые не ответили, проверяются через ядро',
               trailing: Seg<String>(
                 value: state.setting('cores.latency_test', 'ping'),
@@ -221,16 +227,18 @@ class SettingsPage extends StatelessWidget {
               style: TextStyle(color: p.muted, fontFamily: monoFont),
             ),
           ),
-          SettingRow(
-            title: 'Версия службы',
-            description: state.versionMismatch
-                ? 'Отличается от приложения: одно из них обновилось без другого. Переустановите CoreShift целиком.'
-                : (info.commit.isEmpty ? null : 'коммит ${info.commit}'),
-            trailing: SelectableText(
-              info.buildVersion.label,
-              style: TextStyle(color: state.versionMismatch ? warnColor : p.muted, fontFamily: monoFont),
+          // On Android the engine is inside the app: one version.
+          if (!platform.isAndroid)
+            SettingRow(
+              title: 'Версия службы',
+              description: state.versionMismatch
+                  ? 'Отличается от приложения: одно из них обновилось без другого. Переустановите CoreShift целиком.'
+                  : (info.commit.isEmpty ? null : 'коммит ${info.commit}'),
+              trailing: SelectableText(
+                info.buildVersion.label,
+                style: TextStyle(color: state.versionMismatch ? warnColor : p.muted, fontFamily: monoFont),
+              ),
             ),
-          ),
           if (!platform.isAndroid)
             SettingRow(
               title: 'Обновления',
