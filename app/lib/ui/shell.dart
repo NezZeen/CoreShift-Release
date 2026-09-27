@@ -39,16 +39,19 @@ class Shell extends StatefulWidget {
 
 class _ShellState extends State<Shell> {
   PageId page = PageId.home;
+  late final AppLifecycleListener _lifecycle;
 
   @override
   void initState() {
     super.initState();
     widget.state.addListener(_offerUpdate);
     _offerUpdate();
+    _lifecycle = AppLifecycleListener(onResume: widget.state.resumed);
   }
 
   @override
   void dispose() {
+    _lifecycle.dispose();
     widget.state.removeListener(_offerUpdate);
     super.dispose();
   }
