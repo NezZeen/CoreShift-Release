@@ -45,6 +45,14 @@ Future<void> allowInstallUpdates() async {
   if (Platform.isAndroid) await _android.invokeMethod<void>('allowInstallUpdates');
 }
 
+/// Opens a link in the browser or the app that handles it (Telegram for
+/// t.me); false when nothing could. The caller checks the link.
+Future<bool> openUrl(String url) async {
+  if (Platform.isAndroid) return await _android.invokeMethod<bool>('openUrl', url) ?? false;
+  final r = Platform.isWindows ? await Process.run('rundll32.exe', ['url.dll,FileProtocolHandler', url]) : await Process.run('xdg-open', [url]);
+  return r.exitCode == 0;
+}
+
 Backend createBackend() => HttpBackend(apiFile());
 
 /// The file where the daemon publishes its address and token.

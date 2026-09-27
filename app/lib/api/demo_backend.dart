@@ -156,6 +156,7 @@ class DemoBackend implements Backend {
         'total': total.round(),
         if (expireDays > 0) 'expire': now.add(Duration(days: expireDays)).toUtc().toIso8601String(),
         'update_interval_hours': 12,
+        if (url.isNotEmpty) 'support_url': 'https://t.me/example_support',
       },
       'format': 'base64',
       'nodes': nodes.map(_node).toList(),
