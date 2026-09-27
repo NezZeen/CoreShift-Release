@@ -230,3 +230,52 @@ func TestSelfUpdateOffByDefault(t *testing.T) {
 		t.Error("check allowed with self-update off")
 	}
 }
+
+func TestUpdateTheUserInstalls(t *testing.T) {
+	f := newUpdateFake("9.0.0", 5)
+	var mu sync.Mutex
+	var offered []string
+	h := newHarness(t, func(c *Config) {
+		f.install(c)
+		c.InstallUpdate = func(path string) error {
+			mu.Lock()
+			defer mu.Unlock()
+			offered = append(offered, path)
+			return nil
+		}
+	})
+	runUpdates(t, h)
+	st := waitUpdate(t, h, "download", func(u AppUpdate) bool { return u.State == UpdateReady })
+	time.Sleep(50 * time.Millisecond)
+	mu.Lock()
+	n := len(offered)
+	mu.Unlock()
+	if n != 0 || st.Waiting {
+		t.Fatalf("the installer was started without the user: %d, %+v", n, st)
+	}
+
+	// The user's button, while connected: the VPN stays until the update
+	// replaces the app, and comes back after it.
+	if err := h.connect(t, trojanLink); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.svc.InstallAppUpdate(); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	n = len(offered)
+	mu.Unlock()
+	if n != 1 || h.svc.Status().State != Connected || h.svc.AppUpdateState().State != UpdateReady {
+		t.Errorf("%d offers, %+v, %+v", n, h.svc.Status(), h.svc.AppUpdateState())
+	}
+	if p := readPending(t, h); !p.Reconnect {
+		t.Errorf("pending = %+v", p)
+	}
+
+	// Declined: the next start neither reports a failure nor stops
+	// offering it.
+	h.svc.finishAppUpdate()
+	if st := h.svc.AppUpdateState(); st.State == UpdateError || h.svc.upd.failed != "" {
+		t.Errorf("declined update counted as failed: %+v", st)
+	}
+}

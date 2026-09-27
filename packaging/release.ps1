@@ -1,7 +1,11 @@
 # Releases a version: writes VERSION, commits it, tags the commit v<version>,
-# creates the branch release/<version> there and builds its installer.
+# creates the branch release/<version> there and builds its Windows
+# installer and Android APK.
 #
 #   powershell -ExecutionPolicy Bypass -File packaging\release.ps1 -Version 0.3.0
+#
+# -Platform windows or -Platform android builds one of them only; the other
+# platform keeps updating to its previous release.
 #
 # Run it on main with everything committed. main then goes on; the branch
 # keeps the released code, so the version can be rebuilt, compared or fixed
@@ -9,7 +13,9 @@
 param(
     [Parameter(Mandatory = $true)][string]$Version,
     # Only commit, tag and branch; build later.
-    [switch]$NoBuild
+    [switch]$NoBuild,
+    [ValidateSet('all', 'windows', 'android')]
+    [string]$Platform = 'all'
 )
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path "$PSScriptRoot\..").Path
@@ -47,25 +53,36 @@ try {
 } finally { Pop-Location }
 
 if (-not $NoBuild) {
-    & "$root\packaging\windows\build.ps1"
+    Push-Location $root
+    try {
+        $build = [int](git rev-list --count HEAD)
+        $commit = (git rev-parse --short=7 HEAD).Trim()
+    } finally { Pop-Location }
+    $installers = @()
+    if ($Platform -ne 'android') {
+        & "$root\packaging\windows\build.ps1"
+        $installers += "$root\dist\coreshift-setup-$Version-b$build.exe"
+    }
+    if ($Platform -ne 'windows') {
+        & "$root\packaging\android\build.ps1"
+        $installers += "$root\dist\coreshift-$Version-b$build.apk"
+    }
 
-    # The self-update files: latest.json, its signature and the installer,
-    # in dist\release\<version>, ready for packaging\publish.ps1.
+    # The self-update files: for each installer its manifest (latest.json,
+    # latest-android.json) and signature, in dist\release\<version>, ready
+    # for packaging\publish.ps1.
     $key = Join-Path $env:USERPROFILE '.coreshift\update-signing.key'
     if (-not (Test-Path $key)) {
         Write-Warning "no signing key ($key): no self-update files; installed copies will not see this release"
     } else {
-        Push-Location $root
-        try {
-            $build = [int](git rev-list --count HEAD)
-            $commit = (git rev-parse --short=7 HEAD).Trim()
-        } finally { Pop-Location }
         $out = Join-Path $root "dist\release\$Version"
         Push-Location "$root\engine"
         try {
-            go run ./cmd/coreshift-release manifest -installer "$root\dist\coreshift-setup-$Version-b$build.exe" `
-                -version $Version -build $build -commit $commit -key $key -out $out
-            Check 'coreshift-release manifest'
+            foreach ($installer in $installers) {
+                go run ./cmd/coreshift-release manifest -installer $installer `
+                    -version $Version -build $build -commit $commit -key $key -out $out
+                Check 'coreshift-release manifest'
+            }
         } finally { Pop-Location }
         Write-Host "Release files: $out (publish: packaging\publish.ps1 -Version $Version)" -ForegroundColor Green
     }

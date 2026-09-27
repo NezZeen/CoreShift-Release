@@ -1,11 +1,14 @@
 // Package selfupdate finds, downloads and verifies new versions of
 // CoreShift itself.
 //
-// A release publishes three files side by side: the installer, latest.json
-// describing it and latest.json.sig, an Ed25519 signature of latest.json's
-// exact bytes. They are the assets of the latest release of a private
-// GitHub repository, read through the API with a read-only token built into
-// the service, or files in a folder (for testing).
+// A release publishes three files side by side for each platform: the
+// installer, latest.json describing it and latest.json.sig, an Ed25519
+// signature of latest.json's exact bytes; for Android they are the APK,
+// latest-android.json and latest-android.json.sig. They are the assets of a
+// release of a private GitHub repository, read through the API with a
+// read-only token built into the service, or files in a folder (for
+// testing). A release may carry one platform only: each platform takes the
+// newest release that has its files.
 //
 // The installer runs as SYSTEM, so nothing is trusted that the release key
 // did not sign: the manifest's signature is checked against the public keys
@@ -33,13 +36,33 @@ import (
 // a folder holding the three files.
 const DefaultSource = "github:NezZeen/coreshift-releases"
 
-// ManifestName and SignatureName are the published file names.
+// ManifestName and SignatureName are the published file names of the
+// Windows release; AndroidManifestName is the Android one's manifest.
 const (
-	ManifestName  = "latest.json"
-	SignatureName = ManifestName + ".sig"
+	ManifestName        = "latest.json"
+	SignatureName       = ManifestName + ".sig"
+	AndroidManifestName = "latest-android.json"
 )
 
-// maxInstallerSize bounds a download; the installer is about 65 MB.
+// ManifestFor is the manifest of the release for goos.
+func ManifestFor(goos string) string {
+	if goos == "android" {
+		return AndroidManifestName
+	}
+	return ManifestName
+}
+
+// installerExt is the kind of installer a manifest may name: a manifest
+// signed for one platform cannot hand another platform's file to it.
+func installerExt(manifest string) string {
+	if manifest == AndroidManifestName {
+		return ".apk"
+	}
+	return ".exe"
+}
+
+// maxInstallerSize bounds a download; the installer is about 65 MB, the
+// APK 80 MB.
 const maxInstallerSize = 512 << 20
 
 // Manifest describes a release.
@@ -64,7 +87,7 @@ func (m Manifest) Label() string { return fmt.Sprintf("%s (build %d)", m.Version
 var (
 	versionRE   = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 	sha256RE    = regexp.MustCompile(`^[0-9a-f]{64}$`)
-	installerRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*\.exe$`)
+	installerRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*\.(exe|apk)$`)
 )
 
 // Verify checks sig, the signature of manifest, against keys and parses

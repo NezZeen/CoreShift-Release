@@ -478,7 +478,9 @@ void main() {
     expect(state.appUpdate.state, 'ready');
     expect(find.textContaining('Скачана версия 0.3.0 (сборка 9)'), findsOneWidget);
 
-    await tester.tap(find.text('Установить сейчас'));
+    // The window offering it.
+    expect(find.text('Доступно обновление'), findsOneWidget);
+    await tester.tap(find.text('Обновить'));
     // The check runs on the test's clock, the events on the real one.
     for (var i = 0; i < 5; i++) {
       await tester.pump(const Duration(milliseconds: 200));
@@ -588,6 +590,30 @@ void main() {
     expect(find.text('Изменения применятся после переподключения'), findsNothing);
     await tester.runAsync(() => state.disconnect());
     await tester.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets('a downloaded update is offered in a window, once', (tester) async {
+    final state = await pumpApp(tester, size: const Size(390, 844));
+    await tester.runAsync(() async {
+      await state.checkAppUpdate();
+      await Future.delayed(const Duration(milliseconds: 1200));
+    });
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Доступно обновление'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.text('Позже'));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('Доступно обновление'), findsNothing);
+
+    // Not again for the same version; the settings still offer it.
+    await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 100)));
+    await tester.pump();
+    expect(find.text('Доступно обновление'), findsNothing);
+    await tester.tap(find.descendant(of: find.byType(NavigationBar), matching: find.text('Настройки')));
+    await tester.pump();
+    expect(find.text('Установить сейчас'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 6));
   });
 
   testWidgets('the add dialog fits a phone', (tester) async {
