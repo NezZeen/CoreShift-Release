@@ -577,6 +577,12 @@ class AppState extends ChangeNotifier {
       subscriptions = [...subscriptions.where((s) => s.id != sub.id), sub];
       toast('Добавлено: ${sub.displayName}, серверов: ${sub.nodes.length}', ToastKind.ok);
       _notify();
+      // Nothing chosen yet: the first server that some core can run, so
+      // the home page's button works straight away.
+      if (selection.isEmpty) {
+        final first = sub.nodes.where((n) => n.cores.isNotEmpty).firstOrNull;
+        if (first != null) await selectNode(sub.id, first.fingerprint, first.name);
+      }
       return null;
     } catch (e) {
       return humanError('$e');

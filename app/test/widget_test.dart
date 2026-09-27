@@ -84,6 +84,15 @@ void main() {
     expect(find.text('Добро пожаловать в CoreShift'), findsOneWidget);
     expect(find.text('Добавить подписку'), findsOneWidget);
     expect(tester.takeException(), isNull);
+
+    // The first subscription picks its first server: the button works at once.
+    await tester.runAsync(() => state.addSubscription(source: 'vless://id@203.0.113.9:443?security=tls#Pasted'));
+    await tester.pump();
+    final sub = state.subscriptions.single;
+    expect(sub.displayName, 'Мои серверы');
+    expect(state.selection.subscription, sub.id);
+    expect(find.text('Нажмите, чтобы подключиться'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 6));
   });
 
   test('daemon errors read as Russian', () {
