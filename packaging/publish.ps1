@@ -33,7 +33,7 @@ foreach ($name in 'latest.json', 'latest-android.json') {
 }
 if (-not $manifest) { throw "no latest.json or latest-android.json in $dir (run release.ps1 first)" }
 
-if (-not $Notes) { $Notes = "CoreShift $Version (build $($manifest.build), $($manifest.commit))" }
+if (-not $Notes) { $Notes = "CoreShift $Version" }
 # Installed copies take the newest release that has their manifest; those
 # of Windows before 0.3.2 read only the release marked latest, so only a
 # release with Windows files may be marked so.

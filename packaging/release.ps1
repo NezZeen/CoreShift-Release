@@ -61,11 +61,11 @@ if (-not $NoBuild) {
     $installers = @()
     if ($Platform -ne 'android') {
         & "$root\packaging\windows\build.ps1"
-        $installers += "$root\dist\coreshift-setup-$Version-b$build.exe"
+        $installers += "$root\dist\coreshift-setup-$Version.exe"
     }
     if ($Platform -ne 'windows') {
         & "$root\packaging\android\build.ps1"
-        $installers += "$root\dist\coreshift-$Version-b$build.apk"
+        $installers += "$root\dist\coreshift-$Version.apk"
     }
 
     # The self-update files: for each installer its manifest (latest.json,

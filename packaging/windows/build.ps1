@@ -1,6 +1,6 @@
-# Builds dist\coreshift-setup-<version>-b<build>.exe: the Flutter app, the
-# coreshiftd service, the proxy cores and the VC++ runtime, packed by Inno
-# Setup 6.
+# Builds dist\coreshift-setup-<version>.exe (-<version>-b<build> between
+# releases): the Flutter app, the coreshiftd service, the proxy cores and
+# the VC++ runtime, packed by Inno Setup 6.
 #
 #   powershell -ExecutionPolicy Bypass -File packaging\windows\build.ps1
 #
@@ -56,7 +56,11 @@ try {
     Check 'git rev-parse'
     if (git status --porcelain) { $commit += '-dirty' }
 } finally { Pop-Location }
-$tag = "$version-b$build"
+# A release (the commit tagged v<version>, packaging\release.ps1) is named
+# by its version alone; builds between releases also carry the build number,
+# so they do not overwrite the released files.
+$tag = $version
+if (-not (git -C $root tag --points-at HEAD --list "v$version")) { $tag += "-b$build" }
 if ($commit.EndsWith('-dirty')) { $tag += '-dirty' }
 
 Need go 'install Go or add it to PATH'
