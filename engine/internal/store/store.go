@@ -31,6 +31,8 @@ import (
 var (
 	ErrNotFound = errors.New("no such subscription")
 	ErrExists   = errors.New("this subscription is already added")
+	// ErrServersExist means every pasted server is in the list already.
+	ErrServersExist = errors.New("these servers are already added")
 	// ErrReset means the file could not be used and was moved aside;
 	// Open still returns a working store with defaults.
 	ErrReset = errors.New("store reset")
@@ -267,11 +269,53 @@ func (s *Store) Add(ctx context.Context, req AddRequest) (Subscription, error) {
 	if err := s.load(ctx, &sub, req.Content); err != nil {
 		return Subscription{}, err
 	}
+	if unnamedPaste(sub) {
+		for _, o := range s.Subscriptions() {
+			if unnamedPaste(o) {
+				return s.addToPaste(o.ID, sub)
+			}
+		}
+	}
 	err := s.modify(Change{What: "subscription-added", ID: sub.ID}, func(d *fileData) error {
 		if sub.URL != "" && slices.ContainsFunc(d.Subscriptions, func(o Subscription) bool { return o.URL == sub.URL }) {
 			return ErrExists // added by a concurrent request
 		}
 		d.Subscriptions = append(d.Subscriptions, sub)
+		return nil
+	})
+	return sub, err
+}
+
+// unnamedPaste reports a pasted list without a name, shown as "Local nodes".
+// Servers pasted one by one go into the first such list rather than making
+// a list, all with the same name, per paste.
+func unnamedPaste(sub Subscription) bool {
+	return sub.URL == "" && sub.Name == "" && sub.Info.Title == ""
+}
+
+// addToPaste appends to the list id the servers of add it does not have.
+func (s *Store) addToPaste(id string, add Subscription) (Subscription, error) {
+	var sub Subscription
+	err := s.modify(Change{What: "subscription-updated", ID: id}, func(d *fileData) error {
+		i := s.index(id)
+		if i < 0 {
+			return ErrNotFound
+		}
+		sub = d.Subscriptions[i]
+		var fresh []node.Node
+		for _, n := range add.Nodes {
+			if !slices.ContainsFunc(sub.Nodes, func(o node.Node) bool { return o.Fingerprint() == n.Fingerprint() && o.Name == n.Name }) {
+				fresh = append(fresh, n)
+			}
+		}
+		if len(fresh) == 0 {
+			return ErrServersExist
+		}
+		// New slices: the old ones are shared with readers.
+		sub.Nodes = slices.Concat(sub.Nodes, fresh)
+		sub.Skipped = slices.Concat(sub.Skipped, add.Skipped)
+		sub.UpdatedAt, sub.CheckedAt, sub.LastError = add.UpdatedAt, add.CheckedAt, ""
+		d.Subscriptions[i] = sub
 		return nil
 	})
 	return sub, err
