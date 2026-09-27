@@ -257,7 +257,12 @@ class AppState extends ChangeNotifier {
   /// the app runs: "Позже" means until the next start.
   String _updateOffered = '';
 
-  bool get offerUpdate => appUpdate.state == 'ready' && appUpdate.label != _updateOffered;
+  /// On the desktop an update that installs by itself right away (automatic
+  /// updates on, VPN off) is not offered: the installer is already starting.
+  bool get offerUpdate =>
+      appUpdate.state == 'ready' &&
+      appUpdate.label != _updateOffered &&
+      (platform.isAndroid || appUpdate.waiting || !setting('app_update.auto', true));
 
   void updateOffered() => _updateOffered = appUpdate.label;
 
