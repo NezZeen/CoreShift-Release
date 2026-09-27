@@ -446,6 +446,30 @@ void main() {
     await tester.pump(const Duration(seconds: 6));
   });
 
+  testWidgets('opens the support chat the panel names, and only web or Telegram links', (tester) async {
+    final opened = <String>[];
+    final state = AppState(
+      DemoBackend(),
+      linkOpener: (url) async {
+        opened.add(url);
+        return true;
+      },
+    );
+    await pumpApp(tester, custom: state);
+    await tester.tap(find.text('Серверы').first);
+    await tester.pump();
+    await tester.tap(find.byTooltip('Написать в поддержку').first);
+    await tester.pump();
+    expect(opened, ['https://t.me/example_support']);
+
+    await state.openLink('file:///C:/Windows/System32/calc.exe');
+    await state.openLink('javascript:alert(1)');
+    await tester.pump();
+    expect(opened, hasLength(1));
+    expect(find.text('Панель прислала ссылку, которую нельзя открыть'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 6));
+  });
+
   testWidgets('warns when the service is another version', (tester) async {
     // The demo service reports 0.2.0 without a build.
     final state = AppState(DemoBackend(), version: const BuildVersion('0.2.0', 14, 'abc1234'));

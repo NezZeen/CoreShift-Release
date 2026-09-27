@@ -19,11 +19,14 @@ import (
 
 // panel is a fake subscription server.
 type panel struct {
-	mu    sync.Mutex
-	body  map[string]string // URL → links
-	info  subscription.Info
-	fail  error
-	calls []string // user agents, in order
+	mu   sync.Mutex
+	body map[string]string // URL → links
+	info subscription.Info
+	fail error
+	// message is what the panel shows instead of servers ("subscription
+	// expired"); it still sends its headers, unlike a failure.
+	message string
+	calls   []string // user agents, in order
 }
 
 func (p *panel) fetch(_ context.Context, url, ua string) (subscription.Fetched, error) {
@@ -32,6 +35,9 @@ func (p *panel) fetch(_ context.Context, url, ua string) (subscription.Fetched, 
 	p.calls = append(p.calls, ua)
 	if p.fail != nil {
 		return subscription.Fetched{}, p.fail
+	}
+	if p.message != "" {
+		return subscription.Fetched{Info: p.info}, errors.New("the panel sent a message instead of servers: " + p.message)
 	}
 	body, ok := p.body[url]
 	if !ok {
@@ -343,6 +349,31 @@ func TestFailedRefreshKeepsNodes(t *testing.T) {
 	}
 	if got, _ := s.Subscription(sub.ID); len(got.Nodes) != 2 {
 		t.Errorf("nodes = %d", len(got.Nodes))
+	}
+}
+
+func TestPanelMessageUpdatesInfo(t *testing.T) {
+	f := newFixture(t)
+	f.panel.set(subURL, pasted)
+	s := f.open(t)
+	sub, _ := s.Add(context.Background(), AddRequest{URL: subURL})
+
+	expired := f.clock.now().Add(-time.Hour)
+	f.panel.message = "Subscription expired; Contact support"
+	f.panel.info = subscription.Info{Expire: expired, SupportURL: "https://t.me/support"}
+	if _, err := s.Refresh(context.Background(), sub.ID); err == nil {
+		t.Fatal("a message instead of servers is not an error")
+	}
+	got, _ := s.Subscription(sub.ID)
+	if len(got.Nodes) != 2 || !got.Info.Expire.Equal(expired) || got.Info.SupportURL != "https://t.me/support" || !strings.Contains(got.LastError, "Contact support") {
+		t.Errorf("after the message: %d nodes, %+v, %q", len(got.Nodes), got.Info, got.LastError)
+	}
+
+	// A failure without an answer keeps what the panel said last.
+	f.panel.message, f.panel.fail = "", errors.New("fetch subscription: server returned 503 Service Unavailable")
+	s.Refresh(context.Background(), sub.ID)
+	if got, _ := s.Subscription(sub.ID); got.Info.SupportURL != "https://t.me/support" {
+		t.Errorf("info lost on a failure: %+v", got.Info)
 	}
 }
 

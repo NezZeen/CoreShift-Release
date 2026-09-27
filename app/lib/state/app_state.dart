@@ -51,7 +51,10 @@ class AppState extends ChangeNotifier {
   /// data.
   final Future<List<Json>> Function()? leakTestRunner;
 
-  AppState(this.backend, {Json? prefs, this.savePrefs, this.leakTestRunner, this.version = BuildVersion.app}) : prefs = prefs ?? {};
+  /// Opens links; by default in the browser, not at all on demo data.
+  final Future<bool> Function(String url)? linkOpener;
+
+  AppState(this.backend, {Json? prefs, this.savePrefs, this.leakTestRunner, this.linkOpener, this.version = BuildVersion.app}) : prefs = prefs ?? {};
 
   /// This app's version; tests pass their own.
   final BuildVersion version;
@@ -265,6 +268,26 @@ class AppState extends ChangeNotifier {
       (platform.isAndroid || appUpdate.waiting || !setting('app_update.auto', true));
 
   void updateOffered() => _updateOffered = appUpdate.label;
+
+  /// Opens a link the panel sent (its support chat, the subscription's
+  /// page). Only web and Telegram links: another scheme could start a
+  /// program. The link is not shown, it may carry the subscription's token.
+  Future<void> openLink(String url) async {
+    final u = Uri.tryParse(url.trim());
+    final ok = u != null && (u.scheme == 'tg' || ((u.scheme == 'https' || u.scheme == 'http') && u.host.isNotEmpty));
+    if (!ok) {
+      toast('Панель прислала ссылку, которую нельзя открыть', ToastKind.err);
+      return;
+    }
+    if (linkOpener == null && backend is DemoBackend) {
+      toast('В демо-режиме ссылки не открываются');
+      return;
+    }
+    try {
+      if (await (linkOpener ?? platform.openUrl)(u.toString())) return;
+    } catch (_) {}
+    toast('Не удалось открыть ссылку: нет приложения, которое её откроет', ToastKind.err);
+  }
 
   List<Subscription> _subs(dynamic j) {
     final subs = (j as List).map((s) => Subscription.fromJson((s as Map).cast())).toList();
