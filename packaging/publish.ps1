@@ -33,11 +33,12 @@ foreach ($name in 'latest.json', 'latest-android.json') {
 }
 if (-not $manifest) { throw "no latest.json or latest-android.json in $dir (run release.ps1 first)" }
 
-if (-not $Notes) { $Notes = "CoreShift $Version" }
+# The release is just the version; gh needs some notes, a space is none.
+if (-not $Notes) { $Notes = ' ' }
 # Installed copies take the newest release that has their manifest; those
 # of Windows before 0.3.2 read only the release marked latest, so only a
 # release with Windows files may be marked so.
 $latest = if (Test-Path (Join-Path $dir 'latest.json')) { '--latest' } else { '--latest=false' }
-gh release create "v$Version" $files.FullName --repo $Repo --title "CoreShift $Version" --notes $Notes $latest
+gh release create "v$Version" $files.FullName --repo $Repo --title $Version --notes $Notes $latest
 if ($LASTEXITCODE -ne 0) { throw "gh release create failed (exit code $LASTEXITCODE)" }
 Write-Host "Published v$Version to $Repo" -ForegroundColor Green
