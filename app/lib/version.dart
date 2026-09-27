@@ -20,8 +20,9 @@ class BuildVersion implements Comparable<BuildVersion> {
 
   bool get known => version.isNotEmpty && version != 'dev';
 
-  /// "0.2.0 (сборка 14)"; the commit is for tooltips.
-  String get label => build > 0 ? '$version (сборка $build)' : version;
+  /// "0.2.0": every release has its own version number, so the build (the
+  /// commit count) only orders builds and the commit is for tooltips.
+  String get label => version;
 
   /// Saved to compare with after an update.
   String get key => '$version+$build+$commit';

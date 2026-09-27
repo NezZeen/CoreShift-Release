@@ -56,7 +56,7 @@ class AppState extends ChangeNotifier {
   /// This app's version; tests pass their own.
   final BuildVersion version;
 
-  /// What changed since the app last ran, e.g. "0.1.0 → 0.2.0 (сборка 14)";
+  /// What changed since the app last ran, e.g. "0.1.0 → 0.2.0";
   /// empty when nothing did.
   String updateNotice = '';
 
@@ -147,13 +147,13 @@ class AppState extends ChangeNotifier {
     final prev = prefs['last_version'];
     if (prev is String && prev.isNotEmpty && prev != version.key) {
       final old = BuildVersion.parseKey(prev);
-      final cmp = version.compareTo(old);
-      final what = cmp > 0
-          ? 'CoreShift обновлён'
-          : cmp < 0
-          ? 'Установлена более ранняя версия CoreShift'
-          : 'CoreShift пересобран';
-      updateNotice = '$what: ${old.label} → ${version.label}';
+      // Builds between releases keep the version number: only a rebuild.
+      final cmp = old.version == version.version ? 0 : version.compareTo(old);
+      updateNotice = switch (cmp) {
+        > 0 => 'CoreShift обновлён: ${old.label} → ${version.label}',
+        < 0 => 'Установлена более ранняя версия CoreShift: ${old.label} → ${version.label}',
+        _ => 'CoreShift пересобран: ${version.label}',
+      };
       toast(updateNotice, ToastKind.ok);
       // After a self-update the app starts hidden in the tray.
       if (cmp > 0) _alerts.add(Alert('CoreShift обновлён', '${old.label} → ${version.label}'));

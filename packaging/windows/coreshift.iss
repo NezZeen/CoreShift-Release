@@ -5,7 +5,7 @@
 #ifndef Stage
   #error Build with build.ps1, not by compiling this script directly
 #endif
-#define AppLabel AppVersion + " (сборка " + AppBuild + ")"
+#define AppLabel AppVersion
 #define AppNumber AppVersion + "." + AppBuild
 
 [Setup]
@@ -67,8 +67,8 @@ Filename: "{app}\coreshift.exe"; Description: "{cm:LaunchProgram,CoreShift}"; Fl
 
 [Code]
 var
-  // The installed version, "0.2.0.14" and "0.2.0 (сборка 14)"; empty on a
-  // first install.
+  // The installed version, "0.2.0.14" and "0.2.0" (older installers wrote
+  // "0.2.0 (сборка 14)"); empty on a first install.
   PrevNumber, PrevLabel: String;
 
 // Takes the next dot-separated number off S.
