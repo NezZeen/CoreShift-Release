@@ -224,6 +224,29 @@ func TestAddSubscription(t *testing.T) {
 	}
 }
 
+func TestServersPastedOneByOneShareAList(t *testing.T) {
+	s := newFixture(t).open(t)
+	ctx := context.Background()
+	first, err := s.Add(ctx, AddRequest{Content: nodeA})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sub, err := s.Add(ctx, AddRequest{Content: pasted})
+	if err != nil || sub.ID != first.ID || len(sub.Nodes) != 2 || sub.Nodes[1].Name != "Berlin" {
+		t.Fatalf("second paste: %v %+v", err, sub)
+	}
+	if _, err := s.Add(ctx, AddRequest{Content: nodeB}); !errors.Is(err, ErrServersExist) {
+		t.Errorf("pasting a server again: %v", err)
+	}
+	// A named list stays a list of its own.
+	if named, err := s.Add(ctx, AddRequest{Content: nodeB, Name: "Work"}); err != nil || named.ID == first.ID {
+		t.Fatalf("named paste: %v %+v", err, named)
+	}
+	if subs := s.Subscriptions(); len(subs) != 2 || len(subs[0].Nodes) != 2 || len(first.Nodes) != 1 {
+		t.Errorf("subscriptions = %+v, first = %+v", subs, first)
+	}
+}
+
 func TestPastedList(t *testing.T) {
 	f := newFixture(t)
 	s := f.open(t)

@@ -37,6 +37,7 @@ String humanError(String raw) {
     return 'Не удалось скачать подписку: нет связи с панелью.';
   }
 
+  if (has('servers are already added')) return 'Эти серверы уже есть в списке.';
   if (has('already added')) return 'Эта подписка уже добавлена.';
   if (has('invalid subscription url') || has('subscription url starts with') || has('url cannot contain spaces')) {
     return 'Неверная ссылка на подписку: она должна начинаться с https://';

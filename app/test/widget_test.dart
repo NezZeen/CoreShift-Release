@@ -92,6 +92,13 @@ void main() {
     expect(sub.displayName, 'Мои серверы');
     expect(state.selection.subscription, sub.id);
     expect(find.text('Нажмите, чтобы подключиться'), findsOneWidget);
+
+    // A second pasted server joins the same list rather than a second
+    // "Мои серверы"; pasting it again says so.
+    await tester.runAsync(() => state.addSubscription(source: 'trojan://pw@203.0.113.10:443#Second'));
+    expect(state.subscriptions.single.nodes.length, 2);
+    final again = await tester.runAsync(() => state.addSubscription(source: 'trojan://pw@203.0.113.10:443#Second'));
+    expect(again, 'Эти серверы уже есть в списке.');
     await tester.pump(const Duration(seconds: 6));
   });
 

@@ -391,6 +391,19 @@ class DemoBackend implements Backend {
                   [Uri.decodeComponent(l.split('#').last), l.split('://').first == 'hy2' ? 'hysteria2' : l.split('://').first, 'tcp', 'tls', 'local.example'],
               ];
         if (nodes.isEmpty) throw const ApiError(400, 'no nodes found');
+        // Like the daemon: servers pasted without a name join the list
+        // pasted before.
+        final into = url.isEmpty && (b['name'] as String? ?? '').isEmpty
+            ? _subs.where((s) => s['url'] == '' && s['name'] == '').firstOrNull
+            : null;
+        if (into != null) {
+          final have = {for (final n in into['nodes'] as List) n['name']};
+          final fresh = nodes.where((n) => !have.contains(n[0])).map(_node).toList();
+          if (fresh.isEmpty) throw const ApiError(409, 'these servers are already added');
+          into['nodes'] = [...into['nodes'] as List, ...fresh];
+          _emit({'kind': 'store', 'reason': 'subscription-updated', 'subscription': into['id']});
+          return into;
+        }
         final sub = _makeSub(
           _rand.nextInt(0xffffff).toRadixString(16).padLeft(6, '0'),
           b['name'] as String? ?? '',
