@@ -559,6 +559,30 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
   });
 
+  testWidgets('a rule switched while connected says it waits for reconnecting', (tester) async {
+    final state = await pumpApp(tester, size: const Size(390, 844));
+    await tester.runAsync(() => state.connect());
+    await tester.pump();
+    await tester.tap(find.text('Правила').first);
+    await tester.pump();
+    expect(find.text('Изменения применятся после переподключения'), findsNothing);
+    await tester.runAsync(() async {
+      await tester.tap(find.byType(Switch).first);
+      await Future.delayed(const Duration(milliseconds: 300));
+    });
+    await tester.pump();
+    expect(find.text('Изменения применятся после переподключения'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.runAsync(() async {
+      await tester.tap(find.text('Применить'));
+      await Future.delayed(const Duration(milliseconds: 1500));
+    });
+    await tester.pump();
+    expect(find.text('Изменения применятся после переподключения'), findsNothing);
+    await tester.runAsync(() => state.disconnect());
+    await tester.pump(const Duration(seconds: 1));
+  });
+
   testWidgets('the add dialog fits a phone', (tester) async {
     await pumpApp(tester, size: const Size(390, 844));
     await tester.tap(find.descendant(of: find.byType(NavigationBar), matching: find.text('Серверы')));

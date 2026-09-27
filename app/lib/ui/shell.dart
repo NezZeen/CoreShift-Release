@@ -58,6 +58,9 @@ class _ShellState extends State<Shell> {
         final content = Column(
           children: [
             if (s.loaded && !s.online) _OfflineBanner(reason: s.offlineReason),
+            // The home page says so itself. Elsewhere, e.g. right after
+            // switching a rule, nothing would tell that it is not in effect yet.
+            if (s.loaded && s.online && s.status.settingsPending && page != PageId.home) _PendingStrip(state: s),
             Expanded(
               child: KeyedSubtree(key: ValueKey(page), child: body),
             ),
@@ -487,6 +490,28 @@ class _OfflineBanner extends StatelessWidget {
           const Icon(Icons.link_off, size: 16, color: errColor),
           const SizedBox(width: 10),
           Expanded(child: Text('$reason. Переподключаемся…', style: const TextStyle(fontSize: 13))),
+        ],
+      ),
+    );
+  }
+}
+
+class _PendingStrip extends StatelessWidget {
+  final AppState state;
+  const _PendingStrip({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(20, 6, 12, 6),
+      color: warnColor.withValues(alpha: .12),
+      child: Row(
+        children: [
+          const Icon(Icons.info_outline, size: 16, color: warnColor),
+          const SizedBox(width: 10),
+          const Expanded(child: Text('Изменения применятся после переподключения', style: TextStyle(fontSize: 13))),
+          Btn(label: 'Применить', small: true, onPressed: state.busy ? null : state.reconnect),
         ],
       ),
     );
