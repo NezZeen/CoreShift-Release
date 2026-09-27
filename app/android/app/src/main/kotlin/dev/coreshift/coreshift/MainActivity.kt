@@ -1,8 +1,10 @@
 package dev.coreshift.coreshift
 
 import android.Manifest
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.net.VpnService
 import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
@@ -12,7 +14,7 @@ import io.flutter.plugin.common.MethodChannel
 /**
  * The Flutter UI. The channel gives it what only Android has: where the
  * engine's API file is, the user's consent to the VPN and to installing
- * updates.
+ * updates, and a way to open links such as the panel's support chat.
  */
 class MainActivity : FlutterActivity() {
     private var pendingVpn: MethodChannel.Result? = null
@@ -29,9 +31,18 @@ class MainActivity : FlutterActivity() {
                     Updater.askPermission(this)
                     result.success(null)
                 }
+                "openUrl" -> result.success(openUrl(call.arguments as String))
                 else -> result.notImplemented()
             }
         }
+    }
+
+    /** Opens a link in the app that handles it; false when there is none. */
+    private fun openUrl(url: String): Boolean = try {
+        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        true
+    } catch (e: ActivityNotFoundException) {
+        false
     }
 
     /** Asks Android for the VPN once; answers whether it is allowed. */

@@ -436,7 +436,9 @@ func (s *Store) Refresh(ctx context.Context, id string) (Subscription, error) {
 		}
 		cur := &d.Subscriptions[i]
 		if fetchErr != nil {
-			cur.CheckedAt, cur.LastError = sub.CheckedAt, sub.LastError
+			// The nodes stay; what the panel said about the subscription is
+			// new, if it said anything.
+			cur.Info, cur.CheckedAt, cur.LastError = sub.Info, sub.CheckedAt, sub.LastError
 			return nil
 		}
 		// Keep edits made while fetching; take only what the fetch produced.
@@ -464,17 +466,19 @@ func (s *Store) load(ctx context.Context, sub *Subscription, content string) err
 		f, err = s.opts.fetch(ctx, sub.URL, ua)
 		s.fetchMu.Unlock()
 		if err != nil && len(f.Nodes) == 0 {
+			// A panel that sent a message instead of servers (subscription
+			// expired, device limit) still says until when and where its
+			// support is.
+			if f.Info != (subscription.Info{}) {
+				sub.Info = infoOf(f.Info)
+			}
 			return &FetchError{err}
 		}
 	}
 	if err != nil && len(f.Nodes) == 0 {
 		return err
 	}
-	sub.Info = Info{
-		Title: f.Info.Title, Upload: f.Info.Upload, Download: f.Info.Download, Total: f.Info.Total,
-		Expire: f.Info.Expire, UpdateIntervalHours: int(f.Info.UpdateInterval.Hours()),
-		SupportURL: f.Info.SupportURL, WebPageURL: f.Info.WebPageURL,
-	}
+	sub.Info = infoOf(f.Info)
 	sub.Format, sub.Nodes, sub.Skipped = string(f.Format), f.Nodes, nil
 	for _, sk := range f.Skipped {
 		sub.Skipped = append(sub.Skipped, sk.String())
@@ -482,6 +486,14 @@ func (s *Store) load(ctx context.Context, sub *Subscription, content string) err
 	sub.UpdatedAt = s.opts.now()
 	sub.CheckedAt, sub.LastError = sub.UpdatedAt, ""
 	return nil
+}
+
+func infoOf(i subscription.Info) Info {
+	return Info{
+		Title: i.Title, Upload: i.Upload, Download: i.Download, Total: i.Total,
+		Expire: i.Expire, UpdateIntervalHours: int(i.UpdateInterval.Hours()),
+		SupportURL: i.SupportURL, WebPageURL: i.WebPageURL,
+	}
 }
 
 // Select makes node fingerprint of subscription subID the one to connect.

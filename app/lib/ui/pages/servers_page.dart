@@ -297,6 +297,14 @@ class _SubCard extends StatelessWidget {
                   message: 'Последнее обновление не удалось:\n${humanError(sub.lastError)}',
                   child: const Icon(Icons.error_outline, size: 16, color: warnColor),
                 ),
+              // The panel's support-url header: its support chat.
+              if (i.supportUrl.isNotEmpty)
+                IconButton(
+                  tooltip: 'Написать в поддержку',
+                  icon: Icon(Icons.support_agent, size: 18, color: sub.lastError.isNotEmpty || expired ? warnColor : p.muted),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => state.openLink(i.supportUrl),
+                ),
               _SubMenu(state: state, sub: sub),
             ],
           ),
@@ -383,6 +391,10 @@ class _SubMenu extends StatelessWidget {
           case 'rename':
             final name = await _askText(context, 'Переименовать', sub.name.isEmpty ? sub.displayName : sub.name);
             if (name != null) state.renameSubscription(sub.id, name);
+          case 'support':
+            state.openLink(sub.info.supportUrl);
+          case 'page':
+            state.openLink(sub.info.webPageUrl);
           case 'site':
             await Clipboard.setData(ClipboardData(text: sub.info.webPageUrl));
             state.toast('Адрес страницы скопирован');
@@ -395,7 +407,11 @@ class _SubMenu extends StatelessWidget {
       itemBuilder: (context) => [
         if (!sub.isLocal) _item('refresh', Icons.refresh, 'Обновить'),
         _item('rename', Icons.edit_outlined, 'Переименовать'),
-        if (sub.info.webPageUrl.isNotEmpty) _item('site', Icons.link, 'Копировать адрес панели'),
+        if (sub.info.supportUrl.isNotEmpty) _item('support', Icons.support_agent, 'Написать в поддержку'),
+        if (sub.info.webPageUrl.isNotEmpty) ...[
+          _item('page', Icons.open_in_new, 'Открыть страницу подписки'),
+          _item('site', Icons.link, 'Копировать адрес страницы'),
+        ],
         _item('delete', Icons.delete_outline, 'Удалить', color: errColor),
       ],
     );

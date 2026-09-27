@@ -27,3 +27,5 @@ Future<bool> prepareVpn() async => true;
 Future<bool> canInstallUpdates() async => true;
 
 Future<void> allowInstallUpdates() async {}
+
+Future<bool> openUrl(String url) async => false;
