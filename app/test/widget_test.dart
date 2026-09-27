@@ -463,6 +463,9 @@ void main() {
     final state = await pumpApp(tester);
     await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 300)));
     expect(state.appUpdate.state, 'idle');
+    // Connected: the update waits for the VPN, so it is offered.
+    await tester.runAsync(() => state.connect());
+    await tester.pump();
     await tester.tap(find.text('Настройки').first);
     await tester.pump();
     await tester.ensureVisible(find.text('Обновления'));
@@ -592,8 +595,24 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
   });
 
+  testWidgets('an update that installs by itself is not offered', (tester) async {
+    // Automatic updates on and the VPN off: the service installs it at once.
+    final state = await pumpApp(tester);
+    await tester.runAsync(() async {
+      await state.checkAppUpdate();
+      await Future.delayed(const Duration(milliseconds: 1200));
+    });
+    await tester.pump();
+    await tester.pump();
+    expect(state.appUpdate.state, 'ready');
+    expect(find.text('Доступно обновление'), findsNothing);
+    await tester.pump(const Duration(seconds: 6));
+  });
+
   testWidgets('a downloaded update is offered in a window, once', (tester) async {
     final state = await pumpApp(tester, size: const Size(390, 844));
+    await tester.runAsync(() => state.connect());
+    await tester.pump();
     await tester.runAsync(() async {
       await state.checkAppUpdate();
       await Future.delayed(const Duration(milliseconds: 1200));
