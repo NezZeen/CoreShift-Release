@@ -103,6 +103,18 @@ powershell -ExecutionPolicy Bypass -File packaging\android\build.ps1
 
 **Подпись.** APK подписывается ключом `%USERPROFILE%\.coreshift\android-release.jks`, пароль лежит в `android-signing.properties` рядом. Храните копию ключа вместе с ключом обновлений. Android ставит новую версию поверх старой, только если обе подписаны одним ключом. Без ключа придётся удалять приложение, а вместе с ним и подписки.
 
+**Проверка в эмуляторе.** ARM-трансляция эмулятора Android на ПК не справляется с Go-движком: приложение падает. Для эмулятора есть отдельная сборка под x86_64:
+
+```
+powershell -ExecutionPolicy Bypass -File packaging\android\build.ps1 -Abi x86_64
+```
+
+Ей нужны x86_64-ядра в `engine\testdata\bin\android-x86_64` (`Xray-android-amd64.zip`, `sing-box-<версия>-android-amd64.tar.gz`, `mihomo-android-amd64-<версия>.gz` из релизов, переименованные так же). Получается `dist\coreshift-<версия>-b<сборка>-x86_64.apk`, только для эмулятора.
+
+- Эмулятор и образ ставятся так: `sdkmanager emulator "system-images;android-34;google_apis;x86_64"`, потом `avdmanager create avd -n coreshift-test -k "system-images;android-34;google_apis;x86_64" -d pixel_6`.
+- Запуск: `emulator -avd coreshift-test`.
+- Сервер для проверки можно поднять на ПК на `127.0.0.1`: эмулятор видит его как `10.0.2.2`.
+
 **Как устроено.**
 - Go-движок работает внутри приложения, у него тот же HTTP API, что у службы на ПК.
 - Туннель — это sing-box внутри приложения на TUN от `VpnService`.

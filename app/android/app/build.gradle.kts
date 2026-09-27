@@ -6,6 +6,9 @@ import java.util.Properties
 val signingFile = file("${System.getProperty("user.home")}/.coreshift/android-signing.properties")
 val signing = Properties().apply { if (signingFile.exists()) signingFile.inputStream().use { load(it) } }
 
+// The one ABI of the APK, set by packaging/android/build.ps1 -Abi.
+val abi = System.getenv("CORESHIFT_ABI") ?: "arm64-v8a"
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
@@ -36,8 +39,8 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         // The engine and the cores are built for 64-bit ARM, which every
-        // phone of the last years has.
-        ndk { abiFilters += "arm64-v8a" }
+        // phone of the last years has; x86_64 only for the emulator.
+        ndk { abiFilters += abi }
     }
 
     signingConfigs {
@@ -54,7 +57,13 @@ android {
     packaging {
         // The cores are programs named lib*.so: they must be extracted to
         // run (extractNativeLibs in the manifest).
-        jniLibs { useLegacyPackaging = true }
+        jniLibs {
+            useLegacyPackaging = true
+            // A plugin ships its library for other ABIs too, which abiFilters
+            // does not strip: Android would then pick such an ABI on an x86
+            // device or a 32-bit phone and find no engine there.
+            excludes += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64").filter { it != abi }.map { "lib/$it/**" }
+        }
     }
 
     buildTypes {

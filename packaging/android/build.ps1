@@ -3,22 +3,31 @@
 #
 #   powershell -ExecutionPolicy Bypass -File packaging\android\build.ps1
 #
+# With -Abi x86_64 it builds coreshift-<version>-b<build>-x86_64.apk for the
+# Android emulator on a PC instead: its ARM translation cannot run the Go
+# engine. Such an APK is for testing, not for phones.
+#
 # Needs go, gomobile (go install golang.org/x/mobile/cmd/gomobile@latest),
 # flutter, git and the Android SDK with NDK 28.2 (%LOCALAPPDATA%\Android\Sdk).
 #
 # Version, build number and commit come from VERSION and git, as for the
 # Windows installer. The cores come from engine\testdata\bin\android-arm64
-# (libxray.so, libsingbox.so, libmihomo.so), or from -Cores. The APK is
+# (libxray.so, libsingbox.so, libmihomo.so), for x86_64 from
+# engine\testdata\bin\android-x86_64, or from -Cores. The APK is
 # signed with the key from %USERPROFILE%\.coreshift\android-signing.properties;
 # without it, with the debug key (such an APK cannot be updated by one
 # signed with the release key).
 param(
     [string]$Cores,
-    [string]$OutDir
+    [string]$OutDir,
+    [ValidateSet('arm64-v8a', 'x86_64')]
+    [string]$Abi = 'arm64-v8a'
 )
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path "$PSScriptRoot\..\..").Path
-if (-not $Cores) { $Cores = Join-Path $root 'engine\testdata\bin\android-arm64' }
+# The names each tool gives the ABI.
+$goArch, $flutterArch, $coresDir = if ($Abi -eq 'x86_64') { 'amd64', 'android-x64', 'android-x86_64' } else { 'arm64', 'android-arm64', 'android-arm64' }
+if (-not $Cores) { $Cores = Join-Path $root "engine\testdata\bin\$coresDir" }
 if (-not $OutDir) { $OutDir = Join-Path $root 'dist' }
 
 function Step($text) { Write-Host "==> $text" -ForegroundColor Cyan }
@@ -42,6 +51,7 @@ try {
 } finally { Pop-Location }
 $tag = "$version-b$build"
 if ($commit.EndsWith('-dirty')) { $tag += '-dirty' }
+if ($Abi -ne 'arm64-v8a') { $tag += "-$Abi" }
 
 $sdk = if ($env:ANDROID_HOME) { $env:ANDROID_HOME } else { Join-Path $env:LOCALAPPDATA 'Android\Sdk' }
 $ndk = Get-ChildItem "$sdk\ndk" -Directory -ErrorAction SilentlyContinue | Sort-Object Name | Select-Object -Last 1
@@ -62,20 +72,21 @@ $aar = "$root\app\android\app\libs\coreshift-engine.aar"
 New-Item -ItemType Directory (Split-Path $aar) -Force | Out-Null
 Push-Location "$root\engine"
 try {
-    gomobile bind -target=android/arm64 -androidapi 24 -tags with_gvisor -javapkg dev.coreshift -trimpath `
+    gomobile bind "-target=android/$goArch" -androidapi 24 -tags with_gvisor -javapkg dev.coreshift -trimpath `
         -ldflags "-s -w -X $pkg.Version=$version -X $pkg.Build=$build -X $pkg.Commit=$commit" -o $aar ./mobile
     Check 'gomobile bind'
 } finally { Pop-Location }
 
 Step "cores from $Cores"
-$jni = "$root\app\android\app\src\main\jniLibs\arm64-v8a"
+$jni = "$root\app\android\app\src\main\jniLibs\$Abi"
 New-Item -ItemType Directory $jni -Force | Out-Null
 Copy-Item "$Cores\lib*.so" $jni -Force
+$env:CORESHIFT_ABI = $Abi # build.gradle.kts packs this ABI alone
 
 Step 'app'
 Push-Location "$root\app"
 try {
-    flutter build apk --release --target-platform android-arm64 --build-name $version --build-number $build `
+    flutter build apk --release --target-platform $flutterArch --build-name $version --build-number $build `
         "--dart-define=CORESHIFT_VERSION=$version" "--dart-define=CORESHIFT_BUILD=$build" "--dart-define=CORESHIFT_COMMIT=$commit"
     Check 'flutter build apk'
 } finally { Pop-Location }
