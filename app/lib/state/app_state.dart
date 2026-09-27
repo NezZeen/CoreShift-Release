@@ -270,11 +270,11 @@ class AppState extends ChangeNotifier {
   void updateOffered() => _updateOffered = appUpdate.label;
 
   /// Opens a link the panel sent (its support chat, the subscription's
-  /// page). Only web and Telegram links: another scheme could start a
-  /// program. The link is not shown, it may carry the subscription's token.
+  /// page). Only web, Telegram and mail links: another scheme could start
+  /// a program. The link is not shown, it may carry the subscription's token.
   Future<void> openLink(String url) async {
     final u = Uri.tryParse(url.trim());
-    final ok = u != null && (u.scheme == 'tg' || ((u.scheme == 'https' || u.scheme == 'http') && u.host.isNotEmpty));
+    final ok = u != null && (u.scheme == 'tg' || u.scheme == 'mailto' || ((u.scheme == 'https' || u.scheme == 'http') && u.host.isNotEmpty));
     if (!ok) {
       toast('Панель прислала ссылку, которую нельзя открыть', ToastKind.err);
       return;

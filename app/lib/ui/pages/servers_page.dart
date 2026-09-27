@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../api/models.dart';
 import '../../state/app_state.dart';
 import '../../state/errors.dart';
+import '../support.dart';
 import '../theme.dart';
 import '../widgets.dart';
 
@@ -297,14 +298,6 @@ class _SubCard extends StatelessWidget {
                   message: 'Последнее обновление не удалось:\n${humanError(sub.lastError)}',
                   child: const Icon(Icons.error_outline, size: 16, color: warnColor),
                 ),
-              // The panel's support-url header: its support chat.
-              if (i.supportUrl.isNotEmpty)
-                IconButton(
-                  tooltip: 'Написать в поддержку',
-                  icon: Icon(Icons.support_agent, size: 18, color: sub.lastError.isNotEmpty || expired ? warnColor : p.muted),
-                  visualDensity: VisualDensity.compact,
-                  onPressed: () => state.openLink(i.supportUrl),
-                ),
               _SubMenu(state: state, sub: sub),
             ],
           ),
@@ -362,6 +355,11 @@ class _SubCard extends StatelessWidget {
                     ],
                   ),
                 ),
+                // The panel's support-url header: its support chat.
+                if (i.supportUrl.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  SupportButton(state: state, url: i.supportUrl, urgent: expired || sub.lastError.isNotEmpty),
+                ],
               ],
             ),
           ),
@@ -391,8 +389,6 @@ class _SubMenu extends StatelessWidget {
           case 'rename':
             final name = await _askText(context, 'Переименовать', sub.name.isEmpty ? sub.displayName : sub.name);
             if (name != null) state.renameSubscription(sub.id, name);
-          case 'support':
-            state.openLink(sub.info.supportUrl);
           case 'page':
             state.openLink(sub.info.webPageUrl);
           case 'site':
@@ -407,8 +403,7 @@ class _SubMenu extends StatelessWidget {
       itemBuilder: (context) => [
         if (!sub.isLocal) _item('refresh', Icons.refresh, 'Обновить'),
         _item('rename', Icons.edit_outlined, 'Переименовать'),
-        if (sub.info.supportUrl.isNotEmpty) _item('support', Icons.support_agent, 'Написать в поддержку'),
-        if (sub.info.webPageUrl.isNotEmpty) ...[
+                if (sub.info.webPageUrl.isNotEmpty) ...[
           _item('page', Icons.open_in_new, 'Открыть страницу подписки'),
           _item('site', Icons.link, 'Копировать адрес страницы'),
         ],
