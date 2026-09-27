@@ -33,8 +33,8 @@ enum SupportKind {
   }
 }
 
-/// The logo of [kind] in its colour; VK, which Material lacks, as its
-/// letters on a blue square.
+/// The logo of [kind] in its colour; those Material lacks drawn here: VK as
+/// its letters on a blue square, WhatsApp as its bubble.
 class SupportMark extends StatelessWidget {
   final SupportKind kind;
   final double size;
@@ -43,8 +43,17 @@ class SupportMark extends StatelessWidget {
   @override
   Widget build(BuildContext context) => switch (kind) {
     SupportKind.telegram => Icon(Icons.telegram, size: size, color: kind.color),
-    // Material has no WhatsApp logo: a chat bubble in its green.
-    SupportKind.whatsapp => Icon(Icons.chat, size: size, color: kind.color),
+    // Material has no WhatsApp logo: its green bubble with the handset.
+    SupportKind.whatsapp => SizedBox(
+      width: size,
+      height: size,
+      child: CustomPaint(
+        painter: _BubblePainter(kind.color),
+        child: Center(
+          child: Icon(Icons.call, size: size * .5, color: Colors.white),
+        ),
+      ),
+    ),
     SupportKind.discord => Icon(Icons.discord, size: size, color: kind.color),
     SupportKind.email => Icon(Icons.mail_outline, size: size, color: kind.color),
     SupportKind.other => Icon(Icons.support_agent, size: size, color: kind.color),
@@ -59,6 +68,32 @@ class SupportMark extends StatelessWidget {
       ),
     ),
   };
+}
+
+/// A round speech bubble with its tail at the bottom left.
+class _BubblePainter extends CustomPainter {
+  final Color color;
+  const _BubblePainter(this.color);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final s = size.shortestSide;
+    final paint = Paint()
+      ..color = color
+      ..isAntiAlias = true;
+    canvas.drawCircle(Offset(s * .52, s * .48), s * .44, paint);
+    canvas.drawPath(
+      Path()
+        ..moveTo(s * .2, s * .66)
+        ..lineTo(s * .06, s * .96)
+        ..lineTo(s * .4, s * .86)
+        ..close(),
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_BubblePainter old) => old.color != color;
 }
 
 /// The button to the panel's support chat, tinted in the colour of the
