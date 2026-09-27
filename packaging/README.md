@@ -75,7 +75,9 @@ powershell -ExecutionPolicy Bypass -File packaging\release.ps1 -Version 0.3.0
 powershell -ExecutionPolicy Bypass -File packaging\publish.ps1 -Version 0.3.0
 ```
 
-`release.ps1` собирает установщик и кладёт в `dist\release\0.3.0\` три файла: установщик, `latest.json` и `latest.json.sig`. `publish.ps1` создаёт из них релиз `v0.3.0` в `coreshift-releases`.
+`release.ps1` собирает установщик для Windows и APK для Android и кладёт в `dist\release\0.3.0\` по три файла на систему: установщик, `latest.json` и `latest.json.sig`, а для Android — APK, `latest-android.json` и `latest-android.json.sig`. `publish.ps1` создаёт из них релиз `v0.3.0` в `coreshift-releases`.
+
+Выпустить версию только для одной системы: `release.ps1 -Version 0.3.0 -Platform windows` (или `android`). Каждая система берёт самый свежий релиз, в котором есть её файл, поэтому релиз только для ПК не мешает телефонам обновляться до своей последней версии, и наоборот.
 
 Проверить, что увидят установленные копии (ничего не устанавливает):
 
@@ -84,6 +86,8 @@ dist\stage\coreshiftd.exe update check -download %TEMP%\coreshift-check
 ```
 
 Для проверки без GitHub подойдёт папка: в настройках службы `app_update.source` = путь к `dist\release\0.3.0`, либо `coreshiftd update check -source <папка>`.
+
+Что увидит телефон: `dist\stage\coreshiftd.exe update check -platform android`.
 
 Если обновление не установилось, смотрите журнал установщика: `C:\ProgramData\CoreShift\updates\install.log`. Неудавшуюся версию служба сама повторно не ставит, это можно сделать кнопкой «Установить сейчас».
 
@@ -102,6 +106,8 @@ powershell -ExecutionPolicy Bypass -File packaging\android\build.ps1
 - ядра для Android в `engine\testdata\bin\android-arm64`: `libxray.so`, `libsingbox.so`, `libmihomo.so`. Это обычные Android-сборки xray, sing-box и mihomo из их релизов, переименованные так, чтобы Android разрешил их запуск.
 
 **Подпись.** APK подписывается ключом `%USERPROFILE%\.coreshift\android-release.jks`, пароль лежит в `android-signing.properties` рядом. Храните копию ключа вместе с ключом обновлений. Android ставит новую версию поверх старой, только если обе подписаны одним ключом. Без ключа придётся удалять приложение, а вместе с ним и подписки.
+
+**Обновления.** APK для телефона сам ищет новую версию: через 20 секунд после запуска и дальше раз в день. Он читает тот же приватный репозиторий тем же токеном (`releases-token` зашивается в APK при сборке). Найденный APK скачивается и сверяется с подписанным `latest-android.json`, после чего приложение показывает окно «Доступно обновление». Поставить новую версию без спроса Android не даёт: после «Обновить» система сама спросит подтверждение, а в первый раз попросит разрешить CoreShift устанавливать приложения. VPN остаётся включённым до замены приложения; если он был включён, то после обновления, при следующем открытии CoreShift, подключится снова. Сборка для эмулятора (x86_64) сама не обновляется.
 
 **Проверка в эмуляторе.** ARM-трансляция эмулятора Android на ПК не справляется с Go-движком: приложение падает. Для эмулятора есть отдельная сборка под x86_64:
 
