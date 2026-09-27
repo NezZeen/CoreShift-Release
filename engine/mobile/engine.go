@@ -44,6 +44,9 @@ type Platform interface {
 	OpenTun(cfg *TunConfig) (int32, error)
 	// CloseTun stops the VpnService.
 	CloseTun()
+	// InstallUpdate hands the verified APK at path to Android's installer,
+	// which asks the user to update the app.
+	InstallUpdate(path string) error
 }
 
 // TunConfig is what the VpnService is built with.
@@ -108,6 +111,11 @@ func Start(dataDir, libDir, deviceID, osVersion, model string, p Platform) error
 		// The app is outside the VPN: pings leave by the default network.
 		PhysicalBind: func() (ping.Bind, error) { return ping.Bind{}, nil },
 		HostIPv6:     currentNetwork.hasIPv6,
+		// Release builds look for new APKs; the user installs them.
+		SelfUpdate:    service.Version != "dev",
+		InstallUpdate: p.InstallUpdate,
+		// The app is often open for a moment only.
+		FirstUpdateCheck: 20 * time.Second,
 	})
 	if err != nil {
 		return err
@@ -133,6 +141,7 @@ func Start(dataDir, libDir, deviceID, osVersion, model string, p Platform) error
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go st.RunUpdater(ctx, time.Minute)
+	go svc.RunAppUpdates(ctx)
 	running = &engine{cancel: cancel, svc: svc, srv: srv, apiFile: apiFile}
 	return nil
 }

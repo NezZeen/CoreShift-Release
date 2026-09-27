@@ -20,6 +20,10 @@ import (
 // runs it while the VPN is off. The installer replaces the service, which
 // on its next start finishes the job: it starts the app again for the users
 // who had it open and reconnects if the update interrupted a connection.
+//
+// On Android (Config.InstallUpdate) the download is offered to the user:
+// the system's installer asks before it replaces the app, and the VPN stays
+// on until it does.
 
 const (
 	appUpdateFirstCheck = 2 * time.Minute // the network may not be up at boot
@@ -85,11 +89,14 @@ func (s *Service) AppUpdateState() AppUpdate {
 	s.upd.mu.Lock()
 	defer s.upd.mu.Unlock()
 	st := s.upd.state
-	if st.State == UpdateReady {
+	if st.State == UpdateReady && !s.userInstalls() {
 		st.Waiting = s.appUpdateSettings().Auto && s.connected() && s.upd.failed != releaseKey(st.Version, st.Build)
 	}
 	return st
 }
+
+// userInstalls reports that the system's installer asks the user.
+func (s *Service) userInstalls() bool { return s.cfg.InstallUpdate != nil }
 
 func (s *Service) setAppUpdate(f func(*AppUpdate)) {
 	s.upd.mu.Lock()
@@ -214,7 +221,7 @@ func (s *Service) maybeInstallAppUpdate() {
 	s.upd.mu.Lock()
 	ready := s.upd.state.State == UpdateReady && s.upd.failed != releaseKey(s.upd.state.Version, s.upd.state.Build)
 	s.upd.mu.Unlock()
-	if ready && s.appUpdateSettings().Auto && !s.connected() {
+	if ready && s.appUpdateSettings().Auto && !s.connected() && !s.userInstalls() {
 		s.installAppUpdate(false)
 	}
 }
@@ -249,6 +256,16 @@ func (s *Service) installAppUpdate(reconnect bool) error {
 	if err := os.WriteFile(filepath.Join(s.updatesDir(), "pending.json"), b, 0o600); err != nil {
 		return fail(err)
 	}
+	if s.userInstalls() {
+		// The user may still say no: the VPN stays until the update
+		// replaces the app, and the update stays on offer.
+		if err := s.cfg.launchInstaller(path, ""); err != nil {
+			os.Remove(filepath.Join(s.updatesDir(), "pending.json"))
+			return fail(fmt.Errorf("start the installer: %w", err))
+		}
+		s.setAppUpdate(func(u *AppUpdate) { u.State = UpdateReady })
+		return nil
+	}
 	// Disconnecting first restores DNS at once; the installer stops the
 	// service anyway.
 	s.Disconnect()
@@ -274,6 +291,9 @@ func (s *Service) finishAppUpdate() {
 	var p pendingUpdate
 	if json.Unmarshal(b, &p) != nil {
 		return
+	}
+	if p.To != releaseKey(Version, BuildNumber()) && s.userInstalls() {
+		return // declined: the next check offers it again
 	}
 	if p.To != releaseKey(Version, BuildNumber()) {
 		s.upd.mu.Lock()

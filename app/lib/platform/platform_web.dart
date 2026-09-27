@@ -23,3 +23,7 @@ bool get isAndroid => false;
 Future<void> initPlatform() async {}
 
 Future<bool> prepareVpn() async => true;
+
+Future<bool> canInstallUpdates() async => true;
+
+Future<void> allowInstallUpdates() async {}

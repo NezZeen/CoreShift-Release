@@ -33,6 +33,18 @@ Future<bool> prepareVpn() async {
   return await _android.invokeMethod<bool>('prepareVpn') ?? false;
 }
 
+/// Whether Android lets the app install its updates. Elsewhere the service
+/// installs them itself.
+Future<bool> canInstallUpdates() async {
+  if (!Platform.isAndroid) return true;
+  return await _android.invokeMethod<bool>('canInstallUpdates') ?? false;
+}
+
+/// Opens Android's screen where the user lets CoreShift install updates.
+Future<void> allowInstallUpdates() async {
+  if (Platform.isAndroid) await _android.invokeMethod<void>('allowInstallUpdates');
+}
+
 Backend createBackend() => HttpBackend(apiFile());
 
 /// The file where the daemon publishes its address and token.

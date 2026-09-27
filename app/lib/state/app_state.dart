@@ -228,10 +228,27 @@ class AppState extends ChangeNotifier {
   });
 
   /// Installs the downloaded update now; a connection comes back after it.
-  Future<bool> installAppUpdate() => _act(() async {
-    appUpdate = AppUpdateInfo.fromJson(await backend.call('POST', '/v1/app-update/install') as Json);
-    _notify();
-  });
+  /// On Android the system's installer asks the user first, once Android
+  /// lets CoreShift install apps at all.
+  Future<bool> installAppUpdate() async {
+    if (!await platform.canInstallUpdates()) {
+      await platform.allowInstallUpdates();
+      toast('Разрешите CoreShift устанавливать приложения, затем вернитесь и нажмите «Обновить» ещё раз.');
+      return false;
+    }
+    return _act(() async {
+      appUpdate = AppUpdateInfo.fromJson(await backend.call('POST', '/v1/app-update/install') as Json);
+      _notify();
+    });
+  }
+
+  /// The downloaded update is offered in a window once per version while
+  /// the app runs: "Позже" means until the next start.
+  String _updateOffered = '';
+
+  bool get offerUpdate => appUpdate.state == 'ready' && appUpdate.label != _updateOffered;
+
+  void updateOffered() => _updateOffered = appUpdate.label;
 
   List<Subscription> _subs(dynamic j) {
     final subs = (j as List).map((s) => Subscription.fromJson((s as Map).cast())).toList();
@@ -423,9 +440,11 @@ class AppState extends ChangeNotifier {
     await _loadAppUpdate();
     if (live && e.reason == 'ready') {
       final label = appUpdate.label;
+      // The window offering it says the rest (see Shell).
       if (appUpdate.waiting) {
         _log(e.time, 'обновление', 'скачана версия $label, установится после отключения VPN', LogLevel.info);
-        toast('Скачана версия $label — установится после отключения VPN');
+      } else if (platform.isAndroid) {
+        _log(e.time, 'обновление', 'скачана версия $label', LogLevel.info);
       } else {
         _log(e.time, 'обновление', 'скачана версия $label, устанавливается', LogLevel.info);
       }

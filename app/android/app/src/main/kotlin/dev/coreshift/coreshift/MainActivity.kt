@@ -11,7 +11,8 @@ import io.flutter.plugin.common.MethodChannel
 
 /**
  * The Flutter UI. The channel gives it what only Android has: where the
- * engine's API file is, and the user's consent to the VPN.
+ * engine's API file is, the user's consent to the VPN and to installing
+ * updates.
  */
 class MainActivity : FlutterActivity() {
     private var pendingVpn: MethodChannel.Result? = null
@@ -23,6 +24,11 @@ class MainActivity : FlutterActivity() {
             when (call.method) {
                 "apiFile" -> result.success(Engine.apiFile(this).absolutePath)
                 "prepareVpn" -> prepareVpn(result)
+                "canInstallUpdates" -> result.success(Updater.canInstall(this))
+                "allowInstallUpdates" -> {
+                    Updater.askPermission(this)
+                    result.success(null)
+                }
                 else -> result.notImplemented()
             }
         }

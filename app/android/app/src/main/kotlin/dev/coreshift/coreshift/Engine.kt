@@ -81,7 +81,7 @@ object Engine {
         Mobile.setNetwork(name, index, addresses, dns)
     }
 
-    /** What the engine needs from Android: the VpnService's TUN. */
+    /** What the engine needs from Android: the VpnService's TUN, the installer. */
     private class VpnPlatform(private val context: Context) : Platform {
         override fun openTun(cfg: TunConfig): Int {
             val intent = Intent(context, CoreShiftVpnService::class.java)
@@ -94,5 +94,7 @@ object Engine {
         override fun closeTun() {
             CoreShiftVpnService.current()?.shutdown()
         }
+
+        override fun installUpdate(path: String) = Updater.install(context, path)
     }
 }
