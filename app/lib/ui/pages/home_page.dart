@@ -8,6 +8,7 @@ import '../../state/app_state.dart';
 import '../../state/errors.dart';
 import '../shell.dart';
 import 'servers_page.dart' show showAddSubscription;
+import '../support.dart';
 import '../theme.dart';
 import '../widgets.dart';
 
@@ -51,6 +52,7 @@ class HomePage extends StatelessWidget {
                 const SizedBox(height: 18),
                 // Four tiles in a row only where each gets room for "142 ГБ / 500 ГБ".
                 _Stats(state: state, columns: rightWidth >= 720 ? 4 : 2),
+                _Support(state: state, top: 12),
                 const SizedBox(height: 18),
                 _LatencyCard(state: state),
               ],
@@ -203,6 +205,7 @@ class _CompactHome extends StatelessWidget {
         _NodePick(state: state),
         if (st.state == ConnState.connected) ...[const SizedBox(height: 10), _CompactStats(state: state)],
         _SubscriptionLine(state: state),
+        _Support(state: state, top: 14),
       ],
     );
   }
@@ -337,6 +340,25 @@ class _SubscriptionLine extends StatelessWidget {
         textAlign: TextAlign.center,
         style: TextStyle(fontSize: 12, color: bad ? errColor : (soon ? warnColor : p.dim)),
       ),
+    );
+  }
+}
+
+/// The selected subscription's support chat, when its panel names one.
+class _Support extends StatelessWidget {
+  final AppState state;
+  final double top;
+  const _Support({required this.state, required this.top});
+
+  @override
+  Widget build(BuildContext context) {
+    final sub = state.subscriptionById(state.selection.subscription);
+    final url = sub?.info.supportUrl ?? '';
+    if (url.isEmpty) return const SizedBox();
+    final expired = sub!.info.expire?.isBefore(DateTime.now()) ?? false;
+    return Padding(
+      padding: EdgeInsets.only(top: top),
+      child: SupportButton(state: state, url: url, urgent: expired || sub.lastError.isNotEmpty),
     );
   }
 }
