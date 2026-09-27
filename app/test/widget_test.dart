@@ -6,6 +6,7 @@ import 'package:coreshift/main.dart';
 import 'package:coreshift/state/app_state.dart';
 import 'package:coreshift/state/errors.dart';
 import 'package:coreshift/state/leak.dart';
+import 'package:coreshift/ui/support.dart';
 import 'package:coreshift/ui/widgets.dart';
 import 'package:coreshift/version.dart';
 
@@ -456,9 +457,11 @@ void main() {
       },
     );
     await pumpApp(tester, custom: state);
+    // On the home page for the selected subscription, and on every card.
+    expect(find.textContaining('Написать в поддержку'), findsOneWidget);
     await tester.tap(find.text('Серверы').first);
     await tester.pump();
-    await tester.tap(find.byTooltip('Написать в поддержку').first);
+    await tester.tap(find.textContaining('Написать в поддержку').first);
     await tester.pump();
     expect(opened, ['https://t.me/example_support']);
 
@@ -468,6 +471,23 @@ void main() {
     expect(opened, hasLength(1));
     expect(find.text('Панель прислала ссылку, которую нельзя открыть'), findsOneWidget);
     await tester.pump(const Duration(seconds: 6));
+  });
+
+  test('support links show the messenger they open', () {
+    for (final (url, kind) in [
+      ('https://t.me/Leikaccit', SupportKind.telegram),
+      ('tg://resolve?domain=support', SupportKind.telegram),
+      ('https://vk.com/club1', SupportKind.vk),
+      ('https://vk.me/support', SupportKind.vk),
+      ('https://m.vk.com/support', SupportKind.vk),
+      ('https://wa.me/79990000000', SupportKind.whatsapp),
+      ('https://discord.gg/abc', SupportKind.discord),
+      ('mailto:help@example.com', SupportKind.email),
+      ('https://notvk.com/x', SupportKind.other),
+      ('https://example.com/help', SupportKind.other),
+    ]) {
+      expect(SupportKind.of(url), kind, reason: url);
+    }
   });
 
   testWidgets('warns when the service is another version', (tester) async {
