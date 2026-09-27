@@ -115,7 +115,7 @@ type Options struct {
 	// keeps the app itself, and so the cores it starts, outside the VPN.
 	// Outbound sockets then need no binding to the physical interface, and
 	// matching processes is left to the platform: the process lists are
-	// ignored.
+	// ignored, and the stack is gVisor.
 	Platform bool
 
 	LogLevel string
@@ -196,6 +196,11 @@ func (o Options) withDefaults() Options {
 	if o.Platform {
 		o.BypassProcesses, o.DirectDNSProcesses, o.DirectApps, o.ProxyApps = nil, nil, nil, nil
 		o.BypassAddresses = nil
+		// The system stack answers TCP from a kernel socket of this process,
+		// which Android keeps outside its own VPN: the answers leave by the
+		// physical network and every TCP connection hangs. gVisor answers
+		// through the TUN itself.
+		o.Stack = "gvisor"
 	}
 	if o.InterfaceName == "" {
 		o.InterfaceName = DefaultInterface
