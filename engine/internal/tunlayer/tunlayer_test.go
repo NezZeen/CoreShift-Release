@@ -582,6 +582,9 @@ func TestPlatformTUN(t *testing.T) {
 	if sub(cfg, "route")["auto_detect_interface"] != false {
 		t.Error("auto_detect_interface on with a platform TUN")
 	}
+	if stack := list(cfg, "inbounds")[0].(map[string]any)["stack"]; stack != "gvisor" {
+		t.Errorf("stack = %v with a platform TUN, want gvisor", stack)
+	}
 	b, _ := Build(o)
 	for _, bad := range []string{"process_path", "route_exclude_address"} {
 		if strings.Contains(string(b), bad) {
