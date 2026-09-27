@@ -253,7 +253,7 @@ class Subscription {
   factory Subscription.fromJson(Json j) => Subscription(
     id: j['id'] ?? '',
     name: j['name'] ?? '',
-    displayName: j['display_name'] ?? '',
+    displayName: _placeholderNames[j['display_name']] ?? j['display_name'] ?? '',
     url: j['url'] ?? '',
     userAgent: j['user_agent'] ?? '',
     info: SubInfo.fromJson((j['info'] as Map?)?.cast<String, dynamic>() ?? {}),
@@ -400,3 +400,6 @@ class DaemonInfo {
 
   String versionOf(String kind) => cores.where((c) => c.kind == kind).firstOrNull?.version ?? '';
 }
+
+/// The daemon's English names for an unnamed subscription.
+const _placeholderNames = {'Local nodes': 'Мои серверы', 'Subscription': 'Подписка'};
