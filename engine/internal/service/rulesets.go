@@ -33,9 +33,10 @@ type geoSet struct {
 // the national domains, Russian services on other domains (geosite) and
 // servers located in Russia (geoip). Media blocked in Russia stay in the
 // tunnel, many of them are on .ru (novayagazeta.ru, tvrain.ru): direct,
-// they would not open.
+// they would not open. 2ip.io is where 2ip.ru redirects: the usual way to
+// check the preset works would otherwise show the tunnel's address.
 var (
-	russiaSuffixes = []string{"ru", "su", "xn--p1ai"}
+	russiaSuffixes = []string{"ru", "su", "xn--p1ai", "2ip.io"}
 	russiaSets     = []geoSet{
 		{Tag: "geosite-category-ru", URL: "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ru.srs"},
 		{Tag: "geoip-ru", URL: "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-ru.srs", IP: true},
