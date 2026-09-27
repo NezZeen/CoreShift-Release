@@ -140,12 +140,15 @@ func (s *Service) RunAppUpdates(ctx context.Context) {
 	s.loadFailedUpdate()
 	s.finishAppUpdate()
 	next := time.Now().Add(s.cfg.updateFirstCheck)
+	first := time.NewTimer(s.cfg.updateFirstCheck) // sooner than the next tick
+	defer first.Stop()
 	tick := time.NewTicker(s.cfg.updateTick)
 	defer tick.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		case <-first.C:
 		case <-tick.C:
 		case <-s.upd.checkNow:
 			next = time.Now()

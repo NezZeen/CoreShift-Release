@@ -232,14 +232,25 @@ class AppState extends ChangeNotifier {
   /// lets CoreShift install apps at all.
   Future<bool> installAppUpdate() async {
     if (!await platform.canInstallUpdates()) {
+      _installWhenAllowed = true;
       await platform.allowInstallUpdates();
-      toast('Разрешите CoreShift устанавливать приложения, затем вернитесь и нажмите «Обновить» ещё раз.');
+      toast('Разрешите CoreShift устанавливать приложения и вернитесь: обновление продолжится.');
       return false;
     }
     return _act(() async {
       appUpdate = AppUpdateInfo.fromJson(await backend.call('POST', '/v1/app-update/install') as Json);
       _notify();
     });
+  }
+
+  /// The user went to allow installing apps for an update.
+  bool _installWhenAllowed = false;
+
+  /// Back in the app: the update goes on if the user allowed installing.
+  Future<void> resumed() async {
+    if (!_installWhenAllowed) return;
+    _installWhenAllowed = false;
+    if (appUpdate.state == 'ready' && await platform.canInstallUpdates()) await installAppUpdate();
   }
 
   /// The downloaded update is offered in a window once per version while
