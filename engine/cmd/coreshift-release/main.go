@@ -5,7 +5,8 @@
 //	    into internal/selfupdate/keys.go
 //	coreshift-release manifest -installer SETUP.exe -version 1.2.3 -build N [-commit C] -key FILE -out DIR
 //	    writes latest.json and latest.json.sig into DIR and copies the
-//	    installer there: the three assets of the release
+//	    installer there: the three assets of the release; for an APK they
+//	    are latest-android.json and latest-android.json.sig
 //
 // Keep the key out of the repository: whoever has it can make every
 // installed CoreShift run their installer as SYSTEM.
@@ -127,10 +128,14 @@ func manifest(args []string) error {
 	if err := os.MkdirAll(*out, 0o755); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(*out, selfupdate.ManifestName), body, 0o644); err != nil {
+	name := selfupdate.ManifestFor("windows")
+	if filepath.Ext(*installer) == ".apk" {
+		name = selfupdate.ManifestFor("android")
+	}
+	if err := os.WriteFile(filepath.Join(*out, name), body, 0o644); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(*out, selfupdate.SignatureName), sig, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(*out, name+".sig"), sig, 0o644); err != nil {
 		return err
 	}
 	return copyFile(*installer, filepath.Join(*out, m.Installer))

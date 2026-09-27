@@ -123,6 +123,13 @@ type Config struct {
 	// SelfUpdate lets the service update CoreShift: only the installed
 	// service of a release build may run an installer over itself.
 	SelfUpdate bool
+	// InstallUpdate, if set, hands a verified update to the system's
+	// installer, which asks the user (Android): nothing installs by
+	// itself, and an update the user declined is offered again.
+	InstallUpdate func(path string) error
+	// FirstUpdateCheck is how long after the start updates are first
+	// looked for; 0 means 2 minutes.
+	FirstUpdateCheck time.Duration
 
 	// Hooks for embedding the service in an app (Android); nil means the
 	// desktop implementation.
@@ -356,11 +363,14 @@ func New(cfg Config) (*Service, error) {
 	}
 	if cfg.checkRelease == nil {
 		cfg.checkRelease = func(ctx context.Context, c *http.Client, src selfupdate.Source) (selfupdate.Release, error) {
-			return selfupdate.Check(ctx, c, src, selfupdate.PublicKeys)
+			return selfupdate.Check(ctx, c, src, selfupdate.ManifestFor(runtime.GOOS), selfupdate.PublicKeys)
 		}
 	}
 	if cfg.downloadRelease == nil {
 		cfg.downloadRelease = selfupdate.Download
+	}
+	if cfg.InstallUpdate != nil {
+		cfg.launchInstaller = func(path, _ string) error { return cfg.InstallUpdate(path) }
 	}
 	if cfg.launchInstaller == nil {
 		cfg.launchInstaller = launchInstaller
@@ -370,6 +380,9 @@ func New(cfg Config) (*Service, error) {
 	}
 	if cfg.startApp == nil {
 		cfg.startApp = startApp
+	}
+	if cfg.updateFirstCheck == 0 {
+		cfg.updateFirstCheck = cfg.FirstUpdateCheck
 	}
 	if cfg.updateFirstCheck == 0 {
 		cfg.updateFirstCheck = appUpdateFirstCheck

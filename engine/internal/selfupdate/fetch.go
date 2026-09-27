@@ -64,37 +64,45 @@ type Release struct {
 	installer string // the asset's API URL, or the file's path
 }
 
-// Check reads and verifies the latest release's manifest.
-func Check(ctx context.Context, client *http.Client, src Source, keys []string) (Release, error) {
+// Check reads and verifies the manifest named manifest (see ManifestFor)
+// of the latest release.
+func Check(ctx context.Context, client *http.Client, src Source, manifest string, keys []string) (Release, error) {
+	var rel Release
+	var err error
 	if src.Dir != "" {
-		return checkDir(src, keys)
+		rel, err = checkDir(src, manifest, keys)
+	} else {
+		rel, err = checkGitHub(ctx, client, src, manifest, keys)
 	}
-	return checkGitHub(ctx, client, src, keys)
+	if err == nil && filepath.Ext(rel.Installer) != installerExt(manifest) {
+		return Release{}, fmt.Errorf("update manifest: %s names %s, not a %s file", manifest, rel.Installer, installerExt(manifest))
+	}
+	return rel, err
 }
 
-func checkDir(src Source, keys []string) (Release, error) {
-	manifest, err := os.ReadFile(filepath.Join(src.Dir, ManifestName))
+func checkDir(src Source, manifest string, keys []string) (Release, error) {
+	body, err := os.ReadFile(filepath.Join(src.Dir, manifest))
 	if err != nil {
 		return Release{}, fmt.Errorf("check for updates: %w", err)
 	}
-	sig, err := os.ReadFile(filepath.Join(src.Dir, SignatureName))
+	sig, err := os.ReadFile(filepath.Join(src.Dir, manifest+".sig"))
 	if err != nil {
 		return Release{}, fmt.Errorf("check for updates: %w", err)
 	}
-	m, err := Verify(manifest, sig, keys)
+	m, err := Verify(body, sig, keys)
 	if err != nil {
 		return Release{}, err
 	}
 	return Release{Manifest: m, src: src, installer: filepath.Join(src.Dir, m.Installer)}, nil
 }
 
-func checkGitHub(ctx context.Context, client *http.Client, src Source, keys []string) (Release, error) {
-	assets, err := latestAssets(ctx, client, src.Repo)
+func checkGitHub(ctx context.Context, client *http.Client, src Source, manifest string, keys []string) (Release, error) {
+	assets, err := releaseAssets(ctx, client, src.Repo, manifest)
 	if err != nil {
 		return Release{}, err
 	}
 	files := map[string][]byte{}
-	for _, name := range []string{ManifestName, SignatureName} {
+	for _, name := range []string{manifest, manifest + ".sig"} {
 		a, ok := assets[name]
 		if !ok {
 			return Release{}, fmt.Errorf("check for updates: the latest release has no %s", name)
@@ -103,7 +111,7 @@ func checkGitHub(ctx context.Context, client *http.Client, src Source, keys []st
 			return Release{}, err
 		}
 	}
-	m, err := Verify(files[ManifestName], files[SignatureName], keys)
+	m, err := Verify(files[manifest], files[manifest+".sig"], keys)
 	if err != nil {
 		return Release{}, err
 	}
@@ -123,11 +131,15 @@ type asset struct {
 	Size int64  `json:"size"`
 }
 
-func latestAssets(ctx context.Context, client *http.Client, repo string) (map[string]asset, error) {
+// releaseAssets returns the assets of the newest published release that has
+// the file manifest: a release for one platform does not hide the previous
+// one of the other.
+func releaseAssets(ctx context.Context, client *http.Client, repo, manifest string) (map[string]asset, error) {
 	if token == "" {
 		return nil, errors.New("this build has no token for the private releases")
 	}
-	req, err := githubRequest(ctx, APIBase+"/repos/"+repo+"/releases/latest", "application/vnd.github+json")
+	// Newest first.
+	req, err := githubRequest(ctx, APIBase+"/repos/"+repo+"/releases?per_page=30", "application/vnd.github+json")
 	if err != nil {
 		return nil, err
 	}
@@ -139,17 +151,27 @@ func latestAssets(ctx context.Context, client *http.Client, repo string) (map[st
 	if err := statusError(resp); err != nil {
 		return nil, err
 	}
-	var rel struct {
-		Assets []asset `json:"assets"`
+	var releases []struct {
+		Draft      bool    `json:"draft"`
+		Prerelease bool    `json:"prerelease"`
+		Assets     []asset `json:"assets"`
 	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&rel); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(&releases); err != nil {
 		return nil, fmt.Errorf("check for updates: %w", err)
 	}
-	out := map[string]asset{}
-	for _, a := range rel.Assets {
-		out[a.Name] = a
+	for _, rel := range releases {
+		if rel.Draft || rel.Prerelease {
+			continue
+		}
+		out := map[string]asset{}
+		for _, a := range rel.Assets {
+			out[a.Name] = a
+		}
+		if _, ok := out[manifest]; ok {
+			return out, nil
+		}
 	}
-	return out, nil
+	return nil, fmt.Errorf("check for updates: no release has %s", manifest)
 }
 
 // githubRequest adds the token. The asset download redirects to another

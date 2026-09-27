@@ -15,10 +15,12 @@ String _appUpdateText(AppState state) {
       '${t.day.toString().padLeft(2, '0')}.${t.month.toString().padLeft(2, '0')} '
       '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
   return switch (u.state) {
+    'off' when platform.isAndroid => 'Эта сборка не обновляется сама: так бывает у сборки для разработки.',
     'off' => 'Эта копия не обновляется сама: так бывает у сборки для разработки или у службы старше 0.3.0.',
     'checking' => 'Проверяю…',
     'downloading' => 'Скачиваю версию ${u.label}…',
     'ready' when u.waiting => 'Скачана версия ${u.label}. Установится сама после отключения VPN.',
+    'ready' when platform.isAndroid => 'Скачана версия ${u.label}. Android попросит подтвердить установку.',
     'ready' => 'Скачана версия ${u.label}.',
     'installing' => 'Устанавливаю ${u.label}. CoreShift перезапустится сам.',
     'error' => humanError(u.error),
@@ -239,33 +241,32 @@ class SettingsPage extends StatelessWidget {
                 style: TextStyle(color: state.versionMismatch ? warnColor : p.muted, fontFamily: monoFont),
               ),
             ),
-          if (!platform.isAndroid)
-            SettingRow(
-              title: 'Обновления',
-              description: _appUpdateText(state),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (state.appUpdate.state == 'ready') ...[
-                    Btn(
-                      label: 'Установить сейчас',
-                      icon: Icons.system_update_alt,
-                      kind: BtnKind.primary,
-                      small: true,
-                      tooltip: state.status.active ? 'VPN отключится на время установки и подключится снова' : null,
-                      onPressed: state.online ? state.installAppUpdate : null,
-                    ),
-                    const SizedBox(width: 8),
-                  ],
+          SettingRow(
+            title: 'Обновления',
+            description: _appUpdateText(state),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (state.appUpdate.state == 'ready') ...[
                   Btn(
-                    label: 'Проверить сейчас',
+                    label: platform.isAndroid ? 'Обновить' : 'Установить сейчас',
+                    icon: Icons.system_update_alt,
+                    kind: BtnKind.primary,
                     small: true,
-                    loading: state.appUpdate.busy,
-                    onPressed: state.online && !state.appUpdate.off ? state.checkAppUpdate : null,
+                    tooltip: state.status.active && !platform.isAndroid ? 'VPN отключится на время установки и подключится снова' : null,
+                    onPressed: state.online ? state.installAppUpdate : null,
                   ),
+                  const SizedBox(width: 8),
                 ],
-              ),
+                Btn(
+                  label: 'Проверить сейчас',
+                  small: true,
+                  loading: state.appUpdate.busy,
+                  onPressed: state.online && !state.appUpdate.off ? state.checkAppUpdate : null,
+                ),
+              ],
             ),
+          ),
           if (state.hasSetting('app_update.auto') && !platform.isAndroid)
             SettingRow(
               title: 'Устанавливать обновления автоматически',

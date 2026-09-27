@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"runtime"
 	"time"
 
 	"coreshift/engine/internal/selfupdate"
@@ -21,13 +22,14 @@ func runUpdate(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("update check", flag.ExitOnError)
 	source := fs.String("source", selfupdate.DefaultSource, "where releases are published")
 	download := fs.String("download", "", "also download and verify the installer into this folder")
+	platform := fs.String("platform", runtime.GOOS, "whose release to look for: windows or android")
 	fs.Parse(args[1:])
 	src, err := selfupdate.ParseSource(*source)
 	if err != nil {
 		return err
 	}
 	client := &http.Client{Timeout: 10 * time.Minute}
-	rel, err := selfupdate.Check(ctx, client, src, selfupdate.PublicKeys)
+	rel, err := selfupdate.Check(ctx, client, src, selfupdate.ManifestFor(*platform), selfupdate.PublicKeys)
 	if err != nil {
 		return err
 	}

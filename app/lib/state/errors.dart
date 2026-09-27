@@ -88,6 +88,7 @@ String humanError(String raw) {
   if (has('downloaded update changed or is gone')) return 'Скачанное обновление повреждено, оно будет скачано заново.';
   if (has('start the installer')) return 'Не удалось запустить установку обновления.';
   if (has('check for updates')) {
+    if (has('no release has')) return 'Обновлений пока нет: для этой системы версии ещё не выкладывались.';
     if (has('403') || has('429')) return 'GitHub временно ограничил проверки обновлений. Попробуйте через час.';
     return 'Не удалось проверить обновления: нет связи с GitHub.';
   }

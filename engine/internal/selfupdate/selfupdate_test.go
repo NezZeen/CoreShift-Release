@@ -124,7 +124,7 @@ func TestFolderSource(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, SignatureName), sig, 0o644)
 	os.WriteFile(filepath.Join(dir, "coreshift-setup-0.3.0-b7.exe"), installer, 0o644)
 
-	rel, err := Check(context.Background(), http.DefaultClient, Source{Dir: dir}, []string{k.pub})
+	rel, err := Check(context.Background(), http.DefaultClient, Source{Dir: dir}, ManifestName, []string{k.pub})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,6 +141,27 @@ func TestFolderSource(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "coreshift-setup-0.3.0-b7.exe"), []byte("MZ evil installer"), 0o644)
 	if _, err := Download(context.Background(), http.DefaultClient, rel, t.TempDir()); err == nil || !strings.Contains(err.Error(), "checksum") {
 		t.Errorf("tampered installer: %v", err)
+	}
+}
+
+func TestPlatformManifests(t *testing.T) {
+	k := newKey(t)
+	dir := t.TempDir()
+	apk, apkSig := release(t, k, func(m *Manifest) { m.Installer = "coreshift-0.3.0-b7.apk" })
+	os.WriteFile(filepath.Join(dir, AndroidManifestName), apk, 0o644)
+	os.WriteFile(filepath.Join(dir, AndroidManifestName+".sig"), apkSig, 0o644)
+	rel, err := Check(context.Background(), http.DefaultClient, Source{Dir: dir}, ManifestFor("android"), []string{k.pub})
+	if err != nil || rel.Installer != "coreshift-0.3.0-b7.apk" {
+		t.Fatalf("android: %v %+v", err, rel)
+	}
+	// The Windows service must not run an APK, nor the phone get an .exe.
+	os.WriteFile(filepath.Join(dir, ManifestName), apk, 0o644)
+	os.WriteFile(filepath.Join(dir, SignatureName), apkSig, 0o644)
+	if _, err := Check(context.Background(), http.DefaultClient, Source{Dir: dir}, ManifestFor("windows"), []string{k.pub}); err == nil {
+		t.Error("windows accepted an APK")
+	}
+	if ManifestFor("windows") != ManifestName || ManifestFor("linux") != ManifestName {
+		t.Error("desktop manifest name changed: installed copies would stop seeing releases")
 	}
 }
 
@@ -174,11 +195,16 @@ func TestGitHubSource(t *testing.T) {
 			return
 		}
 		switch {
-		case r.URL.Path == "/repos/owner/releases/releases/latest":
-			fmt.Fprintf(w, `{"assets":[
-				{"name":"latest.json","url":"%[1]s/assets/1","size":%[2]d},
-				{"name":"latest.json.sig","url":"%[1]s/assets/2","size":%[3]d},
-				{"name":"coreshift-setup-0.3.0-b7.exe","url":"%[1]s/assets/3","size":%[4]d}]}`,
+		case r.URL.Path == "/repos/owner/releases/releases":
+			// Newest first: an Android-only release and a draft come
+			// before the Windows one.
+			fmt.Fprintf(w, `[
+				{"assets":[{"name":"latest-android.json","url":"%[1]s/assets/9","size":1}]},
+				{"draft":true,"assets":[{"name":"latest.json","url":"%[1]s/assets/8","size":1}]},
+				{"assets":[
+					{"name":"latest.json","url":"%[1]s/assets/1","size":%[2]d},
+					{"name":"latest.json.sig","url":"%[1]s/assets/2","size":%[3]d},
+					{"name":"coreshift-setup-0.3.0-b7.exe","url":"%[1]s/assets/3","size":%[4]d}]}]`,
 				api.URL+"/repos/owner/releases/releases", len(body), len(sig), len(installer))
 		case strings.HasPrefix(r.URL.Path, "/repos/owner/releases/releases/assets/"):
 			if r.Header.Get("Accept") != "application/octet-stream" {
@@ -197,7 +223,7 @@ func TestGitHubSource(t *testing.T) {
 	defer func() { APIBase, token = oldBase, oldToken }()
 
 	src, _ := ParseSource("github:owner/releases")
-	rel, err := Check(context.Background(), http.DefaultClient, src, []string{k.pub})
+	rel, err := Check(context.Background(), http.DefaultClient, src, ManifestName, []string{k.pub})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,11 +239,11 @@ func TestGitHubSource(t *testing.T) {
 	}
 
 	token = "wrong"
-	if _, err := Check(context.Background(), http.DefaultClient, src, []string{k.pub}); err == nil || !strings.Contains(err.Error(), "404") {
+	if _, err := Check(context.Background(), http.DefaultClient, src, ManifestName, []string{k.pub}); err == nil || !strings.Contains(err.Error(), "404") {
 		t.Errorf("wrong token: %v", err)
 	}
 	token = ""
-	if _, err := Check(context.Background(), http.DefaultClient, src, []string{k.pub}); err == nil || !strings.Contains(err.Error(), "no token") {
+	if _, err := Check(context.Background(), http.DefaultClient, src, ManifestName, []string{k.pub}); err == nil || !strings.Contains(err.Error(), "no token") {
 		t.Errorf("no token: %v", err)
 	}
 }

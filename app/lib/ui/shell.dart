@@ -10,6 +10,7 @@ import 'pages/routing_page.dart';
 import 'pages/servers_page.dart';
 import 'pages/settings_page.dart';
 import 'theme.dart';
+import 'update_offer.dart';
 import 'widgets.dart';
 
 enum PageId { home, servers, cores, routing, logs, settings }
@@ -38,6 +39,28 @@ class Shell extends StatefulWidget {
 
 class _ShellState extends State<Shell> {
   PageId page = PageId.home;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.state.addListener(_offerUpdate);
+    _offerUpdate();
+  }
+
+  @override
+  void dispose() {
+    widget.state.removeListener(_offerUpdate);
+    super.dispose();
+  }
+
+  /// A downloaded update is offered in a window, wherever the user is.
+  void _offerUpdate() {
+    if (!widget.state.offerUpdate) return;
+    widget.state.updateOffered();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) showUpdateOffer(context, widget.state);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
