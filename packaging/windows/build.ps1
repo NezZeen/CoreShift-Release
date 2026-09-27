@@ -117,6 +117,8 @@ Copy-Item "$root\app\build\windows\x64\runner\Release\*" $stage -Recurse
 
 Step "cores from $Cores"
 Copy-Item $Cores "$stage\cores" -Recurse
+# The Android cores live beside them, for packaging\android\build.ps1.
+Get-ChildItem "$stage\cores" -Directory -Filter 'android-*' | Remove-Item -Recurse -Force
 # Helper scripts that come with the xray release are not needed.
 Get-ChildItem "$stage\cores" -Recurse -Include *.ps1, *.vbs, README.md | Remove-Item
 
