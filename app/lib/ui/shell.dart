@@ -171,10 +171,7 @@ class _BottomNav extends StatelessWidget {
       },
       destinations: [
         const NavigationDestination(icon: Icon(Icons.home_outlined), label: 'Главная'),
-        NavigationDestination(
-          icon: Badge(isLabelVisible: state.nodeCount > 0, label: Text('${state.nodeCount}'), child: const Icon(Icons.public)),
-          label: 'Серверы',
-        ),
+        const NavigationDestination(icon: Icon(Icons.public), label: 'Серверы'),
         const NavigationDestination(icon: Icon(Icons.alt_route), label: 'Правила'),
         const NavigationDestination(icon: Icon(Icons.settings_outlined), label: 'Настройки'),
         const NavigationDestination(icon: Icon(Icons.more_horiz), label: 'Ещё'),
@@ -192,14 +189,13 @@ class _Sidebar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.pal;
-    final nodes = state.nodeCount;
     final main = [
-      (PageId.home, Icons.home_outlined, 'Главная', null),
-      (PageId.servers, Icons.public, 'Серверы', nodes > 0 ? '$nodes' : null),
-      (PageId.routing, Icons.alt_route, 'Правила', null),
-      (PageId.settings, Icons.settings_outlined, 'Настройки', null),
+      (PageId.home, Icons.home_outlined, 'Главная'),
+      (PageId.servers, Icons.public, 'Серверы'),
+      (PageId.routing, Icons.alt_route, 'Правила'),
+      (PageId.settings, Icons.settings_outlined, 'Настройки'),
     ];
-    final advanced = [(PageId.cores, Icons.memory, 'Ядра', null), (PageId.logs, Icons.notes, 'Журнал', null)];
+    final advanced = [(PageId.cores, Icons.memory, 'Ядра'), (PageId.logs, Icons.notes, 'Журнал')];
     return Container(
       width: 216,
       decoration: BoxDecoration(
@@ -238,9 +234,9 @@ class _Sidebar extends StatelessWidget {
           ),
           _StatusPill(state: state),
           const SizedBox(height: 14),
-          for (final (id, icon, label, count) in main) _NavItem(icon: icon, label: label, count: count, active: page == id, onTap: () => onPage(id)),
+          for (final (id, icon, label) in main) _NavItem(icon: icon, label: label, active: page == id, onTap: () => onPage(id)),
           const Padding(padding: EdgeInsets.fromLTRB(12, 16, 12, 0), child: SectionLabel('Для опытных')),
-          for (final (id, icon, label, count) in advanced) _NavItem(icon: icon, label: label, count: count, active: page == id, onTap: () => onPage(id)),
+          for (final (id, icon, label) in advanced) _NavItem(icon: icon, label: label, active: page == id, onTap: () => onPage(id)),
           const Spacer(),
           _CoreFooter(state: state),
         ],
@@ -302,10 +298,9 @@ class _StatusPill extends StatelessWidget {
 class _NavItem extends StatefulWidget {
   final IconData icon;
   final String label;
-  final String? count;
   final bool active;
   final VoidCallback onTap;
-  const _NavItem({required this.icon, required this.label, this.count, required this.active, required this.onTap});
+  const _NavItem({required this.icon, required this.label, required this.active, required this.onTap});
 
   @override
   State<_NavItem> createState() => _NavItemState();
@@ -341,12 +336,6 @@ class _NavItemState extends State<_NavItem> {
                       style: TextStyle(color: fg, fontWeight: FontWeight.w500),
                     ),
                   ),
-                  if (widget.count != null)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
-                      decoration: BoxDecoration(color: p.surface, borderRadius: BorderRadius.circular(99)),
-                      child: Text(widget.count!, style: TextStyle(fontSize: 11, color: p.dim)),
-                    ),
                 ],
               ),
             ),
