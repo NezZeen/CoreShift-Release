@@ -418,15 +418,16 @@ void main() {
     expect(v.compareTo(const BuildVersion('0.2.0', 15)), lessThan(0));
     expect(v.compareTo(const BuildVersion('0.2.0', 14, 'other')), 0);
     expect(BuildVersion.parseKey(v.key).same(v), isTrue);
-    expect(v.label, '0.2.0 (сборка 14)');
+    expect(v.label, '0.2.0');
     expect(const BuildVersion('dev').known, isFalse);
   });
 
   testWidgets('says when the version changed since the last run', (tester) async {
     for (final (prev, want) in [
-      ('0.1.0+0+', 'CoreShift обновлён: 0.1.0 → 0.2.0 (сборка 14)'),
-      ('0.2.1+20+ffff000', 'Установлена более ранняя версия CoreShift: 0.2.1 (сборка 20) → 0.2.0 (сборка 14)'),
-      ('0.2.0+14+0000aaa-dirty', 'CoreShift пересобран: 0.2.0 (сборка 14) → 0.2.0 (сборка 14)'),
+      ('0.1.0+0+', 'CoreShift обновлён: 0.1.0 → 0.2.0'),
+      ('0.2.1+20+ffff000', 'Установлена более ранняя версия CoreShift: 0.2.1 → 0.2.0'),
+      ('0.2.0+14+0000aaa-dirty', 'CoreShift пересобран: 0.2.0'),
+      ('0.2.0+12+1111bbb', 'CoreShift пересобран: 0.2.0'),
     ]) {
       final prefs = <String, dynamic>{'last_version': prev};
       final state = AppState(DemoBackend(), prefs: prefs, version: const BuildVersion('0.2.0', 14, 'abc1234'));
@@ -453,7 +454,7 @@ void main() {
     await tester.tap(find.text('Настройки').first);
     await tester.pump();
     await tester.ensureVisible(find.text('Версия службы'));
-    expect(find.text('0.2.0 (сборка 14)'), findsOneWidget);
+    expect(find.text('0.2.0'), findsWidgets);
     expect(find.textContaining('Переустановите CoreShift целиком'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pump(const Duration(seconds: 6));
@@ -479,7 +480,7 @@ void main() {
     }
     await tester.pump();
     expect(state.appUpdate.state, 'ready');
-    expect(find.textContaining('Скачана версия 0.3.0 (сборка 9)'), findsOneWidget);
+    expect(find.textContaining('Скачана версия 0.3.0.'), findsOneWidget);
 
     // The window offering it.
     expect(find.text('Доступно обновление'), findsOneWidget);

@@ -1,5 +1,6 @@
-# Builds dist\coreshift-<version>-b<build>.apk: the Flutter app with the Go
-# engine (bound by gomobile into an AAR) and the proxy cores for 64-bit ARM.
+# Builds dist\coreshift-<version>.apk (-<version>-b<build> between releases):
+# the Flutter app with the Go engine (bound by gomobile into an AAR) and the
+# proxy cores for 64-bit ARM.
 #
 #   powershell -ExecutionPolicy Bypass -File packaging\android\build.ps1
 #
@@ -54,7 +55,11 @@ try {
     $commit = (git rev-parse --short=7 HEAD).Trim()
     if (git status --porcelain) { $commit += '-dirty' }
 } finally { Pop-Location }
-$tag = "$version-b$build"
+# A release (the commit tagged v<version>, packaging\release.ps1) is named
+# by its version alone; builds between releases also carry the build number,
+# so they do not overwrite the released files.
+$tag = $version
+if (-not (git -C $root tag --points-at HEAD --list "v$version")) { $tag += "-b$build" }
 if ($commit.EndsWith('-dirty')) { $tag += '-dirty' }
 if ($Abi -ne 'arm64-v8a') { $tag += "-$Abi" }
 
