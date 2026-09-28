@@ -73,6 +73,14 @@ class AppState extends ChangeNotifier {
   final bool Function()? daemonStarter;
   DateTime? _daemonStarted;
 
+  /// The app started the service and waits for it to come up, which takes
+  /// a second or two: meanwhile the app says so rather than that it is off.
+  bool daemonStarting = false;
+
+  /// Windows did not let the app start the service, as with services
+  /// installed before 0.4: it takes administrator rights.
+  bool daemonStartRefused = false;
+
   /// Makes the system start the app at sign-in, or stops it; follows the
   /// "Автозапуск" setting. Returns whether that worked.
   final bool Function(bool on)? autostartSetter;
@@ -206,13 +214,17 @@ class AppState extends ChangeNotifier {
         online = true;
         offlineReason = '';
       }
+      daemonStarting = false;
+      daemonStartRefused = false;
       _notify();
     } catch (e) {
       // The service runs only while the app does: the app starts it.
       final now = DateTime.now();
       if (e is DaemonOffline && daemonStarter != null && (_daemonStarted == null || now.difference(_daemonStarted!) > const Duration(seconds: 15))) {
         _daemonStarted = now;
-        daemonStarter!();
+        final ok = daemonStarter!();
+        daemonStarting = ok;
+        daemonStartRefused = !ok;
       }
       _lost(e);
     }
@@ -226,10 +238,18 @@ class AppState extends ChangeNotifier {
       _alerts.add(const Alert('Служба CoreShift не отвечает', 'VPN может не работать. Откройте CoreShift, чтобы узнать подробности.'));
     }
     online = false;
-    offlineReason = reason is DaemonOffline || reason is ApiError ? '$reason' : 'Служба CoreShift не отвечает';
+    // A started service comes up within seconds; after that it is stuck.
+    final sinceStart = _daemonStarted == null ? null : DateTime.now().difference(_daemonStarted!);
+    if (daemonStarting && sinceStart != null && sinceStart > const Duration(seconds: 20)) daemonStarting = false;
+    offlineReason = daemonStarting
+        ? 'Запускаем службу CoreShift'
+        : reason is DaemonOffline || reason is ApiError
+        ? '$reason'
+        : 'Служба CoreShift не отвечает';
     _notify();
     _retry?.cancel();
-    _retry = Timer(const Duration(seconds: 2), _connectDaemon);
+    // While it starts, look often, so the window is ready the moment it is.
+    _retry = Timer(daemonStarting ? const Duration(milliseconds: 300) : const Duration(seconds: 2), _connectDaemon);
   }
 
   Future<void> _loadAll() async {

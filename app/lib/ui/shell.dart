@@ -403,7 +403,11 @@ class _OfflineState extends State<_Offline> {
                   const SizedBox(width: 12),
                   Flexible(
                     child: Text(
-                      platform.isAndroid ? 'Запуск CoreShift…' : 'Подключение к службе…',
+                      platform.isAndroid
+                          ? 'Запуск CoreShift…'
+                          : state.daemonStarting
+                          ? 'Запуск службы…'
+                          : 'Подключение к службе…',
                       style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
                     ),
                   ),
@@ -419,11 +423,14 @@ class _OfflineState extends State<_Offline> {
                 platform.isAndroid
                     ? 'Движок VPN работает внутри приложения и обычно запускается за секунду. '
                           'Если этот экран не пропадает, закройте CoreShift в списке недавних приложений и откройте снова.'
-                    : 'VPN работает через фоновую службу CoreShift. Обычно она запускается вместе с Windows. '
-                          'Если служба остановлена, запустите её — окно подключится само.',
+                    : state.daemonStartRefused
+                    ? 'VPN работает через фоновую службу CoreShift. Windows не дал запустить её без прав администратора: '
+                          'так бывает со службой, установленной версией до 0.4. Запустите её кнопкой ниже или переустановите CoreShift.'
+                    : 'VPN работает через фоновую службу CoreShift. Она запускается вместе с приложением '
+                          'и останавливается, когда его закрывают. Обычно это занимает пару секунд.',
                 style: TextStyle(color: p.muted, fontSize: 13, height: 1.5),
               ),
-              if (platform.canStartService) ...[
+              if (platform.canStartService && !state.daemonStarting) ...[
                 const SizedBox(height: 16),
                 Row(
                   children: [
