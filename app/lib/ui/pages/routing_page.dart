@@ -4,6 +4,7 @@ import '../../platform/platform.dart' as platform;
 import '../../state/app_state.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'android_apps.dart';
 import 'direct_apps.dart';
 import 'rule_lists.dart';
 
@@ -80,6 +81,9 @@ class RoutingPage extends StatelessWidget {
       // Programs are matched by their .exe; Android has no such thing.
       right = [if (s.hasSetting('routing.direct_apps') && !platform.isAndroid) AppsPanel.direct(state: s), if (full) _blockPanel()];
     }
+
+    // Android picks the apps in the VPN before any rule: first.
+    if (platform.isAndroid && s.hasSetting('routing.app_filter')) left.insert(0, AndroidAppsPanel(state: s));
 
     return PageFrame(
       children: [

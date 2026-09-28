@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import '../api/backend.dart';
 import '../api/demo_backend.dart';
 
@@ -35,3 +37,9 @@ Future<void> allowInstallUpdates() async {}
 Future<bool> openUrl(String url) async => false;
 
 Future<String> addQuickTile() async => 'unsupported';
+
+typedef AndroidApp = ({String package, String label, bool system});
+
+Future<List<AndroidApp>> installedApps() async => [];
+
+Future<Uint8List?> appIcon(String package) async => null;

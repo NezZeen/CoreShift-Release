@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"net/url"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strings"
@@ -93,6 +94,14 @@ type Routing struct {
 
 	// BlockDomains are refused outright, in both modes.
 	BlockDomains []string `json:"block_domains"`
+
+	// AppFilter decides which Android apps use the VPN at all: AppsAll,
+	// AppsExclude (FilterApps go direct, outside the VPN) or AppsOnly (only
+	// FilterApps use it). FilterApps are package names. Android applies it
+	// to the VPN itself, before any of the rules above; the desktop ignores
+	// it, having DirectApps and ProxyApps.
+	AppFilter  string   `json:"app_filter"`
+	FilterApps []string `json:"filter_apps"`
 }
 
 type UpdateSettings struct {
@@ -122,6 +131,10 @@ const (
 
 	RouteAll      = "all"
 	RouteSelected = "selected"
+
+	AppsAll     = "all"
+	AppsExclude = "exclude"
+	AppsOnly    = "only"
 )
 
 // Defaults returns the settings of a fresh install.
@@ -147,6 +160,7 @@ func Defaults() Settings {
 			Mode:          RouteAll,
 			DirectDomains: []string{}, DirectApps: []string{}, DirectIPs: []string{},
 			ProxyDomains: []string{}, ProxyIPs: []string{}, ProxyApps: []string{},
+			AppFilter: AppsAll, FilterApps: []string{},
 			BlockDomains: []string{},
 		},
 		Updates:   UpdateSettings{Auto: true, IntervalHours: 12},
@@ -241,6 +255,16 @@ func (s Settings) normalize() (Settings, error) {
 	errs = append(errs, err)
 	r.ProxyApps, err = normalizeList("routing.proxy_apps", r.ProxyApps, maxApps, normalizeApp, strings.EqualFold)
 	errs = append(errs, err)
+	r.AppFilter = strings.ToLower(strings.TrimSpace(r.AppFilter))
+	switch r.AppFilter {
+	case "":
+		r.AppFilter = AppsAll
+	case AppsAll, AppsExclude, AppsOnly:
+	default:
+		errs = append(errs, fmt.Errorf("routing.app_filter: %q is none of %q, %q, %q", r.AppFilter, AppsAll, AppsExclude, AppsOnly))
+	}
+	r.FilterApps, err = normalizeList("routing.filter_apps", r.FilterApps, maxPackages, normalizePackage, sameString)
+	errs = append(errs, err)
 	r.DirectIPs, err = normalizeList("routing.direct_ips", r.DirectIPs, maxRules, normalizeIP, sameString)
 	errs = append(errs, err)
 	r.ProxyIPs, err = normalizeList("routing.proxy_ips", r.ProxyIPs, maxRules, normalizeIP, sameString)
@@ -283,8 +307,10 @@ func unprefix(err error) error {
 }
 
 const (
-	maxApps  = 200
-	maxRules = 1000
+	maxApps = 200
+	// A phone may have many more apps than a PC has programs to list.
+	maxPackages = 1000
+	maxRules    = 1000
 )
 
 // normalizeList tidies every entry with norm, drops empty ones and
@@ -349,6 +375,20 @@ func normalizeIP(raw string) (string, error) {
 
 // normalizeApp turns "C:\Games\Steam\steam.exe" or " steam " into
 // "steam.exe": apps are matched by name, wherever they are installed.
+// packageName is an Android application ID: "org.telegram.messenger".
+var packageName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$`)
+
+func normalizePackage(raw string) (string, error) {
+	p := strings.TrimSpace(raw)
+	if p == "" {
+		return "", nil
+	}
+	if len(p) > 255 || !packageName.MatchString(p) {
+		return "", fmt.Errorf("%q is not an Android package name", raw)
+	}
+	return p, nil
+}
+
 func normalizeApp(raw string) (string, error) {
 	a := strings.TrimSpace(raw)
 	if i := strings.LastIndexAny(a, `\/`); i >= 0 {
