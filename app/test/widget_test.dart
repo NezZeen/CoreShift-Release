@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:coreshift/api/backend.dart';
 import 'package:coreshift/api/demo_backend.dart';
+import 'package:coreshift/api/models.dart';
 import 'package:coreshift/main.dart';
 import 'package:coreshift/state/app_state.dart';
 import 'package:coreshift/state/errors.dart';
@@ -278,6 +280,34 @@ void main() {
     state.setPref('notifications', false);
     expect(state.systemNotifications, isFalse);
     expect(saved, {'notifications': false});
+  });
+
+  test('a stopped service is started and said to be starting', () async {
+    var starts = 0;
+    final state = AppState(
+      _OfflineBackend(),
+      prefs: {},
+      daemonStarter: () {
+        starts++;
+        return true;
+      },
+    );
+    state.start();
+    await Future.delayed(const Duration(milliseconds: 1000));
+    // Started once, then looked for often without starting again.
+    expect(starts, 1);
+    expect(state.daemonStarting, isTrue);
+    expect(state.offlineReason, 'Запускаем службу CoreShift');
+    state.dispose();
+
+    // Windows refused: the button with administrator rights is the way.
+    final refused = AppState(_OfflineBackend(), prefs: {}, daemonStarter: () => false);
+    refused.start();
+    await Future.delayed(const Duration(milliseconds: 100));
+    expect(refused.daemonStarting, isFalse);
+    expect(refused.daemonStartRefused, isTrue);
+    expect(refused.offlineReason, 'Служба CoreShift не запущена');
+    refused.dispose();
   });
 
   test('autostart follows its setting', () async {
@@ -799,4 +829,16 @@ void main() {
     expect(state.loaded, isTrue);
     await tester.pump(const Duration(seconds: 30));
   });
+}
+
+/// A daemon that is not running.
+class _OfflineBackend implements Backend {
+  @override
+  Future<dynamic> call(String method, String path, [Object? body]) async => throw const DaemonOffline('Служба CoreShift не запущена');
+
+  @override
+  Stream<Event> events() => const Stream.empty();
+
+  @override
+  String get description => 'test';
 }
