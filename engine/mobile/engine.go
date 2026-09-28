@@ -122,6 +122,10 @@ type TunConfig struct {
 	Address6 string // empty when IPv6 is off
 	DNS      string // the tunnel's resolver, "172.19.0.2"
 	MTU      int32
+	// AllowedApps, when set, are the only apps in the VPN; otherwise
+	// DisallowedApps stay out of it. Package names, one per line.
+	AllowedApps    string
+	DisallowedApps string
 }
 
 // coreFiles are the cores as the APK ships them: Android lets apps run

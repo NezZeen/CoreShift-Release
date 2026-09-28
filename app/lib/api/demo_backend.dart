@@ -42,6 +42,8 @@ class DemoBackend implements Backend {
       'proxy_domains': <String>[],
       'proxy_ips': <String>[],
       'proxy_apps': <String>[],
+      'app_filter': 'all',
+      'filter_apps': <String>[],
       'block_domains': <String>[],
     },
     'updates': {'auto': true, 'interval_hours': 12, 'user_agent': ''},

@@ -103,6 +103,10 @@ type Options struct {
 	Selective    bool
 	// BlockDomains are refused.
 	BlockDomains []string
+	// AppFilter and FilterApps choose the Android apps that use the VPN
+	// (store.Routing).
+	AppFilter  string
+	FilterApps []string
 }
 
 type Config struct {
@@ -213,6 +217,8 @@ func OptionsFromSettings(set store.Settings) Options {
 		ProxyApps:            slices.Clone(set.Routing.ProxyApps),
 		Selective:            set.Routing.Mode == store.RouteSelected,
 		BlockDomains:         slices.Clone(set.Routing.BlockDomains),
+		AppFilter:            set.Routing.AppFilter,
+		FilterApps:           slices.Clone(set.Routing.FilterApps),
 		DNS: DNSSettings{
 			Remote:          set.DNS.Remote,
 			Direct:          set.DNS.Direct,
@@ -785,6 +791,8 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 		ProxyApps:       o.ProxyApps,
 		ProxyIPs:        o.ProxyIPs,
 		Selective:       o.Selective,
+		AppFilter:       o.AppFilter,
+		FilterApps:      o.FilterApps,
 		DNS: tunlayer.DNSOptions{
 			Remote:           o.DNS.Remote,
 			Direct:           direct,

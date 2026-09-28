@@ -660,3 +660,30 @@ func TestClearedFieldsStayCleared(t *testing.T) {
 		t.Errorf("the removed selection came back or the unknown field was lost:\n%s", b)
 	}
 }
+
+func TestAppFilter(t *testing.T) {
+	s := newFixture(t).open(t)
+	set := s.Settings()
+	if set.Routing.AppFilter != AppsAll || set.Routing.FilterApps == nil {
+		t.Fatalf("defaults: %q %v", set.Routing.AppFilter, set.Routing.FilterApps)
+	}
+	set.Routing.AppFilter = " Exclude "
+	set.Routing.FilterApps = []string{" org.telegram.messenger ", "com.valvesoftware.android.steam.community", "org.telegram.messenger", ""}
+	saved, err := s.SetSettings(set)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := saved.Routing; r.AppFilter != AppsExclude || !slices.Equal(r.FilterApps, []string{"org.telegram.messenger", "com.valvesoftware.android.steam.community"}) {
+		t.Errorf("got %q %q", r.AppFilter, r.FilterApps)
+	}
+
+	set = saved
+	set.Routing.AppFilter = "some"
+	set.Routing.FilterApps = []string{"telegram", "org.telegram.messenger; rm"}
+	_, err = s.SetSettings(set)
+	for _, want := range []string{"routing.app_filter", `"telegram"`, "rm"} {
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("error does not mention %s: %v", want, err)
+		}
+	}
+}

@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.net.VpnService
 import android.os.Build
@@ -48,7 +49,7 @@ class CoreShiftVpnService : VpnService() {
         val b = Builder()
             .setSession("CoreShift")
             .setMtu(cfg.mtu)
-            .addDisallowedApplication(packageName)
+        applyAppFilter(b, cfg)
         val (addr4, len4) = splitPrefix(cfg.address4)
         b.addAddress(addr4, len4).addRoute("0.0.0.0", 0)
         if (cfg.address6.isNotEmpty()) {
@@ -68,6 +69,34 @@ class CoreShiftVpnService : VpnService() {
     @Synchronized
     fun stopIfIdle() {
         if (tun == null) shutdown()
+    }
+
+    /**
+     * Which apps use the VPN. CoreShift itself never does: its cores reach
+     * their servers directly. Android takes either allowed apps or
+     * disallowed ones, not both, and skips none: an app that is no longer
+     * installed would throw, so each is added on its own.
+     */
+    private fun applyAppFilter(b: Builder, cfg: TunConfig) {
+        fun lines(s: String) = s.split('\n').map { it.trim() }.filter { it.isNotEmpty() && it != packageName }
+        var allowed = 0
+        for (app in lines(cfg.allowedApps)) {
+            try {
+                b.addAllowedApplication(app)
+                allowed++
+            } catch (_: PackageManager.NameNotFoundException) {
+            }
+        }
+        // None of the chosen apps is installed: with no allowed app every
+        // app, CoreShift too, would be in the VPN.
+        if (allowed > 0) return
+        b.addDisallowedApplication(packageName)
+        for (app in lines(cfg.disallowedApps)) {
+            try {
+                b.addDisallowedApplication(app)
+            } catch (_: PackageManager.NameNotFoundException) {
+            }
+        }
     }
 
     /** Closes the TUN and stops the service. */
