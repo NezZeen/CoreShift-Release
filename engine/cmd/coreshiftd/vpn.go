@@ -82,12 +82,13 @@ func runServe(ctx context.Context, args []string) error {
 	df := addDaemonFlags(fs)
 	apiAddr := fs.String("api", "127.0.0.1:17900", "loopback address of the UI API")
 	verbose := fs.Bool("v", false, "print core output and every health check")
+	withApp := fs.Bool("exit-without-app", false, "stop, disconnecting, once the app is closed")
 	fs.Parse(args)
 	cfg, err := df.config()
 	if err != nil {
 		return err
 	}
-	return serve(ctx, cfg, *apiAddr, os.Stdout, *verbose)
+	return serve(ctx, cfg, *apiAddr, os.Stdout, *verbose, *withApp)
 }
 
 // apiInfo is written to <data dir>/api.json for the UI to find the daemon.
@@ -96,7 +97,16 @@ type apiInfo struct {
 	Token   string `json:"token"`
 }
 
-func serve(ctx context.Context, cfg service.Config, apiAddr string, log io.Writer, verbose bool) error {
+// Grace periods of -exit-without-app: how long the app may take to connect
+// after the daemon starts, and to come back after its event stream ends.
+const (
+	appFirstWait = time.Minute
+	appGrace     = 10 * time.Second
+)
+
+// serve runs the daemon until ctx ends or, with withApp, until the app has
+// been closed for appGrace.
+func serve(ctx context.Context, cfg service.Config, apiAddr string, log io.Writer, verbose, withApp bool) error {
 	addr, err := parseAddrPort(apiAddr)
 	if err != nil || !addr.Addr().IsLoopback() {
 		return fmt.Errorf("-api must be a loopback address, got %q", apiAddr)
@@ -147,11 +157,24 @@ func serve(ctx context.Context, cfg service.Config, apiAddr string, log io.Write
 	fmt.Fprintf(log, "API listening on %s (token in %s); %d subscriptions, TUN %v\n",
 		addr, infoPath, len(st.Subscriptions()), set.TUN && cfg.TUNUnavailable == "")
 
+	if withApp {
+		var stop context.CancelFunc
+		ctx, stop = context.WithCancel(ctx)
+		defer stop()
+		go func() {
+			if svc.WaitAppGone(ctx, appFirstWait, appGrace) {
+				fmt.Fprintln(log, "the app is closed")
+				stop()
+			}
+		}()
+	}
 	go st.RunUpdater(ctx, time.Minute)
 	go svc.RunAppUpdates(ctx)
-	if set.AutoConnect {
-		go autoConnect(ctx, svc, log)
-	}
+	go func() {
+		if err := svc.AutoConnect(ctx); err != nil && ctx.Err() == nil {
+			fmt.Fprintln(log, "auto-connect:", err)
+		}
+	}()
 
 	<-ctx.Done()
 	fmt.Fprintln(log, "shutting down")
@@ -162,32 +185,6 @@ func serve(ctx context.Context, cfg service.Config, apiAddr string, log io.Write
 		srv.Close() // event streams never go idle
 	}
 	return nil
-}
-
-// autoConnect connects the selected node at start. The network may not be up
-// yet when the daemon starts with the system, so failures are retried for a
-// while unless the user connects or disconnects in the meantime.
-func autoConnect(ctx context.Context, svc *service.Service, log io.Writer) {
-	for i, delay := range []time.Duration{0, 5 * time.Second, 15 * time.Second, 30 * time.Second, time.Minute} {
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(delay):
-		}
-		// After our own failed attempt the state is Failed; anything else
-		// means the user took over.
-		if st := svc.Status().State; (i == 0 && st != service.Idle) || (i > 0 && st != service.Failed) {
-			return
-		}
-		err := svc.ConnectSelected(ctx)
-		if err == nil || errors.Is(err, service.ErrNoSelection) || ctx.Err() != nil {
-			if err != nil {
-				fmt.Fprintln(log, "auto-connect:", err)
-			}
-			return
-		}
-		fmt.Fprintf(log, "auto-connect attempt %d failed: %v\n", i+1, err)
-	}
 }
 
 func parseAddrPort(s string) (netip.AddrPort, error) { return netip.ParseAddrPort(s) }

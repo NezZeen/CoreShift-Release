@@ -25,7 +25,8 @@ import (
 //	                             {"link": "vless://…"} or {"node": {…}} for a one-off
 //	POST /v1/reconnect           the last node again, applying changed settings
 //	POST /v1/disconnect
-//	GET  /v1/events[?replay=1]   server-sent events
+//	GET  /v1/events[?replay=1]   server-sent events; with app=1 the stream
+//	                             is the app's (Service.AttachApp)
 //	POST /v1/subscription/parse  {"url": "…"} or {"content": "…"}, without saving
 //
 // plus the store endpoints in api_store.go.
@@ -161,6 +162,9 @@ func (a *api) events(w http.ResponseWriter, r *http.Request) {
 
 	events, unsubscribe := a.svc.Subscribe(r.URL.Query().Get("replay") == "1")
 	defer unsubscribe()
+	if r.URL.Query().Get("app") == "1" {
+		defer a.svc.AttachApp()()
+	}
 	ping := time.NewTicker(15 * time.Second)
 	defer ping.Stop()
 	for {

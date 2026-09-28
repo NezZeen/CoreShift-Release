@@ -280,6 +280,30 @@ void main() {
     expect(saved, {'notifications': false});
   });
 
+  test('autostart follows its setting', () async {
+    final calls = <bool>[];
+    final state = AppState(
+      DemoBackend(),
+      prefs: {},
+      autostartSetter: (on) {
+        calls.add(on);
+        return true;
+      },
+    );
+    state.start();
+    while (!state.loaded) {
+      await Future.delayed(const Duration(milliseconds: 20));
+    }
+    // Set once at start, so a moved app's path is corrected.
+    expect(calls, [false]);
+    await state.updateSettings((s) => s['auto_connect'] = true);
+    await state.updateSettings((s) => s['auto_connect'] = true);
+    expect(calls, [false, true]);
+    await state.updateSettings((s) => s['auto_connect'] = false);
+    expect(calls, [false, true, false]);
+    state.dispose();
+  });
+
   testWidgets('new panels fit the smallest window', (tester) async {
     final state = await pumpApp(tester, size: const Size(960, 606));
     await tester.runAsync(() async {

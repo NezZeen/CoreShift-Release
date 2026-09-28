@@ -34,7 +34,8 @@ class CoreShiftVpnService : VpnService() {
             Thread { Mobile.disconnect() }.start()
             return START_NOT_STICKY
         }
-        showNotification()
+        // Started at boot the VPN is not up yet; the engine builds it.
+        showNotification(connecting = intent?.action == ACTION_AUTOSTART && tun == null)
         return START_NOT_STICKY
     }
 
@@ -57,7 +58,14 @@ class CoreShiftVpnService : VpnService() {
         b.setConfigureIntent(openAppIntent())
         val pfd = b.establish() ?: throw IllegalStateException("VPN permission is not granted")
         tun = pfd
+        showNotification(connecting = false)
         return pfd.fd
+    }
+
+    /** Stops the service if no VPN was built, as after a failed autostart. */
+    @Synchronized
+    fun stopIfIdle() {
+        if (tun == null) shutdown()
     }
 
     /** Closes the TUN and stops the service. */
@@ -96,7 +104,7 @@ class CoreShiftVpnService : VpnService() {
         this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE,
     )
 
-    private fun showNotification() {
+    private fun showNotification(connecting: Boolean) {
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL, "VPN", NotificationManager.IMPORTANCE_LOW).apply {
@@ -109,8 +117,8 @@ class CoreShiftVpnService : VpnService() {
         )
         val n = Notification.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_vpn)
-            .setContentTitle("CoreShift подключён")
-            .setContentText("Трафик идёт через VPN")
+            .setContentTitle(if (connecting) "CoreShift подключается…" else "CoreShift подключён")
+            .setContentText(if (connecting) "Автозапуск" else "Трафик идёт через VPN")
             .setContentIntent(openAppIntent())
             .setOngoing(true)
             .addAction(Notification.Action.Builder(null, "Отключить", disconnect).build())
@@ -126,6 +134,7 @@ class CoreShiftVpnService : VpnService() {
         private const val CHANNEL = "vpn"
         private const val NOTIFICATION_ID = 1
         private const val ACTION_DISCONNECT = "dev.coreshift.DISCONNECT"
+        const val ACTION_AUTOSTART = "dev.coreshift.AUTOSTART"
 
         @Volatile
         private var instance: CoreShiftVpnService? = null

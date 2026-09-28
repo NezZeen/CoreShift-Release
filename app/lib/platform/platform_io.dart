@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../api/backend.dart';
 import '../api/models.dart';
+import 'win_service.dart' as win;
 
 /// On Android the engine runs inside the app; this channel reaches its
 /// Kotlin side (MainActivity.kt).
@@ -148,7 +149,7 @@ class HttpBackend implements Backend {
       onListen: () async {
         try {
           final ep = await _endpoint(reload: true);
-          req = await _client.getUrl(ep.base.resolve('/v1/events?replay=1'));
+          req = await _client.getUrl(ep.base.resolve('/v1/events?replay=1&app=1'));
           req!.headers.set(HttpHeaders.authorizationHeader, 'Bearer ${ep.token}');
           final resp = await req!.close();
           if (cancelled) return;
@@ -185,6 +186,14 @@ class HttpBackend implements Backend {
     return out.stream;
   }
 }
+
+/// Starts the Windows service, which runs only while the app does, without
+/// administrator rights; null where there is no such service.
+bool Function()? get daemonStarter => Platform.isWindows ? win.startServiceQuietly : null;
+
+/// Adds the app to the programs the system starts at sign-in, or removes
+/// it; null where CoreShift does not (Android starts it at boot itself).
+bool Function(bool on)? get autostartSetter => Platform.isWindows ? win.setAutostart : null;
 
 /// Whether the UI can start a stopped service itself (with a UAC prompt).
 bool get canStartService => Platform.isWindows;
