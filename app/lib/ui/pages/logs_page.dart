@@ -17,6 +17,7 @@ class LogsPage extends StatefulWidget {
 
 class _LogsPageState extends State<LogsPage> {
   _Filter filter = _Filter.all;
+  String query = '';
   final _scroll = ScrollController();
   bool _follow = true;
 
@@ -38,6 +39,7 @@ class _LogsPageState extends State<LogsPage> {
   /// The cores' own output shows under "Ядра" only: elsewhere it drowns
   /// the events.
   bool _keep(LogLine l) {
+    if (query.isNotEmpty && !'${l.source} ${l.message}'.toLowerCase().contains(query)) return false;
     final isCore = allCores.contains(l.source);
     if (filter != _Filter.cores && isCore && l.level == LogLevel.info && !_isEvent(l)) return false;
     return switch (filter) {
@@ -68,8 +70,21 @@ class _LogsPageState extends State<LogsPage> {
         children: [
           PageHeader(
             'Журнал',
-            subtitle: 'События службы, ядер и автосвапа. Полный вывод ядер — во вкладке «Ядра».',
+            subtitle: 'События службы, ядер и автосвапа. Построчный вывод ядер — в фильтре «Ядра».',
             actions: [
+              SizedBox(
+                width: compact ? 140 : 220,
+                child: TextField(
+                  onChanged: (v) => setState(() => query = v.trim().toLowerCase()),
+                  style: const TextStyle(fontSize: 13),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    hintText: 'Поиск',
+                    prefixIcon: Icon(Icons.search, size: 16, color: p.dim),
+                    prefixIconConstraints: const BoxConstraints(minWidth: 32),
+                  ),
+                ),
+              ),
               Seg<_Filter>(
                 value: filter,
                 options: const [(_Filter.all, 'Все'), (_Filter.swap, 'Автосвап'), (_Filter.cores, 'Ядра'), (_Filter.errors, 'Ошибки')],

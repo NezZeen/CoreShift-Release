@@ -379,8 +379,8 @@ class _LeakGuardState extends State<_LeakGuard> {
                     ? 'Выключена'
                     : on == guards.length
                     ? 'DNS-запросы браузеров и системы не уходят мимо туннеля'
-                    : 'Включена частично: $on из ${guards.length}',
-                style: TextStyle(fontSize: 12, color: p.muted),
+                    : 'Включено не всё: $on из ${guards.length}',
+                style: TextStyle(fontSize: 12, color: on > 0 && on < guards.length ? warnColor : p.muted),
               ),
               InkWell(
                 onTap: () => setState(() => open = !open),
