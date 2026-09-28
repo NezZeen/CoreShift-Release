@@ -87,9 +87,18 @@ class _DesktopFrameState extends State<DesktopFrame> with WindowListener {
     await windowManager.focus();
   }
 
-  /// Quits the app. The VPN is the service's, so it stays as it is.
+  /// Quits the app, and with it the VPN: the service stops once the app is
+  /// gone, however it ends; here it disconnects at once rather than after
+  /// its grace period.
   Future<void> _exit() async {
     await windowManager.hide();
+    if (widget.state.status.active) {
+      try {
+        await widget.state.disconnect().timeout(const Duration(seconds: 5));
+      } catch (_) {
+        // The service disconnects by itself once the app is gone.
+      }
+    }
     try {
       _tray?.dispose();
     } catch (_) {
@@ -256,8 +265,8 @@ class _Tray {
 
   _Tray._(this.state, this.icon, this.menu, this.toggle, this.servers, this.onOpen);
 
-  /// How many servers the menu offers: the fastest once pinged, else the
-  /// first of the selected subscription.
+  /// How many servers the menu offers: the first of the selected
+  /// subscription, in its order.
   static const _maxServers = 10;
 
   static _Tray? create(AppState state, {required VoidCallback onOpen, required VoidCallback onExit}) {
@@ -346,8 +355,7 @@ class _Tray {
       return l == null || !l.ok ? 1 << 30 : l.ms;
     }
 
-    final tested = all.where((r) => ms(r) < 1 << 30).toList()..sort((a, b) => ms(a).compareTo(ms(b)));
-    final list = (tested.isNotEmpty ? tested : all.where((r) => r.$1.id == sel.subscription || sel.isEmpty).toList()).take(_maxServers).toList();
+    final list = all.where((r) => r.$1.id == sel.subscription || sel.isEmpty).take(_maxServers).toList();
     final key = [state.online && !state.busy, for (final (sub, n) in list) '${sub.id}/${n.fingerprint}/${state.isSelected(sub, n)}/${ms((sub, n))}'].join('|');
     if (key == _serversShown) return;
     _serversShown = key;
