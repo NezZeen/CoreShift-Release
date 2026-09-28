@@ -47,7 +47,20 @@ object Engine {
             Log.e(TAG, "engine did not start", e)
             return
         }
+        Mobile.currentStatus().let { VpnStatus.set(it.state, it.node, it.sinceMillis) }
         watchNetwork(app)
+    }
+
+    /** Connects the selected server in the background, from the tile. */
+    fun connect() {
+        Thread {
+            try {
+                Mobile.connect()
+            } catch (e: Exception) {
+                Log.w(TAG, "connect from the tile: ${e.message}")
+                CoreShiftVpnService.current()?.stopIfIdle()
+            }
+        }.start()
     }
 
     /**
@@ -109,5 +122,16 @@ object Engine {
         }
 
         override fun installUpdate(path: String) = Updater.install(context, path)
+
+        override fun stateChanged(state: String, node: String, sinceMillis: Long) {
+            VpnStatus.set(state, node, sinceMillis)
+            CoreShiftVpnService.current()?.refreshNotification()
+            VpnTileService.refresh(context)
+        }
+
+        override fun traffic(downRate: Long, upRate: Long) {
+            VpnStatus.setTraffic(downRate, upRate)
+            CoreShiftVpnService.current()?.refreshNotification()
+        }
     }
 }

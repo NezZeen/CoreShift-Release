@@ -46,6 +46,14 @@ Future<void> allowInstallUpdates() async {
   if (Platform.isAndroid) await _android.invokeMethod<void>('allowInstallUpdates');
 }
 
+/// Asks Android to add CoreShift's tile to the quick settings: "added",
+/// "already", "declined", or "unsupported" before Android 13, where the
+/// user adds it by hand.
+Future<String> addQuickTile() async {
+  if (!Platform.isAndroid) return 'unsupported';
+  return await _android.invokeMethod<String>('addTile') ?? 'declined';
+}
+
 /// Opens a link in the browser or the app that handles it (Telegram for
 /// t.me); false when nothing could. The caller checks the link.
 Future<bool> openUrl(String url) async {
