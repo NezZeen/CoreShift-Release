@@ -272,6 +272,18 @@ class Subscription {
   String get host => Uri.tryParse(url)?.host ?? '';
 }
 
+/// The address sites see (GET /v1/ip): the VPN server's while connected.
+class IpInfo {
+  final String ip;
+  /// ISO code, "DE"; empty when unknown.
+  final String country;
+  final bool vpn;
+
+  const IpInfo({required this.ip, this.country = '', this.vpn = false});
+
+  factory IpInfo.fromJson(Json j) => IpInfo(ip: j['ip'] ?? '', country: j['country'] ?? '', vpn: j['vpn'] == true);
+}
+
 class Selection {
   final String subscription;
   final String fingerprint;
