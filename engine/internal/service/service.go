@@ -289,6 +289,7 @@ type Service struct {
 	latency latencyState
 	cores   coreState
 	upd     appUpdater
+	apps    appWatch
 
 	op       sync.Mutex // serialises connect, disconnect and teardown
 	tun      TUNInstance

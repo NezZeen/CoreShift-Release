@@ -11,6 +11,10 @@ Future<void> savePrefs(Map<String, dynamic> prefs) async {}
 
 bool get canStartService => false;
 
+bool Function()? get daemonStarter => null;
+
+bool Function(bool on)? get autostartSetter => null;
+
 Future<String?> startService() async => 'Недоступно в браузере';
 
 Future<List<Map<String, dynamic>>> dnsLeakTest() async => throw UnsupportedError('Недоступно в браузере');
