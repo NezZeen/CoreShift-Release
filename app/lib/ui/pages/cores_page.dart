@@ -40,44 +40,16 @@ class CoresPage extends StatelessWidget {
             ),
           ],
         ),
-        // On a phone the tiles repeat the priority list below; they stay
-        // only for picking the core by hand.
-        if (!isCompact(context) || mode == 'manual')
-          LayoutBuilder(
-            builder: (context, c) {
-              final cols = c.maxWidth >= 900 ? 3 : 1;
-              final w = (c.maxWidth - 12 * (cols - 1)) / cols;
-              return Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  for (final k in allCores)
-                    SizedBox(
-                      width: w,
-                      child: _CoreTile(state: state, kind: k),
-                    ),
-                ],
-              );
-            },
-          ),
-        if (mode == 'manual')
-          Padding(
-            padding: const EdgeInsets.only(top: 10),
-            child: Text(
-              'Ручной режим: нажмите на плитку, чтобы выбрать ядро. Переключения при сбоях не будет.',
-              style: TextStyle(fontSize: 12, color: context.pal.dim),
-            ),
-          ),
-        const SizedBox(height: 18),
+        _Backup(state: state),
         LayoutBuilder(
           builder: (context, c) {
-            final prio = _PriorityCard(state: state);
+            final list = _CoreList(state: state);
             final rules = _RulesCard(state: state);
-            if (c.maxWidth < 900) return Column(children: [prio, const SizedBox(height: 18), rules]);
+            if (c.maxWidth < 900) return Column(children: [list, const SizedBox(height: 18), rules]);
             return Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(flex: 10, child: prio),
+                Expanded(flex: 10, child: list),
                 const SizedBox(width: 18),
                 Expanded(flex: 12, child: rules),
               ],
@@ -91,89 +63,7 @@ class CoresPage extends StatelessWidget {
   }
 }
 
-class _CoreTile extends StatelessWidget {
-  final AppState state;
-  final String kind;
-  const _CoreTile({required this.state, required this.kind});
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.pal;
-    final s = coreStyle(kind);
-    final st = state.status;
-    final installed = state.info.installed(kind);
-    final manual = state.setting('cores.mode', 'auto') == 'manual';
-    final picked = manual && state.setting('cores.manual', '') == kind;
-    final running = st.active && st.core == kind;
-    final failed = st.active && st.failed.containsKey(kind);
-    final prio = state.setting<List>('cores.priority', const []).cast<String>();
-    final features = state.info.cores.where((c) => c.kind == kind).firstOrNull?.features ?? const [];
-    final protocols = features.where((f) => f.startsWith('protocol:')).length;
-    final version = state.info.versionOf(kind);
-    final update = state.updateOf(kind);
-    final updating = state.updatingCore == kind;
-
-    final (pill, pillColor) = !installed
-        ? ('не установлено', p.dim)
-        : running
-        ? ('работает', okColor)
-        : failed
-        ? ('сбой', errColor)
-        : manual
-        ? (picked ? 'выбрано' : 'не используется', picked ? accent : p.dim)
-        : prio.contains(kind)
-        ? ('приоритет ${prio.indexOf(kind) + 1}', p.muted)
-        : ('выключено', p.dim);
-
-    return Panel(
-      borderColor: running ? s.color : (picked ? accent : null),
-      onTap: manual && installed && !picked ? () => state.updateSettings((x) => x['cores']['manual'] = kind) : null,
-      child: Opacity(
-        opacity: installed ? 1 : .55,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                CoreLogo(kind, size: 40),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(s.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
-                      Text(
-                        !installed ? (platform.isAndroid ? 'нет в этой сборке' : 'нет в папке ядер') : (version.isEmpty ? 'установлено' : 'версия $version'),
-                        style: TextStyle(fontSize: 12, color: p.muted, fontFamily: version.isEmpty ? null : monoFont),
-                      ),
-                    ],
-                  ),
-                ),
-                Pill(pill, color: pillColor),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                Text('Протоколы', style: TextStyle(fontSize: 12, color: p.muted)),
-                const Spacer(),
-                Text('$protocols из 8', style: TextStyle(fontSize: 12, color: p.muted)),
-              ],
-            ),
-            const SizedBox(height: 6),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(9),
-              child: LinearProgressIndicator(value: protocols / 8, minHeight: 5, backgroundColor: p.surface3, color: s.color),
-            ),
-            if (installed && update != null) ...[const SizedBox(height: 12), _UpdateRow(state: state, update: update, updating: updating)],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Under a core tile once updates were checked: up to date, a newer
+/// Under a core once updates were checked: up to date, a newer
 /// version with a button, or why the check failed.
 class _UpdateRow extends StatelessWidget {
   final AppState state;
@@ -235,13 +125,18 @@ class _UpdateRow extends StatelessWidget {
   }
 }
 
-class _PriorityCard extends StatelessWidget {
+/// Every core in one list: its version and state, its update, and in the
+/// automatic mode its place in the queue; in the manual one the choice.
+class _CoreList extends StatelessWidget {
   final AppState state;
-  const _PriorityCard({required this.state});
+  const _CoreList({required this.state});
 
   @override
   Widget build(BuildContext context) {
     final p = context.pal;
+    final st = state.status;
+    final manual = state.setting('cores.mode', 'auto') == 'manual';
+    final picked = state.setting('cores.manual', '');
     final prio = state.setting<List>('cores.priority', const []).cast<String>();
     final off = allCores.where((k) => !prio.contains(k)).toList();
 
@@ -249,63 +144,76 @@ class _PriorityCard extends StatelessWidget {
 
     Widget item(String k, int? index) {
       final s = coreStyle(k);
-      final on = index != null;
-      return Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: p.surface2,
-          borderRadius: BorderRadius.circular(11),
-          border: Border.all(color: p.border),
-        ),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 16,
-              child: Text(
-                on ? '${index + 1}' : '–',
-                style: TextStyle(fontFamily: monoFont, color: p.dim),
-              ),
+      final installed = state.info.installed(k);
+      final on = manual ? picked == k : index != null;
+      final version = state.info.versionOf(k);
+      final update = state.updateOf(k);
+      final (pill, pillColor) = st.active && st.core == k
+          ? ('работает', okColor)
+          : st.active && st.failed.containsKey(k)
+          ? ('сбой', errColor)
+          : ('', p.dim);
+      final row = Row(
+        children: [
+          SizedBox(
+            width: 22,
+            child: manual
+                ? Icon(on ? Icons.radio_button_checked : Icons.radio_button_off, size: 17, color: on ? accent : p.dim)
+                : Text(
+                    on ? '${index! + 1}' : '–',
+                    style: TextStyle(fontFamily: monoFont, color: p.dim),
+                  ),
+          ),
+          const SizedBox(width: 6),
+          CoreLogo(k, size: 30, off: !on || !installed),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        s.name,
+                        style: TextStyle(fontWeight: FontWeight.w600, color: on ? p.text : p.muted),
+                      ),
+                    ),
+                    if (pill.isNotEmpty) ...[const SizedBox(width: 8), Pill(pill, color: pillColor)],
+                  ],
+                ),
+                Text(
+                  !installed ? (platform.isAndroid ? 'нет в этой сборке' : 'нет в папке ядер') : (version.isEmpty ? 'установлено' : 'версия $version'),
+                  style: TextStyle(fontSize: 11.5, color: p.dim, fontFamily: version.isEmpty || !installed ? null : monoFont),
+                ),
+              ],
+            ),
+          ),
+          if (!manual && on) ...[
+            _Arrow(
+              icon: Icons.keyboard_arrow_up,
+              onTap: index! > 0
+                  ? () => save(
+                      [...prio]
+                        ..removeAt(index)
+                        ..insert(index - 1, k),
+                    )
+                  : null,
+            ),
+            const SizedBox(width: 4),
+            _Arrow(
+              icon: Icons.keyboard_arrow_down,
+              onTap: index < prio.length - 1
+                  ? () => save(
+                      [...prio]
+                        ..removeAt(index)
+                        ..insert(index + 1, k),
+                    )
+                  : null,
             ),
             const SizedBox(width: 8),
-            CoreLogo(k, size: 28, off: !on),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    s.name,
-                    style: TextStyle(fontWeight: FontWeight.w600, color: on ? p.text : p.muted),
-                  ),
-                  if (!state.info.installed(k)) Text('не установлено', style: TextStyle(fontSize: 11, color: p.dim)),
-                ],
-              ),
-            ),
-            if (on) ...[
-              _Arrow(
-                icon: Icons.keyboard_arrow_up,
-                onTap: index > 0
-                    ? () => save(
-                        [...prio]
-                          ..removeAt(index)
-                          ..insert(index - 1, k),
-                      )
-                    : null,
-              ),
-              const SizedBox(width: 4),
-              _Arrow(
-                icon: Icons.keyboard_arrow_down,
-                onTap: index < prio.length - 1
-                    ? () => save(
-                        [...prio]
-                          ..removeAt(index)
-                          ..insert(index + 1, k),
-                      )
-                    : null,
-              ),
-              const SizedBox(width: 8),
-            ],
+          ],
+          if (!manual)
             Tooltip(
               message: on ? (prio.length == 1 ? 'Нужно хотя бы одно ядро' : 'Не использовать это ядро') : 'Использовать',
               child: Transform.scale(
@@ -313,7 +221,36 @@ class _PriorityCard extends StatelessWidget {
                 child: Switch(value: on, onChanged: on && prio.length == 1 ? null : (v) => save(v ? [...prio, k] : prio.where((x) => x != k).toList())),
               ),
             ),
-          ],
+        ],
+      );
+      return Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        decoration: BoxDecoration(
+          color: manual && on ? accent.withValues(alpha: .08) : p.surface2,
+          borderRadius: BorderRadius.circular(11),
+          border: Border.all(color: manual && on ? accent.withValues(alpha: .6) : p.border),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(11),
+            // The manual mode: a tap picks the core.
+            onTap: manual && installed && !on ? () => state.updateSettings((x) => x['cores']['manual'] = k) : null,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  row,
+                  if (installed && update != null)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 28, top: 8),
+                      child: _UpdateRow(state: state, update: update, updating: state.updatingCore == k),
+                    ),
+                ],
+              ),
+            ),
+          ),
         ),
       );
     }
@@ -322,16 +259,64 @@ class _PriorityCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const PanelTitle('Приоритет ядер', sub: 'сверху — предпочтительное'),
-          for (final (i, k) in prio.indexed) item(k, i),
-          for (final k in off) item(k, null),
+          PanelTitle('Ядра', sub: manual ? 'работает только выбранное' : 'сверху — предпочтительное'),
+          if (manual)
+            for (final k in [...prio, ...off]) item(k, null)
+          else ...[for (final (i, k) in prio.indexed) item(k, i), for (final k in off) item(k, null)],
           const SizedBox(height: 4),
           Text(
-            'При подключении берётся первое ядро из списка, которое поддерживает протокол сервера. '
-            'Несовместимые пропускаются, остальные становятся резервом.',
+            manual
+                ? 'Ручной режим: нажмите на ядро, чтобы выбрать его. Переключения при сбоях не будет.'
+                : 'При подключении берётся первое ядро из списка, которое поддерживает протокол сервера. '
+                      'Несовместимые пропускаются, остальные становятся резервом.',
             style: TextStyle(fontSize: 12, color: p.dim, height: 1.5),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// While connected on a backup core: which one failed, and the way back
+/// without waiting for the timer.
+class _Backup extends StatelessWidget {
+  final AppState state;
+  const _Backup({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final st = state.status;
+    final chain = st.chain;
+    final manual = state.setting('cores.mode', 'auto') == 'manual';
+    if (st.state != ConnState.connected || manual || chain.length < 2 || st.core.isEmpty || st.core == chain.first) return const SizedBox();
+    final primary = coreStyle(chain.first).name;
+    final why = st.failed[chain.first] ?? '';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 18),
+      child: Panel(
+        borderColor: swapColor.withValues(alpha: .5),
+        padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
+        child: Row(
+          children: [
+            const Icon(Icons.swap_horiz, color: swapColor),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Работает резервное ядро: ${coreStyle(st.core).name}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 2),
+                  Text(
+                    '$primary перестало работать${why.isEmpty ? '' : ': ${humanError(why)}'}. Вернуть его можно сразу: сначала оно проверяется в фоне.',
+                    style: TextStyle(fontSize: 12, color: context.pal.muted),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Btn(label: 'Вернуть $primary', icon: Icons.undo, small: true, loading: state.returning, onPressed: state.busy ? null : state.returnToPrimary),
+          ],
+        ),
       ),
     );
   }

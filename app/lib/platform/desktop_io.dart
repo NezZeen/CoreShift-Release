@@ -239,18 +239,26 @@ class _GlyphPainter extends CustomPainter {
 }
 
 /// The tray icon: its picture and tooltip follow the connection, a click
-/// opens the window, and its menu connects, disconnects and quits.
+/// opens the window, and its menu connects, disconnects, switches servers
+/// and quits.
 class _Tray {
   final AppState state;
   final tray.TrayIcon icon;
   final tray.MenuItem toggle;
   // The native menu stays alive only while something refers to it.
   final tray.Menu menu;
+  final tray.Menu servers;
+  final List<tray.MenuItem> _serverItems = [];
   String _shown = '';
+  String _serversShown = '';
 
   final VoidCallback onOpen;
 
-  _Tray._(this.state, this.icon, this.menu, this.toggle, this.onOpen);
+  _Tray._(this.state, this.icon, this.menu, this.toggle, this.servers, this.onOpen);
+
+  /// How many servers the menu offers: the fastest once pinged, else the
+  /// first of the selected subscription.
+  static const _maxServers = 10;
 
   static _Tray? create(AppState state, {required VoidCallback onOpen, required VoidCallback onExit}) {
     final icon = tray.TrayIcon.create();
@@ -270,10 +278,16 @@ class _Tray {
     menu.addSeparator();
     late final _Tray t;
     final toggle = item('Подключить', () => t._toggle());
+    final servers = tray.Menu.create();
+    final serverItem = tray.MenuItem.createWithLabelAndType('Сервер', tray.MenuItemType.submenu);
+    if (servers != null && serverItem != null) {
+      serverItem.submenu = servers;
+      menu.addItem(serverItem);
+    }
     menu.addSeparator();
     item('Выход', onExit);
-    if (toggle == null) return null;
-    t = _Tray._(state, icon, menu, toggle, onOpen);
+    if (toggle == null || servers == null) return null;
+    t = _Tray._(state, icon, menu, toggle, servers, onOpen);
 
     icon.setContextMenu(menu);
     icon.setContextMenuTrigger(tray.ContextMenuTrigger.rightClicked);
@@ -315,6 +329,58 @@ class _Tray {
     icon.setTooltip(tip);
     toggle.label = st.active ? 'Отключить' : 'Подключить';
     toggle.isEnabled = state.online && !state.busy;
+    _updateServers();
+  }
+
+  /// The servers to switch to, the chosen one ticked. Picking one connects
+  /// to it, or moves the running connection there.
+  void _updateServers() {
+    final sel = state.selection;
+    final all = [
+      for (final sub in state.subscriptions)
+        for (final n in sub.nodes)
+          if (n.cores.isNotEmpty) (sub, n),
+    ];
+    int ms((Subscription, NodeView) r) {
+      final l = state.latencyOf(r.$1.id, r.$2.fingerprint);
+      return l == null || !l.ok ? 1 << 30 : l.ms;
+    }
+
+    final tested = all.where((r) => ms(r) < 1 << 30).toList()..sort((a, b) => ms(a).compareTo(ms(b)));
+    final list = (tested.isNotEmpty ? tested : all.where((r) => r.$1.id == sel.subscription || sel.isEmpty).toList()).take(_maxServers).toList();
+    final key = [state.online && !state.busy, for (final (sub, n) in list) '${sub.id}/${n.fingerprint}/${state.isSelected(sub, n)}/${ms((sub, n))}'].join('|');
+    if (key == _serversShown) return;
+    _serversShown = key;
+    servers.clear();
+    for (final i in _serverItems) {
+      i.dispose();
+    }
+    _serverItems.clear();
+    for (final (sub, n) in list) {
+      final l = state.latencyOf(sub.id, n.fingerprint);
+      final label = '${n.name}${l != null && l.ok ? '   ${l.ms} мс' : ''}';
+      final i = tray.MenuItem.createWithLabelAndType(label, tray.MenuItemType.checkbox);
+      if (i == null) continue;
+      i.state = state.isSelected(sub, n) ? tray.MenuItemState.checked : tray.MenuItemState.unchecked;
+      i.isEnabled = state.online && !state.busy;
+      i.addListener((e) {
+        if (e is tray.MenuItemClickedEvent) {
+          Timer.run(() {
+            if (state.online && !state.busy) state.connect(subscription: sub.id, fingerprint: n.fingerprint, name: n.name);
+          });
+        }
+      });
+      servers.addItem(i);
+      _serverItems.add(i);
+    }
+    if (list.isEmpty) {
+      final i = tray.MenuItem.createWithLabelAndType('Нет серверов', tray.MenuItemType.normal);
+      if (i != null) {
+        i.isEnabled = false;
+        servers.addItem(i);
+        _serverItems.add(i);
+      }
+    }
   }
 
   /// The current speed on a second line of the tooltip.

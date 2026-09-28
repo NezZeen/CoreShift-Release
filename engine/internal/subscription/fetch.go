@@ -17,7 +17,8 @@ import (
 // DefaultUserAgent is sent unless the user overrides it. Panels (Marzban,
 // Remnawave, 3x-ui…) pick the response format from the User-Agent; an unknown
 // one gets the base64 link list, which carries every protocol we support.
-const DefaultUserAgent = "CoreShift/0.1"
+// Release builds put their version in it (see service.Version).
+var DefaultUserAgent = "CoreShift/0.1"
 
 const maxBodySize = 16 << 20
 

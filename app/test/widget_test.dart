@@ -68,7 +68,6 @@ void main() {
     await tester.pump();
     expect(state.status.core, 'xray');
     expect(find.text('Подключено'), findsWidgets);
-    expect(find.text('Xray-core'), findsWidgets);
     await tester.runAsync(() => state.disconnect());
     await tester.pump();
     expect(find.text('Отключено'), findsWidgets);
@@ -457,11 +456,11 @@ void main() {
       },
     );
     await pumpApp(tester, custom: state);
-    // On the home page for the selected subscription, and on every card.
-    expect(find.textContaining('Написать в поддержку'), findsOneWidget);
+    // On every subscription's card, not on the home page.
+    expect(find.byTooltip('Написать в поддержку в Telegram'), findsNothing);
     await tester.tap(find.text('Серверы').first);
     await tester.pump();
-    await tester.tap(find.textContaining('Написать в поддержку').first);
+    await tester.tap(find.byTooltip('Написать в поддержку в Telegram').first);
     await tester.pump();
     expect(opened, ['https://t.me/example_support']);
 
@@ -588,32 +587,28 @@ void main() {
     await tester.pump(const Duration(seconds: 6));
   });
 
-  testWidgets('a phone home page keeps to the button, the server and a few numbers', (tester) async {
-    final state = await pumpApp(tester, size: const Size(390, 844));
-    expect(find.text('Отключено'), findsOneWidget);
-    expect(find.text('Amsterdam'), findsOneWidget);
-    expect(find.textContaining('подписка ещё'), findsOneWidget);
-    // The desktop's panels stay on the desktop.
-    for (final t in ['Скорость', 'Очередь ядер', 'Через VPN', 'Смен ядра', 'Загрузка']) {
-      expect(find.text(t), findsNothing, reason: t);
+  testWidgets('the home page keeps to the connection', (tester) async {
+    for (final size in [const Size(390, 844), const Size(1400, 900)]) {
+      final state = await pumpApp(tester, size: size);
+      expect(find.text('Отключено'), findsWidgets);
+      expect(find.text('Amsterdam'), findsOneWidget);
+      // The subscription is on its card, the cores on their page, the mode
+      // in the settings.
+      for (final t in ['Очередь ядер', 'Через VPN', 'Смен ядра', 'Трафик', 'АВТОСВАП', 'Xray-core', 'подписка ещё']) {
+        expect(find.textContaining(t), findsNothing, reason: '$t at $size');
+      }
+      await tester.runAsync(() async {
+        await state.connect();
+        await Future.delayed(const Duration(milliseconds: 2300));
+      });
+      await tester.pump();
+      expect(find.text('Подключено'), findsWidgets);
+      expect(find.text('Загрузка'), findsWidgets);
+      expect(tester.takeException(), isNull);
+      await tester.runAsync(() => state.disconnect());
+      await tester.pump(const Duration(seconds: 1));
     }
-    await tester.runAsync(() async {
-      await state.connect();
-      await Future.delayed(const Duration(milliseconds: 2300));
-    });
-    await tester.pump();
-    expect(find.text('Подключено'), findsOneWidget);
-    expect(find.text('Загрузка'), findsOneWidget);
-    expect(find.text('Xray-core'), findsOneWidget);
-    expect(find.text('АВТОСВАП'), findsOneWidget);
-    expect(find.text('Скорость'), findsNothing);
-    expect(tester.takeException(), isNull);
-    // The core line leads to the cores page.
-    await tester.tap(find.text('Xray-core'));
-    await tester.pump();
-    expect(find.text('Приоритет ядер'), findsOneWidget);
-    await tester.runAsync(() => state.disconnect());
-    await tester.pump(const Duration(seconds: 1));
+    await tester.pump(const Duration(seconds: 6));
   });
 
   testWidgets('a rule switched while connected says it waits for reconnecting', (tester) async {

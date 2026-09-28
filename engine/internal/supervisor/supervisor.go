@@ -1,11 +1,16 @@
 // Package supervisor runs proxy cores and swaps between them.
 //
 // For a node it builds the chain of installed cores able to run it, in
-// priority order, starts the first one and watches it. When the core fails to
-// start, exits, or keeps failing health checks, the next core in the chain
-// takes over on the same SOCKS port, so the TUN layer in front never notices
-// more than a short gap. After running on a backup for a while it probes the
-// primary core on a spare port and moves back once that works.
+// priority order, starts the first one and watches it. The connection is up
+// as soon as the core runs: health checks only decide whether another core
+// would do better. When the core fails to start or exits, the next core in
+// the chain takes over on the same SOCKS port, so the TUN layer in front
+// never notices more than a short gap. When it keeps failing health checks,
+// the other cores are tried on a spare port and the first that works takes
+// over; when none does, the connection stays as it is rather than going
+// down, since the network, not the core, is then likely at fault. After
+// running on a backup for a while the primary core is probed on the spare
+// port and takes over again once it works.
 package supervisor
 
 import (
@@ -146,7 +151,10 @@ const (
 	EventSwap       EventKind = "swap"        // Core replaced From
 	EventCoreFailed EventKind = "core-failed" // Core was dropped for Reason
 	EventHealth     EventKind = "health"
-	EventLog        EventKind = "log" // a line of core output
+	// EventNoBetter: the core keeps failing health checks, and no other
+	// core passed one either; the connection stays on it.
+	EventNoBetter EventKind = "no-better"
+	EventLog      EventKind = "log" // a line of core output
 )
 
 type Event struct {
@@ -215,8 +223,8 @@ func New(cfg Config) (*Supervisor, error) {
 	return &Supervisor{cfg: cfg, group: g, status: Status{State: Idle}, returnReq: make(chan chan error)}, nil
 }
 
-// Connect starts serving n and returns once a core passes its health check,
-// or with an error when none can. serverAddr, if not empty, is the already
+// Connect starts serving n and returns once a core runs, or with an error
+// when none can start. serverAddr, if not empty, is the already
 // resolved address of n's server (see core.Options.ServerAddr). After a
 // successful return the supervisor keeps watching and swapping in the
 // background until Disconnect.
@@ -371,8 +379,14 @@ func (s *Supervisor) run(ctx context.Context, n node.Node, serverAddr string, ch
 	failed := map[core.Kind]error{}
 	var prev core.Kind
 	var prevReason Reason
+	// next is a core already seen working on the spare port.
+	var next core.Kind
 	for {
-		k, ok := firstNotFailed(chain, failed)
+		k, ok := next, next != ""
+		next = ""
+		if !ok {
+			k, ok = firstNotFailed(chain, failed)
+		}
 		if !ok {
 			err := fmt.Errorf("%w: %s", ErrChainExhausted, describe(chain, failed))
 			s.setState(Failed, "")
@@ -386,9 +400,6 @@ func (s *Supervisor) run(ctx context.Context, n node.Node, serverAddr string, ch
 		}
 
 		p, err := s.launch(ctx, k, n, serverAddr, s.cfg.Listen)
-		if err == nil {
-			_, err = s.awaitHealthy(ctx, p)
-		}
 		if ctx.Err() != nil {
 			p.stop()
 			s.setState(Idle, "")
@@ -412,7 +423,7 @@ func (s *Supervisor) run(ctx context.Context, n node.Node, serverAddr string, ch
 		s.setState(Connected, k)
 		signal(nil)
 
-		reason, err := s.monitor(ctx, p, n, serverAddr, chain[0])
+		reason, alt, err := s.monitor(ctx, p, n, serverAddr, chain, failed)
 		s.mu.Lock()
 		s.active = nil
 		s.mu.Unlock()
@@ -426,6 +437,9 @@ func (s *Supervisor) run(ctx context.Context, n node.Node, serverAddr string, ch
 			s.mu.Lock()
 			clear(s.status.Failed)
 			s.mu.Unlock()
+		case ReasonHealth:
+			s.drop(failed, k, reason, err)
+			next = alt
 		default:
 			s.drop(failed, k, reason, err)
 		}
@@ -433,38 +447,61 @@ func (s *Supervisor) run(ctx context.Context, n node.Node, serverAddr string, ch
 	}
 }
 
-// monitor watches a healthy core and returns why it must be replaced, or ""
-// when ctx is cancelled.
-func (s *Supervisor) monitor(ctx context.Context, p *process, n node.Node, serverAddr string, primary core.Kind) (Reason, error) {
-	tick := time.NewTicker(s.cfg.Health.Interval)
-	defer tick.Stop()
+// failRetry is how soon a failed health check is repeated: often enough to
+// notice quickly whether the connection works or another core should take
+// over.
+const failRetry = 3 * time.Second
+
+// monitor watches the running core and returns why it must be replaced, or
+// "" when ctx is cancelled. For ReasonHealth it also returns the core that
+// passed its check on the spare port.
+func (s *Supervisor) monitor(ctx context.Context, p *process, n node.Node, serverAddr string, chain []core.Kind, failed map[core.Kind]error) (Reason, core.Kind, error) {
+	primary := chain[0]
+	check := time.NewTimer(0) // the first check right away
+	defer check.Stop()
 	var back <-chan time.Time
 	returnAfter := s.cfg.ReturnToPrimaryAfter
 	if s.cfg.Mode == Auto && p.kind != primary && returnAfter > 0 {
 		back = time.After(returnAfter)
 	}
+	// Looking for a working core starts several; after a search that found
+	// none, the next waits a while.
+	searchEvery := 10 * s.cfg.Health.Interval
+	var searched time.Time
 	fails := 0
 	for {
 		select {
 		case <-ctx.Done():
-			return "", nil
+			return "", "", nil
 		case <-p.Exited():
-			return ReasonExited, p.ExitError()
-		case <-tick.C:
+			return ReasonExited, "", p.ExitError()
+		case <-check.C:
 			_, err := s.check(ctx, p)
 			if ctx.Err() != nil {
-				return "", nil
+				return "", "", nil
 			}
+			delay := s.cfg.Health.Interval
 			if err == nil {
 				fails = 0
-				continue
+			} else {
+				fails++
+				delay = min(delay, failRetry)
+				if fails >= s.cfg.Health.Failures && s.cfg.Mode == Auto && time.Since(searched) >= searchEvery {
+					searched = time.Now()
+					if alt, ok := s.findWorking(ctx, chain, failed, p.kind, n, serverAddr); ok {
+						return ReasonHealth, alt, fmt.Errorf("%d health checks in a row failed, last: %w", fails, err)
+					}
+					if ctx.Err() != nil {
+						return "", "", nil
+					}
+					// No core does better: the connection stays.
+					s.emit(Event{Kind: EventNoBetter, Core: p.kind, Err: err})
+				}
 			}
-			if fails++; fails >= s.cfg.Health.Failures {
-				return ReasonHealth, fmt.Errorf("%d health checks in a row failed, last: %w", fails, err)
-			}
+			check.Reset(delay)
 		case <-back:
 			if s.probe(ctx, primary, n, serverAddr) == nil {
-				return ReasonReturn, nil
+				return ReasonReturn, "", nil
 			}
 			back = time.After(returnAfter)
 		case reply := <-s.returnReq:
@@ -475,10 +512,27 @@ func (s *Supervisor) monitor(ctx context.Context, p *process, n node.Node, serve
 			err := s.probe(ctx, primary, n, serverAddr)
 			reply <- err
 			if err == nil {
-				return ReasonReturn, nil
+				return ReasonReturn, "", nil
 			}
 		}
 	}
+}
+
+// findWorking tries the chain's other cores on the spare port, in order,
+// and returns the first that passes its health check.
+func (s *Supervisor) findWorking(ctx context.Context, chain []core.Kind, failed map[core.Kind]error, current core.Kind, n node.Node, serverAddr string) (core.Kind, bool) {
+	for _, k := range chain {
+		if k == current || failed[k] != nil {
+			continue
+		}
+		if s.probe(ctx, k, n, serverAddr) == nil {
+			return k, true
+		}
+		if ctx.Err() != nil {
+			break
+		}
+	}
+	return "", false
 }
 
 // probe starts k on the spare port and reports whether it becomes healthy.
@@ -491,7 +545,8 @@ func (s *Supervisor) probe(ctx context.Context, k core.Kind, n node.Node, server
 	return err
 }
 
-// awaitHealthy gives a fresh core up to Health.Failures attempts.
+// awaitHealthy gives a fresh core up to Health.Failures attempts, a few
+// seconds apart.
 func (s *Supervisor) awaitHealthy(ctx context.Context, p *process) (time.Duration, error) {
 	var err error
 	for i := 0; i < s.cfg.Health.Failures; i++ {
@@ -504,7 +559,7 @@ func (s *Supervisor) awaitHealthy(ctx context.Context, p *process) (time.Duratio
 			return 0, ctx.Err()
 		case <-p.Exited():
 			return 0, p.ExitError()
-		case <-time.After(s.cfg.Health.Interval):
+		case <-time.After(min(s.cfg.Health.Interval, failRetry)):
 		}
 	}
 	return 0, fmt.Errorf("health check failed: %w", err)

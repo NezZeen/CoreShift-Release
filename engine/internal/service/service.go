@@ -143,6 +143,10 @@ type Config struct {
 	PhysicalBind func() (ping.Bind, error)
 	// HostIPv6 reports whether the device has IPv6 of its own.
 	HostIPv6 func() bool
+	// AppOutsideVPN: the platform keeps the app outside its VPN (Android),
+	// so the daemon's own lookups of servers go to the system's resolver
+	// even while connected; the TUN layer's is out of its reach.
+	AppOutsideVPN bool
 
 	// Test seams; nil means the real implementation.
 	guard     dnsguard.Guard
@@ -824,9 +828,11 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 		return netip.Addr{}, fmt.Errorf("redirect system DNS: %w", err)
 	}
 	s.hub.publish(Event{Kind: "dns", Reason: "applied"})
-	s.mu.Lock()
-	s.tunDNS = netip.AddrPortFrom(tunlayer.DNSAddress(tunlayer.DefaultAddress), 53)
-	s.mu.Unlock()
+	if !s.cfg.AppOutsideVPN {
+		s.mu.Lock()
+		s.tunDNS = netip.AddrPortFrom(tunlayer.DNSAddress(tunlayer.DefaultAddress), 53)
+		s.mu.Unlock()
+	}
 	return serverIP, nil
 }
 

@@ -223,6 +223,35 @@ func TestSwapOnHealthFailure(t *testing.T) {
 	}
 }
 
+// When no core gets through, the network is the likely culprit: the
+// connection stays up on the first core instead of going down.
+func TestStaysConnectedWhenNoCoreChecksOut(t *testing.T) {
+	for _, k := range []string{"XRAY", "SING_BOX", "MIHOMO"} {
+		t.Setenv("FAKECORE_"+k, "unhealthy")
+	}
+	h := newHarness(t, nil)
+	connect(t, h, trojanLink)
+	h.waitFor(t, "no better core", 10*time.Second, func(e Event) bool { return e.Kind == EventNoBetter && e.Core == core.Xray })
+	if st := h.s.Status(); st.State != Connected || st.Core != core.Xray || len(st.Failed) != 0 {
+		t.Fatalf("status = %+v", st)
+	}
+	for _, e := range h.drain() {
+		if e.Kind == EventSwap || e.Kind == EventCoreFailed {
+			t.Errorf("unexpected %s event for %s", e.Kind, e.Core)
+		}
+	}
+}
+
+func TestHealthCheckUsesFallbacks(t *testing.T) {
+	urls := healthURLs("http://own.test/204")
+	if urls[0] != "http://own.test/204" || len(urls) != 1+len(healthFallbacks) {
+		t.Errorf("urls = %v", urls)
+	}
+	if urls := healthURLs(healthFallbacks[0]); len(urls) != len(healthFallbacks) {
+		t.Errorf("a fallback given as the URL is listed twice: %v", urls)
+	}
+}
+
 func TestSkipsIncompatibleCore(t *testing.T) {
 	h := newHarness(t, nil)
 	connect(t, h, hy2Link)

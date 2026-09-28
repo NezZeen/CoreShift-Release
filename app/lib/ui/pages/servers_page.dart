@@ -20,7 +20,6 @@ class _ServersPageState extends State<ServersPage> {
   String? subFilter; // null = all subscriptions
   String protoFilter = '';
   String query = '';
-  bool byLatency = false;
 
   AppState get s => widget.state;
 
@@ -69,7 +68,14 @@ class _ServersPageState extends State<ServersPage> {
       for (final sub in subs)
         for (final n in sub.nodes) n.protocol,
     }.toList()..sort();
-    if (byLatency) rows.sort((a, b) => _latencyKey(a.$1, a.$2).compareTo(_latencyKey(b.$1, b.$2)));
+    // Once pinged, the fastest come first; untested keep their order.
+    if (rows.any((r) => s.latencyOf(r.$1.id, r.$2.fingerprint) != null)) {
+      final order = {for (final (i, r) in rows.indexed) r: i};
+      rows.sort((a, b) {
+        final c = _latencyKey(a.$1, a.$2).compareTo(_latencyKey(b.$1, b.$2));
+        return c != 0 ? c : order[a]!.compareTo(order[b]!);
+      });
+    }
     final fastest = _fastest(rows);
     final compact = isCompact(context);
 
@@ -82,13 +88,51 @@ class _ServersPageState extends State<ServersPage> {
         prefixIconConstraints: const BoxConstraints(minWidth: 34),
       ),
     );
+    // The protocols in a menu rather than a row of chips that wraps.
+    final protocol = PopupMenuButton<String>(
+      tooltip: 'Показать только один протокол',
+      onSelected: (v) => setState(() => protoFilter = v),
+      itemBuilder: (_) => [
+        CheckedPopupMenuItem(value: '', checked: protoFilter.isEmpty, child: const Text('Все протоколы')),
+        for (final pr in protocols) CheckedPopupMenuItem(value: pr, checked: protoFilter == pr, child: Text(protocolLabel(pr))),
+      ],
+      child: IgnorePointer(
+        child: Btn(label: protoFilter.isEmpty ? 'Все протоколы' : protocolLabel(protoFilter), icon: Icons.filter_list, small: true, onPressed: () {}),
+      ),
+    );
     final chips = [
-      _Chip(label: 'Все', on: protoFilter.isEmpty, onTap: () => setState(() => protoFilter = '')),
-      for (final pr in protocols)
-        _Chip(label: protocolLabel(pr), on: protoFilter == pr, onTap: () => setState(() => protoFilter = protoFilter == pr ? '' : pr)),
+      protocol,
       if (subFilter != null) _Chip(label: '× ${s.subscriptionById(subFilter!)?.displayName ?? ''}', on: true, onTap: () => setState(() => subFilter = null)),
-      _Chip(label: 'Сначала быстрые', on: byLatency, onTap: () => setState(() => byLatency = !byLatency)),
     ];
+    final pingMode = s.setting('cores.latency_test', 'ping');
+    // How to ping, next to the button that pings.
+    final pingHow = s.hasSetting('cores.latency_test')
+        ? PopupMenuButton<String>(
+            tooltip: 'Как проверять пинг',
+            onSelected: (v) => s.updateSettings((x) => x['cores']['latency_test'] = v),
+            itemBuilder: (_) => [
+              for (final (v, title, text) in const [
+                ('ping', 'Пинг до сервера', 'ICMP-пинг, где он закрыт — время TCP-подключения'),
+                ('proxy', 'Запрос через ядро', 'Реальная задержка с шифрованием, заодно видно, работает ли сервер'),
+              ])
+                CheckedPopupMenuItem(
+                  value: v,
+                  checked: pingMode == v,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(title),
+                      Text(text, style: TextStyle(fontSize: 11, color: context.pal.muted)),
+                    ],
+                  ),
+                ),
+            ],
+            child: IgnorePointer(
+              child: Btn(icon: Icons.tune, small: true, onPressed: () {}),
+            ),
+          )
+        : null;
     final ping = Btn(
       label: 'Проверить пинг',
       icon: Icons.speed,
@@ -166,6 +210,7 @@ class _ServersPageState extends State<ServersPage> {
               child: Row(
                 children: [
                   for (final (i, c) in chips.indexed) ...[if (i > 0) const SizedBox(width: 6), c],
+                  if (pingHow != null) ...[const SizedBox(width: 6), pingHow],
                 ],
               ),
             ),
@@ -177,7 +222,13 @@ class _ServersPageState extends State<ServersPage> {
               children: [
                 SizedBox(width: 320, child: search),
                 ...chips,
-                ping,
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ping,
+                    if (pingHow != null) ...[const SizedBox(width: 4), pingHow],
+                  ],
+                ),
                 best,
                 Text('Пинг: зелёный — до 200 мс, жёлтый — до 500 мс', style: TextStyle(fontSize: 11, color: context.pal.dim)),
               ],
@@ -292,6 +343,12 @@ class _SubCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
+              // The panel's support-url header: its support chat.
+              if (i.supportUrl.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                SupportButton(state: state, url: i.supportUrl, urgent: expired || sub.lastError.isNotEmpty),
+                const SizedBox(width: 4),
+              ],
               if (refreshing) const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
               if (sub.lastError.isNotEmpty && !refreshing)
                 Tooltip(
@@ -315,56 +372,95 @@ class _SubCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SizedBox(height: compact ? 2 : 12),
-                if (i.total > 0) ...[
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(9),
-                    child: LinearProgressIndicator(
-                      value: (i.used / i.total).clamp(0, 1).toDouble(),
-                      minHeight: 5,
-                      backgroundColor: p.surface3,
-                      color: i.used / i.total > .9 ? errColor : accent,
+                SizedBox(height: compact ? 4 : 12),
+                // What the panel says about the subscription: the traffic
+                // on the left, how long it lasts on the right.
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: _Fact(
+                        label: i.total > 0 ? 'Трафик' : (i.used > 0 ? 'Израсходовано' : 'Серверы'),
+                        value: i.total > 0 || i.used > 0 ? formatBytes(i.used) : '${sub.nodes.length}',
+                        note: i.total > 0 ? 'из ${formatBytes(i.total)}' : (i.used > 0 ? 'без лимита' : ''),
+                        color: i.total > 0 && i.used / i.total > .9 ? errColor : null,
+                        progress: i.total > 0 ? (i.used / i.total).clamp(0, 1).toDouble() : null,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 7),
-                ],
-                DefaultTextStyle(
-                  style: TextStyle(fontSize: 12, color: p.muted),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          i.total > 0
-                              ? '${formatBytes(i.used)} из ${formatBytes(i.total)}'
-                              : (i.used > 0 ? formatBytes(i.used) : serversCount(sub.nodes.length)),
-                        ),
-                      ),
-                      Tooltip(
-                        message: i.expire != null ? 'Действует до ${formatDate(i.expire!)}' : '',
-                        child: Text(
-                          expired
-                              ? 'истекла ${formatDate(i.expire!)}'
-                              : expiresSoon
-                              ? 'осталось ${daysLeft < 1 ? 'меньше дня' : '$daysLeft дн.'}'
-                              : i.expire != null
-                              ? 'до ${formatDate(i.expire!)}'
-                              : (sub.isLocal ? '' : 'обновлено ${formatAgo(sub.updatedAt)}'),
-                          style: TextStyle(color: expired ? errColor : (expiresSoon ? warnColor : null)),
-                        ),
-                      ),
-                    ],
-                  ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      flex: 2,
+                      child: i.expire != null
+                          ? _Fact(
+                              label: expired ? 'Истекла' : 'Осталось',
+                              value: expired ? formatDate(i.expire!) : (daysLeft! < 1 ? 'меньше дня' : '$daysLeft дн.'),
+                              note: expired ? 'продлите подписку' : 'до ${formatDate(i.expire!)}',
+                              color: expired ? errColor : (expiresSoon ? warnColor : null),
+                            )
+                          : _Fact(label: 'Срок', value: 'бессрочно', note: sub.isLocal ? '' : 'обновлено ${formatAgo(sub.updatedAt)}'),
+                    ),
+                  ],
                 ),
-                // The panel's support-url header: its support chat.
-                if (i.supportUrl.isNotEmpty) ...[
-                  const SizedBox(height: 10),
-                  SupportButton(state: state, url: i.supportUrl, urgent: expired || sub.lastError.isNotEmpty),
-                ],
               ],
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+/// One fact about a subscription: a caption, the value, a note, and for
+/// the traffic how much of it is used.
+class _Fact extends StatelessWidget {
+  final String label;
+  final String value;
+  final String note;
+  final Color? color;
+  final double? progress;
+  const _Fact({required this.label, required this.value, this.note = '', this.color, this.progress});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: TextStyle(fontSize: 11, color: p.dim)),
+        const SizedBox(height: 2),
+        Text.rich(
+          TextSpan(
+            children: [
+              TextSpan(
+                text: value,
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: color ?? p.text),
+              ),
+              if (note.isNotEmpty && progress != null)
+                TextSpan(
+                  text: ' $note',
+                  style: TextStyle(fontSize: 12, color: p.muted),
+                ),
+            ],
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        if (progress != null) ...[
+          const SizedBox(height: 6),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(9),
+            child: LinearProgressIndicator(value: progress, minHeight: 5, backgroundColor: p.surface3, color: color ?? accent),
+          ),
+        ],
+        if (note.isNotEmpty && progress == null)
+          Text(
+            note,
+            style: TextStyle(fontSize: 11.5, color: p.muted),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+      ],
     );
   }
 }
@@ -403,7 +499,7 @@ class _SubMenu extends StatelessWidget {
       itemBuilder: (context) => [
         if (!sub.isLocal) _item('refresh', Icons.refresh, 'Обновить'),
         _item('rename', Icons.edit_outlined, 'Переименовать'),
-                if (sub.info.webPageUrl.isNotEmpty) ...[
+        if (sub.info.webPageUrl.isNotEmpty) ...[
           _item('page', Icons.open_in_new, 'Открыть страницу подписки'),
           _item('site', Icons.link, 'Копировать адрес страницы'),
         ],
@@ -457,7 +553,6 @@ class _NodeTable extends StatelessWidget {
                 Text('СЕРВЕР', style: headStyle),
                 Text('ПРОТОКОЛ', style: headStyle),
                 Text('ТРАНСПОРТ', style: headStyle),
-                Text('ЯДРА', style: headStyle),
                 Text('ПИНГ', style: headStyle),
                 const SizedBox(),
               ],
@@ -496,10 +591,10 @@ class _NodeTable extends StatelessWidget {
                 ],
               ),
             ),
-            SizedBox(width: 64, child: cells[5]),
+            SizedBox(width: 64, child: cells[4]),
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 104),
-              child: FittedBox(fit: BoxFit.scaleDown, child: cells[6]),
+              child: FittedBox(fit: BoxFit.scaleDown, child: cells[5]),
             ),
           ],
         ),
@@ -513,13 +608,12 @@ class _NodeTable extends StatelessWidget {
           Expanded(flex: 14, child: cells[1]),
           SizedBox(width: 118, child: cells[2]),
           Expanded(flex: 10, child: cells[3]),
-          SizedBox(width: 86, child: cells[4]),
-          SizedBox(width: 84, child: cells[5]),
+          SizedBox(width: 84, child: cells[4]),
           SizedBox(
             width: 118,
             child: Align(
               alignment: Alignment.centerRight,
-              child: FittedBox(fit: BoxFit.scaleDown, child: cells[6]),
+              child: FittedBox(fit: BoxFit.scaleDown, child: cells[5]),
             ),
           ),
         ],
@@ -561,7 +655,9 @@ class _NodeRowState extends State<_NodeRow> {
           children: [
             Flexible(
               child: Tooltip(
-                message: '${n.server}:${n.port}',
+                message:
+                    '${n.server}:${n.port}\n'
+                    '${n.cores.isEmpty ? 'Ни одно ядро не поддерживает' : 'Ядра: ${n.cores.map((k) => coreStyle(k).name).join(', ')}'}',
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -588,17 +684,6 @@ class _NodeRowState extends State<_NodeRow> {
           style: TextStyle(fontSize: 12, color: p.muted),
           overflow: TextOverflow.ellipsis,
         ),
-        Row(
-          children: [
-            for (final k in allCores) ...[
-              Tooltip(
-                message: n.cores.contains(k) ? '${coreStyle(k).name}: поддерживает' : '${coreStyle(k).name}: не поддерживает или не установлено',
-                child: CoreLogo(k, off: !n.cores.contains(k)),
-              ),
-              const SizedBox(width: 4),
-            ],
-          ],
-        ),
         _LatencyCell(latency: s.latencyOf(widget.sub.id, n.fingerprint), testing: s.testingLatency),
         if (connected)
           const Pill('ПОДКЛЮЧЁН', color: okColor)
@@ -624,7 +709,11 @@ class _NodeRowState extends State<_NodeRow> {
         onEnter: (_) => setState(() => hover = true),
         onExit: (_) => setState(() => hover = false),
         child: GestureDetector(
-          onTap: unusable || sel ? null : () => s.selectNode(widget.sub.id, n.fingerprint, n.name),
+          onTap: unusable || sel
+              ? null
+              : isCompact(context) && s.status.active && s.online && !s.busy
+              ? () => s.connect(subscription: widget.sub.id, fingerprint: n.fingerprint, name: n.name)
+              : () => s.selectNode(widget.sub.id, n.fingerprint, n.name),
           child: Opacity(
             opacity: unusable ? .45 : 1,
             child: Container(
