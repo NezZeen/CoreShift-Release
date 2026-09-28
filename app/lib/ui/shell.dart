@@ -238,7 +238,6 @@ class _Sidebar extends StatelessWidget {
           const Padding(padding: EdgeInsets.fromLTRB(12, 16, 12, 0), child: SectionLabel('Для опытных')),
           for (final (id, icon, label) in advanced) _NavItem(icon: icon, label: label, active: page == id, onTap: () => onPage(id)),
           const Spacer(),
-          _CoreFooter(state: state),
         ],
       ),
     );
@@ -354,44 +353,6 @@ class _NavItemState extends State<_NavItem> {
               ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _CoreFooter extends StatelessWidget {
-  final AppState state;
-  const _CoreFooter({required this.state});
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.pal;
-    final st = state.status;
-    final core = st.active ? st.core : '';
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: p.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: p.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SectionLabel('Ядро'),
-          Row(
-            children: [
-              if (core.isNotEmpty) ...[CoreLogo(core, size: 22), const SizedBox(width: 8)],
-              Expanded(
-                child: Text(
-                  core.isNotEmpty ? coreStyle(core).name : (st.active ? 'запускается…' : 'не запущено'),
-                  style: TextStyle(fontSize: 12, color: core.isNotEmpty ? p.text : p.muted, fontWeight: FontWeight.w500),
-                ),
-              ),
-              if (core.isNotEmpty && state.setting('cores.mode', 'auto') == 'auto') const Pill('АВТОСВАП', color: swapColor),
-            ],
-          ),
-        ],
       ),
     );
   }

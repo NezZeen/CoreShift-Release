@@ -96,8 +96,8 @@ class _BubblePainter extends CustomPainter {
   bool shouldRepaint(_BubblePainter old) => old.color != color;
 }
 
-/// The button to the panel's support chat, tinted in the colour of the
-/// messenger it opens.
+/// A small chip to the panel's support chat: the messenger's logo and
+/// "Поддержка", tinted in the messenger's colour.
 class SupportButton extends StatelessWidget {
   final AppState state;
   final String url;
@@ -111,44 +111,36 @@ class SupportButton extends StatelessWidget {
     final p = context.pal;
     final kind = SupportKind.of(url);
     final c = kind.color;
-    return Material(
-      color: c.withValues(alpha: urgent ? .2 : .12),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-        side: BorderSide(color: c.withValues(alpha: urgent ? .8 : .45)),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => state.openLink(url),
-        hoverColor: c.withValues(alpha: .1),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-          child: Row(
-            children: [
-              SupportMark(kind, size: 22),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text.rich(
-                  TextSpan(
-                    children: [
-                      const TextSpan(
-                        text: 'Написать в поддержку',
-                        style: TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                      if (kind.name.isNotEmpty)
-                        TextSpan(
-                          text: kind == SupportKind.email ? '  на почту' : '  в ${kind.name}',
-                          style: TextStyle(color: p.muted, fontSize: 12),
-                        ),
-                    ],
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: p.text, fontSize: 13),
+    final where = switch (kind) {
+      SupportKind.email => 'Написать в поддержку на почту',
+      SupportKind.other => 'Написать в поддержку',
+      _ => 'Написать в поддержку в ${kind.name}',
+    };
+    return Tooltip(
+      message: where,
+      child: Material(
+        color: c.withValues(alpha: urgent ? .18 : .1),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(99),
+          side: BorderSide(color: c.withValues(alpha: urgent ? .7 : .35)),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () => state.openLink(url),
+          hoverColor: c.withValues(alpha: .1),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(5, 4, 10, 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SupportMark(kind, size: 18),
+                const SizedBox(width: 6),
+                Text(
+                  'Поддержка',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: p.text),
                 ),
-              ),
-              Icon(Icons.open_in_new, size: 15, color: p.muted),
-            ],
+              ],
+            ),
           ),
         ),
       ),

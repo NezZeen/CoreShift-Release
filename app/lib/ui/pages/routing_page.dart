@@ -45,7 +45,7 @@ class RoutingPage extends StatelessWidget {
             description: 'Весь трафик этих программ идёт через VPN, куда бы они ни подключались. Удобно для мессенджеров и игр, заблокированных целиком.',
           ),
         _blockPanel(),
-        _localPanel(context),
+        _localNote(context),
       ];
     } else {
       left = [
@@ -111,54 +111,41 @@ class RoutingPage extends StatelessWidget {
     );
   }
 
+  /// The proxy-only mode leaves the lists without effect: said here, with
+  /// the way back. The mode itself is in the settings.
   Widget _notice(BuildContext context, bool tun) {
     final p = context.pal;
-    // On a phone only the warning: the rest the home page says itself.
-    if (tun && isCompact(context)) return const SizedBox();
-    final color = tun ? swapColor : warnColor;
+    if (tun) return const SizedBox();
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
       margin: const EdgeInsets.only(bottom: 18),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: .07),
+        color: warnColor.withValues(alpha: .07),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: .3)),
+        border: Border.all(color: warnColor.withValues(alpha: .3)),
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(tun ? Icons.swap_horiz : Icons.info_outline, size: 17, color: color),
+          const Icon(Icons.info_outline, size: 17, color: warnColor),
           const SizedBox(width: 10),
           Expanded(
             child: Text.rich(
               TextSpan(
                 style: TextStyle(fontSize: 13, color: p.muted),
-                children: tun
-                    ? [
-                        TextSpan(
-                          text: 'Работает в режиме «Все приложения». ',
-                          style: TextStyle(color: p.text, fontWeight: FontWeight.w600),
-                        ),
-                        const TextSpan(
-                          text:
-                              'Правила не зависят от ядра и не теряются при его смене. '
-                              'Изменения применяются при следующем подключении.',
-                        ),
-                      ]
-                    : [
-                        TextSpan(
-                          text: 'Сейчас включён режим «Только прокси». ',
-                          style: TextStyle(color: p.text, fontWeight: FontWeight.w600),
-                        ),
-                        const TextSpan(
-                          text:
-                              'В нём через VPN идут только программы, настроенные на прокси, и списки ниже не действуют. '
-                              'Они заработают в режиме «Все приложения».',
-                        ),
-                      ],
+                children: [
+                  TextSpan(
+                    text: 'Сейчас включён режим «Только прокси». ',
+                    style: TextStyle(color: p.text, fontWeight: FontWeight.w600),
+                  ),
+                  const TextSpan(text: 'В нём через VPN идут только программы, настроенные на прокси, и правила ниже не действуют.'),
+                ],
               ),
             ),
           ),
+          if (s.info.tunAvailable) ...[
+            const SizedBox(width: 10),
+            Btn(label: 'Все приложения', small: true, onPressed: () => s.updateSettings((x) => x['tun'] = true)),
+          ],
         ],
       ),
     );
@@ -269,41 +256,24 @@ class RoutingPage extends StatelessWidget {
               trailing: Switch(value: s.setting('routing.russia_direct', false), onChanged: (v) => s.updateSettings((x) => x['routing']['russia_direct'] = v)),
             ),
           if (always)
-            SettingRow(
-              title: 'Локальная сеть напрямую',
-              descriptionWidget: Text(
-                '10.0.0.0/8, 192.168.0.0/16, .lan, .local, .home.arpa',
-                style: TextStyle(fontSize: 12, color: p.muted, fontFamily: monoFont),
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                'Локальная сеть (10.0.0.0/8, 192.168.0.0/16, .local, .lan) и адрес VPN-сервера всегда работают напрямую.',
+                style: TextStyle(fontSize: 11.5, color: p.dim),
               ),
-              trailing: Text('всегда', style: TextStyle(fontSize: 12, color: p.dim)),
-            ),
-          if (always)
-            SettingRow(
-              title: 'Адрес VPN-сервера напрямую',
-              description: 'Чтобы туннель не шёл сам через себя',
-              trailing: Text('всегда', style: TextStyle(fontSize: 12, color: p.dim)),
             ),
         ],
       ),
     );
   }
 
-  /// In the "only selected" mode everything else is direct anyway; this
-  /// just says the local network stays reachable.
-  Widget _localPanel(BuildContext context) {
-    final p = context.pal;
-    return Panel(
-      child: Row(
-        children: [
-          Icon(Icons.lan_outlined, size: 17, color: p.muted),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text('Локальная сеть и российские сайты в этом режиме и так работают напрямую.', style: TextStyle(fontSize: 12, color: p.muted)),
-          ),
-        ],
-      ),
-    );
-  }
+  /// In the "only selected" mode everything else is direct anyway; a note
+  /// says the local network stays reachable.
+  Widget _localNote(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 4),
+    child: Text('Локальная сеть и российские сайты в этом режиме и так работают напрямую.', style: TextStyle(fontSize: 11.5, color: context.pal.dim)),
+  );
 
   Widget _blockPanel() => RuleListPanel(
     key: const ValueKey('block'),

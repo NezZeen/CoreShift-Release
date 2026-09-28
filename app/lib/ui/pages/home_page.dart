@@ -8,7 +8,6 @@ import '../../state/app_state.dart';
 import '../../state/errors.dart';
 import '../shell.dart';
 import 'servers_page.dart' show showAddSubscription;
-import '../support.dart';
 import '../theme.dart';
 import '../widgets.dart';
 
@@ -31,46 +30,27 @@ class HomePage extends StatelessWidget {
         ),
       );
     }
-    return PageFrame(
-      children: [
-        LayoutBuilder(
-          builder: (context, c) {
-            final hero = Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _Hero(state: state),
-                const SizedBox(height: 18),
-                _SpeedCard(state: state),
-              ],
-            );
-            final wide = c.maxWidth >= 1000;
-            final rightWidth = wide ? c.maxWidth - max(340, c.maxWidth * .4) - 18 : c.maxWidth;
-            final right = Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _CoreCard(state: state),
-                const SizedBox(height: 18),
-                // Four tiles in a row only where each gets room for "142 ГБ / 500 ГБ".
-                _Stats(state: state, columns: rightWidth >= 720 ? 4 : 2),
-                _Support(state: state, top: 12),
-                const SizedBox(height: 18),
-                _LatencyCard(state: state),
-              ],
-            );
-            if (!wide) {
-              return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [hero, const SizedBox(height: 18), right]);
-            }
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(width: max(340, c.maxWidth * .4), child: hero),
-                const SizedBox(width: 18),
-                Expanded(child: right),
-              ],
-            );
-          },
-        ),
-      ],
+    // The desktop: the connection, and while connected its speed. The
+    // cores are on their page, the subscription on its card.
+    return LayoutBuilder(
+      builder: (context, c) => PageFrame(
+        children: [
+          SizedBox(height: max(0, (c.maxHeight - 760) / 2)),
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 600),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _Hero(state: state),
+                  const SizedBox(height: 18),
+                  _SpeedCard(state: state),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -92,8 +72,6 @@ class _Hero extends StatelessWidget {
       ConnState.idle => ('Отключено', p.text),
     };
     final canConnect = state.online && (st.active || (sel.available && !state.busy));
-    final tunOk = state.info.tunAvailable;
-    final tun = state.setting('tun', false);
 
     return Panel(
       padding: const EdgeInsets.fromLTRB(22, 30, 22, 22),
@@ -129,20 +107,7 @@ class _Hero extends StatelessWidget {
           const SizedBox(height: 8),
           _NodePick(state: state),
           if (st.settingsPending) ...[const SizedBox(height: 12), _PendingBanner(state: state)],
-          const SizedBox(height: 16),
-          _OptRow(
-            label: 'Через VPN',
-            child: Seg<bool>(
-              value: tun,
-              options: const [(true, 'Все приложения'), (false, 'Только прокси')],
-              disabled: tunOk ? const {} : const {true},
-              tooltips: {
-                true: tunOk ? 'Весь трафик компьютера идёт через VPN (режим TUN), DNS защищён' : state.info.tunUnavailable,
-                false: 'Через VPN идут только программы, где вручную указан прокси SOCKS5 127.0.0.1:17890',
-              },
-              onChanged: (v) => state.updateSettings((s) => s['tun'] = v),
-            ),
-          ),
+          _BackupBanner(state: state),
         ],
       ),
     );
@@ -150,8 +115,7 @@ class _Hero extends StatelessWidget {
 }
 
 /// The home page on a phone: the button, the server, and while connected
-/// the few numbers worth a glance. The charts, the core queue and the mode
-/// switch stay on the desktop; the mode is in the settings.
+/// the speed. The chart stays on the desktop; the mode is in the settings.
 class _CompactHome extends StatelessWidget {
   final AppState state;
   const _CompactHome({required this.state});
@@ -203,162 +167,88 @@ class _CompactHome extends StatelessWidget {
         const SizedBox(height: 22),
         if (st.settingsPending) ...[_PendingBanner(state: state), const SizedBox(height: 10)],
         _NodePick(state: state),
-        if (st.state == ConnState.connected) ...[const SizedBox(height: 10), _CompactStats(state: state)],
-        _SubscriptionLine(state: state),
-        _Support(state: state, top: 14),
+        _BackupBanner(state: state),
+        if (st.state == ConnState.connected) ...[const SizedBox(height: 10), _CompactSpeed(state: state)],
       ],
     );
   }
 }
 
-/// While connected: speed and ping in one row, the running core under them.
-class _CompactStats extends StatelessWidget {
+/// While connected on a backup core: a line saying so, and the way back
+/// without waiting for the timer. The rest about cores is on their page.
+class _BackupBanner extends StatelessWidget {
   final AppState state;
-  const _CompactStats({required this.state});
+  const _BackupBanner({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final st = state.status;
+    final chain = st.chain;
+    final manual = state.setting('cores.mode', 'auto') == 'manual';
+    if (st.state != ConnState.connected || manual || chain.length < 2 || st.core.isEmpty || st.core == chain.first) return const SizedBox();
+    final primary = coreStyle(chain.first).name;
+    final why = st.failed[chain.first] ?? '';
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+        decoration: BoxDecoration(
+          color: swapColor.withValues(alpha: .08),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: swapColor.withValues(alpha: .35)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.swap_horiz, size: 16, color: swapColor),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Tooltip(
+                message: why.isEmpty ? '' : '$primary: $why',
+                child: Text('$primary не работает, подключено через ${coreStyle(st.core).name}', style: const TextStyle(fontSize: 12)),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Btn(label: 'Вернуть $primary', small: true, loading: state.returning, onPressed: state.busy ? null : state.returnToPrimary),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The phone's speed while connected, down and up.
+class _CompactSpeed extends StatelessWidget {
+  final AppState state;
+  const _CompactSpeed({required this.state});
 
   @override
   Widget build(BuildContext context) {
     final p = context.pal;
-    final st = state.status;
     final (up, down) = state.speed.isEmpty ? (0, 0) : state.speed.last;
-    final pings = _latencyData(state).$1;
-    final manual = state.setting('cores.mode', 'auto') == 'manual';
-    final chain = st.chain;
-    final core = st.core;
-    final onBackup = !manual && chain.length > 1 && core.isNotEmpty && core != chain.first;
-    final failures = st.failed;
-
-    Widget metric(IconData icon, Color color, String label, String value) => Expanded(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    Widget metric(IconData icon, Color color, String label, int rate) => Expanded(
+      child: Row(
         children: [
-          Row(
-            children: [
-              Icon(icon, size: 13, color: color),
-              const SizedBox(width: 4),
-              Text(label, style: TextStyle(fontSize: 11, color: p.muted)),
-            ],
-          ),
-          const SizedBox(height: 3),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontFamily: monoFont, fontFamilyFallback: monoFallback, fontSize: 15, fontWeight: FontWeight.w500),
-          ),
-        ],
-      ),
-    );
-
-    return Panel(
-      padding: const EdgeInsets.fromLTRB(14, 12, 10, 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              metric(Icons.south, okColor, 'Загрузка', formatRate(down)),
-              metric(Icons.north, accent, 'Отдача', formatRate(up)),
-              metric(Icons.monitor_heart_outlined, p.muted, 'Пинг', pings.isEmpty ? '—' : '${pings.last} мс'),
-            ],
-          ),
-          Divider(height: 20, color: p.border),
-          InkWell(
-            borderRadius: BorderRadius.circular(8),
-            onTap: () => Nav.to(context, PageId.cores),
-            child: Row(
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (core.isNotEmpty) CoreLogo(core, size: 22) else CoreLogo('?', size: 22, off: true),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text.rich(
-                    TextSpan(
-                      children: [
-                        TextSpan(
-                          text: core.isEmpty ? 'Ядро запускается…' : coreStyle(core).name,
-                          style: const TextStyle(fontWeight: FontWeight.w500),
-                        ),
-                        if (failures.isNotEmpty)
-                          TextSpan(
-                            text: '  ${failures.keys.map((k) => coreStyle(k).name).join(', ')}: сбой',
-                            style: const TextStyle(fontSize: 12, color: warnColor),
-                          )
-                        else if (onBackup)
-                          TextSpan(
-                            text: '  резерв',
-                            style: TextStyle(fontSize: 12, color: p.muted),
-                          ),
-                      ],
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                Text(label, style: TextStyle(fontSize: 11, color: p.muted), overflow: TextOverflow.ellipsis),
+                Text(
+                  formatRate(rate),
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontFamily: monoFont, fontFamilyFallback: monoFallback, fontSize: 15, fontWeight: FontWeight.w500),
                 ),
-                if (onBackup)
-                  Btn(
-                    label: 'Вернуть ${coreStyle(chain.first).name}',
-                    small: true,
-                    loading: state.returning,
-                    onPressed: state.busy ? null : state.returnToPrimary,
-                  )
-                else ...[
-                  Pill(manual ? 'ВРУЧНУЮ' : 'АВТОСВАП', color: manual ? p.muted : swapColor),
-                  Icon(Icons.chevron_right, size: 18, color: p.dim),
-                ],
               ],
             ),
           ),
         ],
       ),
     );
-  }
-}
-
-/// The selected subscription's days and traffic left, in one quiet line
-/// that turns yellow or red when they run out.
-class _SubscriptionLine extends StatelessWidget {
-  final AppState state;
-  const _SubscriptionLine({required this.state});
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.pal;
-    final info = state.subscriptionById(state.selection.subscription)?.info;
-    if (info == null) return const SizedBox();
-    final days = info.expire?.difference(DateTime.now()).inDays;
-    final parts = <String>[
-      if (days != null) days < 0 ? 'подписка истекла' : 'подписка ещё $days дн.',
-      if (info.total > 0) '${formatBytes(info.used)} из ${formatBytes(info.total)}',
-    ];
-    if (parts.isEmpty) return const SizedBox();
-    final bad = (days != null && days < 0) || (info.total > 0 && info.used / info.total > .9);
-    final soon = days != null && days < 7;
-    return Padding(
-      padding: const EdgeInsets.only(top: 14),
-      child: Text(
-        parts.join(' · '),
-        textAlign: TextAlign.center,
-        style: TextStyle(fontSize: 12, color: bad ? errColor : (soon ? warnColor : p.dim)),
-      ),
-    );
-  }
-}
-
-/// The selected subscription's support chat, when its panel names one.
-class _Support extends StatelessWidget {
-  final AppState state;
-  final double top;
-  const _Support({required this.state, required this.top});
-
-  @override
-  Widget build(BuildContext context) {
-    final sub = state.subscriptionById(state.selection.subscription);
-    final url = sub?.info.supportUrl ?? '';
-    if (url.isEmpty) return const SizedBox();
-    final expired = sub!.info.expire?.isBefore(DateTime.now()) ?? false;
-    return Padding(
-      padding: EdgeInsets.only(top: top),
-      child: SupportButton(state: state, url: url, urgent: expired || sub.lastError.isNotEmpty),
+    return Panel(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Row(children: [metric(Icons.south, okColor, 'Загрузка', down), metric(Icons.north, accent, 'Отдача', up)]),
     );
   }
 }
@@ -446,26 +336,6 @@ class _Welcome extends StatelessWidget {
       ),
     );
   }
-}
-
-class _OptRow extends StatelessWidget {
-  final String label;
-  final Widget child;
-  const _OptRow({required this.label, required this.child});
-
-  @override
-  Widget build(BuildContext context) => Row(
-    children: [
-      Text(label, style: TextStyle(color: context.pal.muted, fontSize: 13)),
-      const SizedBox(width: 12),
-      Expanded(
-        child: Align(
-          alignment: Alignment.centerRight,
-          child: FittedBox(fit: BoxFit.scaleDown, child: child),
-        ),
-      ),
-    ],
-  );
 }
 
 class _Elapsed extends StatefulWidget {
@@ -679,303 +549,6 @@ class _NodePick extends StatelessWidget {
   }
 }
 
-class _CoreCard extends StatelessWidget {
-  final AppState state;
-  const _CoreCard({required this.state});
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.pal;
-    final st = state.status;
-    final manual = state.setting('cores.mode', 'auto') == 'manual';
-    final chain = st.active ? st.chain : (state.selection.node?.cores ?? const <String>[]);
-    final current = st.active && st.core.isNotEmpty ? st.core : (chain.isNotEmpty ? chain.first : '');
-    final prio = state.setting<List>('cores.priority', const []).cast<String>();
-    final unsupported = [
-      for (final k in prio)
-        if (!chain.contains(k) && state.info.installed(k)) k,
-    ];
-
-    String subtitle;
-    if (current.isEmpty) {
-      subtitle = state.selection.node == null ? 'Сервер не выбран' : 'Ни одно установленное ядро не поддерживает этот сервер';
-    } else if (st.state == ConnState.connected) {
-      final pos = chain.indexOf(current);
-      subtitle = pos <= 0 ? 'основное ядро' : 'резерв №$pos';
-    } else if (st.state == ConnState.connecting) {
-      subtitle = 'запускается…';
-    } else {
-      subtitle = 'будет запущено первым';
-    }
-
-    final failures = st.active ? st.failed : const <String, String>{};
-    // Running on a backup: offer to move back without waiting for the timer.
-    final onBackup = st.state == ConnState.connected && !manual && chain.length > 1 && current != chain.first;
-    final returnAfter = state.setting('cores.return_after_min', 0);
-    return Panel(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          PanelTitle(
-            st.state == ConnState.connected ? 'Активное ядро' : 'Будет запущено',
-            trailing: Pill(manual ? 'ВРУЧНУЮ' : 'АВТОСВАП', color: manual ? p.muted : swapColor),
-          ),
-          Row(
-            children: [
-              if (current.isNotEmpty) CoreLogo(current, size: 46) else CoreLogo('?', size: 46, off: true),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(current.isEmpty ? '—' : coreStyle(current).name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-                    Text(subtitle, style: TextStyle(fontSize: 12, color: p.muted)),
-                  ],
-                ),
-              ),
-              if (onBackup)
-                Tooltip(
-                  message:
-                      'Сначала ${coreStyle(chain.first).name} проверяется в фоне; переключимся, только если оно работает.'
-                      '${returnAfter > 0 ? ' Само это произойдёт через $returnAfter мин после сбоя.' : ''}',
-                  child: Btn(
-                    label: 'Вернуть ${coreStyle(chain.first).name}',
-                    icon: Icons.undo,
-                    small: true,
-                    loading: state.returning,
-                    onPressed: state.busy ? null : state.returnToPrimary,
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: p.surface2,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: p.border),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(failures.isEmpty ? Icons.swap_horiz : Icons.warning_amber_rounded, size: 17, color: failures.isEmpty ? swapColor : warnColor),
-                const SizedBox(width: 9),
-                Expanded(
-                  child: Tooltip(
-                    message: failures.entries.map((e) => '${coreStyle(e.key).name}: ${e.value}').join('\n'),
-                    child: Text(
-                      failures.isNotEmpty
-                          ? '${failures.keys.map((k) => coreStyle(k).name).join(', ')} '
-                                '${failures.length == 1 ? 'перестало' : 'перестали'} работать, CoreShift переключился на резервное ядро. '
-                                'Наведите, чтобы увидеть причину.'
-                          : manual
-                          ? 'Ручной режим: работает только выбранное ядро, без переключения при сбоях.'
-                          : chain.length > 1
-                          ? 'Если ядро перестанет работать, CoreShift сам переключится на следующее — соединение не прервётся.'
-                          : 'Этот сервер поддерживает только одно ядро — переключаться некуда.',
-                      style: TextStyle(fontSize: 13, color: p.muted),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          const SectionLabel('Очередь ядер'),
-          Wrap(
-            spacing: 6,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              for (final (i, k) in chain.indexed) ...[
-                if (i > 0) Icon(Icons.arrow_forward, size: 15, color: p.dim),
-                _ChainChip(
-                  kind: k,
-                  status: failures.containsKey(k) ? _ChipStatus.failed : (st.active && k == st.core ? _ChipStatus.active : _ChipStatus.standby),
-                ),
-              ],
-              for (final k in unsupported) _ChainChip(kind: k, status: _ChipStatus.skipped),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              if (st.active) Btn(label: 'Переподключить', icon: Icons.refresh, small: true, onPressed: state.busy ? null : state.reconnect),
-              Btn(label: 'Настроить автосвап', icon: Icons.tune, small: true, kind: BtnKind.ghost, onPressed: () => Nav.to(context, PageId.cores)),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-enum _ChipStatus { active, standby, failed, skipped }
-
-class _ChainChip extends StatelessWidget {
-  final String kind;
-  final _ChipStatus status;
-  const _ChainChip({required this.kind, required this.status});
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.pal;
-    final s = coreStyle(kind);
-    final (label, labelColor) = switch (status) {
-      _ChipStatus.active => ('активно', okColor),
-      _ChipStatus.standby => ('резерв', p.dim),
-      _ChipStatus.failed => ('сбой', errColor),
-      _ChipStatus.skipped => ('не поддерживает', p.dim),
-    };
-    return Opacity(
-      opacity: switch (status) {
-        _ChipStatus.skipped => .45,
-        _ChipStatus.failed => .8,
-        _ => 1,
-      },
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(6, 6, 12, 6),
-        decoration: BoxDecoration(
-          color: p.surface2,
-          borderRadius: BorderRadius.circular(99),
-          border: Border.all(
-            color: switch (status) {
-              _ChipStatus.active => s.color,
-              _ChipStatus.failed => errColor.withValues(alpha: .5),
-              _ => p.border2,
-            },
-          ),
-          boxShadow: status == _ChipStatus.active ? [BoxShadow(color: s.color.withValues(alpha: .18), spreadRadius: 3)] : null,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CoreLogo(kind, size: 22),
-            const SizedBox(width: 8),
-            Text(s.name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(fontSize: 11, color: labelColor, fontWeight: FontWeight.w500),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _Stats extends StatelessWidget {
-  final AppState state;
-  final int columns;
-  const _Stats({required this.state, required this.columns});
-
-  @override
-  Widget build(BuildContext context) {
-    final st = state.status;
-    final data = _latencyData(state).$1;
-    final lat = data.isEmpty ? null : data.last;
-    final info = state.subscriptionById(state.selection.subscription)?.info;
-    final expire = info?.expire;
-    final daysLeft = expire?.difference(DateTime.now()).inDays;
-    final tiles = <(IconData, String, String, String, Color?)>[
-      (Icons.monitor_heart_outlined, 'Пинг', lat == null ? '—' : '$lat', lat == null ? '' : 'мс', null),
-      (
-        Icons.data_usage,
-        'Трафик',
-        info == null || (info.used == 0 && info.total == 0) ? '—' : formatBytes(info.used),
-        info != null && info.total > 0 ? '/ ${formatBytes(info.total)}' : '',
-        info != null && info.total > 0 && info.used / info.total > .9 ? errColor : null,
-      ),
-      (
-        Icons.event_outlined,
-        'Подписка',
-        daysLeft == null ? '—' : (daysLeft < 0 ? 'истекла' : '$daysLeft'),
-        daysLeft == null || daysLeft < 0 ? '' : 'дн. осталось',
-        daysLeft == null ? null : (daysLeft < 0 ? errColor : (daysLeft < 7 ? warnColor : null)),
-      ),
-      (Icons.swap_horiz, 'Смен ядра', st.active ? '${state.swaps}' : '—', '', null),
-    ];
-    return LayoutBuilder(
-      builder: (context, c) {
-        final w = (c.maxWidth - 12 * (columns - 1)) / columns;
-        return Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: [
-            for (final (icon, k, v, unit, color) in tiles)
-              SizedBox(
-                width: w,
-                child: _StatTile(icon: icon, label: k, value: v, unit: unit, color: color),
-              ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _StatTile extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final String unit;
-  final Color? color;
-  const _StatTile({required this.icon, required this.label, required this.value, required this.unit, this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.pal;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-      decoration: BoxDecoration(
-        color: p.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: p.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 14, color: p.muted),
-              const SizedBox(width: 6),
-              Flexible(
-                child: Text(
-                  label,
-                  style: TextStyle(fontSize: 12, color: p.muted),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 5),
-          Text.rich(
-            TextSpan(
-              children: [
-                TextSpan(
-                  text: value,
-                  style: TextStyle(fontFamily: monoFont, fontFamilyFallback: monoFallback, fontSize: 19, fontWeight: FontWeight.w500, color: color),
-                ),
-                if (unit.isNotEmpty)
-                  TextSpan(
-                    text: ' $unit',
-                    style: TextStyle(fontSize: 12, color: p.muted),
-                  ),
-              ],
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _SpeedCard extends StatelessWidget {
   final AppState state;
   const _SpeedCard({required this.state});
@@ -1110,108 +683,4 @@ class _SpeedPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_SpeedPainter old) => true;
-}
-
-class _LatencyCard extends StatelessWidget {
-  final AppState state;
-  const _LatencyCard({required this.state});
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.pal;
-    final (data, sub) = _latencyData(state);
-    return Panel(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          PanelTitle('Пинг', sub: sub),
-          SizedBox(
-            height: 130,
-            child: data.length < 2
-                ? Center(
-                    child: Text(state.status.active ? 'Собираем данные…' : 'Появится после подключения', style: TextStyle(color: p.dim, fontSize: 12)),
-                  )
-                : CustomPaint(
-                    painter: _LatencyPainter(data, grid: p.border, label: p.dim),
-                    size: Size.infinite,
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// The connection's latency history and what it measures. Pings of the
-/// server match the node list; when the server answers none, the health
-/// checks through the core stand in, which time a whole HTTP request.
-(List<int>, String) _latencyData(AppState state) {
-  if (!state.status.active) return (const [], 'пинг до сервера');
-  if (state.pings.isNotEmpty) {
-    return (state.pings, state.pingMethod == 'tcp' ? 'время TCP-подключения к серверу' : 'ICMP-пинг до сервера');
-  }
-  if (state.pingError.isNotEmpty) return (state.latencies, 'сервер не отвечает на пинг — по проверкам связи через ядро');
-  return (const [], 'пинг до сервера');
-}
-
-class _LatencyPainter extends CustomPainter {
-  final List<int> data;
-  final Color grid;
-  final Color label;
-  _LatencyPainter(this.data, {required this.grid, required this.label});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final maxV = (data.reduce(max) * 1.25).clamp(100, 1e9).toDouble();
-    const left = 36.0;
-    final w = size.width - left;
-    final h = size.height - 4;
-    final gridPaint = Paint()
-      ..color = grid
-      ..strokeWidth = 1;
-    for (var i = 0; i <= 2; i++) {
-      final y = h - h * i / 2;
-      canvas.drawLine(Offset(left, y), Offset(size.width, y), gridPaint);
-      final tp = TextPainter(
-        text: TextSpan(
-          text: '${(maxV * i / 2).round()}',
-          style: TextStyle(color: label, fontSize: 10, fontFamily: monoFont),
-        ),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      tp.paint(canvas, Offset(0, (y - tp.height / 2).clamp(0, size.height - tp.height)));
-    }
-    const slots = 60;
-    final step = w / (slots - 1);
-    final start = slots - data.length;
-    final path = Path();
-    for (var i = 0; i < data.length; i++) {
-      final pt = Offset(left + (start + i) * step, h - h * data[i] / maxV);
-      i == 0 ? path.moveTo(pt.dx, pt.dy) : path.lineTo(pt.dx, pt.dy);
-    }
-    final fill = Path.from(path)
-      ..lineTo(left + (slots - 1) * step, h)
-      ..lineTo(left + start * step, h)
-      ..close();
-    canvas.drawPath(
-      fill,
-      Paint()
-        ..shader = LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [okColor.withValues(alpha: .25), okColor.withValues(alpha: 0)],
-        ).createShader(Rect.fromLTWH(0, 0, size.width, h)),
-    );
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = okColor
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2
-        ..strokeJoin = StrokeJoin.round,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_LatencyPainter old) => true;
 }

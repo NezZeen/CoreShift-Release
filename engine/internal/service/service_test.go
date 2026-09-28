@@ -783,6 +783,24 @@ func TestServerNamesBypassFakeIPs(t *testing.T) {
 	}
 }
 
+// Android keeps the app outside its VPN: the TUN layer's resolver is out of
+// its reach, and the system's gives real addresses anyway.
+func TestServerNamesOutsideTheVPN(t *testing.T) {
+	h := newHarness(t, func(c *Config) { c.AppOutsideVPN = true })
+	if err := h.connect(t, "trojan://pw@server.example:443?sni=t.example.com#Named"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.svc.serverAddr(context.Background(), "other.example"); err != nil {
+		t.Fatal(err)
+	}
+	h.mu.Lock()
+	last := h.lookups[len(h.lookups)-1]
+	h.mu.Unlock()
+	if last.IsValid() {
+		t.Errorf("while connected, lookups went to %v, want the system's resolver", last)
+	}
+}
+
 func TestNativeIPv6(t *testing.T) {
 	for in, want := range map[string]bool{
 		"2a02:6b8::1":                      true,

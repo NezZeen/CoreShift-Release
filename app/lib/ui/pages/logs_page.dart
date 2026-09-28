@@ -17,7 +17,6 @@ class LogsPage extends StatefulWidget {
 
 class _LogsPageState extends State<LogsPage> {
   _Filter filter = _Filter.all;
-  bool coreOutput = false;
   final _scroll = ScrollController();
   bool _follow = true;
 
@@ -36,9 +35,11 @@ class _LogsPageState extends State<LogsPage> {
     super.dispose();
   }
 
+  /// The cores' own output shows under "Ядра" only: elsewhere it drowns
+  /// the events.
   bool _keep(LogLine l) {
     final isCore = allCores.contains(l.source);
-    if (!coreOutput && isCore && l.level == LogLevel.info && !_isEvent(l)) return false;
+    if (filter != _Filter.cores && isCore && l.level == LogLevel.info && !_isEvent(l)) return false;
     return switch (filter) {
       _Filter.all => true,
       _Filter.swap => l.level == LogLevel.swap,
@@ -59,32 +60,21 @@ class _LogsPageState extends State<LogsPage> {
         if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
       });
     }
+    final compact = isCompact(context);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(28, 24, 28, 24),
+      padding: compact ? const EdgeInsets.fromLTRB(14, 14, 14, 12) : const EdgeInsets.fromLTRB(28, 24, 28, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           PageHeader(
             'Журнал',
-            subtitle: 'События службы, ядер и автосвапа.',
+            subtitle: 'События службы, ядер и автосвапа. Полный вывод ядер — во вкладке «Ядра».',
             actions: [
               Seg<_Filter>(
                 value: filter,
                 options: const [(_Filter.all, 'Все'), (_Filter.swap, 'Автосвап'), (_Filter.cores, 'Ядра'), (_Filter.errors, 'Ошибки')],
+                tooltips: const {_Filter.cores: 'События ядер и их построчный вывод'},
                 onChanged: (v) => setState(() => filter = v),
-              ),
-              Tooltip(
-                message: 'Показывать построчный вывод ядер',
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Transform.scale(
-                      scale: .8,
-                      child: Switch(value: coreOutput, onChanged: (v) => setState(() => coreOutput = v)),
-                    ),
-                    Text('вывод ядер', style: TextStyle(fontSize: 12, color: p.muted)),
-                  ],
-                ),
               ),
               Btn(
                 icon: Icons.copy,
@@ -98,7 +88,13 @@ class _LogsPageState extends State<LogsPage> {
                         widget.state.toast('Журнал скопирован');
                       },
               ),
-              Btn(label: 'Очистить', small: true, onPressed: widget.state.clearLogs),
+              Btn(
+                label: compact ? null : 'Очистить',
+                icon: compact ? Icons.delete_outline : null,
+                tooltip: compact ? 'Очистить' : null,
+                small: true,
+                onPressed: widget.state.clearLogs,
+              ),
             ],
           ),
           Expanded(

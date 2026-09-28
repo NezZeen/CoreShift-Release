@@ -54,6 +54,9 @@ class AppState extends ChangeNotifier {
   /// Opens links; by default in the browser, not at all on demo data.
   final Future<bool> Function(String url)? linkOpener;
 
+  /// Cores whose health checks fail right now, to log only the change.
+  final _healthFailing = <String>{};
+
   AppState(this.backend, {Json? prefs, this.savePrefs, this.leakTestRunner, this.linkOpener, this.version = BuildVersion.app}) : prefs = prefs ?? {};
 
   /// This app's version; tests pass their own.
@@ -332,6 +335,7 @@ class AppState extends ChangeNotifier {
     final live = !e.time.isBefore(_liveSince);
     switch (e.kind) {
       case 'state':
+        if (e.state == 'connecting') _healthFailing.clear();
         _log(
           e.time,
           'служба',
@@ -366,14 +370,20 @@ class AppState extends ChangeNotifier {
           );
         }
         _statusSoon();
+      case 'no-better':
+        _log(e.time, e.core, 'ни одно ядро не проходит проверку связи, подключение остаётся на ${coreName(e.core)}', LogLevel.warn);
+        if (live) toast('Проверка связи не проходит ни через одно ядро. VPN остаётся включённым: возможно, дело в сети', ToastKind.info);
       case 'core-failed':
         _log(e.time, e.core, 'отключено (${_reasonText(e.reason)}): ${e.error}', LogLevel.err);
         _statusSoon();
       case 'health':
         if (e.probe) break;
+        // While it fails the check repeats every few seconds: the log says
+        // when it starts failing and when it works again.
         if (e.error.isNotEmpty) {
-          _log(e.time, e.core, 'проверка связи не прошла: ${e.error}', LogLevel.warn);
+          if (_healthFailing.add(e.core)) _log(e.time, e.core, 'проверка связи не прошла: ${e.error}', LogLevel.warn);
         } else {
+          if (_healthFailing.remove(e.core)) _log(e.time, e.core, 'проверка связи снова проходит', LogLevel.ok);
           latencies.add(e.latencyMs);
           if (latencies.length > 60) latencies.removeAt(0);
           _notify();
