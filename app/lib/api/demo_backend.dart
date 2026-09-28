@@ -303,6 +303,10 @@ class DemoBackend implements Backend {
         if (sel['available'] != true) throw const ApiError(409, 'no node selected');
         await _connect(sel['node'] as Json);
         return _statusJson();
+      case 'GET /ip':
+        return _status['state'] == 'connected'
+            ? {'ip': '203.0.113.7', 'country': 'DE', 'vpn': true}
+            : {'ip': '198.51.100.20', 'country': 'RU', 'vpn': false};
       case 'POST /reconnect':
         if (_lastNode == null) throw const ApiError(502, 'nothing to reconnect');
         await _connect(_lastNode!);
