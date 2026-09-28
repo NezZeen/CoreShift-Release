@@ -33,13 +33,6 @@ class _ServersPageState extends State<ServersPage> {
     }
   }
 
-  /// Sort key: tested working nodes by latency, then untested, then failed.
-  int _latencyKey(Subscription sub, NodeView n) {
-    final l = s.latencyOf(sub.id, n.fingerprint);
-    if (l == null) return 1 << 30;
-    return l.ok ? l.ms : 1 << 31;
-  }
-
   /// The fastest working node among [rows], if any was tested.
   (Subscription, NodeView)? _fastest(List<(Subscription, NodeView)> rows) {
     (Subscription, NodeView)? best;
@@ -68,14 +61,6 @@ class _ServersPageState extends State<ServersPage> {
       for (final sub in subs)
         for (final n in sub.nodes) n.protocol,
     }.toList()..sort();
-    // Once pinged, the fastest come first; untested keep their order.
-    if (rows.any((r) => s.latencyOf(r.$1.id, r.$2.fingerprint) != null)) {
-      final order = {for (final (i, r) in rows.indexed) r: i};
-      rows.sort((a, b) {
-        final c = _latencyKey(a.$1, a.$2).compareTo(_latencyKey(b.$1, b.$2));
-        return c != 0 ? c : order[a]!.compareTo(order[b]!);
-      });
-    }
     final fastest = _fastest(rows);
     final compact = isCompact(context);
 
