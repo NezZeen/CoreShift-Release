@@ -142,6 +142,8 @@ begin
 end;
 
 // Runs coreshiftd with its output kept, so that a failure can be shown.
+// The console speaks UTF-8 meanwhile, so cmd's own messages ("access
+// denied") read like coreshiftd's.
 function Daemon(const Exe, Params: String; var Output: String): Boolean;
 var
   Log: String;
@@ -150,11 +152,11 @@ var
 begin
   Log := ExpandConstant('{tmp}\coreshiftd-output.txt');
   DeleteFile(Log);
-  Result := Exec(ExpandConstant('{cmd}'), '/C ""' + Exe + '" ' + Params + ' > "' + Log + '" 2>&1"',
+  Result := Exec(ExpandConstant('{cmd}'), '/C "chcp 65001 >nul & "' + Exe + '" ' + Params + ' > "' + Log + '" 2>&1"',
     '', SW_HIDE, ewWaitUntilTerminated, Code) and (Code = 0);
   Output := '';
   if LoadStringFromFile(Log, Text) then
-    Output := Trim(String(Text));
+    Output := Trim(UTF8Decode(Text));
 end;
 
 function ServiceExists: Boolean;
@@ -212,13 +214,27 @@ end;
 
 // The service runs as SYSTEM from this folder: outside Program Files it
 // could inherit write access for users, who could then replace its files.
-// Only administrators and SYSTEM may change them.
+// Only administrators and SYSTEM may change them: the folder gets its own
+// permissions, and everything in it takes them from the folder.
 procedure LockDownAppDir;
 var
   Code: Integer;
 begin
-  Exec(ExpandConstant('{sys}\icacls.exe'), '"' + ExpandConstant('{app}') + '" /inheritance:r /grant:r *S-1-5-18:(OI)(CI)F *S-1-5-32-544:(OI)(CI)F *S-1-5-32-545:(OI)(CI)RX /T /C /Q',
+  Exec(ExpandConstant('{sys}\icacls.exe'), '"' + ExpandConstant('{app}') + '" /inheritance:r /grant:r *S-1-5-18:(OI)(CI)F *S-1-5-32-544:(OI)(CI)F *S-1-5-32-545:(OI)(CI)RX /C /Q',
     '', SW_HIDE, ewWaitUntilTerminated, Code);
+  Exec(ExpandConstant('{sys}\icacls.exe'), '"' + ExpandConstant('{app}') + '\*" /reset /T /C /Q',
+    '', SW_HIDE, ewWaitUntilTerminated, Code);
+end;
+
+// Gives the folder of an earlier install its usual permissions back, before
+// its files are replaced; 0.4.0 betas left the files there with none.
+procedure UnlockAppDir;
+var
+  Code: Integer;
+begin
+  if DirExists(ExpandConstant('{app}')) then
+    Exec(ExpandConstant('{sys}\icacls.exe'), '"' + ExpandConstant('{app}') + '" /reset /T /C /Q',
+      '', SW_HIDE, ewWaitUntilTerminated, Code);
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
@@ -227,6 +243,7 @@ var
 begin
   Result := '';
   CloseApp;
+  UnlockAppDir;
   // Remove the service of an earlier install, wherever it ran from. Stopping
   // it disconnects the VPN and restores DNS.
   if ServiceExists then
