@@ -10,7 +10,10 @@ import '../widgets.dart';
 
 class ServersPage extends StatefulWidget {
   final AppState state;
-  const ServersPage({super.key, required this.state});
+
+  /// Focused by Ctrl+F.
+  final FocusNode? searchFocus;
+  const ServersPage({super.key, required this.state, this.searchFocus});
 
   @override
   State<ServersPage> createState() => _ServersPageState();
@@ -65,10 +68,11 @@ class _ServersPageState extends State<ServersPage> {
     final compact = isCompact(context);
 
     final search = TextField(
+      focusNode: widget.searchFocus,
       onChanged: (v) => setState(() => query = v.trim().toLowerCase()),
       style: const TextStyle(fontSize: 13),
       decoration: InputDecoration(
-        hintText: compact ? 'Поиск' : 'Поиск по названию, стране, протоколу',
+        hintText: compact ? 'Поиск' : 'Поиск по названию, стране, протоколу (Ctrl+F)',
         prefixIcon: Icon(Icons.search, size: 17, color: context.pal.dim),
         prefixIconConstraints: const BoxConstraints(minWidth: 34),
       ),
@@ -138,7 +142,7 @@ class _ServersPageState extends State<ServersPage> {
       children: [
         PageHeader(
           'Серверы',
-          subtitle: 'Выберите сервер и нажмите «Подключить». Нажмите на подписку, чтобы показать только её серверы.',
+          subtitle: 'Двойной щелчок по серверу подключает к нему.',
           actions: [
             if (subs.any((x) => !x.isLocal))
               Btn(
@@ -215,7 +219,6 @@ class _ServersPageState extends State<ServersPage> {
                   ],
                 ),
                 best,
-                Text('Пинг: зелёный — до 200 мс, жёлтый — до 500 мс', style: TextStyle(fontSize: 11, color: context.pal.dim)),
               ],
             ),
           const SizedBox(height: 12),
@@ -538,11 +541,20 @@ class _NodeTable extends StatelessWidget {
                 Text('СЕРВЕР', style: headStyle),
                 Text('ПРОТОКОЛ', style: headStyle),
                 Text('ТРАНСПОРТ', style: headStyle),
-                Text('ПИНГ', style: headStyle),
+                Tooltip(
+                  message: 'Зелёный — до 200 мс, жёлтый — до 500 мс',
+                  child: Text('ПИНГ', style: headStyle),
+                ),
                 const SizedBox(),
               ],
             ),
-            for (final (sub, n) in rows) _NodeRow(state: state, sub: sub, node: n, showSub: showSub, narrow: narrow),
+            for (final (i, (sub, n)) in rows.indexed) ...[
+              // With every subscription shown, each gets a heading rather
+              // than its name under each of its servers.
+              if (showSub && (i == 0 || rows[i - 1].$1.id != sub.id))
+                _SubHeading(sub: sub, count: rows.where((r) => r.$1.id == sub.id).length, first: i == 0),
+              _NodeRow(state: state, sub: sub, node: n, showSub: false, narrow: narrow),
+            ],
           ],
         );
       },
@@ -601,6 +613,36 @@ class _NodeTable extends StatelessWidget {
               child: FittedBox(fit: BoxFit.scaleDown, child: cells[5]),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SubHeading extends StatelessWidget {
+  final Subscription sub;
+  final int count;
+  final bool first;
+  const _SubHeading({required this.sub, required this.count, required this.first});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(12, first ? 4 : 16, 12, 6),
+      child: Row(
+        children: [
+          Flexible(
+            child: Text(
+              sub.displayName,
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: p.muted),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text('$count', style: TextStyle(fontSize: 12, color: p.dim)),
+          const SizedBox(width: 10),
+          Expanded(child: Divider(height: 1, color: p.border)),
         ],
       ),
     );
@@ -694,6 +736,9 @@ class _NodeRowState extends State<_NodeRow> {
         onEnter: (_) => setState(() => hover = true),
         onExit: (_) => setState(() => hover = false),
         child: GestureDetector(
+          onDoubleTap: unusable || isCompact(context) || s.busy || !s.online || (sel && s.status.active)
+              ? null
+              : () => s.connect(subscription: widget.sub.id, fingerprint: n.fingerprint, name: n.name),
           onTap: unusable || sel
               ? null
               : isCompact(context) && s.status.active && s.online && !s.busy

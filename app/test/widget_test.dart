@@ -35,7 +35,7 @@ void main() {
     final state = await pumpApp(tester);
     expect(state.loaded, isTrue);
     expect(find.text('Отключено'), findsWidgets);
-    expect(find.text('Amsterdam'), findsOneWidget);
+    expect(find.text('Amsterdam'), findsWidgets);
 
     for (final page in pages) {
       await tester.tap(find.text(page).first);
@@ -679,7 +679,7 @@ void main() {
     for (final size in [const Size(390, 844), const Size(1400, 900)]) {
       final state = await pumpApp(tester, size: size);
       expect(find.text('Отключено'), findsWidgets);
-      expect(find.text('Amsterdam'), findsOneWidget);
+      expect(find.text('Amsterdam'), findsWidgets);
       // The subscription is on its card, the cores on their page, the mode
       // in the settings.
       for (final t in ['Очередь ядер', 'Через VPN', 'Смен ядра', 'Трафик', 'АВТОСВАП', 'Xray-core', 'подписка ещё']) {

@@ -432,10 +432,10 @@ class _RulesCard extends StatelessWidget {
           ),
           SettingRow(
             title: 'Адрес проверки связи',
-            description: 'Должен отвечать 204 или 200',
+            description: 'Отвечает 204 или 200. Запасные: Google, Apple',
             trailing: SavingField(
               value: state.setting('cores.health_url', ''),
-              width: 250,
+              width: 330,
               mono: true,
               onSave: (v) => state.updateSettings((s) => s['cores']['health_url'] = v.trim()),
             ),

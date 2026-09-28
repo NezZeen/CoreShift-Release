@@ -38,7 +38,7 @@ class HomePage extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, c) => PageFrame(
         children: [
-          SizedBox(height: max(0, (c.maxHeight - 860) / 2)),
+          SizedBox(height: max(0, (c.maxHeight - 780) / 2)),
           Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 600),
@@ -46,9 +46,9 @@ class HomePage extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   _Hero(state: state),
-                  if (!state.ipUnsupported) ...[const SizedBox(height: 18), _IpCard(state: state)],
-                  const SizedBox(height: 18),
-                  _SpeedCard(state: state),
+                  if (!state.ipUnsupported) ...[const SizedBox(height: 14), _IpCard(state: state)],
+                  // Without a connection it has nothing to show.
+                  if (state.status.active) ...[const SizedBox(height: 14), _SpeedCard(state: state)],
                 ],
               ),
             ),
@@ -78,7 +78,7 @@ class _Hero extends StatelessWidget {
     final canConnect = state.online && (st.active || (sel.available && !state.busy));
 
     return Panel(
-      padding: const EdgeInsets.fromLTRB(22, 30, 22, 22),
+      padding: const EdgeInsets.fromLTRB(22, 24, 22, 20),
       child: Column(
         children: [
           _ConnectButton(state: st.state, enabled: canConnect, onTap: state.toggleConnect),
@@ -717,7 +717,7 @@ class _SpeedCard extends StatelessWidget {
           Wrap(spacing: 28, runSpacing: 8, children: [metric(Icons.south, okColor, 'Загрузка', down), metric(Icons.north, accent, 'Отдача', up)]),
           const SizedBox(height: 12),
           SizedBox(
-            height: 110,
+            height: 80,
             child: data.length < 2
                 ? Center(
                     child: Text(active ? 'Собираем данные…' : 'Появится после подключения', style: TextStyle(color: p.dim, fontSize: 12)),
