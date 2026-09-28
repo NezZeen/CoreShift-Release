@@ -64,10 +64,10 @@ class SettingsPage extends StatelessWidget {
           const PanelTitle('Общие'),
           SettingRow(
             first: true,
-            title: platform.isAndroid ? 'Подключаться при открытии' : 'Подключаться при запуске',
+            title: 'Автозапуск',
             description: platform.isAndroid
-                ? 'Подключить выбранный сервер, как только CoreShift откроется'
-                : 'Служба подключит выбранный сервер сама, как только запустится вместе с системой',
+                ? 'Подключать выбранный сервер при включении телефона и при открытии CoreShift'
+                : 'Запускать CoreShift в трее при входе в Windows и сразу подключать выбранный сервер',
             trailing: _switch('auto_connect'),
           ),
           if (desktop.canNotify)

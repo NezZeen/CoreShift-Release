@@ -48,7 +48,22 @@ class Palette extends ThemeExtension<Palette> {
   Palette copyWith() => this;
 
   @override
-  Palette lerp(ThemeExtension<Palette>? other, double t) => t < .5 || other is! Palette ? this : other;
+  Palette lerp(ThemeExtension<Palette>? other, double t) {
+    if (other is! Palette) return this;
+    Color c(Color a, Color b) => Color.lerp(a, b, t)!;
+    return Palette(
+      bg: c(bg, other.bg),
+      bg2: c(bg2, other.bg2),
+      surface: c(surface, other.surface),
+      surface2: c(surface2, other.surface2),
+      surface3: c(surface3, other.surface3),
+      border: c(border, other.border),
+      border2: c(border2, other.border2),
+      text: c(text, other.text),
+      muted: c(muted, other.muted),
+      dim: c(dim, other.dim),
+    );
+  }
 }
 
 const accent = Color(0xFF6D8CFF);

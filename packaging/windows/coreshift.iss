@@ -17,6 +17,8 @@ VersionInfoVersion={#AppNumber}
 VersionInfoProductTextVersion={#AppLabel}, {#AppCommit}
 AppPublisher=CoreShift
 DefaultDirName={autopf}\CoreShift
+; Any folder: the page is shown on updates too, with the current one.
+DisableDirPage=no
 DisableProgramGroupPage=yes
 PrivilegesRequired=admin
 ArchitecturesAllowed=x64compatible
@@ -162,12 +164,61 @@ begin
   Result := Exec(ExpandConstant('{sys}\sc.exe'), 'query CoreShift', '', SW_HIDE, ewWaitUntilTerminated, Code) and (Code = 0);
 end;
 
-// The app only shows the service's state; closing it touches no connection.
+// Closing the app stops the service after a moment, and the VPN with it;
+// the service is removed right after anyway.
 procedure CloseApp;
 var
   Code: Integer;
 begin
   Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM coreshift.exe', '', SW_HIDE, ewWaitUntilTerminated, Code);
+end;
+
+// The folder must be CoreShift's own: its files are replaced and removed
+// as a whole, and it is closed to everyone but administrators below.
+function NextButtonClick(CurPageID: Integer): Boolean;
+var
+  Dir: String;
+  Rec: TFindRec;
+  Empty: Boolean;
+begin
+  Result := True;
+  if CurPageID <> wpSelectDir then
+    Exit;
+  Dir := RemoveBackslashUnlessRoot(WizardDirValue);
+  if Length(Dir) <= 3 then
+  begin
+    MsgBox('Выберите папку, а не корень диска, например ' + Dir + '\CoreShift.', mbError, MB_OK);
+    Result := False;
+    Exit;
+  end;
+  if not DirExists(Dir) or FileExists(Dir + '\coreshift.exe') then
+    Exit;
+  Empty := True;
+  if FindFirst(Dir + '\*', Rec) then
+  try
+    repeat
+      if (Rec.Name <> '.') and (Rec.Name <> '..') then
+        Empty := False;
+    until not Empty or not FindNext(Rec);
+  finally
+    FindClose(Rec);
+  end;
+  if not Empty then
+  begin
+    MsgBox('В папке ' + Dir + ' уже есть другие файлы. Выберите пустую или новую папку, например ' + Dir + '\CoreShift.', mbError, MB_OK);
+    Result := False;
+  end;
+end;
+
+// The service runs as SYSTEM from this folder: outside Program Files it
+// could inherit write access for users, who could then replace its files.
+// Only administrators and SYSTEM may change them.
+procedure LockDownAppDir;
+var
+  Code: Integer;
+begin
+  Exec(ExpandConstant('{sys}\icacls.exe'), '"' + ExpandConstant('{app}') + '" /inheritance:r /grant:r *S-1-5-18:(OI)(CI)F *S-1-5-32-544:(OI)(CI)F *S-1-5-32-545:(OI)(CI)RX /T /C /Q',
+    '', SW_HIDE, ewWaitUntilTerminated, Code);
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
@@ -192,6 +243,7 @@ var
 begin
   if CurStep <> ssPostInstall then
     Exit;
+  LockDownAppDir;
   if not Daemon(ExpandConstant('{app}\coreshiftd.exe'), 'service install', Output) or
      not Daemon(ExpandConstant('{app}\coreshiftd.exe'), 'service start', Output) then
     SuppressibleMsgBox('Служба CoreShift не запустилась, без неё VPN не будет работать:' + #13#10#13#10 + Output,
@@ -207,6 +259,8 @@ begin
     usUninstall:
       begin
         CloseApp;
+        // "Автозапуск", which the app sets for the user.
+        RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'CoreShift');
         Exec(ExpandConstant('{app}\coreshiftd.exe'), 'service uninstall', '', SW_HIDE, ewWaitUntilTerminated, Code);
         // In case the service could not undo its DNS changes itself.
         Exec(ExpandConstant('{app}\coreshiftd.exe'), 'dns recover', '', SW_HIDE, ewWaitUntilTerminated, Code);

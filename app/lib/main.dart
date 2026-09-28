@@ -13,7 +13,7 @@ import 'ui/theme.dart';
 const demo = bool.fromEnvironment('DEMO');
 
 /// `--tray` starts hidden in the tray: the service starts the app so after
-/// updating CoreShift.
+/// updating CoreShift, and Windows at sign-in ("Автозапуск").
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   await desktop.initWindow(hidden: args.contains('--tray'));
@@ -22,7 +22,13 @@ Future<void> main(List<String> args) async {
   final Backend backend = demo ? DemoBackend() : platform.createBackend();
   runApp(
     CoreShiftApp(
-      state: AppState(backend, prefs: prefs, savePrefs: platform.savePrefs)..start(),
+      state: AppState(
+        backend,
+        prefs: prefs,
+        savePrefs: platform.savePrefs,
+        daemonStarter: demo ? null : platform.daemonStarter,
+        autostartSetter: demo ? null : platform.autostartSetter,
+      )..start(),
     ),
   );
 }
@@ -57,6 +63,9 @@ class _CoreShiftAppState extends State<CoreShiftApp> {
       theme: buildTheme(Brightness.light),
       darkTheme: buildTheme(Brightness.dark),
       themeMode: themeMode,
+      // The colours blend from one theme into the other.
+      themeAnimationDuration: const Duration(milliseconds: 450),
+      themeAnimationCurve: Curves.easeInOut,
       builder: (context, child) => desktop.DesktopFrame(state: widget.state, child: child!),
       home: Shell(state: widget.state, themeMode: themeMode, onThemeMode: _setTheme),
     );

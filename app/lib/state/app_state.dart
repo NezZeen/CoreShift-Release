@@ -57,7 +57,32 @@ class AppState extends ChangeNotifier {
   /// Cores whose health checks fail right now, to log only the change.
   final _healthFailing = <String>{};
 
-  AppState(this.backend, {Json? prefs, this.savePrefs, this.leakTestRunner, this.linkOpener, this.version = BuildVersion.app}) : prefs = prefs ?? {};
+  AppState(
+    this.backend, {
+    Json? prefs,
+    this.savePrefs,
+    this.leakTestRunner,
+    this.linkOpener,
+    this.daemonStarter,
+    this.autostartSetter,
+    this.version = BuildVersion.app,
+  }) : prefs = prefs ?? {};
+
+  /// Starts a stopped daemon, where the app may (the Windows service);
+  /// returns whether it runs or is starting.
+  final bool Function()? daemonStarter;
+  DateTime? _daemonStarted;
+
+  /// Makes the system start the app at sign-in, or stops it; follows the
+  /// "Автозапуск" setting. Returns whether that worked.
+  final bool Function(bool on)? autostartSetter;
+  bool? _autostart;
+
+  void _syncAutostart() {
+    final on = settings['auto_connect'] == true;
+    if (autostartSetter == null || on == _autostart) return;
+    if (autostartSetter!(on)) _autostart = on;
+  }
 
   /// This app's version; tests pass their own.
   final BuildVersion version;
@@ -183,6 +208,12 @@ class AppState extends ChangeNotifier {
       }
       _notify();
     } catch (e) {
+      // The service runs only while the app does: the app starts it.
+      final now = DateTime.now();
+      if (e is DaemonOffline && daemonStarter != null && (_daemonStarted == null || now.difference(_daemonStarted!) > const Duration(seconds: 15))) {
+        _daemonStarted = now;
+        daemonStarter!();
+      }
       _lost(e);
     }
   }
@@ -212,6 +243,7 @@ class AppState extends ChangeNotifier {
     info = DaemonInfo.fromJson(results[0] as Json);
     status = Status.fromJson(results[1] as Json);
     settings = results[2] as Json;
+    _syncAutostart();
     subscriptions = _subs(results[3]);
     selection = Selection.fromJson(results[4] as Json);
     loaded = true;
@@ -320,6 +352,7 @@ class AppState extends ChangeNotifier {
     try {
       if (what == 'settings') {
         settings = await backend.call('GET', '/v1/settings') as Json;
+        _syncAutostart();
       } else if (what == 'selection') {
         selection = Selection.fromJson(await backend.call('GET', '/v1/selection') as Json);
       } else {
@@ -706,6 +739,7 @@ class AppState extends ChangeNotifier {
     try {
       final before = settings;
       settings = await backend.call('PUT', '/v1/settings', draft) as Json;
+      _syncAutostart();
       final changes = settingsChanges(before, settings);
       if (changes.isNotEmpty) _log(DateTime.now(), 'настройки', changes.join('; '), LogLevel.info);
       _notify();

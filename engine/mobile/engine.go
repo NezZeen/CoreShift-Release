@@ -66,6 +66,7 @@ var coreFiles = map[core.Kind]string{
 }
 
 type engine struct {
+	ctx     context.Context
 	cancel  context.CancelFunc
 	svc     *service.Service
 	srv     *http.Server
@@ -144,7 +145,7 @@ func Start(dataDir, libDir, deviceID, osVersion, model string, p Platform) error
 	ctx, cancel := context.WithCancel(context.Background())
 	go st.RunUpdater(ctx, time.Minute)
 	go svc.RunAppUpdates(ctx)
-	running = &engine{cancel: cancel, svc: svc, srv: srv, apiFile: apiFile}
+	running = &engine{ctx: ctx, cancel: cancel, svc: svc, srv: srv, apiFile: apiFile}
 	return nil
 }
 
@@ -165,6 +166,29 @@ func Stop() {
 		e.srv.Close() // event streams never go idle
 	}
 	os.Remove(e.apiFile)
+}
+
+// AutoConnectEnabled reports whether the settings ask to connect on start
+// ("Автозапуск"): when CoreShift opens and when the phone starts.
+func AutoConnectEnabled() bool {
+	mu.Lock()
+	e := running
+	mu.Unlock()
+	return e != nil && e.svc.AutoConnectEnabled()
+}
+
+// AutoConnect connects the selected node when the settings ask for it and
+// nothing is connected yet, retrying while the network comes up. It blocks
+// and reports whether the VPN is up at the end.
+func AutoConnect() bool {
+	mu.Lock()
+	e := running
+	mu.Unlock()
+	if e == nil {
+		return false
+	}
+	e.svc.AutoConnect(e.ctx)
+	return e.svc.Status().State == service.Connected
 }
 
 // Disconnect turns the VPN off, from the notification or the quick

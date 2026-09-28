@@ -52,6 +52,7 @@ func installService(args []string) error {
 	fs := flag.NewFlagSet("service install", flag.ContinueOnError)
 	df := addDaemonFlags(fs)
 	fs.String("api", "127.0.0.1:17900", "loopback address of the UI API")
+	fs.Bool("exit-without-app", true, "stop, disconnecting, once the app is closed")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -62,6 +63,12 @@ func installService(args []string) error {
 		dir, _ := coresDir("")
 		args = append(args, "-cores-dir", dir)
 	}
+	// The app starts the service and it stops once the app is closed, so
+	// the VPN never runs without the app; -exit-without-app=false keeps it
+	// running on its own.
+	if !hasFlag(args, "exit-without-app") {
+		args = append(args, "-exit-without-app")
+	}
 
 	m, err := mgr.Connect()
 	if err != nil {
@@ -71,12 +78,16 @@ func installService(args []string) error {
 	s, err := m.CreateService(serviceName, exe, mgr.Config{
 		DisplayName: "CoreShift VPN",
 		Description: "Runs proxy cores, the TUN interface and DNS protection for the CoreShift VPN client.",
-		StartType:   mgr.StartAutomatic,
+		StartType:   mgr.StartManual,
 	}, append([]string{"service", "run"}, args...)...)
 	if err != nil {
 		return err
 	}
 	defer s.Close()
+	if err := letUsersStart(s); err != nil {
+		s.Delete()
+		return fmt.Errorf("let users start the service: %w", err)
+	}
 	// Restart after a crash; DNS left behind is restored by Recover on start.
 	_ = s.SetRecoveryActions([]mgr.RecoveryAction{
 		{Type: mgr.ServiceRestart, Delay: 2 * time.Second},
@@ -85,6 +96,24 @@ func installService(args []string) error {
 	}, 24*60*60)
 	fmt.Printf("installed service %q running %s %s\n", serviceName, exe, strings.Join(append([]string{"service", "run"}, args...), " "))
 	return nil
+}
+
+// serviceSDDL is Windows' default access to a service, plus starting it
+// (RP) for signed-in users, so the app can start the service without
+// administrator rights. Stopping and configuring it stay with
+// administrators.
+const serviceSDDL = "D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWRPLOCRRC;;;IU)(A;;CCLCSWLOCRRC;;;SU)"
+
+func letUsersStart(s *mgr.Service) error {
+	sd, err := windows.SecurityDescriptorFromString(serviceSDDL)
+	if err != nil {
+		return err
+	}
+	dacl, _, err := sd.DACL()
+	if err != nil {
+		return err
+	}
+	return windows.SetSecurityInfo(s.Handle, windows.SE_SERVICE, windows.DACL_SECURITY_INFORMATION, nil, nil, dacl, nil)
 }
 
 func uninstallService() error {
@@ -161,6 +190,7 @@ func (w *winService) Execute(_ []string, requests <-chan svc.ChangeRequest, stat
 	fs := flag.NewFlagSet("service run", flag.ContinueOnError)
 	df := addDaemonFlags(fs)
 	apiAddr := fs.String("api", "127.0.0.1:17900", "loopback address of the UI API")
+	withApp := fs.Bool("exit-without-app", false, "stop, disconnecting, once the app is closed")
 	if err := fs.Parse(w.args); err != nil {
 		return true, 1
 	}
@@ -181,7 +211,7 @@ func (w *winService) Execute(_ []string, requests <-chan svc.ChangeRequest, stat
 	// Only the installed service of a release build updates CoreShift;
 	// `go run ... serve` never runs an installer over a working copy.
 	cfg.SelfUpdate = service.Version != "dev"
-	go func() { done <- serve(ctx, cfg, *apiAddr, log, false) }()
+	go func() { done <- serve(ctx, cfg, *apiAddr, log, false, *withApp) }()
 	status <- svc.Status{State: svc.Running, Accepts: svc.AcceptStop | svc.AcceptShutdown}
 
 	for {

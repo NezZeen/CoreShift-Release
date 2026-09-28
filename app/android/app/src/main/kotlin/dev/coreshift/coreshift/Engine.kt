@@ -51,6 +51,16 @@ object Engine {
     }
 
     /**
+     * Connects the selected server if "Автозапуск" is on, in the background.
+     * A service started for it that ends up without a VPN goes away.
+     */
+    fun autoConnect() {
+        Thread {
+            if (!Mobile.autoConnect()) CoreShiftVpnService.current()?.stopIfIdle()
+        }.start()
+    }
+
+    /**
      * Tells the engine which network the phone uses. The app is outside its
      * own VPN, so its default network is the real one, also while connected.
      */
@@ -84,8 +94,11 @@ object Engine {
     /** What the engine needs from Android: the VpnService's TUN, the installer. */
     private class VpnPlatform(private val context: Context) : Platform {
         override fun openTun(cfg: TunConfig): Int {
-            val intent = Intent(context, CoreShiftVpnService::class.java)
-            context.startForegroundService(intent)
+            // Started at boot, the service already runs in the foreground;
+            // starting it again from the background Android may refuse.
+            if (CoreShiftVpnService.current() == null) {
+                context.startForegroundService(Intent(context, CoreShiftVpnService::class.java))
+            }
             val service = CoreShiftVpnService.awaitInstance(10, TimeUnit.SECONDS)
                 ?: throw IllegalStateException("the VPN service did not start")
             return service.establish(cfg)
