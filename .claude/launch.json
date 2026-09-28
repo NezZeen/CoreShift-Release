@@ -4,8 +4,8 @@
     {
       "name": "ui-demo",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "8765", "--directory", "app/build/web"],
-      "port": 8765
+      "runtimeArgs": ["-m", "http.server", "18765", "--directory", "app/build/web"],
+      "port": 18765
     }
   ]
 }

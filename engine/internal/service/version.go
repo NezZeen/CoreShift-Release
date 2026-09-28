@@ -1,6 +1,10 @@
 package service
 
-import "strconv"
+import (
+	"strconv"
+
+	"coreshift/engine/internal/subscription"
+)
 
 // The build stamps these with -ldflags -X (packaging/windows/build.ps1):
 // Version from the repository's VERSION file, Build the number of commits,
@@ -11,6 +15,13 @@ var (
 	Build   = "0"
 	Commit  = ""
 )
+
+// Panels see which version asks for the subscription.
+func init() {
+	if Version != "dev" {
+		subscription.DefaultUserAgent = "CoreShift/" + Version
+	}
+}
 
 // BuildNumber is Build as a number, 0 when unknown.
 func BuildNumber() int {

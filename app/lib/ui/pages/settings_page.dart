@@ -88,6 +88,9 @@ class SettingsPage extends StatelessWidget {
       ),
     );
 
+    // On Android with every app through the VPN the panel may have nothing
+    // to offer: then it is left out.
+    final hasNetwork = !platform.isAndroid || !state.setting('tun', true) || state.hasSetting('ipv6');
     final network = Panel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -111,7 +114,6 @@ class SettingsPage extends StatelessWidget {
               description: 'IPv6-трафик тоже идёт через VPN, а не мимо него. Выключите, если какие-то сайты перестали открываться',
               trailing: _switch('ipv6'),
             ),
-          LeakCheck(state: state),
         ],
       ),
     );
@@ -144,24 +146,8 @@ class SettingsPage extends StatelessWidget {
             ),
           ),
           SettingRow(title: 'Fake-IP', description: 'Имена резолвятся на стороне сервера — быстрее и без утечек DNS', trailing: _switch('dns.fake_ip')),
-          SettingRow(
-            title: 'DNS браузеров только через VPN',
-            description: 'Firefox не включает свой DNS-over-HTTPS сам, а если он включён вручную, его запросы идут через туннель',
-            trailing: _switch('dns.block_browser_doh'),
-          ),
-          SettingRow(
-            title: 'Блокировать DNS-over-TLS (порт 853)',
-            description: platform.isAndroid
-                ? 'Android в режиме «Частный DNS: автоматически» перейдёт на обычный DNS. Если «Частный DNS» задан вручную, сайты перестанут открываться'
-                : null,
-            trailing: _switch('dns.block_dot'),
-          ),
-          if (!platform.isAndroid)
-            SettingRow(
-              title: 'Строгий DNS в Windows',
-              description: 'Запретить Windows опрашивать DNS других сетевых адаптеров в обход туннеля',
-              trailing: _switch('dns.strict'),
-            ),
+          _LeakGuard(state: state),
+          LeakCheck(state: state),
         ],
       ),
     );
@@ -185,7 +171,12 @@ class SettingsPage extends StatelessWidget {
               width: 64,
               numeric: true,
               align: TextAlign.center,
-              onSave: (v) => state.updateSettings((s) => s['updates']['interval_hours'] = int.tryParse(v) ?? 0),
+              enabled: state.setting('updates.auto', false),
+              onSave: (v) async {
+                final h = int.tryParse(v) ?? 0;
+                if (h < 1) return 'Укажите число часов';
+                return state.updateSettings((s) => s['updates']['interval_hours'] = h);
+              },
             ),
           ),
           SettingRow(
@@ -195,22 +186,10 @@ class SettingsPage extends StatelessWidget {
               value: state.setting('updates.user_agent', ''),
               width: 170,
               mono: true,
-              hint: 'CoreShift/0.1',
+              hint: info.version.isEmpty || info.version == 'dev' ? 'CoreShift' : 'CoreShift/${info.version}',
               onSave: (v) => state.updateSettings((s) => s['updates']['user_agent'] = v.trim()),
             ),
           ),
-          if (state.hasSetting('cores.latency_test'))
-            SettingRow(
-              title: 'Проверка пинга',
-              description: state.setting('cores.latency_test', 'ping') == 'proxy'
-                  ? 'Запрос через ядро: реальная задержка с учётом шифрования, заодно видно, работает ли сервер. Цифры больше пинга'
-                  : 'ICMP-пинг до сервера, где он закрыт — время TCP-подключения. Узлы, которые не ответили, проверяются через ядро',
-              trailing: Seg<String>(
-                value: state.setting('cores.latency_test', 'ping'),
-                options: const [('ping', 'Пинг'), ('proxy', 'Через ядро')],
-                onChanged: (v) => state.updateSettings((s) => s['cores']['latency_test'] = v),
-              ),
-            ),
         ],
       ),
     );
@@ -222,23 +201,21 @@ class SettingsPage extends StatelessWidget {
           const PanelTitle('О программе'),
           SettingRow(
             first: true,
-            title: 'Версия приложения',
+            title: 'Версия',
             description: state.version.commit.isEmpty ? null : 'коммит ${state.version.commit}',
             trailing: SelectableText(
-              state.version.label,
+              state.version.known ? state.version.label : info.buildVersion.label,
               style: TextStyle(color: p.muted, fontFamily: monoFont),
             ),
           ),
           // On Android the engine is inside the app: one version.
-          if (!platform.isAndroid)
+          if (!platform.isAndroid && state.versionMismatch)
             SettingRow(
               title: 'Версия службы',
-              description: state.versionMismatch
-                  ? 'Отличается от приложения: одно из них обновилось без другого. Переустановите CoreShift целиком.'
-                  : (info.commit.isEmpty ? null : 'коммит ${info.commit}'),
+              description: 'Отличается от приложения: одно из них обновилось без другого. Переустановите CoreShift целиком.',
               trailing: SelectableText(
                 info.buildVersion.label,
-                style: TextStyle(color: state.versionMismatch ? warnColor : p.muted, fontFamily: monoFont),
+                style: TextStyle(color: warnColor, fontFamily: monoFont),
               ),
             ),
           SettingRow(
@@ -275,35 +252,6 @@ class SettingsPage extends StatelessWidget {
                   'Если VPN включён, установка подождёт.',
               trailing: _switch('app_update.auto'),
             ),
-          if (state.updateNotice.isNotEmpty)
-            SettingRow(
-              title: 'После запуска',
-              description: state.updateNotice,
-              trailing: const Icon(Icons.system_update_alt, size: 18, color: okColor),
-            ),
-          if (!platform.isAndroid)
-            SettingRow(
-              title: 'Служба',
-              trailing: Text(
-                state.backend.description,
-                style: TextStyle(color: p.muted, fontFamily: monoFont),
-              ),
-            ),
-          SettingRow(
-            title: 'Ядра',
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (final k in allCores) ...[
-                  Tooltip(
-                    message: '${coreStyle(k).name}: ${info.installed(k) ? 'установлено' : 'нет'}',
-                    child: CoreLogo(k, size: 22, off: !info.installed(k)),
-                  ),
-                  const SizedBox(width: 5),
-                ],
-              ],
-            ),
-          ),
         ],
       ),
     );
@@ -313,10 +261,18 @@ class SettingsPage extends StatelessWidget {
         const PageHeader('Настройки'),
         LayoutBuilder(
           builder: (context, c) {
+            if (isCompact(context)) {
+              return Column(
+                children: [
+                  for (final w in [general, if (hasNetwork) network, about]) Padding(padding: const EdgeInsets.only(bottom: 18), child: w),
+                  _More(children: [subs, const SizedBox(height: 18), dns]),
+                ],
+              );
+            }
             if (c.maxWidth < 900) {
               return Column(
                 children: [
-                  for (final w in [general, network, subs, dns, about]) Padding(padding: const EdgeInsets.only(bottom: 18), child: w),
+                  for (final w in [general, if (hasNetwork) network, subs, dns, about]) Padding(padding: const EdgeInsets.only(bottom: 18), child: w),
                 ],
               );
             }
@@ -325,11 +281,164 @@ class SettingsPage extends StatelessWidget {
               children: [
                 Expanded(child: Column(children: [general, const SizedBox(height: 18), subs, const SizedBox(height: 18), about])),
                 const SizedBox(width: 18),
-                Expanded(child: Column(children: [network, const SizedBox(height: 18), dns])),
+                Expanded(
+                  child: Column(
+                    children: [
+                      if (hasNetwork) ...[network, const SizedBox(height: 18)],
+                      dns,
+                    ],
+                  ),
+                ),
               ],
             );
           },
         ),
+      ],
+    );
+  }
+}
+
+/// One switch for the guards against DNS going round the tunnel; each can
+/// still be set on its own under "Подробнее".
+class _LeakGuard extends StatefulWidget {
+  final AppState state;
+  const _LeakGuard({required this.state});
+
+  @override
+  State<_LeakGuard> createState() => _LeakGuardState();
+}
+
+class _LeakGuardState extends State<_LeakGuard> {
+  bool open = false;
+
+  AppState get s => widget.state;
+
+  List<(String, String, String?)> get _guards => [
+    (
+      'dns.block_browser_doh',
+      'DNS браузеров только через VPN',
+      'Firefox не включает свой DNS-over-HTTPS сам, а если он включён вручную, его запросы идут через туннель',
+    ),
+    (
+      'dns.block_dot',
+      'Блокировать DNS-over-TLS (порт 853)',
+      platform.isAndroid
+          ? 'Android в режиме «Частный DNS: автоматически» перейдёт на обычный DNS. Если «Частный DNS» задан вручную, сайты перестанут открываться'
+          : null,
+    ),
+    if (!platform.isAndroid) ('dns.strict', 'Строгий DNS в Windows', 'Запретить Windows опрашивать DNS других сетевых адаптеров в обход туннеля'),
+  ].where((g) => s.hasSetting(g.$1)).toList();
+
+  Future<String?> _set(Iterable<String> paths, bool v) => s.updateSettings((x) {
+    for (final path in paths) {
+      final keys = path.split('.');
+      Map m = x;
+      for (final k in keys.take(keys.length - 1)) {
+        m = m[k] as Map;
+      }
+      m[keys.last] = v;
+    }
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    final guards = _guards;
+    if (guards.isEmpty) return const SizedBox();
+    final on = guards.where((g) => s.setting(g.$1, false)).length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SettingRow(
+          title: 'Защита от утечек DNS',
+          descriptionWidget: Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 6,
+            children: [
+              Text(
+                on == 0
+                    ? 'Выключена'
+                    : on == guards.length
+                    ? 'DNS-запросы браузеров и системы не уходят мимо туннеля'
+                    : 'Включена частично: $on из ${guards.length}',
+                style: TextStyle(fontSize: 12, color: p.muted),
+              ),
+              InkWell(
+                onTap: () => setState(() => open = !open),
+                child: Text(open ? 'Свернуть' : 'Подробнее', style: const TextStyle(fontSize: 12, color: accent)),
+              ),
+            ],
+          ),
+          trailing: Switch(value: on == guards.length, onChanged: (v) => _set(guards.map((g) => g.$1), v)),
+        ),
+        if (open)
+          Padding(
+            padding: const EdgeInsets.only(left: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final (path, title, text) in guards)
+                  SettingRow(
+                    title: title,
+                    description: text,
+                    trailing: Switch(value: s.setting(path, false), onChanged: (v) => _set([path], v)),
+                  ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// A phone's "Дополнительно": settings few people touch, folded away.
+class _More extends StatefulWidget {
+  final List<Widget> children;
+  const _More({required this.children});
+
+  @override
+  State<_More> createState() => _MoreState();
+}
+
+class _MoreState extends State<_More> {
+  bool open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => setState(() => open = !open),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: 'Дополнительно  ',
+                          style: TextStyle(fontWeight: FontWeight.w600, color: p.muted),
+                        ),
+                        TextSpan(
+                          text: 'подписки, DNS',
+                          style: TextStyle(fontSize: 12, color: p.dim),
+                        ),
+                      ],
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Icon(open ? Icons.expand_less : Icons.expand_more, color: p.muted),
+              ],
+            ),
+          ),
+        ),
+        if (open) ...[const SizedBox(height: 8), ...widget.children],
       ],
     );
   }

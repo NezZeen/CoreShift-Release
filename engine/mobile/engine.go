@@ -108,9 +108,11 @@ func Start(dataDir, libDir, deviceID, osVersion, model string, p Platform) error
 		Store:           st,
 		TUNLayer:        tun,
 		SystemResolvers: currentNetwork.resolvers,
-		// The app is outside the VPN: pings leave by the default network.
-		PhysicalBind: func() (ping.Bind, error) { return ping.Bind{}, nil },
-		HostIPv6:     currentNetwork.hasIPv6,
+		// The app is outside the VPN: pings and lookups of servers leave
+		// by the default network.
+		PhysicalBind:  func() (ping.Bind, error) { return ping.Bind{}, nil },
+		AppOutsideVPN: true,
+		HostIPv6:      currentNetwork.hasIPv6,
 		// Release builds look for new APKs; the user installs them.
 		SelfUpdate:    service.Version != "dev",
 		InstallUpdate: p.InstallUpdate,

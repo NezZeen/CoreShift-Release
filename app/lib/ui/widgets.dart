@@ -475,6 +475,7 @@ class SavingField extends StatefulWidget {
   final bool numeric;
   final String? hint;
   final TextAlign align;
+  final bool enabled;
 
   const SavingField({
     super.key,
@@ -485,6 +486,7 @@ class SavingField extends StatefulWidget {
     this.numeric = false,
     this.hint,
     this.align = TextAlign.start,
+    this.enabled = true,
   });
 
   @override
@@ -535,6 +537,7 @@ class _SavingFieldState extends State<SavingField> {
       child: TextField(
         controller: _c,
         focusNode: _focus,
+        enabled: widget.enabled,
         textAlign: widget.align,
         onSubmitted: (_) => _save(),
         keyboardType: widget.numeric ? TextInputType.number : null,
