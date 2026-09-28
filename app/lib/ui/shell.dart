@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../api/models.dart';
 import '../platform/platform.dart' as platform;
@@ -40,6 +41,20 @@ class Shell extends StatefulWidget {
 class _ShellState extends State<Shell> {
   PageId page = PageId.home;
   late final AppLifecycleListener _lifecycle;
+  final _serverSearch = FocusNode();
+
+  /// Ctrl+Enter: connect or disconnect, from any page.
+  void _toggle() {
+    final s = widget.state;
+    if (s.online && (s.status.active || (s.selection.available && !s.busy))) s.toggleConnect();
+  }
+
+  /// Ctrl+F: the servers page, with its search focused.
+  void _findServer() {
+    if (!widget.state.loaded) return;
+    setState(() => page = PageId.servers);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _serverSearch.requestFocus());
+  }
 
   @override
   void initState() {
@@ -52,6 +67,7 @@ class _ShellState extends State<Shell> {
   @override
   void dispose() {
     _lifecycle.dispose();
+    _serverSearch.dispose();
     widget.state.removeListener(_offerUpdate);
     super.dispose();
   }
@@ -75,7 +91,7 @@ class _ShellState extends State<Shell> {
             ? _Offline(state: s)
             : switch (page) {
                 PageId.home => HomePage(state: s),
-                PageId.servers => ServersPage(state: s),
+                PageId.servers => ServersPage(state: s, searchFocus: _serverSearch),
                 PageId.cores => CoresPage(state: s),
                 PageId.routing => RoutingPage(state: s),
                 PageId.logs => LogsPage(state: s),
@@ -111,17 +127,23 @@ class _ShellState extends State<Shell> {
         }
         return Nav(
           go: (p) => setState(() => page = p),
-          child: Scaffold(
-            body: Stack(
-              children: [
-                Row(
+          child: CallbackShortcuts(
+            bindings: {const SingleActivator(LogicalKeyboardKey.enter, control: true): _toggle, const SingleActivator(LogicalKeyboardKey.keyF, control: true): _findServer},
+            child: Focus(
+              autofocus: true,
+              child: Scaffold(
+                body: Stack(
                   children: [
-                    _Sidebar(state: s, page: page, onPage: (p) => setState(() => page = p)),
-                    Expanded(child: content),
+                    Row(
+                      children: [
+                        _Sidebar(state: s, page: page, onPage: (p) => setState(() => page = p)),
+                        Expanded(child: content),
+                      ],
+                    ),
+                    Positioned(right: 20, bottom: 20, child: _Toasts(state: s)),
                   ],
                 ),
-                Positioned(right: 20, bottom: 20, child: _Toasts(state: s)),
-              ],
+              ),
             ),
           ),
         );
@@ -261,12 +283,15 @@ class _StatusPill extends StatelessWidget {
             ConnState.failed => (errColor, 'Ошибка'),
             ConnState.idle => (p.dim, 'Отключено'),
           };
+    final active = state.status.active;
+    final canToggle = state.online && (active || (state.selection.available && !state.busy));
+    final server = active ? state.status.node : state.selection.name;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 2),
-      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+      padding: const EdgeInsets.fromLTRB(11, 6, 4, 6),
       decoration: BoxDecoration(
         color: p.surface,
-        borderRadius: BorderRadius.circular(99),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: p.border),
       ),
       child: Row(
@@ -281,12 +306,29 @@ class _StatusPill extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              text,
-              style: TextStyle(fontSize: 12, color: p.muted),
-              overflow: TextOverflow.ellipsis,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  text,
+                  style: TextStyle(fontSize: 12, color: p.muted),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (state.online && server.isNotEmpty)
+                  Text(
+                    server,
+                    style: TextStyle(fontSize: 11, color: p.dim),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+              ],
             ),
+          ),
+          IconButton(
+            tooltip: active ? 'Отключить (Ctrl+Enter)' : 'Подключить (Ctrl+Enter)',
+            onPressed: canToggle ? state.toggleConnect : null,
+            icon: Icon(Icons.power_settings_new, size: 18, color: active ? okColor : p.muted),
+            visualDensity: VisualDensity.compact,
           ),
         ],
       ),

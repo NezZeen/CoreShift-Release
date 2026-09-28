@@ -111,7 +111,20 @@ class _DesktopFrameState extends State<DesktopFrame> with WindowListener {
   }
 
   @override
-  void onWindowClose() => windowManager.hide();
+  void onWindowClose() {
+    windowManager.hide();
+    // Once: a window that just vanishes reads as CoreShift having quit,
+    // while it runs on in the tray, the VPN with it.
+    final state = widget.state;
+    if (state.prefs['tray_hint_shown'] == true) return;
+    state.setPref('tray_hint_shown', true);
+    if (Platform.isWindows) {
+      final id = _tray?.icon.getId();
+      if (id != null) {
+        showTrayBalloon(id, 'CoreShift работает в трее', 'Окно свёрнуто, VPN работает как прежде. Чтобы выйти совсем, нажмите на значок правой кнопкой → «Выход».');
+      }
+    }
+  }
 
   @override
   void onWindowMaximize() => setState(() => _maximized = true);
