@@ -5,7 +5,10 @@ import android.app.StatusBarManager
 import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.drawable.Icon
 import android.net.Uri
 import android.net.VpnService
@@ -14,6 +17,7 @@ import android.os.Bundle
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.io.ByteArrayOutputStream
 
 /**
  * The Flutter UI. The channel gives it what only Android has: where the
@@ -43,6 +47,8 @@ class MainActivity : FlutterActivity() {
                     result.success(null)
                 }
                 "openUrl" -> result.success(openUrl(call.arguments as String))
+                "apps" -> Thread { val apps = installedApps(); runOnUiThread { result.success(apps) } }.start()
+                "appIcon" -> Thread { val icon = appIcon(call.arguments as String); runOnUiThread { result.success(icon) } }.start()
                 "canAddTile" -> result.success(Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
                 "addTile" -> addTile(result)
                 else -> result.notImplemented()
@@ -73,6 +79,41 @@ class MainActivity : FlutterActivity() {
                 },
             )
         }
+    }
+
+    /**
+     * The apps a user can choose to put into the VPN or leave out of it:
+     * those with a launcher icon, but CoreShift.
+     */
+    private fun installedApps(): List<Map<String, Any>> {
+        val pm = packageManager
+        val launcher = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        return pm.queryIntentActivities(launcher, 0)
+            .map { it.activityInfo.applicationInfo }
+            .distinctBy { it.packageName }
+            .filter { it.packageName != packageName }
+            .map {
+                mapOf(
+                    "package" to it.packageName,
+                    "label" to pm.getApplicationLabel(it).toString(),
+                    "system" to ((it.flags and ApplicationInfo.FLAG_SYSTEM) != 0),
+                )
+            }
+    }
+
+    /** The app's icon as a PNG, 96 pixels square; null when there is none. */
+    private fun appIcon(pkg: String): ByteArray? = try {
+        val d = packageManager.getApplicationIcon(pkg)
+        val size = 96
+        val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bmp)
+        d.setBounds(0, 0, size, size)
+        d.draw(canvas)
+        val out = ByteArrayOutputStream()
+        bmp.compress(Bitmap.CompressFormat.PNG, 100, out)
+        out.toByteArray()
+    } catch (_: Exception) {
+        null
     }
 
     /** Opens a link in the app that handles it; false when there is none. */

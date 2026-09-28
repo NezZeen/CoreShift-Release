@@ -94,6 +94,10 @@ type Options struct {
 	// direct instead of through the proxy, wherever they are installed.
 	// Names match case-insensitively.
 	DirectApps []string
+	// AppFilter and FilterApps are Android's per-app VPN (store.Routing):
+	// the VpnService takes them, sing-box never sees them.
+	AppFilter  string
+	FilterApps []string
 	// DirectIPs are addresses and subnets that go direct. They match
 	// connections made by address; names are matched by DNS.DirectSuffixes.
 	DirectIPs []netip.Prefix

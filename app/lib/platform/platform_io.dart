@@ -46,6 +46,28 @@ Future<void> allowInstallUpdates() async {
   if (Platform.isAndroid) await _android.invokeMethod<void>('allowInstallUpdates');
 }
 
+/// An app installed on the phone, for the per-app VPN.
+typedef AndroidApp = ({String package, String label, bool system});
+
+/// The phone's apps with a launcher icon, but CoreShift.
+Future<List<AndroidApp>> installedApps() async {
+  if (!Platform.isAndroid) return [];
+  final list = await _android.invokeListMethod<Map>('apps') ?? const [];
+  return [
+    for (final m in list) (package: m['package'] as String, label: m['label'] as String, system: m['system'] == true),
+  ];
+}
+
+/// An app's icon as a PNG; null when it has none.
+Future<Uint8List?> appIcon(String package) async {
+  if (!Platform.isAndroid) return null;
+  try {
+    return await _android.invokeMethod<Uint8List>('appIcon', package);
+  } catch (_) {
+    return null;
+  }
+}
+
 /// Asks Android to add CoreShift's tile to the quick settings: "added",
 /// "already", "declined", or "unsupported" before Android 13, where the
 /// user adds it by hand.

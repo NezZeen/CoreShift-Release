@@ -8,7 +8,9 @@ import 'package:coreshift/main.dart';
 import 'package:coreshift/state/app_state.dart';
 import 'package:coreshift/state/errors.dart';
 import 'package:coreshift/state/leak.dart';
+import 'package:coreshift/ui/pages/android_apps.dart';
 import 'package:coreshift/ui/support.dart';
+import 'package:coreshift/ui/theme.dart';
 import 'package:coreshift/ui/widgets.dart';
 import 'package:coreshift/version.dart';
 
@@ -308,6 +310,48 @@ void main() {
     expect(refused.daemonStartRefused, isTrue);
     expect(refused.offlineReason, 'Служба CoreShift не запущена');
     refused.dispose();
+  });
+
+  testWidgets('the phone chooses the apps in the VPN', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final state = AppState(DemoBackend());
+    await tester.runAsync(() async {
+      state.start();
+      while (!state.loaded) {
+        await Future.delayed(const Duration(milliseconds: 20));
+      }
+    });
+    addTearDown(state.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildTheme(Brightness.dark),
+        home: Scaffold(
+          body: ListenableBuilder(
+            listenable: state,
+            builder: (_, _) => SingleChildScrollView(child: AndroidAppsPanel(state: state)),
+          ),
+        ),
+      ),
+    );
+    expect(find.text('Все приложения'), findsOneWidget);
+    expect(find.text('Выбрать'), findsNothing);
+
+    await tester.tap(find.text('Только выбранные'));
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 30)));
+    }
+    expect(state.setting('routing.app_filter', ''), 'only');
+        // Nothing chosen yet: said, as every app still uses the VPN.
+    expect(find.text('Ничего не выбрано: пока через VPN идут все'), findsOneWidget);
+    expect(find.text('Выбрать'), findsOneWidget);
+
+    await tester.runAsync(() => state.updateSettings((s) => s['routing']['filter_apps'] = ['org.telegram.messenger', 'com.android.chrome']));
+    await tester.pump();
+    expect(find.text('Выбрано: 2'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   test('autostart follows its setting', () async {

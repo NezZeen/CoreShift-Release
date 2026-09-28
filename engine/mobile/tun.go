@@ -8,11 +8,13 @@ import (
 	"fmt"
 	"net/netip"
 	"os"
+	"strings"
 	"sync"
 	"syscall"
 	"unsafe"
 
 	"coreshift/engine/internal/service"
+	"coreshift/engine/internal/store"
 	"coreshift/engine/internal/tunlayer"
 
 	box "github.com/sagernet/sing-box"
@@ -45,6 +47,12 @@ func (t *vpnTUN) Start(ctx context.Context, o tunlayer.Options) (service.TUNInst
 		return nil, err
 	}
 	pl := &platform{app: t.platform}
+	switch o.AppFilter {
+	case store.AppsOnly:
+		pl.allowed = o.FilterApps
+	case store.AppsExclude:
+		pl.disallowed = o.FilterApps
+	}
 	bctx := include.Context(context.Background())
 	bctx = singservice.ContextWith[adapter.PlatformInterface](bctx, pl)
 	options, err := json.UnmarshalExtendedContext[option.Options](bctx, cfg)
@@ -138,9 +146,11 @@ func (s *tunSlot) revoke() {
 // VpnService, the network from ConnectivityManager (SetNetwork), and the
 // rest is not used.
 type platform struct {
-	app   Platform
-	mu    sync.Mutex
-	addrs []netip.Addr
+	app Platform
+	// The per-app VPN (store.Routing.AppFilter).
+	allowed, disallowed []string
+	mu                  sync.Mutex
+	addrs               []netip.Addr
 }
 
 var _ adapter.PlatformInterface = (*platform)(nil)
@@ -154,7 +164,11 @@ func (p *platform) AutoDetectInterfaceControl(int) error        { return nil }
 func (p *platform) UsePlatformInterface() bool { return true }
 
 func (p *platform) OpenInterface(options *tun.Options, _ option.TunPlatformOptions) (tun.Tun, error) {
-	cfg := &TunConfig{MTU: int32(options.MTU)}
+	cfg := &TunConfig{
+		MTU:            int32(options.MTU),
+		AllowedApps:    strings.Join(p.allowed, "\n"),
+		DisallowedApps: strings.Join(p.disallowed, "\n"),
+	}
 	var addrs []netip.Addr
 	if len(options.Inet4Address) > 0 {
 		cfg.Address4 = options.Inet4Address[0].String()
