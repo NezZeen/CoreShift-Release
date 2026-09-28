@@ -2,12 +2,14 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../api/models.dart';
 import '../../state/app_state.dart';
 import '../../state/errors.dart';
 import '../shell.dart';
 import 'servers_page.dart' show showAddSubscription;
+import '../countries.dart';
 import '../theme.dart';
 import '../widgets.dart';
 
@@ -30,12 +32,13 @@ class HomePage extends StatelessWidget {
         ),
       );
     }
-    // The desktop: the connection, and while connected its speed. The
-    // cores are on their page, the subscription on its card.
+    // The desktop: the connection, the address sites see, and while
+    // connected its speed. The cores are on their page, the subscription on
+    // its card.
     return LayoutBuilder(
       builder: (context, c) => PageFrame(
         children: [
-          SizedBox(height: max(0, (c.maxHeight - 760) / 2)),
+          SizedBox(height: max(0, (c.maxHeight - 860) / 2)),
           Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 600),
@@ -43,6 +46,7 @@ class HomePage extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   _Hero(state: state),
+                  if (!state.ipUnsupported) ...[const SizedBox(height: 18), _IpCard(state: state)],
                   const SizedBox(height: 18),
                   _SpeedCard(state: state),
                 ],
@@ -544,6 +548,116 @@ class _NodePick extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// The address sites see: the VPN server's while connected, else the
+/// user's own. It is looked up again as the connection changes.
+class _IpCard extends StatelessWidget {
+  final AppState state;
+  const _IpCard({required this.state});
+
+  static String _masked(String ip) {
+    if (ip.contains(':')) return '${ip.split(':').take(2).join(':')}:…';
+    final parts = ip.split('.');
+    return parts.length == 4 ? '${parts[0]}.${parts[1]}.•.•' : ip;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) => state.watchIp());
+    final p = context.pal;
+    final info = state.publicIp;
+    final st = state.status.state;
+    // An answer from before the connection changed says nothing now.
+    final current = info != null && info.vpn == (st == ConnState.connected);
+    final vpn = current && info.vpn;
+    final (icon, color, note) = switch (st) {
+      _ when !current && state.ipLoading => (Icons.public, p.muted, 'Узнаём адрес…'),
+      _ when !current && state.ipError.isNotEmpty => (Icons.public_off, warnColor, state.ipError),
+      _ when !current => (Icons.public, p.muted, st == ConnState.connecting ? 'Подключение…' : ''),
+      _ when vpn => (Icons.verified_user_outlined, okColor, 'Сайты видят адрес VPN-сервера'),
+      _ => (Icons.public, p.muted, 'VPN выключен: сайты видят ваш настоящий адрес'),
+    };
+    final ip = current ? (state.hideIp ? _masked(info.ip) : info.ip) : '—';
+
+    Widget action(IconData i, String tip, VoidCallback? onTap) => IconButton(
+      tooltip: tip,
+      onPressed: onTap,
+      icon: Icon(i, size: 18),
+      color: p.muted,
+      visualDensity: VisualDensity.compact,
+    );
+
+    return Panel(
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(color: color.withValues(alpha: .12), shape: BoxShape.circle),
+            child: Icon(icon, size: 20, color: color),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Ваш IP-адрес', style: TextStyle(fontSize: 12, color: p.muted)),
+                const SizedBox(height: 2),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        ip,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontFamily: monoFont, fontFamilyFallback: monoFallback, fontSize: 18, fontWeight: FontWeight.w500),
+                      ),
+                    ),
+                    if (current && info.country.isNotEmpty) ...[
+                      const SizedBox(width: 10),
+                      Text(countryName(info.country), style: TextStyle(fontSize: 13, color: p.muted)),
+                    ],
+                  ],
+                ),
+                if (note.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    note,
+                    style: TextStyle(fontSize: 12, color: vpn ? okColor : (color == warnColor ? warnColor : p.dim)),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ],
+            ),
+          ),
+          action(
+            state.hideIp ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+            state.hideIp ? 'Показать адрес' : 'Скрыть адрес, например для скриншота',
+            () => state.setPref('hide_ip', !state.hideIp),
+          ),
+          action(
+            Icons.copy,
+            'Скопировать адрес',
+            current
+                ? () {
+                    Clipboard.setData(ClipboardData(text: info.ip));
+                    state.toast('Адрес скопирован');
+                  }
+                : null,
+          ),
+          state.ipLoading
+              ? const Padding(
+                  padding: EdgeInsets.all(12),
+                  child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                )
+              : action(Icons.refresh, 'Проверить ещё раз', state.online ? state.refreshIp : null),
+        ],
       ),
     );
   }

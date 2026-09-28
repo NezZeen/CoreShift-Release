@@ -611,6 +611,40 @@ void main() {
     await tester.pump(const Duration(seconds: 6));
   });
 
+  testWidgets('the desktop home page shows the address sites see', (tester) async {
+    final state = await pumpApp(tester);
+    Future<void> settle() async {
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(const Duration(seconds: 1));
+        await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 100)));
+      }
+      await tester.pump();
+    }
+
+    await settle();
+    expect(find.text('Ваш IP-адрес'), findsOneWidget);
+    expect(find.text('95.31.18.119'), findsOneWidget);
+    expect(find.text('Россия'), findsOneWidget);
+    expect(find.textContaining('настоящий адрес'), findsOneWidget);
+
+    await tester.runAsync(() async {
+      await state.connect();
+      await Future.delayed(const Duration(milliseconds: 2300));
+    });
+    await settle();
+    expect(find.text('185.23.41.7'), findsOneWidget);
+    expect(find.text('Германия'), findsOneWidget);
+    expect(find.text('Сайты видят адрес VPN-сервера'), findsOneWidget);
+
+    // Hidden for screenshots.
+    await tester.tap(find.byTooltip('Скрыть адрес, например для скриншота'));
+    await tester.pump();
+    expect(find.text('185.23.•.•'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.runAsync(() => state.disconnect());
+    await tester.pump(const Duration(seconds: 6));
+  });
+
   testWidgets('the home page keeps to the connection', (tester) async {
     for (final size in [const Size(390, 844), const Size(1400, 900)]) {
       final state = await pumpApp(tester, size: size);
