@@ -47,6 +47,73 @@ type Platform interface {
 	// InstallUpdate hands the verified APK at path to Android's installer,
 	// which asks the user to update the app.
 	InstallUpdate(path string) error
+	// StateChanged reports the connection for the notification and the
+	// quick settings tile: the state ("idle", "connecting", "connected",
+	// "disconnecting", "failed"), the server and when it connected (Unix
+	// milliseconds, 0 when not connected).
+	StateChanged(state, node string, sinceMillis int64)
+	// Traffic reports the speed every second while connected, in bytes
+	// per second.
+	Traffic(downRate, upRate int64)
+}
+
+// Status is the connection as the notification and the tile show it.
+type Status struct {
+	State       string
+	Node        string
+	SinceMillis int64
+}
+
+func statusOf(svc *service.Service) *Status {
+	st := svc.Status()
+	var since int64
+	if !st.Since.IsZero() {
+		since = st.Since.UnixMilli()
+	}
+	return &Status{State: string(st.State), Node: st.Node, SinceMillis: since}
+}
+
+// CurrentStatus returns the connection now; idle before the engine runs.
+func CurrentStatus() *Status {
+	mu.Lock()
+	e := running
+	mu.Unlock()
+	if e == nil {
+		return &Status{State: string(service.Idle)}
+	}
+	return statusOf(e.svc)
+}
+
+// Connect connects the selected server, from the quick settings tile. It
+// blocks until connected or failed.
+func Connect() error {
+	mu.Lock()
+	e := running
+	mu.Unlock()
+	if e == nil {
+		return errors.New("the engine is not running")
+	}
+	return e.svc.ConnectSelected(e.ctx)
+}
+
+// report passes state changes and the speed to the app until ctx ends.
+func report(ctx context.Context, svc *service.Service, p Platform) {
+	events, unsubscribe := svc.Subscribe(false)
+	defer unsubscribe()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case e := <-events:
+			switch e.Kind {
+			case "state":
+				st := statusOf(svc)
+				p.StateChanged(st.State, st.Node, st.SinceMillis)
+			case "traffic":
+				p.Traffic(e.DownRate, e.UpRate)
+			}
+		}
+	}
 }
 
 // TunConfig is what the VpnService is built with.
@@ -145,6 +212,7 @@ func Start(dataDir, libDir, deviceID, osVersion, model string, p Platform) error
 	ctx, cancel := context.WithCancel(context.Background())
 	go st.RunUpdater(ctx, time.Minute)
 	go svc.RunAppUpdates(ctx)
+	go report(ctx, svc, p)
 	running = &engine{ctx: ctx, cancel: cancel, svc: svc, srv: srv, apiFile: apiFile}
 	return nil
 }

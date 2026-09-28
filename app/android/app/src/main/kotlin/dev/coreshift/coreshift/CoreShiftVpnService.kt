@@ -22,6 +22,9 @@ import java.util.concurrent.TimeUnit
 class CoreShiftVpnService : VpnService() {
     private var tun: ParcelFileDescriptor? = null
 
+    @Volatile
+    private var foreground = false
+
     override fun onCreate() {
         super.onCreate()
         instance = this
@@ -34,8 +37,7 @@ class CoreShiftVpnService : VpnService() {
             Thread { Mobile.disconnect() }.start()
             return START_NOT_STICKY
         }
-        // Started at boot the VPN is not up yet; the engine builds it.
-        showNotification(connecting = intent?.action == ACTION_AUTOSTART && tun == null)
+        showNotification()
         return START_NOT_STICKY
     }
 
@@ -58,7 +60,7 @@ class CoreShiftVpnService : VpnService() {
         b.setConfigureIntent(openAppIntent())
         val pfd = b.establish() ?: throw IllegalStateException("VPN permission is not granted")
         tun = pfd
-        showNotification(connecting = false)
+        showNotification()
         return pfd.fd
     }
 
@@ -73,6 +75,7 @@ class CoreShiftVpnService : VpnService() {
     fun shutdown() {
         tun?.close()
         tun = null
+        foreground = false
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -104,7 +107,8 @@ class CoreShiftVpnService : VpnService() {
         this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE,
     )
 
-    private fun showNotification(connecting: Boolean) {
+    /** Puts the service in the foreground with the connection's notification. */
+    private fun showNotification() {
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL, "VPN", NotificationManager.IMPORTANCE_LOW).apply {
@@ -112,29 +116,56 @@ class CoreShiftVpnService : VpnService() {
                 setShowBadge(false)
             },
         )
-        val disconnect = PendingIntent.getService(
-            this, 1, Intent(this, CoreShiftVpnService::class.java).setAction(ACTION_DISCONNECT), PendingIntent.FLAG_IMMUTABLE,
-        )
-        val n = Notification.Builder(this, CHANNEL)
-            .setSmallIcon(R.drawable.ic_stat_vpn)
-            .setContentTitle(if (connecting) "CoreShift подключается…" else "CoreShift подключён")
-            .setContentText(if (connecting) "Автозапуск" else "Трафик идёт через VPN")
-            .setContentIntent(openAppIntent())
-            .setOngoing(true)
-            .addAction(Notification.Action.Builder(null, "Отключить", disconnect).build())
-            .build()
+        val n = buildNotification()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(NOTIFICATION_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         } else {
             startForeground(NOTIFICATION_ID, n)
         }
+        foreground = true
+    }
+
+    /** Shows the engine's latest state and speed in the notification. */
+    fun refreshNotification() {
+        if (!foreground) return
+        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, buildNotification())
+    }
+
+    /**
+     * As Happ has it: the server, the time connected and the speed, and a
+     * button to disconnect.
+     */
+    private fun buildNotification(): Notification {
+        val s = VpnStatus
+        val disconnect = PendingIntent.getService(
+            this, 1, Intent(this, CoreShiftVpnService::class.java).setAction(ACTION_DISCONNECT), PendingIntent.FLAG_IMMUTABLE,
+        )
+        val b = Notification.Builder(this, CHANNEL)
+            .setSmallIcon(R.drawable.ic_stat_vpn)
+            .setContentIntent(openAppIntent())
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setCategory(Notification.CATEGORY_SERVICE)
+            .addAction(Notification.Action.Builder(null, "Отключить", disconnect).build())
+        if (tun != null && s.state == "connected") {
+            b.setContentTitle(s.node.ifEmpty { "CoreShift" })
+                .setContentText("↓ ${VpnStatus.formatRate(s.down)}    ↑ ${VpnStatus.formatRate(s.up)}")
+                .setSubText("Подключено")
+            if (s.since > 0) b.setWhen(s.since).setUsesChronometer(true).setShowWhen(true)
+        } else {
+            b.setContentTitle(if (s.state == "disconnecting") "Отключение…" else "Подключение…")
+                .setContentText(s.node.ifEmpty { "CoreShift" })
+                .setShowWhen(false)
+        }
+        return b.build()
     }
 
     companion object {
         private const val CHANNEL = "vpn"
         private const val NOTIFICATION_ID = 1
         private const val ACTION_DISCONNECT = "dev.coreshift.DISCONNECT"
-        const val ACTION_AUTOSTART = "dev.coreshift.AUTOSTART"
+        /** Started before the engine connects: at boot, from the tile. */
+        const val ACTION_CONNECTING = "dev.coreshift.CONNECTING"
 
         @Volatile
         private var instance: CoreShiftVpnService? = null
