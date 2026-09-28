@@ -18,7 +18,7 @@ class BootReceiver : BroadcastReceiver() {
         // In the foreground now, while Android still allows it after boot;
         // the engine then builds the VPN in the running service.
         context.startForegroundService(
-            Intent(context, CoreShiftVpnService::class.java).setAction(CoreShiftVpnService.ACTION_AUTOSTART),
+            Intent(context, CoreShiftVpnService::class.java).setAction(CoreShiftVpnService.ACTION_CONNECTING),
         )
         Engine.autoConnect()
     }
