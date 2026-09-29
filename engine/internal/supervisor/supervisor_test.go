@@ -314,7 +314,12 @@ func TestReturnToPrimary(t *testing.T) {
 	if e.From != core.SingBox {
 		t.Errorf("returned from %s", e.From)
 	}
-	if st := h.s.Status(); st.Core != core.Xray || st.State != Connected || len(st.Failed) != 0 {
+	// The swap is announced as it starts; the state follows a moment later.
+	st := h.s.Status()
+	for deadline := time.Now().Add(2 * time.Second); st.State != Connected && time.Now().Before(deadline); st = h.s.Status() {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if st.Core != core.Xray || st.State != Connected || len(st.Failed) != 0 {
 		t.Errorf("status after return = %+v", st)
 	}
 }

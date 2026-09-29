@@ -57,7 +57,10 @@ func ICMP(ctx context.Context, dst netip.Addr, b Bind, count int, timeout time.D
 }
 
 // TCP opens up to count connections to dst, each waiting up to timeout, and
-// returns the fastest handshake. It fails only if every attempt did.
+// returns the fastest handshake. It fails only if every attempt did; a
+// first attempt that fails ends it, as a server that does not answer one
+// handshake seldom answers the next, and waiting for each would make a list
+// of servers slow to test.
 func TCP(ctx context.Context, dst netip.AddrPort, b Bind, count int, timeout time.Duration) (time.Duration, error) {
 	d := net.Dialer{Timeout: timeout, Control: control(b)}
 	if b.Source.IsValid() {
@@ -72,6 +75,9 @@ func TCP(ctx context.Context, dst netip.AddrPort, b Bind, count int, timeout tim
 		c, e := d.DialContext(ctx, "tcp", dst.String())
 		if e != nil {
 			err = e
+			if best == 0 {
+				break
+			}
 			continue
 		}
 		rtt := max(time.Since(start), time.Microsecond) // the clock may not tick on loopback

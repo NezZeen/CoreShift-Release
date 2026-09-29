@@ -126,7 +126,11 @@ func (s *Supervisor) testCore(ctx context.Context, cfg Config, k core.Kind, n *n
 	err = p.WaitFor(ctx, cfg.StartTimeout, "socks port", func() bool { return proc.PortOpen(listen) })
 	var lat time.Duration
 	if err == nil {
-		lat, err = checkHealth(ctx, listen, Health{URL: cfg.Health.URL, Timeout: latencyTimeout})
+		lat, err = delayThrough(ctx, listen, cfg.Health.URL, latencyTimeout)
+		// The health URL may be out of reach where others are not.
+		if err != nil && ctx.Err() == nil {
+			lat, err = checkHealth(ctx, listen, Health{URL: cfg.Health.URL, Timeout: latencyTimeout})
+		}
 	}
 	p.Stop()
 	if err != nil {
