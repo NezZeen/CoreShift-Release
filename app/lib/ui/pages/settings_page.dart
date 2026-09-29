@@ -51,19 +51,6 @@ class SettingsPage extends StatelessWidget {
     );
   }
 
-  static Future<void> _addTile(AppState state) async {
-    switch (await platform.addQuickTile()) {
-      case 'added':
-        state.toast('Кнопка CoreShift добавлена в шторку', ToastKind.ok);
-      case 'already':
-        state.toast('Кнопка CoreShift уже в шторке');
-      case 'unsupported':
-        state.toast('Откройте шторку, нажмите на карандаш и перетащите плитку CoreShift к остальным');
-      default:
-        break;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final p = context.pal;
@@ -83,12 +70,6 @@ class SettingsPage extends StatelessWidget {
                 : 'Запускать CoreShift в трее при входе в Windows и сразу подключать выбранный сервер',
             trailing: _switch('auto_connect'),
           ),
-          if (platform.isAndroid)
-            SettingRow(
-              title: 'Кнопка в шторке',
-              description: 'Включать и выключать VPN из шторки уведомлений, не открывая CoreShift',
-              trailing: Btn(label: 'Добавить', icon: Icons.add, small: true, onPressed: () => _addTile(state)),
-            ),
           if (desktop.canNotify)
             SettingRow(
               title: 'Уведомления',

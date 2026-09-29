@@ -115,9 +115,6 @@ class AppState extends ChangeNotifier {
 
   final List<LogLine> logs = [];
   final List<int> latencies = []; // recent health checks, oldest first
-  final List<int> pings = []; // recent pings of the connected server, oldest first
-  String pingMethod = ''; // how the last ping was measured: icmp or tcp
-  String pingError = ''; // why the server did not answer the last ping
   int swaps = 0;
 
   /// Bytes per second through the node, (up, down) per second, oldest first.
@@ -397,8 +394,6 @@ class AppState extends ChangeNotifier {
         );
         if (e.state == 'connecting') {
           latencies.clear();
-          pings.clear();
-          pingMethod = pingError = '';
           swaps = 0;
           speed.clear();
           sessionUp = sessionDown = 0;
@@ -441,17 +436,6 @@ class AppState extends ChangeNotifier {
           if (latencies.length > 60) latencies.removeAt(0);
           _notify();
         }
-      case 'ping':
-        if (e.error.isNotEmpty) {
-          if (pingError.isEmpty) _log(e.time, 'пинг', 'сервер не отвечает: ${e.error}', LogLevel.warn);
-          pingError = e.error;
-        } else {
-          pingError = '';
-          pingMethod = e.method;
-          pings.add(e.latencyMs);
-          if (pings.length > 60) pings.removeAt(0);
-        }
-        _notify();
       case 'log':
         _log(e.time, e.source, e.line, LogLevel.info, quiet: true);
       case 'app-update':
