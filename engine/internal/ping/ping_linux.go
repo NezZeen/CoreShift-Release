@@ -13,8 +13,9 @@ import (
 	"time"
 )
 
-// echo uses a raw ICMP socket, which needs root or CAP_NET_RAW; the daemon
-// has them, and without them the caller falls back to TCP.
+// echo uses a raw ICMP socket, which needs root or CAP_NET_RAW, as the
+// desktop daemon has. Without them, as for an Android app, it uses the
+// kernel's unprivileged "ping" socket, which Android allows every app.
 func echo(ctx context.Context, dst netip.Addr, b Bind, seq uint16, timeout time.Duration) (time.Duration, error) {
 	network, reqType, replyType := "ip4:icmp", byte(8), byte(0)
 	if dst.Is6() {
@@ -26,13 +27,22 @@ func echo(ctx context.Context, dst netip.Addr, b Bind, seq uint16, timeout time.
 	}
 	lc := net.ListenConfig{Control: control(b)}
 	c, err := lc.ListenPacket(ctx, network, laddr)
+	dgram := false
+	if denied(err) {
+		c, err = pingSocket(dst.Is6())
+		dgram = true
+	}
 	if err != nil {
-		if errors.Is(err, os.ErrPermission) || errors.Is(err, syscall.EPERM) || errors.Is(err, syscall.EACCES) {
+		if denied(err) {
 			return 0, ErrUnsupported
 		}
 		return 0, err
 	}
 	defer c.Close()
+	var to net.Addr = &net.IPAddr{IP: dst.AsSlice()}
+	if dgram {
+		to = &net.UDPAddr{IP: dst.AsSlice()}
+	}
 
 	id := uint16(os.Getpid())
 	msg := []byte{reqType, 0, 0, 0, 0, 0, 0, 0}
@@ -49,7 +59,7 @@ func echo(ctx context.Context, dst netip.Addr, b Bind, seq uint16, timeout time.
 	}
 	_ = c.SetDeadline(deadline)
 	start := time.Now()
-	if _, err := c.WriteTo(msg, &net.IPAddr{IP: dst.AsSlice()}); err != nil {
+	if _, err := c.WriteTo(msg, to); err != nil {
 		return 0, err
 	}
 	buf := make([]byte, 1500)
@@ -58,16 +68,45 @@ func echo(ctx context.Context, dst netip.Addr, b Bind, seq uint16, timeout time.
 		if err != nil {
 			return 0, err
 		}
-		ip, ok := from.(*net.IPAddr)
-		if !ok || n < 8 || buf[0] != replyType {
+		var src net.IP
+		switch a := from.(type) {
+		case *net.IPAddr:
+			src = a.IP
+		case *net.UDPAddr:
+			src = a.IP
+		}
+		if src == nil || n < 8 || buf[0] != replyType {
 			continue
 		}
-		a, _ := netip.AddrFromSlice(ip.IP)
-		// Raw sockets see every reply on the host, so match ours exactly.
-		if a.Unmap() == dst && binary.BigEndian.Uint16(buf[4:]) == id && binary.BigEndian.Uint16(buf[6:]) == seq {
+		a, _ := netip.AddrFromSlice(src)
+		// Raw sockets see every reply on the host, so match ours exactly. A
+		// ping socket gets only its own, with the identifier the kernel
+		// chose.
+		if a.Unmap() == dst && (dgram || binary.BigEndian.Uint16(buf[4:]) == id) && binary.BigEndian.Uint16(buf[6:]) == seq {
 			return max(time.Since(start), time.Microsecond), nil
 		}
 	}
+}
+
+func denied(err error) bool {
+	return errors.Is(err, os.ErrPermission) || errors.Is(err, syscall.EPERM) || errors.Is(err, syscall.EACCES)
+}
+
+// pingSocket opens the kernel's unprivileged ICMP socket (SOCK_DGRAM with
+// IPPROTO_ICMP), open to the groups in net.ipv4.ping_group_range: every app
+// on Android. The kernel sets the identifier and the checksum.
+func pingSocket(v6 bool) (net.PacketConn, error) {
+	family, proto := syscall.AF_INET, syscall.IPPROTO_ICMP
+	if v6 {
+		family, proto = syscall.AF_INET6, syscall.IPPROTO_ICMPV6
+	}
+	fd, err := syscall.Socket(family, syscall.SOCK_DGRAM|syscall.SOCK_CLOEXEC, proto)
+	if err != nil {
+		return nil, os.NewSyscallError("socket", err)
+	}
+	f := os.NewFile(uintptr(fd), "icmp")
+	defer f.Close()
+	return net.FilePacketConn(f)
 }
 
 func checksum(b []byte) uint16 {

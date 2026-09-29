@@ -158,11 +158,14 @@ const (
 	methodTCP   = "tcp"
 	methodProxy = "proxy"
 
-	pingConcurrency = 32
+	// Probes at once: more would queue in a phone's radio and read as delay.
+	pingConcurrency = 8
 	icmpCount       = 3
 	icmpTimeout     = time.Second
-	tcpCount        = 2
-	tcpTimeout      = 2 * time.Second
+	// The best of three: the first handshake after a pause may also wake
+	// a mobile radio, which takes a hundred milliseconds or more.
+	tcpCount   = 3
+	tcpTimeout = 2 * time.Second
 )
 
 // overUDP reports whether n's protocol runs over UDP, leaving no TCP port to
