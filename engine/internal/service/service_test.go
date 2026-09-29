@@ -564,88 +564,6 @@ func TestIPv6Tunnel(t *testing.T) {
 	}
 }
 
-func TestServerPing(t *testing.T) {
-	var mu sync.Mutex
-	var icmpCalls, tcpCalls int
-	icmpErr := error(nil)
-	h := newHarness(t, func(c *Config) {
-		c.pingInterval = 20 * time.Millisecond
-		c.icmpPing = func(_ context.Context, ip netip.Addr, _ ping.Bind) (time.Duration, error) {
-			mu.Lock()
-			defer mu.Unlock()
-			icmpCalls++
-			if ip != netip.MustParseAddr("203.0.113.5") {
-				t.Errorf("pinged %v", ip)
-			}
-			return 42 * time.Millisecond, icmpErr
-		}
-		c.tcpPing = func(_ context.Context, ap netip.AddrPort, _ ping.Bind) (time.Duration, error) {
-			mu.Lock()
-			defer mu.Unlock()
-			tcpCalls++
-			if ap != netip.MustParseAddrPort("203.0.113.5:443") {
-				t.Errorf("TCP ping to %v", ap)
-			}
-			return 55 * time.Millisecond, nil
-		}
-	})
-	nextPing := func() Event {
-		t.Helper()
-		timeout := time.After(5 * time.Second)
-		for {
-			select {
-			case e := <-h.events:
-				if e.Kind == "ping" {
-					return e
-				}
-			case <-timeout:
-				t.Fatal("no ping event")
-			}
-		}
-	}
-
-	if err := h.connect(t, trojanLink); err != nil {
-		t.Fatal(err)
-	}
-	if e := nextPing(); e.Method != "icmp" || e.LatencyMS != 42 || e.Error != "" {
-		t.Fatalf("ping = %+v", e)
-	}
-
-	// A server that stops answering ICMP is timed by TCP from then on.
-	mu.Lock()
-	icmpErr = errors.New("request timed out")
-	mu.Unlock()
-	for e := nextPing(); e.Method != "tcp"; e = nextPing() {
-		if e.Method != "icmp" {
-			t.Fatalf("ping = %+v", e)
-		}
-	}
-	mu.Lock()
-	icmpBefore := icmpCalls
-	mu.Unlock()
-	if e := nextPing(); e.Method != "tcp" || e.LatencyMS != 55 {
-		t.Fatalf("ping = %+v", e)
-	}
-	mu.Lock()
-	if icmpCalls != icmpBefore {
-		t.Errorf("ICMP was tried again after it failed")
-	}
-	mu.Unlock()
-
-	// Disconnecting stops the pings.
-	h.svc.Disconnect()
-	time.Sleep(50 * time.Millisecond)
-	mu.Lock()
-	calls := icmpCalls + tcpCalls
-	mu.Unlock()
-	time.Sleep(100 * time.Millisecond)
-	mu.Lock()
-	defer mu.Unlock()
-	if icmpCalls+tcpCalls != calls {
-		t.Errorf("still pinging after disconnect")
-	}
-}
-
 func TestTrafficEvents(t *testing.T) {
 	h := newHarness(t, nil)
 	// Only sing-box runs Hysteria2; the fake core answers its Clash API.
@@ -932,6 +850,8 @@ func TestNoiseLines(t *testing.T) {
 	for _, l := range []string{
 		"+0400 2026-09-27 02:05:44 ERROR [612468618 83ms] dns: lookup failed for cookie.lmgssp.com: (exchange4: NXDOMAIN | exchange6: NXDOMAIN)",
 		"+0400 2026-09-27 02:05:44 ERROR [612468618 84ms] router: lookup cookie.lmgssp.com: (exchange4: NXDOMAIN | exchange6: NXDOMAIN)",
+		"ERROR [0012] [3012218906 12.22s] connection: connection download closed: close tcp [fdfe:dcba:9876::1]:43444->[fc00::78]:443: endpoint not connected",
+		"ERROR [4901] [3143972750 0ms] connection: report handshake success: connection refused",
 	} {
 		if !noiseLine(l) {
 			t.Errorf("not noise: %s", l)

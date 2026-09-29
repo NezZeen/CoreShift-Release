@@ -37,7 +37,20 @@ type NodeLatency struct {
 type latencyState struct {
 	mu      sync.Mutex
 	running bool
+	cancel  context.CancelFunc     // ends the running test
 	results map[string]NodeLatency // by subscription + "/" + fingerprint
+}
+
+// stopLatencyTest ends a running latency test, keeping the results so far:
+// connecting should not wait for it, least of all on a phone, where test
+// cores compete with the connection's for the processor.
+func (s *Service) stopLatencyTest() {
+	l := &s.latency
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.cancel != nil {
+		l.cancel()
+	}
 }
 
 // TestLatency tests the nodes of subscription subID, or of all subscriptions
@@ -73,13 +86,16 @@ func (s *Service) TestLatency(ctx context.Context, subID string) ([]NodeLatency,
 		return nil, ErrTestRunning
 	}
 	l.running = true
+	ctx, cancel := context.WithCancel(ctx)
+	l.cancel = cancel
 	if l.results == nil {
 		l.results = map[string]NodeLatency{}
 	}
 	l.mu.Unlock()
 	defer func() {
+		cancel()
 		l.mu.Lock()
-		l.running = false
+		l.running, l.cancel = false, nil
 		l.mu.Unlock()
 		s.hub.publish(Event{Kind: "latency", Reason: "finished", Subscription: subID})
 	}()
@@ -103,8 +119,7 @@ func (s *Service) TestLatency(ctx context.Context, subID string) ([]NodeLatency,
 		s.proxyLatency(ctx, nodes, all, nil, report)
 		return out, nil
 	}
-	// A node the server's network does not answer pings for is still
-	// measured, through its core.
+	// A node the light probes cannot time is measured through its core.
 	failed, errs := s.pingLatency(ctx, nodes, report)
 	s.proxyLatency(ctx, nodes, failed, errs, report)
 	return out, nil
@@ -143,16 +158,26 @@ const (
 	methodTCP   = "tcp"
 	methodProxy = "proxy"
 
-	pingConcurrency = 16
+	pingConcurrency = 32
 	icmpCount       = 3
 	icmpTimeout     = time.Second
 	tcpCount        = 2
-	tcpTimeout      = 3 * time.Second
+	tcpTimeout      = 2 * time.Second
 )
 
-// pingLatency pings each node's server: ICMP, else a TCP handshake with its
-// port. Each server and port is probed once however many nodes share it.
-// Nodes that could not be pinged are returned with the reason.
+// overUDP reports whether n's protocol runs over UDP, leaving no TCP port to
+// time.
+func overUDP(n *node.Node) bool {
+	return n.Protocol == node.Hysteria2 || n.Protocol == node.TUIC || n.Protocol == node.WireGuard
+}
+
+// pingLatency times each node's server the light way, as Happ's TCP ping
+// does: a TCP handshake with its port, all at once, no core started. Over
+// UDP there is no port to time, so ICMP instead. Each server and port is
+// probed once however many nodes share it. A server that does not answer
+// is reported as such; returned for a test through the core are only the
+// nodes the probes could not time: UDP ones that ignore ICMP, and those a
+// tunnel on this computer answered for.
 func (s *Service) pingLatency(ctx context.Context, nodes []node.Node, report func(int, NodeLatency)) ([]int, map[int]error) {
 	// Pings leave through the physical interface, around any tunnel, ours
 	// or another VPN client's, which would answer them itself or add its
@@ -221,25 +246,39 @@ func (s *Service) pingLatency(ctx context.Context, nodes []node.Node, report fun
 		go func() {
 			defer wg.Done()
 			n := &nodes[i]
+			retry := func(err error) {
+				mu.Lock()
+				failed = append(failed, i)
+				errs[i] = err
+				mu.Unlock()
+			}
+			method := methodTCP
+			if overUDP(n) {
+				method = methodICMP
+			}
 			ip, err := once(n.Server)()
 			if err != nil {
-				report(i, NodeLatency{Method: methodICMP, Error: err.Error()})
+				report(i, NodeLatency{Method: method, Error: err.Error()})
 				return
 			}
-			rtt, icmpErr := icmpOnce(ip)()
-			if icmpErr == nil {
+			if overUDP(n) {
+				rtt, err := icmpOnce(ip)()
+				if err != nil {
+					retry(fmt.Errorf("ICMP: %w", err))
+					return
+				}
 				report(i, NodeLatency{Method: methodICMP, LatencyMS: latencyMS(rtt)})
 				return
 			}
-			rtt, tcpErr := tcpOnce(netip.AddrPortFrom(ip, n.Port))()
-			if tcpErr == nil {
+			rtt, err := tcpOnce(netip.AddrPortFrom(ip, n.Port))()
+			switch {
+			case err == nil:
 				report(i, NodeLatency{Method: methodTCP, LatencyMS: latencyMS(rtt)})
-				return
+			case errors.Is(err, errLocalAnswer):
+				retry(fmt.Errorf("TCP: %w", err))
+			default:
+				report(i, NodeLatency{Method: methodTCP, Error: err.Error()})
 			}
-			mu.Lock()
-			failed = append(failed, i)
-			errs[i] = fmt.Errorf("ICMP: %v; TCP: %v", icmpErr, tcpErr)
-			mu.Unlock()
 		}()
 	}
 	wg.Wait()
@@ -311,55 +350,4 @@ func (s *Service) Latency(subID, fingerprint string) (NodeLatency, bool) {
 	defer l.mu.Unlock()
 	r, ok := l.results[subID+"/"+fingerprint]
 	return r, ok
-}
-
-// pingInterval is how often the connected server is pinged.
-const pingInterval = 5 * time.Second
-
-// watchPing pings the connected server until ctx ends and publishes each
-// result as a "ping" event: the latency shown for the connection, measured
-// like the node list's so the two agree. The proxied health checks measure
-// a whole HTTP request, which reads as a much slower connection.
-func (s *Service) watchPing(ctx context.Context, ip netip.Addr, port uint16) {
-	if !ip.IsValid() {
-		return
-	}
-	t := time.NewTicker(s.cfg.pingInterval)
-	defer t.Stop()
-	// Once ICMP gets no answer and TCP does, the server blocks ICMP: waiting
-	// for its timeout every time would only delay the results.
-	tcpOnly := false
-	for {
-		e := Event{Kind: "ping"}
-		bind, err := s.cfg.physical()
-		if err != nil {
-			bind = ping.Bind{}
-		}
-		bind = bindFor(bind, ip)
-		icmpErr := errors.New("skipped: the server does not answer it")
-		if !tcpOnly {
-			var rtt time.Duration
-			if rtt, icmpErr = checkPing(ip)(s.cfg.icmpPing(ctx, ip, bind)); icmpErr == nil {
-				e.Method, e.LatencyMS = methodICMP, latencyMS(rtt)
-			}
-		}
-		if icmpErr != nil {
-			rtt, tcpErr := checkPing(ip)(s.cfg.tcpPing(ctx, netip.AddrPortFrom(ip, port), bind))
-			if tcpErr == nil {
-				e.Method, e.LatencyMS = methodTCP, latencyMS(rtt)
-				tcpOnly = true
-			} else {
-				e.Error = fmt.Sprintf("ICMP: %v; TCP: %v", icmpErr, tcpErr)
-			}
-		}
-		if ctx.Err() != nil {
-			return
-		}
-		s.hub.publish(e)
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-		}
-	}
 }

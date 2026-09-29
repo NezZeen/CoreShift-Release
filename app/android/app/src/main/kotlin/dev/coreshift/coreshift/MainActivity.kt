@@ -1,15 +1,12 @@
 package dev.coreshift.coreshift
 
 import android.Manifest
-import android.app.StatusBarManager
 import android.content.ActivityNotFoundException
-import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.graphics.drawable.Icon
 import android.net.Uri
 import android.net.VpnService
 import android.os.Build
@@ -49,35 +46,8 @@ class MainActivity : FlutterActivity() {
                 "openUrl" -> result.success(openUrl(call.arguments as String))
                 "apps" -> Thread { val apps = installedApps(); runOnUiThread { result.success(apps) } }.start()
                 "appIcon" -> Thread { val icon = appIcon(call.arguments as String); runOnUiThread { result.success(icon) } }.start()
-                "canAddTile" -> result.success(Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
-                "addTile" -> addTile(result)
                 else -> result.notImplemented()
             }
-        }
-    }
-
-    /**
-     * Asks Android to add the tile to the quick settings (Android 13+);
-     * answers "added", "already" or "declined".
-     */
-    private fun addTile(result: MethodChannel.Result) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            result.success("unsupported")
-            return
-        }
-        getSystemService(StatusBarManager::class.java).requestAddTileService(
-            ComponentName(this, VpnTileService::class.java),
-            "CoreShift",
-            Icon.createWithResource(this, R.drawable.ic_stat_vpn),
-            mainExecutor,
-        ) { code ->
-            result.success(
-                when (code) {
-                    StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ADDED -> "added"
-                    StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ALREADY_ADDED -> "already"
-                    else -> "declined"
-                },
-            )
         }
     }
 
