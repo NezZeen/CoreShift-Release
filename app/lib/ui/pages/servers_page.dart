@@ -101,7 +101,7 @@ class _ServersPageState extends State<ServersPage> {
             onSelected: (v) => s.updateSettings((x) => x['cores']['latency_test'] = v),
             itemBuilder: (_) => [
               for (final (v, title, text) in const [
-                ('ping', 'Пинг до сервера', 'ICMP-пинг, где он закрыт — время TCP-подключения'),
+                ('ping', 'Пинг до сервера', 'Время TCP-подключения к серверу: быстро, без запуска ядер'),
                 ('proxy', 'Запрос через ядро', 'Реальная задержка с шифрованием, заодно видно, работает ли сервер'),
               ])
                 CheckedPopupMenuItem(
@@ -788,7 +788,7 @@ class _LatencyCell extends StatelessWidget {
     final text = Text('${l.ms} мс', style: mono.copyWith(color: color));
     final how = switch (l.method) {
       'icmp' => 'ICMP-пинг до сервера',
-      'tcp' => 'Время TCP-подключения к серверу: ICMP-пинг он не пропускает',
+      'tcp' => 'Время TCP-подключения к серверу',
       _ when l.core.isNotEmpty => 'Запрос через ${coreStyle(l.core).name}',
       _ => '',
     };

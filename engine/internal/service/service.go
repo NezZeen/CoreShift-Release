@@ -164,7 +164,6 @@ type Config struct {
 	physical     func() (ping.Bind, error)
 	icmpPing     func(ctx context.Context, ip netip.Addr, b ping.Bind) (time.Duration, error)
 	tcpPing      func(ctx context.Context, ap netip.AddrPort, b ping.Bind) (time.Duration, error)
-	pingInterval time.Duration
 	netInterval  time.Duration
 
 	checkRelease     func(ctx context.Context, client *http.Client, src selfupdate.Source) (selfupdate.Release, error)
@@ -299,7 +298,7 @@ type Service struct {
 
 	op       sync.Mutex // serialises connect, disconnect and teardown
 	tun      TUNInstance
-	stopPing context.CancelFunc // ends the connected server's pings
+	stopPing context.CancelFunc // ends the connection's watchers: traffic, network
 
 	mu       sync.Mutex
 	gen      int // incremented per connection; stale teardowns compare it
@@ -365,9 +364,6 @@ func New(cfg Config) (*Service, error) {
 		cfg.tcpPing = func(ctx context.Context, ap netip.AddrPort, b ping.Bind) (time.Duration, error) {
 			return ping.TCP(ctx, ap, b, tcpCount, tcpTimeout)
 		}
-	}
-	if cfg.pingInterval == 0 {
-		cfg.pingInterval = pingInterval
 	}
 	if cfg.netInterval == 0 {
 		cfg.netInterval = networkCheckInterval
@@ -544,12 +540,22 @@ func (s *Service) Log(source, line string) {
 	}
 }
 
-// noiseLine recognises TUN layer errors that are no fault of the tunnel: a
-// name that does not exist (NXDOMAIN, often an ad or tracker host). The
-// layer resolves names to match addresses against geoip, and reports every
-// such failure as an error, which read like the VPN breaking.
+// noiseLine recognises TUN layer errors that are no fault of the tunnel,
+// yet read like the VPN breaking:
+//   - a name that does not exist (NXDOMAIN, often an ad or tracker host):
+//     the layer resolves names to match addresses against geoip, and
+//     reports every such failure;
+//   - a connection the app on the device closed first ("endpoint not
+//     connected"), and a handshake report to an app that had gone: on
+//     Android many a minute, as apps drop idle connections.
 func noiseLine(l string) bool {
-	return strings.Contains(l, "NXDOMAIN") && (strings.Contains(l, "dns: lookup failed") || strings.Contains(l, "router: lookup"))
+	switch {
+	case strings.Contains(l, "NXDOMAIN"):
+		return strings.Contains(l, "dns: lookup failed") || strings.Contains(l, "router: lookup")
+	case strings.Contains(l, "endpoint not connected"):
+		return strings.Contains(l, "connection download closed") || strings.Contains(l, "connection upload closed")
+	}
+	return strings.Contains(l, "report handshake success")
 }
 
 // Recover undoes system changes left by a daemon that did not shut down
@@ -601,6 +607,7 @@ func (s *Service) Connect(ctx context.Context, n node.Node) error {
 
 // connectOp is Connect with s.op held.
 func (s *Service) connectOp(ctx context.Context, n node.Node) error {
+	s.stopLatencyTest()
 	s.stopLocked()
 
 	s.mu.Lock()
@@ -612,7 +619,7 @@ func (s *Service) connectOp(ctx context.Context, n node.Node) error {
 	s.sup.SetPolicy(opts.policy())
 	s.setStatus(Status{State: Connecting, Node: n.Name, Protocol: string(n.Protocol), TUN: opts.TUN, Since: time.Now()})
 
-	serverIP, err := s.connectLocked(ctx, n, gen, opts)
+	_, err := s.connectLocked(ctx, n, gen, opts)
 	if err != nil {
 		s.stopLocked()
 		s.fail(err)
@@ -624,7 +631,6 @@ func (s *Service) connectOp(ctx context.Context, n node.Node) error {
 	s.setStatus(st)
 	pingCtx, stop := context.WithCancel(context.Background())
 	s.stopPing = stop
-	go s.watchPing(pingCtx, serverIP, n.Port)
 	go s.watchTraffic(pingCtx)
 	s.mu.Lock()
 	autoDNS := s.autoDNS

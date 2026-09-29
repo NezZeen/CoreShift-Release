@@ -50,9 +50,10 @@ type CoreSettings struct {
 	// ReturnAfterMin is how long to stay on a backup core before trying the
 	// primary again; 0 means never.
 	ReturnAfterMin int `json:"return_after_min"`
-	// LatencyTest is how the node list measures delay: "ping" (ICMP to the
-	// server, or TCP where ICMP is blocked) or "proxy" (a request through
-	// the node, which also shows whether it works).
+	// LatencyTest is how the node list measures delay: "ping" (the time of
+	// a TCP handshake with the server, ICMP for UDP protocols; quick, no
+	// core started) or "proxy" (a request through the node, which also
+	// shows whether it works).
 	LatencyTest string `json:"latency_test"`
 }
 

@@ -216,11 +216,8 @@ class DemoBackend implements Backend {
     _status = {..._status, 'state': 'connected', 'core': chain.first, 'failed': <String, String>{}, 'since': DateTime.now().toUtc().toIso8601String()};
     _emit({'kind': 'core-state', 'core': chain.first, 'reason': 'connected'});
     _emit({'kind': 'state', 'state': 'connected', 'core': chain.first});
-    void ping() => _emit({'kind': 'ping', 'method': 'icmp', 'latency_ms': 40 + _rand.nextInt(25)});
-    ping();
     _health = Timer.periodic(const Duration(seconds: 3), (_) {
       _emit({'kind': 'health', 'core': _status['core'], 'latency_ms': 140 + _rand.nextInt(120)});
-      ping();
     });
     _up = _down = 0;
     var tick = 0;

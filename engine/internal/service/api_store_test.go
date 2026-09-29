@@ -323,18 +323,21 @@ func TestLatencyPing(t *testing.T) {
 			return 0, errors.New("request timed out")
 		}
 		c.tcpPing = func(_ context.Context, ap netip.AddrPort, _ ping.Bind) (time.Duration, error) {
-			if ap.Port() == 443 {
+			switch {
+			case ap.Addr().String() == "203.0.113.20":
+				return 50 * time.Microsecond, nil // too fast: a local tunnel answered
+			case ap.Port() == 443:
 				return 60 * time.Millisecond, nil
 			}
 			return 0, errors.New("connection refused")
 		}
 	})
 	links := []string{
-		"trojan://pw@a.example.com:443?sni=a.example.com#ICMP",
-		"trojan://pw@a.example.com:8443?sni=a.example.com#ICMP2",
-		"trojan://pw@203.0.113.5:443?sni=t.example.com#TCP",
-		"trojan://pw@203.0.113.6:8443?sni=t.example.com#Proxy",
-		"trojan://pw@203.0.113.20:8443?sni=t.example.com#Local",
+		"trojan://pw@a.example.com:443?sni=a.example.com#TCP",
+		"trojan://pw@203.0.113.6:8443?sni=t.example.com#Down",
+		"trojan://pw@203.0.113.20:443?sni=t.example.com#Local",
+		"hysteria2://pw@a.example.com:443?sni=a.example.com#UDP",
+		"hysteria2://pw@203.0.113.9:443?sni=t.example.com#UDPNoICMP",
 	}
 	var sub subscriptionView
 	callJSON(t, srv, "POST", "/v1/subscriptions", map[string]string{"content": strings.Join(links, "\n")}, &sub)
@@ -342,21 +345,23 @@ func TestLatencyPing(t *testing.T) {
 	if code := callJSON(t, srv, "POST", "/v1/latency", map[string]string{"subscription": sub.ID}, &res); code != http.StatusOK || len(res) != 5 {
 		t.Fatalf("latency: %d %+v", code, res)
 	}
+	// TCP servers are timed by a handshake alone: one that does not answer
+	// is down, no core is started for it. Only what the light probes cannot
+	// time goes through a core: a tunnel on this computer answering, a UDP
+	// server ignoring ICMP.
 	want := []struct {
 		method string
 		ms     int64
-	}{{"icmp", 40}, {"icmp", 40}, {"tcp", 60}, {"proxy", 0}, {"proxy", 0}}
+		fails  bool
+	}{{"tcp", 60, false}, {"tcp", 0, true}, {"proxy", 0, false}, {"icmp", 40, false}, {"proxy", 0, false}}
 	for i, w := range want {
 		r := res[i]
-		if r.Method != w.method || r.Error != "" || (w.ms > 0 && r.LatencyMS != w.ms) || r.LatencyMS <= 0 {
+		if r.Method != w.method || (r.Error != "") != w.fails || (w.ms > 0 && r.LatencyMS != w.ms) || (!w.fails && r.LatencyMS <= 0) {
 			t.Errorf("%s: %+v", links[i], r)
 		}
 	}
-	if res[3].Core != "xray" {
-		t.Errorf("proxy fallback core: %+v", res[3])
-	}
 	callJSON(t, srv, "GET", "/v1/subscriptions/"+sub.ID, nil, &sub)
-	if n := sub.Nodes[2]; n.LatencyMethod != "tcp" || n.LatencyMS != 60 {
+	if n := sub.Nodes[0]; n.LatencyMethod != "tcp" || n.LatencyMS != 60 {
 		t.Errorf("node view: %+v", n)
 	}
 	_ = h
