@@ -68,6 +68,49 @@ func checkHealth(ctx context.Context, socks netip.AddrPort, h Health) (time.Dura
 	return 0, errs[0]
 }
 
+// delayThrough measures the delay through the proxy as Happ and v2rayNG
+// report it: a first request sets up the connection to the server (TCP,
+// TLS, the protocol's handshake), and a second one over it is timed. A
+// fresh connection would add several round trips of setup to each result,
+// reading as a much slower server than a ping shows. When the second
+// request fails, the first one's time is the result.
+func delayThrough(ctx context.Context, socks netip.AddrPort, u string, timeout time.Duration) (time.Duration, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	tr := &http.Transport{Proxy: http.ProxyURL(&url.URL{Scheme: "socks5", Host: socks.String()})}
+	defer tr.CloseIdleConnections()
+	client := &http.Client{
+		Transport:     tr,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	get := func() (time.Duration, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+		if err != nil {
+			return 0, err
+		}
+		start := time.Now()
+		resp, err := client.Do(req)
+		if err != nil {
+			return 0, err
+		}
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
+		resp.Body.Close()
+		lat := time.Since(start)
+		if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+			return lat, fmt.Errorf("unexpected response %s", resp.Status)
+		}
+		return lat, nil
+	}
+	first, err := get()
+	if err != nil {
+		return 0, err
+	}
+	if second, err := get(); err == nil {
+		return second, nil
+	}
+	return first, nil
+}
+
 // fetchThrough requests u through the SOCKS proxy at socks and times it.
 func fetchThrough(ctx context.Context, socks netip.AddrPort, u string) (time.Duration, error) {
 	tr := &http.Transport{
