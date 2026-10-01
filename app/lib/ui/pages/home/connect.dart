@@ -176,14 +176,16 @@ class _NodePick extends StatelessWidget {
                           Row(
                             children: [
                               ProtoBadge(n.protocol),
-                              const SizedBox(width: 6),
-                              Flexible(
-                                child: Text(
-                                  '${n.transport} · ${n.security}${sub != null ? ' · ${sub.displayName}' : ''}',
-                                  style: TextStyle(color: p.muted, fontSize: 12),
-                                  overflow: TextOverflow.ellipsis,
+                              if (sub != null) ...[
+                                const SizedBox(width: 6),
+                                Flexible(
+                                  child: Text(
+                                    sub.displayName,
+                                    style: TextStyle(color: p.muted, fontSize: 12),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
-                              ),
+                              ],
                             ],
                           ),
                         ],

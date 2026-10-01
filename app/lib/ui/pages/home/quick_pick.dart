@@ -29,7 +29,7 @@ Future<void> showQuickPick(BuildContext context, AppState state, {required VoidC
   );
 }
 
-/// The favourites and the servers used last, the fastest one on top, and a
+/// The servers used last, the fastest one on top, and a
 /// way to the whole list: what most people want when they change server.
 class _QuickPick extends StatelessWidget {
   final AppState state;
@@ -74,14 +74,11 @@ class _QuickPick extends StatelessWidget {
               ),
               _FastestTile(state: state, fastest: fastest, onPick: pick),
               const SizedBox(height: 14),
-              const Padding(padding: EdgeInsets.only(left: 4), child: SectionLabel('Избранные и недавние')),
+              const Padding(padding: EdgeInsets.only(left: 4), child: SectionLabel('Недавние')),
               if (nodes.isEmpty)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
-                  child: Text(
-                    'Здесь появятся серверы со звёздочкой и те, к которым вы подключались.',
-                    style: TextStyle(color: p.muted, fontSize: 13, height: 1.4),
-                  ),
+                  child: Text('Здесь появятся серверы, к которым вы подключались.', style: TextStyle(color: p.muted, fontSize: 13, height: 1.4)),
                 )
               else
                 for (final (sub, n) in nodes) _QuickRow(state: state, sub: sub, node: n, onTap: () => pick(sub, n)),
@@ -183,7 +180,6 @@ class _QuickRow extends StatelessWidget {
     final p = context.pal;
     final sel = state.isSelected(sub, node);
     final l = state.latencyOf(sub.id, node.fingerprint);
-    final fav = state.isFavorite(sub, node);
     final unusable = node.cores.isEmpty;
     return Opacity(
       opacity: unusable ? .45 : 1,
@@ -211,7 +207,6 @@ class _QuickRow extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        if (fav) ...[const SizedBox(width: 6), const Icon(Icons.star, size: 14, color: warnColor)],
                       ],
                     ),
                     const SizedBox(height: 3),
