@@ -114,6 +114,23 @@ class _SubCard extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
+          if (sub.auto.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4, right: 8),
+              child: Row(
+                children: [
+                  Icon(Icons.swap_horiz, size: 14, color: p.dim),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Автовыбор: ${serversCount(sub.auto.length)}, при отказе подключится следующий',
+                      style: TextStyle(fontSize: 12, color: p.dim),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           Padding(
             padding: EdgeInsets.only(right: compact ? 10 : 8),
             child: Column(

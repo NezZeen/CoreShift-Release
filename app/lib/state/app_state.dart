@@ -420,7 +420,22 @@ class AppState extends ChangeNotifier {
         _statusSoon();
       case 'no-better':
         _log(e.time, e.core, 'ни одно ядро не проходит проверку связи, подключение остаётся на ${coreName(e.core)}', LogLevel.warn);
-        if (live) toast('Проверка связи не проходит ни через одно ядро. VPN остаётся включённым: возможно, дело в сети', ToastKind.info);
+        // In an automatic selection the next server is tried, and its event speaks.
+        if (live && !autoSwitching) {
+          toast('Проверка связи не проходит ни через одно ядро. VPN остаётся включённым: возможно, дело в сети', ToastKind.info);
+        }
+      case 'failover':
+        if (e.error.isNotEmpty) {
+          _log(e.time, 'автопереход', 'ни один другой сервер подписки не отвечает', LogLevel.err);
+          if (live) toast('Ни один сервер подписки не отвечает: возможно, дело в сети', ToastKind.err);
+        } else {
+          _log(e.time, 'автопереход', 'сервер «${e.from}» не отвечает, подключаюсь к «${e.line}»', LogLevel.swap);
+          if (live) {
+            toast('Сервер «${e.from}» не отвечал: подключено «${e.line}»', ToastKind.swap);
+            _alerts.add(Alert('CoreShift сменил сервер', '«${e.from}» не отвечал. Теперь «${e.line}».'));
+          }
+        }
+        _statusSoon();
       case 'core-failed':
         _log(e.time, e.core, 'отключено (${_reasonText(e.reason)}): ${e.error}', LogLevel.err);
         _statusSoon();
@@ -652,6 +667,10 @@ class AppState extends ChangeNotifier {
   // ---------------------------------------------------------------- helpers
 
   int get nodeCount => subscriptions.fold(0, (n, s) => n + s.nodes.length);
+
+  /// The selected server is in its subscription's automatic selection, so a
+  /// server that stops answering is replaced by the next one by itself.
+  bool get autoSwitching => subscriptionById(selection.subscription)?.auto.contains(selection.fingerprint) ?? false;
 
   Subscription? subscriptionById(String id) {
     for (final s in subscriptions) {

@@ -78,6 +78,7 @@ type Service struct {
 	upd     appUpdater
 	apps    appWatch
 	stats   *trafficStats
+	fo      failover
 
 	op       sync.Mutex // serialises connect, disconnect and teardown
 	tun      TUNInstance
