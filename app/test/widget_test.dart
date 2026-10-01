@@ -344,7 +344,7 @@ void main() {
       await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 30)));
     }
     expect(state.setting('routing.app_filter', ''), 'only');
-        // Nothing chosen yet: said, as every app still uses the VPN.
+    // Nothing chosen yet: said, as every app still uses the VPN.
     expect(find.text('Ничего не выбрано: пока через VPN идут все'), findsOneWidget);
     expect(find.text('Выбрать'), findsOneWidget);
 
@@ -739,6 +739,47 @@ void main() {
       expect(tester.takeException(), isNull);
       await tester.runAsync(() => state.disconnect());
       await tester.pump(const Duration(seconds: 1));
+    }
+    await tester.pump(const Duration(seconds: 6));
+  });
+
+  testWidgets('the home page says when the server does not answer', (tester) async {
+    for (final size in [const Size(390, 844), const Size(1400, 900)]) {
+      final state = await pumpApp(tester, size: size);
+      await tester.runAsync(() async {
+        await state.connect();
+        await Future.delayed(const Duration(milliseconds: 2300));
+      });
+      await tester.pump();
+      const warning = 'Сервер не отвечает';
+      Event check(String error) => Event(time: DateTime.now(), kind: 'health', core: state.status.core, error: error);
+      expect(state.status.core, isNotEmpty);
+      expect(find.textContaining(warning), findsNothing, reason: 'working at $size');
+
+      // One failed check is often a blip.
+      state.injectEvent(check('timeout'));
+      await tester.pump();
+      expect(find.textContaining(warning), findsNothing, reason: 'one failure at $size');
+
+      // Still failing: the page says so.
+      state.injectEvent(check('timeout'));
+      await tester.pump();
+      expect(state.serverUnresponsive, isTrue);
+      expect(find.textContaining(warning), findsOneWidget, reason: 'two failures at $size');
+      expect(tester.takeException(), isNull);
+
+      // It works again: the warning goes.
+      state.injectEvent(check(''));
+      await tester.pump();
+      expect(find.textContaining(warning), findsNothing, reason: 'recovered at $size');
+
+      // Failures while disconnected are not the page's business.
+      state.injectEvent(check('timeout'));
+      state.injectEvent(check('timeout'));
+      await tester.runAsync(() => state.disconnect());
+      await tester.pump(const Duration(seconds: 1));
+      expect(state.serverUnresponsive, isFalse);
+      expect(find.textContaining(warning), findsNothing, reason: 'disconnected at $size');
     }
     await tester.pump(const Duration(seconds: 6));
   });

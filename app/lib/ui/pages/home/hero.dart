@@ -51,10 +51,43 @@ class _Hero extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           _NodePick(state: state),
+          if (state.serverUnresponsive) ...[const SizedBox(height: 12), _UnresponsiveBanner(state: state)],
           if (st.settingsPending) ...[const SizedBox(height: 12), _PendingBanner(state: state)],
           _BackupBanner(state: state),
         ],
       ),
     );
   }
+}
+
+/// The connection is up but traffic does not get through: the server is
+/// down, blocked or the network is bad. Says so, instead of "Подключено"
+/// alone, and offers the one thing that can help from here.
+class _UnresponsiveBanner extends StatelessWidget {
+  final AppState state;
+  const _UnresponsiveBanner({required this.state});
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+    decoration: BoxDecoration(
+      color: errColor.withValues(alpha: .08),
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(color: errColor.withValues(alpha: .35)),
+    ),
+    child: Row(
+      children: [
+        const Icon(Icons.cloud_off_outlined, size: 16, color: errColor),
+        const SizedBox(width: 9),
+        const Expanded(
+          child: Text(
+            'Сервер не отвечает: связь через него не проходит. Он может быть недоступен или заблокирован. Попробуйте переподключиться или выберите другой сервер.',
+            style: TextStyle(fontSize: 12),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Btn(label: 'Переподключить', small: true, onPressed: state.busy ? null : state.reconnect),
+      ],
+    ),
+  );
 }
