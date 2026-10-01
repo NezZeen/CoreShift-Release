@@ -172,3 +172,35 @@ func TestSingBoxJSONStillParses(t *testing.T) {
 		t.Fatalf("format %s, nodes %+v, err %v", res.Format, res.Nodes, err)
 	}
 }
+
+// The panel's balancer names what it selects from by tag prefix: those servers
+// are the automatic selection, in the order listed; the others are not.
+func TestParseXrayBalancerGroup(t *testing.T) {
+	res, err := Parse([]byte(xrayBalanced))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Auto) != 3 {
+		t.Fatalf("group = %v, want the three servers tagged proxy*", res.Auto)
+	}
+	for i, n := range res.Nodes {
+		if res.Auto[i] != n.Fingerprint() {
+			t.Errorf("group member %d is not the server %d of the list", i, i)
+		}
+	}
+
+	res, err = Parse([]byte(`{"routing": {"balancers": [{"tag": "b", "selector": ["proxy"]}]}, "outbounds": [
+	  {"tag": "proxy-1", "protocol": "trojan", "settings": {"servers": [{"address": "a.example", "port": 443, "password": "p"}]}},
+	  {"tag": "mine", "protocol": "trojan", "settings": {"servers": [{"address": "b.example", "port": 443, "password": "p"}]}},
+	  {"tag": "proxy-2", "protocol": "trojan", "settings": {"servers": [{"address": "c.example", "port": 443, "password": "p"}]}}]}`))
+	if err != nil || len(res.Nodes) != 3 || len(res.Auto) != 2 ||
+		res.Auto[0] != res.Nodes[0].Fingerprint() || res.Auto[1] != res.Nodes[2].Fingerprint() {
+		t.Errorf("a server outside the selector joined the group: nodes %d, group %v, err %v", len(res.Nodes), res.Auto, err)
+	}
+
+	// No balancer, no automatic selection.
+	res, err = Parse([]byte(xrayList))
+	if err != nil || len(res.Auto) != 0 {
+		t.Errorf("a list of configs without a balancer has a group: %v, %v", res.Auto, err)
+	}
+}

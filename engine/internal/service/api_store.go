@@ -207,11 +207,14 @@ type subscriptionView struct {
 	Format      string     `json:"format"`
 	Nodes       []nodeView `json:"nodes"`
 	Skipped     []string   `json:"skipped,omitempty"`
-	AddedAt     time.Time  `json:"added_at"`
-	UpdatedAt   time.Time  `json:"updated_at,omitzero"`
-	CheckedAt   time.Time  `json:"checked_at,omitzero"`
-	NextUpdate  time.Time  `json:"next_update,omitzero"`
-	LastError   string     `json:"last_error,omitempty"`
+	// Auto is the fingerprints of the servers the panel set up for automatic
+	// selection: the connection moves down them when a server stops answering.
+	Auto       []string  `json:"auto,omitempty"`
+	AddedAt    time.Time `json:"added_at"`
+	UpdatedAt  time.Time `json:"updated_at,omitzero"`
+	CheckedAt  time.Time `json:"checked_at,omitzero"`
+	NextUpdate time.Time `json:"next_update,omitzero"`
+	LastError  string    `json:"last_error,omitempty"`
 }
 
 type nodeView struct {
@@ -252,7 +255,7 @@ func (a *api) nodeView(subID string, n *node.Node) nodeView {
 func (a *api) subscriptionView(sub *store.Subscription, set store.Settings) subscriptionView {
 	v := subscriptionView{
 		ID: sub.ID, Name: sub.Name, DisplayName: sub.DisplayName(), URL: sub.URL, UserAgent: sub.UserAgent,
-		Info: sub.Info, Format: sub.Format, Nodes: make([]nodeView, len(sub.Nodes)), Skipped: sub.Skipped,
+		Info: sub.Info, Format: sub.Format, Nodes: make([]nodeView, len(sub.Nodes)), Skipped: sub.Skipped, Auto: sub.Auto,
 		AddedAt: sub.AddedAt, UpdatedAt: sub.UpdatedAt, CheckedAt: sub.CheckedAt,
 		NextUpdate: store.NextRefresh(sub, set), LastError: sub.LastError,
 	}

@@ -58,6 +58,9 @@ type Subscription struct {
 	Format  string      `json:"format"`
 	Nodes   []node.Node `json:"nodes"`
 	Skipped []string    `json:"skipped,omitempty"`
+	// Auto is the fingerprints of the servers the panel set up for automatic
+	// selection, in order (see subscription.Result.Auto).
+	Auto []string `json:"auto,omitempty"`
 
 	AddedAt time.Time `json:"added_at"`
 	// UpdatedAt is the last refresh that produced nodes; CheckedAt the last
@@ -442,7 +445,7 @@ func (s *Store) Refresh(ctx context.Context, id string) (Subscription, error) {
 			return nil
 		}
 		// Keep edits made while fetching; take only what the fetch produced.
-		cur.Info, cur.Format, cur.Nodes, cur.Skipped = sub.Info, sub.Format, sub.Nodes, sub.Skipped
+		cur.Info, cur.Format, cur.Nodes, cur.Skipped, cur.Auto = sub.Info, sub.Format, sub.Nodes, sub.Skipped, sub.Auto
 		cur.UpdatedAt, cur.CheckedAt, cur.LastError = sub.UpdatedAt, sub.CheckedAt, ""
 		repointSelection(d, cur)
 		sub = *cur
@@ -479,7 +482,7 @@ func (s *Store) load(ctx context.Context, sub *Subscription, content string) err
 		return err
 	}
 	sub.Info = infoOf(f.Info)
-	sub.Format, sub.Nodes, sub.Skipped = string(f.Format), f.Nodes, nil
+	sub.Format, sub.Nodes, sub.Skipped, sub.Auto = string(f.Format), f.Nodes, nil, f.Auto
 	for _, sk := range f.Skipped {
 		sub.Skipped = append(sub.Skipped, sk.String())
 	}

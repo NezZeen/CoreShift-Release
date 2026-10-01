@@ -33,6 +33,10 @@ type Result struct {
 	Format  Format
 	Nodes   []node.Node
 	Skipped []Skipped
+	// Auto is the fingerprints, in list order, of the servers the panel put
+	// into an automatic selection group (an Xray balancer): when one of them
+	// stops answering, the next is to take over. Empty when there is none.
+	Auto []string
 }
 
 // Skipped describes an entry that could not be used. It never contains

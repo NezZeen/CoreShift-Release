@@ -70,11 +70,6 @@ class SettingsPage extends StatelessWidget {
                 : 'Запускать CoreShift в трее при входе в Windows и сразу подключать выбранный сервер',
             trailing: _switch('auto_connect'),
           ),
-          SettingRow(
-            title: 'Автопереход на другой сервер',
-            description: 'Если сервер перестал отвечать, сам подключаться к следующему серверу подписки по списку',
-            trailing: _switch('auto_switch'),
-          ),
           if (desktop.canNotify)
             SettingRow(
               title: 'Уведомления',
