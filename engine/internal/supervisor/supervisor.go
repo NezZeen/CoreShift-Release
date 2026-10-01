@@ -152,7 +152,8 @@ const (
 	EventCoreFailed EventKind = "core-failed" // Core was dropped for Reason
 	EventHealth     EventKind = "health"
 	// EventNoBetter: the core keeps failing health checks, and no other
-	// core passed one either; the connection stays on it.
+	// core passed one either (or none may be tried: a core chosen by hand);
+	// the connection stays on it.
 	EventNoBetter EventKind = "no-better"
 	EventLog      EventKind = "log" // a line of core output
 )
@@ -486,13 +487,16 @@ func (s *Supervisor) monitor(ctx context.Context, p *process, n node.Node, serve
 			} else {
 				fails++
 				delay = min(delay, failRetry)
-				if fails >= s.cfg.Health.Failures && s.cfg.Mode == Auto && time.Since(searched) >= searchEvery {
+				if fails >= s.cfg.Health.Failures && time.Since(searched) >= searchEvery {
 					searched = time.Now()
-					if alt, ok := s.findWorking(ctx, chain, failed, p.kind, n, serverAddr); ok {
-						return ReasonHealth, alt, fmt.Errorf("%d health checks in a row failed, last: %w", fails, err)
-					}
-					if ctx.Err() != nil {
-						return "", "", nil
+					// With a core chosen by hand there is no other to try.
+					if s.cfg.Mode == Auto {
+						if alt, ok := s.findWorking(ctx, chain, failed, p.kind, n, serverAddr); ok {
+							return ReasonHealth, alt, fmt.Errorf("%d health checks in a row failed, last: %w", fails, err)
+						}
+						if ctx.Err() != nil {
+							return "", "", nil
+						}
 					}
 					// No core does better: the connection stays.
 					s.emit(Event{Kind: EventNoBetter, Core: p.kind, Err: err})

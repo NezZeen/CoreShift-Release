@@ -21,6 +21,7 @@ import (
 func (s *Service) Connect(ctx context.Context, n node.Node) error {
 	s.op.Lock()
 	defer s.op.Unlock()
+	s.fo.reset() // a server chosen by the user starts a new round of switching
 	return s.connectOp(ctx, n)
 }
 
@@ -342,6 +343,13 @@ func (s *Service) onSupervisorEvent(e supervisor.Event) {
 		if connected {
 			s.teardown(gen, errors.New("every compatible core failed"))
 		}
+	}
+	switch {
+	case e.Kind == supervisor.EventNoBetter:
+		s.failoverSoon()
+	case e.Kind == supervisor.EventHealth && e.Err == nil && !e.Probe:
+		// The server answers: a later failure starts a fresh round.
+		s.fo.reset()
 	}
 }
 
