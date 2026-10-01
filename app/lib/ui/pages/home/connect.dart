@@ -150,19 +150,13 @@ class _NodePick extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => Nav.to(context, PageId.servers),
+        onTap: () => showQuickPick(context, state, onAll: () => Nav.to(context, PageId.servers)),
         hoverColor: p.surface3,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(
             children: [
-              Container(
-                width: 34,
-                height: 26,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(color: p.surface3, borderRadius: BorderRadius.circular(7)),
-                child: Icon(Icons.dns_outlined, size: 15, color: p.muted),
-              ),
+              CountryBadge(n == null ? null : countryOf(n.name, n.server), width: 38),
               const SizedBox(width: 12),
               Expanded(
                 child: n == null
@@ -174,7 +168,7 @@ class _NodePick extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            n.name,
+                            cleanNodeName(n.name),
                             style: const TextStyle(fontWeight: FontWeight.w600),
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -202,7 +196,7 @@ class _NodePick extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
               ],
-              Icon(Icons.chevron_right, color: p.dim),
+              Icon(Icons.unfold_more, size: 20, color: p.dim),
             ],
           ),
         ),

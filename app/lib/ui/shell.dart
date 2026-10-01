@@ -10,6 +10,7 @@ import 'pages/logs_page.dart';
 import 'pages/routing_page.dart';
 import 'pages/servers_page.dart';
 import 'pages/settings_page.dart';
+import 'countries.dart';
 import 'theme.dart';
 import 'update_offer.dart';
 import 'widgets.dart';
@@ -128,7 +129,10 @@ class _ShellState extends State<Shell> {
         return Nav(
           go: (p) => setState(() => page = p),
           child: CallbackShortcuts(
-            bindings: {const SingleActivator(LogicalKeyboardKey.enter, control: true): _toggle, const SingleActivator(LogicalKeyboardKey.keyF, control: true): _findServer},
+            bindings: {
+              const SingleActivator(LogicalKeyboardKey.enter, control: true): _toggle,
+              const SingleActivator(LogicalKeyboardKey.keyF, control: true): _findServer,
+            },
             child: Focus(
               autofocus: true,
               child: Scaffold(
@@ -285,7 +289,7 @@ class _StatusPill extends StatelessWidget {
           };
     final active = state.status.active;
     final canToggle = state.online && (active || (state.selection.available && !state.busy));
-    final server = active ? state.status.node : state.selection.name;
+    final server = cleanNodeName(active ? state.status.node : state.selection.name);
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 2),
       padding: const EdgeInsets.fromLTRB(11, 6, 4, 6),

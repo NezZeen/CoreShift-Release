@@ -14,6 +14,8 @@ import '../version.dart';
 part 'app_state/models.dart';
 part 'app_state/actions.dart';
 part 'app_state/settings_diff.dart';
+part 'app_state/servers.dart';
+part 'app_state/traffic.dart';
 
 /// Everything the UI shows, kept in sync with the daemon through its event
 /// stream. Widgets listen to it and call its actions.
@@ -146,6 +148,10 @@ class AppState extends ChangeNotifier {
 
   /// Set while the daemon tests node latency.
   bool testingLatency = false;
+
+  /// How far the running test is: nodes answered of nodes asked.
+  int latencyDone = 0;
+  int latencyTotal = 0;
 
   /// Whether the servers page has already tested latency on its own this
   /// session, so opening it again does not start another test.
@@ -389,8 +395,10 @@ class AppState extends ChangeNotifier {
           swaps = 0;
           speed.clear();
           sessionUp = sessionDown = 0;
+          _statsBaseUp = _statsBaseDown = 0;
         }
         if (e.state == 'idle' || e.state == 'failed') speed.clear();
+        if (e.state == 'idle') _statsSoon();
         if (e.state == 'failed' && live) _alerts.add(Alert('VPN отключился', humanError(e.error)));
         _statusSoon();
       case 'core-state':
@@ -459,10 +467,14 @@ class AppState extends ChangeNotifier {
       case 'latency':
         if (e.reason == 'started') {
           testingLatency = true;
+          latencyDone = 0;
+          latencyTotal = subscriptions.where((s) => e.subscription.isEmpty || s.id == e.subscription).fold(0, (n, s) => n + s.nodes.length);
         } else if (e.reason == 'finished') {
           testingLatency = false;
+          latencyDone = latencyTotal;
         } else if (e.fingerprint.isNotEmpty) {
           latency['${e.subscription}/${e.fingerprint}'] = Latency(ms: e.latencyMs, error: e.error, core: e.core, method: e.method);
+          if (latencyDone < latencyTotal) latencyDone++;
         }
         _notify();
       case 'rules':
@@ -617,6 +629,17 @@ class AppState extends ChangeNotifier {
     _notify();
   }
 
+  // ---------------------------------------------------------------- traffic
+
+  /// Traffic per day, oldest first, once loaded (see traffic.dart).
+  List<TrafficDay> stats = [];
+  bool statsLoaded = false;
+  bool statsUnsupported = false;
+  String _statsKey = '';
+  int _statsBaseUp = 0;
+  int _statsBaseDown = 0;
+  Timer? _statsTimer;
+
   /// Shows the address as "185.23.•.•" in the app, for screenshots.
   bool get hideIp => prefs['hide_ip'] == true;
 
@@ -686,6 +709,7 @@ class AppState extends ChangeNotifier {
     _events?.cancel();
     _retry?.cancel();
     _statusDebounce?.cancel();
+    _statsTimer?.cancel();
     super.dispose();
   }
 }

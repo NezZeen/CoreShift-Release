@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'countries.dart';
 import 'theme.dart';
 
 /// A bordered surface, the prototype's `.card`.
@@ -551,6 +552,46 @@ class _SavingFieldState extends State<SavingField> {
                   borderSide: const BorderSide(color: errColor),
                 )
               : null,
+        ),
+      ),
+    );
+  }
+}
+
+/// A server's country as a small tag with its two-letter code. Windows has
+/// no flag emoji, so one tag looks the same on every system; each country
+/// keeps one colour, which makes a list scan faster.
+class CountryBadge extends StatelessWidget {
+  final String? code;
+  final double width;
+  const CountryBadge(this.code, {super.key, this.width = 30});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    final c = code;
+    final h = width * .68;
+    if (c == null || c.isEmpty) {
+      return Container(
+        width: width,
+        height: h,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(color: p.surface3, borderRadius: BorderRadius.circular(5)),
+        child: Icon(Icons.public, size: h * .65, color: p.dim),
+      );
+    }
+    final hue = (c.codeUnitAt(0) * 37 + c.codeUnitAt(c.length > 1 ? 1 : 0) * 91) % 360;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return Tooltip(
+      message: countryName(c),
+      child: Container(
+        width: width,
+        height: h,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(color: HSLColor.fromAHSL(1, hue.toDouble(), .5, dark ? .34 : .42).toColor(), borderRadius: BorderRadius.circular(5)),
+        child: Text(
+          c,
+          style: TextStyle(color: Colors.white, fontSize: width * .36, fontWeight: FontWeight.w700, letterSpacing: .4, height: 1),
         ),
       ),
     );

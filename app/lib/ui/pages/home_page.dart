@@ -17,6 +17,8 @@ part 'home/hero.dart';
 part 'home/compact.dart';
 part 'home/connect.dart';
 part 'home/cards.dart';
+part 'home/quick_pick.dart';
+part 'home/traffic.dart';
 
 class HomePage extends StatelessWidget {
   final AppState state;
@@ -25,6 +27,9 @@ class HomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (state.subscriptions.isEmpty) return PageFrame(children: [_Welcome(state: state)]);
+    // The traffic card shows once the history is loaded, so loading it
+    // starts here.
+    WidgetsBinding.instance.addPostFrameCallback((_) => state.watchStats());
     if (isCompact(context)) {
       // Room above for the page to sit mid-screen when connected, the
       // tallest it gets, so the button stays put as the numbers come in.
@@ -37,29 +42,53 @@ class HomePage extends StatelessWidget {
         ),
       );
     }
-    // The desktop: the connection, the address sites see, and while
-    // connected its speed. The cores are on their page, the subscription on
-    // its card.
+    // The desktop: the connection, the address sites see, while connected
+    // its speed, and the traffic of the last days. The cores are on their
+    // page, the subscription on its card. A wide window puts the connection
+    // beside the rest instead of above it.
     return LayoutBuilder(
-      builder: (context, c) => PageFrame(
-        children: [
-          SizedBox(height: max(0, (c.maxHeight - 780) / 2)),
-          Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 600),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _Hero(state: state),
-                  if (!state.ipUnsupported) ...[const SizedBox(height: 14), _IpCard(state: state)],
-                  // Without a connection it has nothing to show.
-                  if (state.status.active) ...[const SizedBox(height: 14), _SpeedCard(state: state)],
-                ],
+      builder: (context, c) {
+        final wide = c.maxWidth >= 900;
+        final cards = [
+          if (!state.ipUnsupported) _IpCard(state: state),
+          // Without a connection it has nothing to show.
+          if (state.status.active) _SpeedCard(state: state),
+          if (!state.statsUnsupported && state.statsLoaded) _TrafficCard(state: state),
+        ];
+        final column = Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final (i, card) in cards.indexed) ...[if (i > 0) const SizedBox(height: 14), card],
+          ],
+        );
+        return PageFrame(
+          children: [
+            SizedBox(height: max(0, (c.maxHeight - (wide ? 600 : 780)) / 2)),
+            Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: wide ? 1060 : 600),
+                child: wide
+                    ? Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(flex: 5, child: _Hero(state: state)),
+                          const SizedBox(width: 16),
+                          Expanded(flex: 6, child: column),
+                        ],
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _Hero(state: state),
+                          if (cards.isNotEmpty) const SizedBox(height: 14),
+                          column,
+                        ],
+                      ),
               ),
             ),
-          ),
-        ],
-      ),
+          ],
+        );
+      },
     );
   }
 }
