@@ -1,0 +1,358 @@
+package service
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"maps"
+	"net/netip"
+	"os"
+	"path/filepath"
+	"slices"
+	"time"
+
+	"coreshift/engine/internal/dnsguard"
+	"coreshift/engine/internal/node"
+	"coreshift/engine/internal/supervisor"
+	"coreshift/engine/internal/tunlayer"
+)
+
+// Connect switches to n, replacing any current connection.
+func (s *Service) Connect(ctx context.Context, n node.Node) error {
+	s.op.Lock()
+	defer s.op.Unlock()
+	return s.connectOp(ctx, n)
+}
+
+// connectOp is Connect with s.op held.
+func (s *Service) connectOp(ctx context.Context, n node.Node) error {
+	s.stopLatencyTest()
+	s.stopLocked()
+
+	s.mu.Lock()
+	s.gen++
+	gen, opts := s.gen, s.opts
+	s.pending = false
+	s.lastNode, s.hasLast = n, true
+	s.mu.Unlock()
+	s.sup.SetPolicy(opts.policy())
+	s.setStatus(Status{State: Connecting, Node: n.Name, Protocol: string(n.Protocol), TUN: opts.TUN, Since: time.Now()})
+
+	_, err := s.connectLocked(ctx, n, gen, opts)
+	if err != nil {
+		s.stopLocked()
+		s.fail(err)
+		return err
+	}
+	st := s.Status()
+	st.State = Connected
+	st.Since = time.Now()
+	s.setStatus(st)
+	pingCtx, stop := context.WithCancel(context.Background())
+	s.stopPing = stop
+	go s.watchTraffic(pingCtx)
+	s.mu.Lock()
+	autoDNS := s.autoDNS
+	s.mu.Unlock()
+	if autoDNS.IsValid() {
+		go s.watchNetwork(pingCtx, gen, autoDNS)
+	}
+	return nil
+}
+
+// networkCheckInterval is how often a connection that took the system's
+// resolver for direct names checks that the resolver is still there.
+const networkCheckInterval = 10 * time.Second
+
+// watchNetwork reconnects when the system's resolvers no longer include
+// direct, the one the TUN layer took for direct names: the computer moved
+// to another network (another Wi-Fi, a phone's hotspot), where that
+// resolver is out of reach, so every direct site would stop opening. A
+// change has to be seen twice in a row, so a brief flap of an adapter does
+// not reconnect, and a computer that is offline waits for a network.
+func (s *Service) watchNetwork(ctx context.Context, gen int, direct netip.Addr) {
+	t := time.NewTicker(s.cfg.netInterval)
+	defer t.Stop()
+	seen := 0
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+		addrs, err := s.systemResolvers(ctx)
+		if err != nil || len(addrs) == 0 || slices.Contains(addrs, direct) {
+			seen = 0
+			continue
+		}
+		if seen++; seen < 2 {
+			continue
+		}
+		s.hub.publish(Event{Kind: "dns", Reason: "network-changed",
+			Line: fmt.Sprintf("the network changed: resolver %s is gone, the system now uses %s; reconnecting", direct, addrs[0])})
+		s.reconnectGen(gen)
+		return
+	}
+}
+
+// reconnectGen reconnects the last node unless connection gen has ended
+// meanwhile, e.g. the user disconnected. A failure is reported by Connect.
+func (s *Service) reconnectGen(gen int) {
+	s.op.Lock()
+	defer s.op.Unlock()
+	s.mu.Lock()
+	n, current := s.lastNode, gen == s.gen && s.status.State == Connected
+	s.mu.Unlock()
+	if current {
+		_ = s.connectOp(context.Background(), n)
+	}
+}
+
+// systemResolvers returns the system's resolvers other than the tunnel's:
+// those of the network the computer is on.
+func (s *Service) systemResolvers(ctx context.Context) ([]netip.Addr, error) {
+	addrs, err := s.cfg.resolvers(ctx, tunlayer.DefaultInterface)
+	// Another tunnel on the same addresses (sing-box based clients use them
+	// by default) would send direct names back into ours.
+	own := tunlayer.DefaultAddress.Masked()
+	return slices.DeleteFunc(addrs, own.Contains), err
+}
+
+// ReturnToPrimary moves back to the first core of the chain now, when a
+// backup core is serving. The primary is tried first; if it does not work,
+// the backup keeps running.
+func (s *Service) ReturnToPrimary(ctx context.Context) error {
+	if st := s.Status().State; st != Connected {
+		return supervisor.ErrNotConnected
+	}
+	return s.sup.ReturnToPrimary(ctx)
+}
+
+// Reconnect connects the last node again, applying changed options.
+func (s *Service) Reconnect(ctx context.Context) error {
+	s.mu.Lock()
+	n, ok := s.lastNode, s.hasLast
+	s.mu.Unlock()
+	if !ok {
+		return errors.New("nothing to reconnect: no node was connected yet")
+	}
+	return s.Connect(ctx, n)
+}
+
+// ErrNoSelection means the store has no usable selected node.
+var ErrNoSelection = errors.New("no node selected")
+
+// ConnectSelected connects the store's selected node.
+func (s *Service) ConnectSelected(ctx context.Context) error {
+	if s.cfg.Store == nil {
+		return errors.New("no store")
+	}
+	sel, n, ok := s.cfg.Store.Selected()
+	if !ok {
+		if sel.Subscription != "" {
+			return fmt.Errorf("%w: %q is no longer in its subscription", ErrNoSelection, sel.Name)
+		}
+		return ErrNoSelection
+	}
+	return s.Connect(ctx, n)
+}
+
+// connectLocked returns the address of n's server.
+func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Options) (netip.Addr, error) {
+	var tun TUNLayer
+	if o.TUN {
+		var err error
+		if tun, err = s.tunLayer(); err != nil {
+			return netip.Addr{}, err
+		}
+	}
+	// Both lookups must happen before the DNS guard redirects the system
+	// resolver into the tunnel.
+	var direct string
+	if o.TUN {
+		direct = o.DNS.Direct
+		if direct == "" {
+			addrs, err := s.systemResolvers(ctx)
+			if err != nil || len(addrs) == 0 {
+				direct = "1.1.1.1"
+				s.hub.publish(Event{Kind: "dns", Error: fmt.Sprintf("no system resolver found (%v); using %s for direct names", err, direct)})
+			} else {
+				direct = addrs[0].String()
+				s.mu.Lock()
+				s.autoDNS = addrs[0]
+				s.mu.Unlock()
+			}
+		}
+	}
+	serverIP, err := s.serverAddr(ctx, n.Server)
+	if err != nil {
+		return netip.Addr{}, err
+	}
+	serverAddr := ""
+	if serverIP.IsValid() && serverIP.String() != n.Server {
+		serverAddr = serverIP.String()
+	}
+
+	if err := s.sup.Connect(ctx, n, serverAddr); err != nil {
+		return netip.Addr{}, err
+	}
+	if !o.TUN {
+		return serverIP, nil
+	}
+
+	suffixes := mergeSuffixes(alwaysDirect, o.DNS.DirectSuffixes)
+	var domainSets, ipSets, proxySets []tunlayer.RuleSet
+	if o.DNS.RussiaDirect && !o.Selective {
+		suffixes = mergeSuffixes(suffixes, russiaSuffixes)
+		// The core is up, so a blocked source can be reached through it.
+		domainSets, ipSets, proxySets = s.rules.get(ctx, russiaSets, s.cfg.Listen)
+	}
+	opts := tunlayer.Options{
+		StrictRoute:     true,
+		Upstream:        s.cfg.Listen,
+		BypassProcesses: slices.Sorted(maps.Values(s.cfg.Binaries)),
+		DirectApps:      o.DirectApps,
+		DirectIPs:       o.DirectIPs,
+		ProxyApps:       o.ProxyApps,
+		ProxyIPs:        o.ProxyIPs,
+		Selective:       o.Selective,
+		AppFilter:       o.AppFilter,
+		FilterApps:      o.FilterApps,
+		DNS: tunlayer.DNSOptions{
+			Remote:           o.DNS.Remote,
+			Direct:           direct,
+			FakeIP:           o.DNS.FakeIP,
+			DirectSuffixes:   suffixes,
+			ProxySuffixes:    o.ProxyDomains,
+			BlockSuffixes:    o.BlockDomains,
+			DirectRuleSets:   domainSets,
+			DirectIPRuleSets: ipSets,
+			ProxyRuleSets:    proxySets,
+			BlockBrowserDoH:  o.DNS.BlockBrowserDoH,
+			BlockDoT:         o.DNS.BlockDoT,
+		},
+		CacheFile: filepath.Join(s.cfg.DataDir, "tun", "cache.db"),
+	}
+	if self, err := os.Executable(); err == nil {
+		// The daemon resolves proxy servers, e.g. for latency tests.
+		opts.DirectDNSProcesses = []string{self}
+	}
+	if o.IPv6 {
+		opts.Address6 = tunlayer.DefaultAddress6
+		// Checked before the TUN exists, so its own address cannot count.
+		opts.DNS.DirectIPv4Only = !s.cfg.hostIPv6()
+	}
+	if serverIP.IsValid() {
+		opts.BypassAddresses = []netip.Prefix{netip.PrefixFrom(serverIP, serverIP.BitLen())}
+	}
+	inst, err := tun.Start(ctx, opts)
+	if err != nil {
+		return netip.Addr{}, fmt.Errorf("start TUN layer: %w", err)
+	}
+	s.tun = inst
+	s.hub.publish(Event{Kind: "tun", Reason: "up"})
+	go s.watchTUN(inst, gen)
+
+	guardCfg := dnsguard.Config{
+		Interface: tunlayer.DefaultInterface,
+		Servers:   []netip.Addr{tunlayer.DNSAddress(tunlayer.DefaultAddress)},
+		Strict:    o.DNS.Strict,
+	}
+	if err := s.cfg.guard.Apply(ctx, guardCfg); err != nil {
+		return netip.Addr{}, fmt.Errorf("redirect system DNS: %w", err)
+	}
+	s.hub.publish(Event{Kind: "dns", Reason: "applied"})
+	if !s.cfg.AppOutsideVPN {
+		s.mu.Lock()
+		s.tunDNS = netip.AddrPortFrom(tunlayer.DNSAddress(tunlayer.DefaultAddress), 53)
+		s.mu.Unlock()
+	}
+	return serverIP, nil
+}
+
+// Disconnect stops everything and restores the system. Safe when idle.
+func (s *Service) Disconnect() {
+	s.op.Lock()
+	defer s.op.Unlock()
+	if s.Status().State == Idle {
+		return
+	}
+	s.setStatus(Status{State: Disconnecting, TUN: s.Status().TUN})
+	s.stopLocked()
+	s.setStatus(Status{State: Idle, TUN: s.Options().TUN})
+}
+
+// stopLocked undoes a connection in reverse order: DNS first, so the system
+// never points at a tunnel that is already gone.
+func (s *Service) stopLocked() {
+	s.mu.Lock()
+	s.gen++ // turns pending teardowns for this connection into no-ops
+	s.tunDNS = netip.AddrPort{}
+	s.autoDNS = netip.Addr{}
+	s.mu.Unlock()
+	if s.stopPing != nil {
+		s.stopPing()
+		s.stopPing = nil
+	}
+	s.hub.clearTraffic()
+	if err := s.cfg.guard.Revert(context.Background()); err != nil {
+		s.hub.publish(Event{Kind: "dns", Error: "restore system DNS: " + err.Error()})
+	} else if s.tun != nil {
+		// Said aloud, so a journal shows the system got its DNS back.
+		s.hub.publish(Event{Kind: "dns", Reason: "reverted"})
+	}
+	if s.tun != nil {
+		s.tun.Stop()
+		s.tun = nil
+		s.hub.publish(Event{Kind: "tun", Reason: "down"})
+	}
+	s.sup.Disconnect()
+}
+
+// teardown is the reaction to a failure while connected. It runs on its own
+// goroutine because it is triggered from supervisor callbacks, and stopping
+// the supervisor from inside its own callback would deadlock.
+func (s *Service) teardown(gen int, cause error) {
+	go func() {
+		s.op.Lock()
+		defer s.op.Unlock()
+		s.mu.Lock()
+		stale := gen != s.gen
+		s.mu.Unlock()
+		if stale {
+			return
+		}
+		s.stopLocked()
+		s.fail(cause)
+	}()
+}
+
+func (s *Service) watchTUN(t TUNInstance, gen int) {
+	<-t.Exited()
+	s.teardown(gen, fmt.Errorf("TUN layer stopped: %w", t.ExitError()))
+}
+
+func (s *Service) onSupervisorEvent(e supervisor.Event) {
+	s.hub.publish(fromSupervisor(e))
+	if e.Kind == supervisor.EventState && e.State == supervisor.Failed {
+		s.mu.Lock()
+		gen, connected := s.gen, s.status.State == Connected
+		s.mu.Unlock()
+		// While connecting, Connect itself reports the failure.
+		if connected {
+			s.teardown(gen, errors.New("every compatible core failed"))
+		}
+	}
+}
+
+func (s *Service) fail(err error) {
+	s.setStatus(Status{State: Failed, TUN: s.Options().TUN, Error: err.Error(), Since: time.Now()})
+	s.hub.publish(Event{Kind: "error", Error: err.Error()})
+}
+
+func (s *Service) setStatus(st Status) {
+	s.mu.Lock()
+	s.status = st
+	s.mu.Unlock()
+	s.hub.publish(Event{Kind: "state", State: st.State, Core: string(st.Core), Error: st.Error})
+}
