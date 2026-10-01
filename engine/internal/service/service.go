@@ -290,6 +290,7 @@ type Service struct {
 	cfg     Config
 	sup     *supervisor.Supervisor
 	hub     *hub
+	logs    *logGrouper
 	rules   *ruleSets
 	latency latencyState
 	cores   coreState
@@ -420,6 +421,9 @@ func New(cfg Config) (*Service, error) {
 	}
 
 	s := &Service{cfg: cfg, hub: newHub(), opts: cfg.Options, status: Status{State: Idle, TUN: cfg.TUN}}
+	s.logs = newLogGrouper(logGroupEvery, func(source, line string) {
+		s.hub.publish(Event{Kind: "log", Source: source, Line: line})
+	})
 	s.rules = newRuleSets(filepath.Join(cfg.DataDir, "rules"), s.hub.publish)
 	s.upd.checkNow = make(chan struct{}, 1)
 	s.upd.state = AppUpdate{State: UpdateIdle}
@@ -532,11 +536,14 @@ func (s *Service) tunLayer() (TUNLayer, error) {
 	return s.cfg.tun, nil
 }
 
+// logGroupEvery is how often a repeating error is reported (see logGrouper).
+const logGroupEvery = 30 * time.Second
+
 // Log adds a line of output to the event stream, as the TUN layer reports
 // it (a separate process on the desktop, part of the app on Android).
 func (s *Service) Log(source, line string) {
 	if !noiseLine(line) {
-		s.hub.publish(Event{Kind: "log", Source: source, Line: line})
+		s.logs.add(source, line)
 	}
 }
 
