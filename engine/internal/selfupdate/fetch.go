@@ -35,7 +35,8 @@ type Source struct {
 
 var repoRE = regexp.MustCompile(`^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$`)
 
-// ParseSource accepts "github:OWNER/REPO" or an absolute folder path.
+// ParseSource accepts "github:OWNER/REPO" or an absolute folder path on this
+// computer (not a network path).
 func ParseSource(s string) (Source, error) {
 	s = strings.TrimSpace(s)
 	if repo, ok := strings.CutPrefix(s, "github:"); ok {
@@ -43,6 +44,11 @@ func ParseSource(s string) (Source, error) {
 			return Source{}, fmt.Errorf("%q is not github:OWNER/REPO", s)
 		}
 		return Source{Repo: repo}, nil
+	}
+	// A network path (\\host\share) would make the service, which runs as
+	// SYSTEM, sign in to that host: the setting is writable by any local user.
+	if strings.HasPrefix(s, `\\`) || strings.HasPrefix(s, "//") {
+		return Source{}, fmt.Errorf("%q is a network path; use a folder on this computer", s)
 	}
 	if filepath.IsAbs(s) {
 		return Source{Dir: filepath.Clean(s)}, nil
