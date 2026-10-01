@@ -412,7 +412,22 @@ class AppState extends ChangeNotifier {
         _statusSoon();
       case 'no-better':
         _log(e.time, e.core, 'ни одно ядро не проходит проверку связи, подключение остаётся на ${coreName(e.core)}', LogLevel.warn);
-        if (live) toast('Проверка связи не проходит ни через одно ядро. VPN остаётся включённым: возможно, дело в сети', ToastKind.info);
+        // With the automatic switch on, the next server is tried, and its event speaks.
+        if (live && !setting('auto_switch', false)) {
+          toast('Проверка связи не проходит ни через одно ядро. VPN остаётся включённым: возможно, дело в сети', ToastKind.info);
+        }
+      case 'failover':
+        if (e.error.isNotEmpty) {
+          _log(e.time, 'автопереход', 'ни один другой сервер подписки не отвечает', LogLevel.err);
+          if (live) toast('Ни один сервер подписки не отвечает: возможно, дело в сети', ToastKind.err);
+        } else {
+          _log(e.time, 'автопереход', 'сервер «${e.from}» не отвечает, подключаюсь к «${e.line}»', LogLevel.swap);
+          if (live) {
+            toast('Сервер «${e.from}» не отвечал: подключено «${e.line}»', ToastKind.swap);
+            _alerts.add(Alert('CoreShift сменил сервер', '«${e.from}» не отвечал. Теперь «${e.line}».'));
+          }
+        }
+        _statusSoon();
       case 'core-failed':
         _log(e.time, e.core, 'отключено (${_reasonText(e.reason)}): ${e.error}', LogLevel.err);
         _statusSoon();
