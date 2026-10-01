@@ -1,8 +1,9 @@
 // Package subscription downloads subscriptions and parses them into nodes.
 //
 // Supported formats, detected automatically: base64-encoded link lists, plain
-// link lists, Clash / mihomo YAML and sing-box JSON. One bad entry never fails
-// the whole subscription; it is reported in Result.Skipped instead.
+// link lists, Clash / mihomo YAML, sing-box JSON and Xray JSON (one config or
+// a list of them, as Remnawave serves them). One bad entry never fails the
+// whole subscription; it is reported in Result.Skipped instead.
 package subscription
 
 import (
@@ -25,6 +26,7 @@ const (
 	FormatLinks   Format = "links"
 	FormatClash   Format = "clash"
 	FormatSingBox Format = "sing-box"
+	FormatXray    Format = "xray-json"
 )
 
 type Result struct {
@@ -161,7 +163,11 @@ func parseClash(b []byte) (Result, error) {
 
 func parseJSON(b []byte) (Result, error) {
 	if b[0] == '[' {
-		return Result{}, errors.New("Xray JSON subscriptions are not supported yet")
+		var list []fields
+		if err := json.Unmarshal(b, &list); err != nil {
+			return Result{}, fmt.Errorf("invalid JSON: %w", err)
+		}
+		return parseXrayJSON(list)
 	}
 	var doc fields
 	if err := json.Unmarshal(b, &doc); err != nil {
@@ -169,9 +175,13 @@ func parseJSON(b []byte) (Result, error) {
 	}
 	outbounds := doc.list("outbounds")
 	for _, o := range outbounds {
+		// Xray names the kind of an outbound "protocol", sing-box "type".
 		if o.str("protocol") != "" {
-			return Result{}, errors.New("Xray JSON subscriptions are not supported yet")
+			return parseXrayJSON([]fields{doc})
 		}
+	}
+	if _, template := doc["remnawave"]; template {
+		return parseXrayJSON([]fields{doc})
 	}
 	res := Result{Format: FormatSingBox}
 	for i, o := range append(outbounds, doc.list("endpoints")...) {
