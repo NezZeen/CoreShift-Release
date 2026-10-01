@@ -283,7 +283,6 @@ class _ServersPageState extends State<ServersPage> {
                 best,
               ],
             ),
-          if (s.testingLatency) _PingProgress(done: s.latencyDone, total: s.latencyTotal),
           if (compact && rows.isNotEmpty && s.prefs['swipe_hint'] != true) _SwipeHint(onClose: () => s.setPref('swipe_hint', true)),
           const SizedBox(height: 12),
           Panel(
