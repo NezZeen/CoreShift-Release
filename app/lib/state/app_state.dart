@@ -412,8 +412,8 @@ class AppState extends ChangeNotifier {
         _statusSoon();
       case 'no-better':
         _log(e.time, e.core, 'ни одно ядро не проходит проверку связи, подключение остаётся на ${coreName(e.core)}', LogLevel.warn);
-        // With the automatic switch on, the next server is tried, and its event speaks.
-        if (live && !setting('auto_switch', false)) {
+        // In an automatic selection the next server is tried, and its event speaks.
+        if (live && !autoSwitching) {
           toast('Проверка связи не проходит ни через одно ядро. VPN остаётся включённым: возможно, дело в сети', ToastKind.info);
         }
       case 'failover':
@@ -644,6 +644,10 @@ class AppState extends ChangeNotifier {
   // ---------------------------------------------------------------- helpers
 
   int get nodeCount => subscriptions.fold(0, (n, s) => n + s.nodes.length);
+
+  /// The selected server is in its subscription's automatic selection, so a
+  /// server that stops answering is replaced by the next one by itself.
+  bool get autoSwitching => subscriptionById(selection.subscription)?.auto.contains(selection.fingerprint) ?? false;
 
   Subscription? subscriptionById(String id) {
     for (final s in subscriptions) {
