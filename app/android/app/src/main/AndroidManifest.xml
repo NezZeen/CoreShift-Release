@@ -11,7 +11,10 @@
 
     <!-- extractNativeLibs: the cores ship as lib*.so programs, and Android runs
          programs only from the extracted native library directory. -->
+    <!-- allowBackup: the app's data holds the subscription links, which carry
+         access tokens; they must not reach cloud backups or `adb backup`. -->
     <application
+        android:allowBackup="false"
         android:label="CoreShift"
         android:name=".CoreShiftApp"
         android:icon="@mipmap/ic_launcher"
