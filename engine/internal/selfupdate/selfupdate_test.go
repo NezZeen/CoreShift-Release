@@ -109,7 +109,8 @@ func TestParseSource(t *testing.T) {
 	if s, err := ParseSource(dir); err != nil || s.Dir != dir {
 		t.Errorf("folder = %+v, %v", s, err)
 	}
-	for _, bad := range []string{"github:owner", "github:a/b/c", "relative\\dir", "https://example.com/latest.json"} {
+	for _, bad := range []string{"github:owner", "github:a/b/c", "relative\\dir", "https://example.com/latest.json",
+		`\\host\share\releases`, `\\?\C:\releases`, `\\.\pipe\x`, "//host/share/releases"} {
 		if _, err := ParseSource(bad); err == nil {
 			t.Errorf("%q accepted", bad)
 		}
