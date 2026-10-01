@@ -94,6 +94,12 @@ func installService(args []string) error {
 		{Type: mgr.ServiceRestart, Delay: 10 * time.Second},
 		{Type: mgr.ServiceRestart, Delay: time.Minute},
 	}, 24*60*60)
+	// A crash leaves the tunnel's DNS rule behind, and the service starts only
+	// with the app: the task cleans it at boot. Without it the service still
+	// works, so a failure is a warning.
+	if err := installRecoveryTask(exe); err != nil {
+		fmt.Fprintln(os.Stderr, "warning: the boot-time DNS recovery task was not created:", err)
+	}
 	fmt.Printf("installed service %q running %s %s\n", serviceName, exe, strings.Join(append([]string{"service", "run"}, args...), " "))
 	return nil
 }
@@ -131,6 +137,7 @@ func uninstallService() error {
 		s.Control(svc.Stop)
 		waitServiceState(s, svc.Stopped)
 	}
+	removeRecoveryTask()
 	return s.Delete()
 }
 
@@ -199,7 +206,11 @@ func (w *winService) Execute(_ []string, requests <-chan svc.ChangeRequest, stat
 		return true, 2
 	}
 	os.MkdirAll(cfg.DataDir, 0o755)
-	log, err := os.OpenFile(filepath.Join(cfg.DataDir, "coreshiftd.log"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	// The service restarts with the app; the log of a crashed run must outlive
+	// the restarts that follow.
+	logPath := filepath.Join(cfg.DataDir, "coreshiftd.log")
+	rotateLog(logPath, 3)
+	log, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
 		return true, 3
 	}
