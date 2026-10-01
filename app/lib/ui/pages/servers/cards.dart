@@ -341,7 +341,7 @@ class _SwipeHint extends StatelessWidget {
           const Icon(Icons.swipe, size: 17, color: accent),
           const SizedBox(width: 10),
           Expanded(
-            child: Text('Смахните сервер вправо — подключить, влево — в избранное', style: TextStyle(fontSize: 12, color: p.muted)),
+            child: Text('Смахните сервер вправо, чтобы подключиться', style: TextStyle(fontSize: 12, color: p.muted)),
           ),
           IconButton(
             onPressed: onClose,

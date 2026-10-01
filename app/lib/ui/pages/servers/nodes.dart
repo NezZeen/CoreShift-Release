@@ -37,7 +37,6 @@ class _NodeTable extends StatelessWidget {
                 child: Text('ПИНГ', style: headStyle),
               ),
               action: const SizedBox(),
-              star: const SizedBox(),
             ),
             for (final (i, sec) in sections.indexed) ...[
               if (sec.title != null)
@@ -66,7 +65,6 @@ class _NodeTable extends StatelessWidget {
     required Widget proto,
     required Widget ping,
     required Widget action,
-    required Widget star,
     bool header = false,
   }) {
     if (narrow) {
@@ -95,7 +93,6 @@ class _NodeTable extends StatelessWidget {
             ),
             SizedBox(width: 58, child: ping),
             action,
-            star,
           ],
         ),
       );
@@ -122,14 +119,13 @@ class _NodeTable extends StatelessWidget {
               child: FittedBox(fit: BoxFit.scaleDown, child: action),
             ),
           ),
-          SizedBox(width: 38, child: star),
         ],
       ),
     );
   }
 }
 
-/// A section's title: a country with its best ping, the favourites, a
+/// A section's title: a country with its best ping, a
 /// subscription. A folding one is a tap target the width of the list.
 class _SectionHeading extends StatelessWidget {
   final _Section section;
@@ -208,18 +204,8 @@ class _NodeRowState extends State<_NodeRow> {
     final active = sel && s.status.active;
     final connected = sel && s.status.state == ConnState.connected;
     final unusable = n.cores.isEmpty;
-    final fav = s.isFavorite(widget.sub, n);
     final narrow = widget.narrow;
     void connect() => s.connect(subscription: widget.sub.id, fingerprint: n.fingerprint, name: n.name);
-
-    final star = IconButton(
-      tooltip: fav ? 'Убрать из избранного' : 'В избранное',
-      onPressed: () => s.toggleFavorite(widget.sub, n),
-      visualDensity: VisualDensity.compact,
-      padding: EdgeInsets.zero,
-      constraints: BoxConstraints.tightFor(width: narrow ? 38 : 34, height: narrow ? 40 : 34),
-      icon: Icon(fav ? Icons.star : Icons.star_border, size: 19, color: fav ? warnColor : (hover || narrow ? p.muted : Colors.transparent)),
-    );
 
     final Widget action;
     if (connected) {
@@ -270,7 +256,6 @@ class _NodeRowState extends State<_NodeRow> {
       proto: ProtoBadge(n.protocol),
       ping: _LatencyCell(latency: s.latencyOf(widget.sub.id, n.fingerprint), testing: s.testingLatency),
       action: action,
-      star: star,
     );
 
     Widget body = Opacity(
@@ -285,32 +270,21 @@ class _NodeRowState extends State<_NodeRow> {
     );
 
     if (narrow) {
-      // A phone: swipe right to connect, left for the favourites. The row
-      // stays where it is; the swipe only triggers the action.
+      // A phone: swipe right to connect. The row stays where it is; the
+      // swipe only triggers the action.
       body = Dismissible(
         key: ValueKey('swipe/${widget.sub.id}/${n.fingerprint}/${n.name}'),
-        direction: unusable ? DismissDirection.endToStart : DismissDirection.horizontal,
-        dismissThresholds: const {DismissDirection.startToEnd: .28, DismissDirection.endToStart: .28},
+        direction: unusable ? DismissDirection.none : DismissDirection.startToEnd,
+        dismissThresholds: const {DismissDirection.startToEnd: .28},
         confirmDismiss: (dir) async {
           s.setPref('swipe_hint', true);
-          if (dir == DismissDirection.startToEnd) {
-            if (!s.busy && s.online) {
-              HapticFeedback.selectionClick();
-              connect();
-            }
-          } else {
+          if (!s.busy && s.online) {
             HapticFeedback.selectionClick();
-            s.toggleFavorite(widget.sub, n);
+            connect();
           }
           return false;
         },
         background: _SwipeBackground(color: okColor, icon: Icons.power_settings_new, label: 'Подключить', alignLeft: true),
-        secondaryBackground: _SwipeBackground(
-          color: warnColor,
-          icon: fav ? Icons.star_border : Icons.star,
-          label: fav ? 'Убрать' : 'В избранное',
-          alignLeft: false,
-        ),
         child: body,
       );
     }
