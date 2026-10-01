@@ -784,6 +784,21 @@ void main() {
     await tester.pump(const Duration(seconds: 6));
   });
 
+  testWidgets('switching to the next server is a setting and is told in the journal', (tester) async {
+    final state = await pumpApp(tester);
+    expect(state.setting('auto_switch', true), isFalse);
+    await tester.tap(find.text('Настройки').first);
+    await tester.pump();
+    expect(find.text('Автопереход на другой сервер'), findsOneWidget);
+
+    state.injectEvent(Event(time: DateTime.now(), kind: 'failover', from: 'Amsterdam', line: 'Frankfurt'));
+    state.injectEvent(Event(time: DateTime.now(), kind: 'failover', from: 'Frankfurt', error: 'no other server of the subscription answers'));
+    final lines = state.logs.map((l) => l.message).toList();
+    expect(lines, contains('сервер «Amsterdam» не отвечает, подключаюсь к «Frankfurt»'));
+    expect(lines, contains('ни один другой сервер подписки не отвечает'));
+    await tester.pump(const Duration(seconds: 6));
+  });
+
   testWidgets('a rule switched while connected says it waits for reconnecting', (tester) async {
     final state = await pumpApp(tester, size: const Size(390, 844));
     await tester.runAsync(() => state.connect());

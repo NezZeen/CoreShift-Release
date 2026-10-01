@@ -22,6 +22,7 @@ class DemoBackend implements Backend {
     'tun': true,
     'ipv6': true,
     'auto_connect': false,
+    'auto_switch': false,
     'cores': {
       'priority': ['xray', 'sing-box', 'mihomo'],
       'mode': 'auto',
@@ -303,9 +304,7 @@ class DemoBackend implements Backend {
         await _connect(sel['node'] as Json);
         return _statusJson();
       case 'GET /ip':
-        return _status['state'] == 'connected'
-            ? {'ip': '203.0.113.7', 'country': 'DE', 'vpn': true}
-            : {'ip': '198.51.100.20', 'country': 'RU', 'vpn': false};
+        return _status['state'] == 'connected' ? {'ip': '203.0.113.7', 'country': 'DE', 'vpn': true} : {'ip': '198.51.100.20', 'country': 'RU', 'vpn': false};
       case 'POST /reconnect':
         if (_lastNode == null) throw const ApiError(502, 'nothing to reconnect');
         await _connect(_lastNode!);
@@ -398,9 +397,7 @@ class DemoBackend implements Backend {
         if (nodes.isEmpty) throw const ApiError(400, 'no nodes found');
         // Like the daemon: servers pasted without a name join the list
         // pasted before.
-        final into = url.isEmpty && (b['name'] as String? ?? '').isEmpty
-            ? _subs.where((s) => s['url'] == '' && s['name'] == '').firstOrNull
-            : null;
+        final into = url.isEmpty && (b['name'] as String? ?? '').isEmpty ? _subs.where((s) => s['url'] == '' && s['name'] == '').firstOrNull : null;
         if (into != null) {
           final have = {for (final n in into['nodes'] as List) n['name']};
           final fresh = nodes.where((n) => !have.contains(n[0])).map(_node).toList();
