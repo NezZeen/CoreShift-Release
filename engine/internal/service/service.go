@@ -77,6 +77,7 @@ type Service struct {
 	cores   coreState
 	upd     appUpdater
 	apps    appWatch
+	fo      failover
 
 	op       sync.Mutex // serialises connect, disconnect and teardown
 	tun      TUNInstance
