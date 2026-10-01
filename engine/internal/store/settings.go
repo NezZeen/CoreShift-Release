@@ -26,15 +26,12 @@ type Settings struct {
 	// it bypass the tunnel.
 	IPv6 bool `json:"ipv6"`
 	// AutoConnect connects the selected node when the daemon starts.
-	AutoConnect bool `json:"auto_connect"`
-	// AutoSwitch moves to the next server of the subscription, in its order,
-	// when the connected one stops answering and no core can help.
-	AutoSwitch bool           `json:"auto_switch"`
-	Cores      CoreSettings   `json:"cores"`
-	DNS        DNSSettings    `json:"dns"`
-	Routing    Routing        `json:"routing"`
-	Updates    UpdateSettings `json:"updates"`
-	AppUpdate  AppUpdate      `json:"app_update"`
+	AutoConnect bool           `json:"auto_connect"`
+	Cores       CoreSettings   `json:"cores"`
+	DNS         DNSSettings    `json:"dns"`
+	Routing     Routing        `json:"routing"`
+	Updates     UpdateSettings `json:"updates"`
+	AppUpdate   AppUpdate      `json:"app_update"`
 }
 
 type CoreSettings struct {

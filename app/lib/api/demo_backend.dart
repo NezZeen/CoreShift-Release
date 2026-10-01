@@ -22,7 +22,6 @@ class DemoBackend implements Backend {
     'tun': true,
     'ipv6': true,
     'auto_connect': false,
-    'auto_switch': false,
     'cores': {
       'priority': ['xray', 'sing-box', 'mihomo'],
       'mode': 'auto',

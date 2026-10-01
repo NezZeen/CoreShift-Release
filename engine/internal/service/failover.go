@@ -11,10 +11,12 @@ import (
 // Moving to the next server. A core can be swapped for another when it
 // fails, but when the server itself is down, or blocked, every core fails
 // alike: the supervisor reports it (EventNoBetter) and leaves the connection
-// as it is. With the "auto_switch" setting the service then connects the next
-// server of the same subscription, in the order the subscription lists them,
-// until one answers. Servers that did not answer in this round are not tried
-// again; the round ends when a server answers or the user connects.
+// as it is. When the subscription says its servers are for automatic
+// selection (an Xray balancer in a JSON subscription, Subscription.Auto) and
+// the connected server is one of them, the service connects the next of them,
+// in the order the subscription lists them, until one answers. Servers that
+// did not answer in this round are not tried again; the round ends when a
+// server answers or the user connects.
 
 // failover is the state of one round.
 type failover struct {
@@ -111,11 +113,10 @@ func subscriptionOf(subs []store.Subscription, selected, fingerprint string) (st
 	return store.Subscription{}, false
 }
 
-// failoverSoon switches servers in the background, if the setting is on and
-// the connection is up.
+// failoverSoon switches servers in the background, if the connection is up.
+// Whether its subscription asks for it is seen when it is about to switch.
 func (s *Service) failoverSoon() {
-	st := s.cfg.Store
-	if st == nil || !st.Settings().AutoSwitch {
+	if s.cfg.Store == nil {
 		return
 	}
 	s.mu.Lock()
@@ -148,14 +149,21 @@ func (s *Service) switchServer(gen int) {
 	if !ok {
 		return // a node from a pasted link: there is no list to go through
 	}
+	group := map[string]bool{}
+	for _, fp := range sub.Auto {
+		group[fp] = true
+	}
+	if !group[from.Fingerprint()] {
+		return // the panel set up no automatic selection, or this server is not in it
+	}
 	cur := from
 	for {
 		s.fo.markTried(cur.Fingerprint())
 		next, ok := pickNext(sub.Nodes, cur.Fingerprint(), s.fo.triedSet(), func(n node.Node) bool {
-			return len(s.Compatible(&n)) > 0
+			return group[n.Fingerprint()] && len(s.Compatible(&n)) > 0
 		})
 		if !ok {
-			s.hub.publish(Event{Kind: "failover", From: from.Name, Error: "no other server of the subscription answers"})
+			s.hub.publish(Event{Kind: "failover", From: from.Name, Error: "no other server of the automatic selection answers"})
 			return
 		}
 		if _, err := st.Select(sub.ID, next.Fingerprint(), next.Name); err != nil {

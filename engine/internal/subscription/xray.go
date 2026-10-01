@@ -36,6 +36,7 @@ func parseXrayJSON(configs []fields) (Result, error) {
 				proxies = append(proxies, o)
 			}
 		}
+		selectors := xrayBalancerSelectors(cfg)
 		for _, o := range proxies {
 			idx++
 			n, err := xrayOutbound(o, cfg.str("remarks", "remark"), len(proxies) == 1)
@@ -44,12 +45,38 @@ func parseXrayJSON(configs []fields) (Result, error) {
 				continue
 			}
 			res.Nodes = append(res.Nodes, n)
+			if inBalancer(o.str("tag"), selectors) {
+				res.Auto = append(res.Auto, n.Fingerprint())
+			}
 		}
 	}
 	if len(res.Nodes) == 0 && len(res.Skipped) == 0 && template {
 		return res, errors.New("this is a Remnawave template, not a subscription: the panel adds the servers when it serves it to an app")
 	}
 	return res, nil
+}
+
+// xrayBalancerSelectors returns what the config's balancers select from:
+// outbound tags, of which Xray takes every outbound whose tag starts with one.
+func xrayBalancerSelectors(cfg fields) []string {
+	var out []string
+	for _, b := range cfg.sub("routing").list("balancers") {
+		for _, sel := range b.strs("selector") {
+			if sel != "" {
+				out = append(out, sel)
+			}
+		}
+	}
+	return out
+}
+
+func inBalancer(tag string, selectors []string) bool {
+	for _, sel := range selectors {
+		if strings.HasPrefix(tag, sel) {
+			return true
+		}
+	}
+	return false
 }
 
 // xrayOutbound converts one proxy outbound. remarks is the config's own

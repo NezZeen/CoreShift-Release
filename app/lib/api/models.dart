@@ -229,6 +229,10 @@ class Subscription {
   final String format;
   final List<NodeView> nodes;
   final List<String> skipped;
+
+  /// The servers (fingerprints) the panel set up for automatic selection:
+  /// when one stops answering, the connection moves to the next of them.
+  final List<String> auto;
   final DateTime? updatedAt;
   final DateTime? checkedAt;
   final DateTime? nextUpdate;
@@ -244,6 +248,7 @@ class Subscription {
     required this.format,
     required this.nodes,
     required this.skipped,
+    this.auto = const [],
     this.updatedAt,
     this.checkedAt,
     this.nextUpdate,
@@ -260,6 +265,7 @@ class Subscription {
     format: j['format'] ?? '',
     nodes: ((j['nodes'] as List?) ?? []).map((n) => NodeView.fromJson((n as Map).cast())).toList(),
     skipped: _strings(j['skipped']),
+    auto: _strings(j['auto']),
     updatedAt: _time(j['updated_at']),
     checkedAt: _time(j['checked_at']),
     nextUpdate: _time(j['next_update']),
@@ -275,6 +281,7 @@ class Subscription {
 /// The address sites see (GET /v1/ip): the VPN server's while connected.
 class IpInfo {
   final String ip;
+
   /// ISO code, "DE"; empty when unknown.
   final String country;
   final bool vpn;

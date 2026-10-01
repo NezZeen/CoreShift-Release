@@ -784,15 +784,26 @@ void main() {
     await tester.pump(const Duration(seconds: 6));
   });
 
-  testWidgets('switching to the next server is a setting and is told in the journal', (tester) async {
+  testWidgets('the panel automatic selection is known and the switch is told in the journal', (tester) async {
     final state = await pumpApp(tester);
-    expect(state.setting('auto_switch', true), isFalse);
-    await tester.tap(find.text('Настройки').first);
-    await tester.pump();
-    expect(find.text('Автопереход на другой сервер'), findsOneWidget);
+    final sub = Subscription.fromJson({
+      'id': 'p',
+      'display_name': 'Panel',
+      'auto': ['fp1', 'fp2'],
+      'nodes': [],
+      'info': {},
+    });
+    expect(sub.auto, ['fp1', 'fp2']);
+    // The demo's subscription has no automatic selection.
+    expect(state.autoSwitching, isFalse);
+    state.subscriptions = [sub];
+    state.selection = const Selection(subscription: 'p', fingerprint: 'fp2');
+    expect(state.autoSwitching, isTrue);
+    state.selection = const Selection(subscription: 'p', fingerprint: 'other');
+    expect(state.autoSwitching, isFalse);
 
     state.injectEvent(Event(time: DateTime.now(), kind: 'failover', from: 'Amsterdam', line: 'Frankfurt'));
-    state.injectEvent(Event(time: DateTime.now(), kind: 'failover', from: 'Frankfurt', error: 'no other server of the subscription answers'));
+    state.injectEvent(Event(time: DateTime.now(), kind: 'failover', from: 'Frankfurt', error: 'no other server of the automatic selection answers'));
     final lines = state.logs.map((l) => l.message).toList();
     expect(lines, contains('сервер «Amsterdam» не отвечает, подключаюсь к «Frankfurt»'));
     expect(lines, contains('ни один другой сервер подписки не отвечает'));
