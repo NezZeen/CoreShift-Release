@@ -221,7 +221,9 @@ class _Fact extends StatelessWidget {
           Text(
             note,
             style: TextStyle(fontSize: 11.5, color: p.muted),
-            maxLines: 1,
+            // A longer note, such as "обновлено только что", wraps rather
+            // than being cut off.
+            maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
       ],
@@ -283,41 +285,6 @@ class _SubMenu extends StatelessWidget {
       ],
     ),
   );
-}
-
-/// While the ping runs: how many servers have answered, and a thin bar.
-class _PingProgress extends StatelessWidget {
-  final int done;
-  final int total;
-  const _PingProgress({required this.done, required this.total});
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.pal;
-    return Padding(
-      padding: const EdgeInsets.only(top: 12),
-      child: Row(
-        children: [
-          Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(9),
-              child: LinearProgressIndicator(
-                value: total > 0 ? (done / total).clamp(0, 1).toDouble() : null,
-                minHeight: 4,
-                backgroundColor: p.surface3,
-                color: accent,
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Text(
-            total > 0 ? 'Проверено $done из $total' : 'Проверяю…',
-            style: TextStyle(fontSize: 12, color: p.muted, fontFeatures: const [FontFeature.tabularFigures()]),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 /// Tells a phone's user about the swipes, until they use one or close it.
