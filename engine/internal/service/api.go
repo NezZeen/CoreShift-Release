@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"strconv"
 	"strings"
 	"time"
 
@@ -29,6 +30,7 @@ import (
 //	                             is the app's (Service.AttachApp)
 //	POST /v1/subscription/parse  {"url": "…"} or {"content": "…"}, without saving
 //	GET  /v1/ip                  the address sites see (IPInfo)
+//	GET  /v1/stats?days=30       traffic per day through the VPN (Stats)
 //
 // plus the store endpoints in api_store.go.
 //
@@ -45,6 +47,7 @@ func NewAPI(svc *Service, token string, listen netip.AddrPort) http.Handler {
 	mux.HandleFunc("GET /v1/events", a.events)
 	mux.HandleFunc("POST /v1/subscription/parse", a.parse)
 	mux.HandleFunc("GET /v1/ip", a.publicIP)
+	mux.HandleFunc("GET /v1/stats", a.stats)
 	a.routeStore(mux)
 	return a.guard(mux)
 }
@@ -158,6 +161,14 @@ func (a *api) publicIP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, info)
+}
+
+func (a *api) stats(w http.ResponseWriter, r *http.Request) {
+	days, err := strconv.Atoi(r.URL.Query().Get("days"))
+	if err != nil {
+		days = 30
+	}
+	writeJSON(w, http.StatusOK, a.svc.Stats(days))
 }
 
 func (a *api) events(w http.ResponseWriter, r *http.Request) {

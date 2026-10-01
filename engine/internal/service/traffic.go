@@ -15,6 +15,9 @@ const trafficInterval = time.Second
 func (s *Service) watchTraffic(ctx context.Context) {
 	tick := time.NewTicker(trafficInterval)
 	defer tick.Stop()
+	// The day's totals reach the disk now and then, and when the connection ends.
+	defer func() { s.stats.flush(time.Now()) }()
+	lastFlush := time.Now()
 	var total, last core.Traffic
 	lastRun := -1
 	lastAt := time.Now()
@@ -37,6 +40,11 @@ func (s *Service) watchTraffic(ctx context.Context) {
 			d = now
 		}
 		last = now
+		s.stats.add(time.Now(), d.Up, d.Down)
+		if time.Since(lastFlush) >= statsFlushEvery {
+			s.stats.flush(time.Now())
+			lastFlush = time.Now()
+		}
 		total.Up += d.Up
 		total.Down += d.Down
 		at := time.Now()

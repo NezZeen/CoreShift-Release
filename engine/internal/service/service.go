@@ -77,6 +77,7 @@ type Service struct {
 	cores   coreState
 	upd     appUpdater
 	apps    appWatch
+	stats   *trafficStats
 
 	op       sync.Mutex // serialises connect, disconnect and teardown
 	tun      TUNInstance
@@ -206,6 +207,7 @@ func New(cfg Config) (*Service, error) {
 		s.hub.publish(Event{Kind: "log", Source: source, Line: line})
 	})
 	s.rules = newRuleSets(filepath.Join(cfg.DataDir, "rules"), s.hub.publish)
+	s.stats = openStats(filepath.Join(cfg.DataDir, "traffic.json"))
 	s.upd.checkNow = make(chan struct{}, 1)
 	s.upd.state = AppUpdate{State: UpdateIdle}
 	if !cfg.SelfUpdate {
@@ -355,4 +357,9 @@ func (s *Service) Status() Status {
 		st.Core, st.Chain, st.Failed = sup.Core, sup.Chain, sup.Failed
 	}
 	return st
+}
+
+// Stats returns the traffic of the last days.
+func (s *Service) Stats(days int) Stats {
+	return s.stats.report(time.Now(), min(max(days, 1), statsKeepDays))
 }

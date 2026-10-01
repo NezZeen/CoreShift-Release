@@ -79,21 +79,58 @@ class DemoBackend implements Backend {
   Json? _lastNode;
   bool _pending = false;
 
+  /// Traffic per day, oldest first, ending with today (GET /v1/stats).
+  final List<List<int>> _history = [];
+  int _todayUp = 0, _todayDown = 0;
+
+  List<List<int>> _makeHistory() {
+    final r = Random(11);
+    final days = <List<int>>[];
+    for (var i = 29; i >= 1; i--) {
+      final weekend = DateTime.now().subtract(Duration(days: i)).weekday >= 6;
+      // A few days the VPN was off, the rest browsing and the odd big download.
+      final down = i % 9 == 4 ? 0 : ((weekend ? 3.2e9 : 1.1e9) * (.3 + r.nextDouble() * 1.7)).round();
+      days.add([(down * (.06 + r.nextDouble() * .09)).round(), down]);
+    }
+    _todayUp = 82000000;
+    _todayDown = 1240000000;
+    return days;
+  }
+
+  String _date(int daysAgo) {
+    final d = DateTime.now().subtract(Duration(days: daysAgo));
+    return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  }
+
+  Json _stats(int n) {
+    final all = [
+      for (var i = 0; i < _history.length; i++) {'date': _date(_history.length - i), 'up': _history[i][0], 'down': _history[i][1]},
+      {'date': _date(0), 'up': _todayUp, 'down': _todayDown},
+    ];
+    return {'days': all.sublist(all.length - n.clamp(1, all.length))};
+  }
+
   DemoBackend() {
+    _history.addAll(_makeHistory());
     _subs.add(
       _makeSub(
         'a1b2c3',
         'NorthLink Premium',
         'https://sub.northlink.example/api/v1/client/TOKEN',
         [
-          ['Amsterdam', 'vless', 'tcp +vision', 'reality', 'nl1.northlink.example'],
-          ['Frankfurt', 'vless', 'xhttp/auto', 'reality', 'de1.northlink.example'],
-          ['Helsinki', 'hysteria2', 'quic', 'tls', 'fi1.northlink.example'],
-          ['Stockholm', 'tuic', 'quic', 'tls', 'se1.northlink.example'],
-          ['New York', 'trojan', 'grpc', 'tls', 'us1.northlink.example'],
-          ['Istanbul', 'vmess', 'ws', 'tls', 'tr1.northlink.example'],
-          ['Almaty', 'shadowsocks', 'tcp', 'none', 'kz1.northlink.example'],
-          ['Tokyo', 'anytls', 'tcp', 'tls', 'jp1.northlink.example'],
+          // Named as panels name them: a flag, then the place.
+          ['\u{1F1F3}\u{1F1F1} Amsterdam', 'vless', 'tcp +vision', 'reality', 'nl1.northlink.example'],
+          ['\u{1F1F3}\u{1F1F1} Rotterdam', 'vless', 'grpc', 'reality', 'nl2.northlink.example'],
+          ['\u{1F1E9}\u{1F1EA} Frankfurt', 'vless', 'xhttp/auto', 'reality', 'de1.northlink.example'],
+          ['\u{1F1E9}\u{1F1EA} Falkenstein', 'trojan', 'tcp', 'tls', 'de2.northlink.example'],
+          ['\u{1F1E9}\u{1F1EA} Nuremberg', 'vmess', 'ws', 'tls', 'de3.northlink.example'],
+          ['\u{1F1EB}\u{1F1EE} Helsinki', 'hysteria2', 'quic', 'tls', 'fi1.northlink.example'],
+          ['\u{1F1F8}\u{1F1EA} Stockholm', 'tuic', 'quic', 'tls', 'se1.northlink.example'],
+          ['\u{1F1FA}\u{1F1F8} New York', 'trojan', 'grpc', 'tls', 'us1.northlink.example'],
+          ['\u{1F1FA}\u{1F1F8} Los Angeles', 'vless', 'ws', 'tls', 'us2.northlink.example'],
+          ['\u{1F1F9}\u{1F1F7} Istanbul', 'vmess', 'ws', 'tls', 'tr1.northlink.example'],
+          ['\u{1F1F0}\u{1F1FF} Almaty', 'shadowsocks', 'tcp', 'none', 'kz1.northlink.example'],
+          ['\u{1F1EF}\u{1F1F5} Tokyo', 'anytls', 'tcp', 'tls', 'jp1.northlink.example'],
         ],
         used: 142e9,
         total: 500e9,
@@ -134,7 +171,7 @@ class DemoBackend implements Backend {
   }
 
   Json _node(List<String> n) => {
-    'fingerprint': base64Url.encode(utf8.encode(n[0] + n[1])).substring(0, 12),
+    'fingerprint': base64Url.encode(utf8.encode(n[0] + n[1])).replaceAll('=', ''),
     'name': n[0],
     'protocol': n[1],
     'transport': n[2],
@@ -216,6 +253,11 @@ class DemoBackend implements Backend {
     _status = {..._status, 'state': 'connected', 'core': chain.first, 'failed': <String, String>{}, 'since': DateTime.now().toUtc().toIso8601String()};
     _emit({'kind': 'core-state', 'core': chain.first, 'reason': 'connected'});
     _emit({'kind': 'state', 'state': 'connected', 'core': chain.first});
+    _startTimers(chain);
+  }
+
+  /// Health checks, traffic and the pretend crash of a connected demo.
+  void _startTimers(List<String> chain) {
     _health = Timer.periodic(const Duration(seconds: 3), (_) {
       _emit({'kind': 'health', 'core': _status['core'], 'latency_ms': 140 + _rand.nextInt(120)});
     });
@@ -228,6 +270,8 @@ class DemoBackend implements Backend {
       final up = down ~/ 12 + _rand.nextInt(20000);
       _up += up;
       _down += down;
+      _todayUp += up;
+      _todayDown += down;
       _events.add(
         Event.fromJson({'time': DateTime.now().toUtc().toIso8601String(), 'kind': 'traffic', 'up': _up, 'down': _down, 'up_rate': up, 'down_rate': down}),
       );
@@ -303,9 +347,9 @@ class DemoBackend implements Backend {
         await _connect(sel['node'] as Json);
         return _statusJson();
       case 'GET /ip':
-        return _status['state'] == 'connected'
-            ? {'ip': '185.23.41.7', 'country': 'DE', 'vpn': true}
-            : {'ip': '95.31.18.119', 'country': 'RU', 'vpn': false};
+        return _status['state'] == 'connected' ? {'ip': '185.23.41.7', 'country': 'DE', 'vpn': true} : {'ip': '95.31.18.119', 'country': 'RU', 'vpn': false};
+      case 'GET /stats':
+        return _stats(int.tryParse(Uri.parse(path).queryParameters['days'] ?? '') ?? 30);
       case 'POST /reconnect':
         if (_lastNode == null) throw const ApiError(502, 'nothing to reconnect');
         await _connect(_lastNode!);
@@ -398,9 +442,7 @@ class DemoBackend implements Backend {
         if (nodes.isEmpty) throw const ApiError(400, 'no nodes found');
         // Like the daemon: servers pasted without a name join the list
         // pasted before.
-        final into = url.isEmpty && (b['name'] as String? ?? '').isEmpty
-            ? _subs.where((s) => s['url'] == '' && s['name'] == '').firstOrNull
-            : null;
+        final into = url.isEmpty && (b['name'] as String? ?? '').isEmpty ? _subs.where((s) => s['url'] == '' && s['name'] == '').firstOrNull : null;
         if (into != null) {
           final have = {for (final n in into['nodes'] as List) n['name']};
           final fresh = nodes.where((n) => !have.contains(n[0])).map(_node).toList();

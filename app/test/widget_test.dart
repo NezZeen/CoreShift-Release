@@ -75,6 +75,8 @@ void main() {
     await tester.runAsync(() => state.disconnect());
     await tester.pump();
     expect(find.text('Отключено'), findsWidgets);
+    // The home page's traffic history is on its way.
+    await tester.pump(const Duration(seconds: 1));
   });
 
   testWidgets('without subscriptions the home page explains the first steps', (tester) async {
@@ -138,6 +140,8 @@ void main() {
     await tester.pump();
     expect(state.speed, isEmpty);
     expect(find.byTooltip('Скачано и отправлено за это подключение'), findsNothing);
+    // The home page's traffic history is on its way.
+    await tester.pump(const Duration(seconds: 1));
   });
 
   testWidgets('returns to the primary core on request', (tester) async {
@@ -170,6 +174,9 @@ void main() {
     expect(alerts.last.title, 'Основное ядро снова работает');
     expect(find.textContaining('Вернуть '), findsNothing);
     await tester.runAsync(() => state.disconnect());
+    await tester.pump();
+    // The home page's traffic history is on its way.
+    await tester.pump(const Duration(seconds: 1));
   }, timeout: const Timeout(Duration(minutes: 1)));
 
   testWidgets('core versions and updates', (tester) async {
@@ -245,6 +252,8 @@ void main() {
     expect(find.textContaining('Netherlands'), findsWidgets);
     expect(tester.takeException(), isNull);
     await tester.runAsync(() => state.disconnect());
+    // The home page's traffic history is on its way.
+    await tester.pump(const Duration(seconds: 1));
   });
 
   test('leak report flags the ISP resolver', () {
@@ -717,6 +726,8 @@ void main() {
     expect(tester.takeException(), isNull);
     await tester.runAsync(() => state.disconnect());
     await tester.pump(const Duration(seconds: 6));
+    // The home page's traffic history is on its way.
+    await tester.pump(const Duration(seconds: 1));
   });
 
   testWidgets('the home page keeps to the connection', (tester) async {
@@ -857,7 +868,8 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('Добавить подписку'), findsOneWidget);
     expect(tester.takeException(), isNull);
-    await tester.pump(const Duration(seconds: 1));
+    // Let the ping test the page started finish.
+    await tester.pump(const Duration(seconds: 30));
   });
 
   testWidgets('a phone hides explanations behind an icon', (tester) async {
