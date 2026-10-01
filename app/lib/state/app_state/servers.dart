@@ -1,22 +1,11 @@
 part of '../app_state.dart';
 
-/// The server list's own state: favourites, the last servers used, how the
-/// list is sorted and grouped. Kept in the app's preferences, per user.
+/// The server list's own state: the last servers used and how the list is
+/// grouped. Kept in the app's preferences, per user.
 extension AppStateServers on AppState {
   static String key(String subscription, String fingerprint) => '$subscription/$fingerprint';
 
   List<String> _prefList(String name) => [for (final v in (prefs[name] as List?) ?? const []) '$v'];
-
-  Set<String> get favorites => _prefList('favorites').toSet();
-
-  bool isFavorite(Subscription sub, NodeView n) => favorites.contains(key(sub.id, n.fingerprint));
-
-  void toggleFavorite(Subscription sub, NodeView n) {
-    final list = _prefList('favorites');
-    final k = key(sub.id, n.fingerprint);
-    if (!list.remove(k)) list.add(k);
-    setPref('favorites', list);
-  }
 
   /// Remembers the server connected to, the newest first.
   void noteRecent(String subscription, String fingerprint) {
@@ -29,12 +18,12 @@ extension AppStateServers on AppState {
     savePrefs?.call(prefs);
   }
 
-  /// The favourites, then the servers used last, up to [limit] in all; the
-  /// ones a subscription no longer has are left out.
+  /// The servers used last, the newest first, up to [limit]; the ones a
+  /// subscription no longer has are left out.
   List<(Subscription, NodeView)> quickNodes({int limit = 6}) {
     final out = <(Subscription, NodeView)>[];
     final seen = <String>{};
-    for (final k in [..._prefList('favorites'), ..._prefList('recent')]) {
+    for (final k in _prefList('recent')) {
       if (out.length >= limit || !seen.add(k)) continue;
       final i = k.indexOf('/');
       final sub = subscriptionById(k.substring(0, i));
@@ -60,10 +49,6 @@ extension AppStateServers on AppState {
     }
     return best;
   }
-
-  /// How the server list is ordered: "sub" (as the subscription has it),
-  /// "ping" or "name".
-  String get serverSort => const {'sub', 'ping', 'name'}.contains(prefs['server_sort']) ? prefs['server_sort'] as String : 'sub';
 
   bool get serverGroup => prefs['server_group'] == true;
 }

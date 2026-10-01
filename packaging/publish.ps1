@@ -12,7 +12,11 @@
 param(
     [Parameter(Mandatory = $true)][string]$Version,
     [string]$Repo = 'NezZeen/coreshift-releases',
-    [string]$Notes = ''
+    [string]$Notes = '',
+    # A test build: marked pre-release, which installed copies never pick up
+    # by themselves. Make it a normal release later with
+    #   gh release edit v<version> --prerelease=false --latest
+    [switch]$Prerelease
 )
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path "$PSScriptRoot\..").Path
@@ -39,6 +43,8 @@ if (-not $Notes) { $Notes = ' ' }
 # of Windows before 0.3.2 read only the release marked latest, so only a
 # release with Windows files may be marked so.
 $latest = if (Test-Path (Join-Path $dir 'latest.json')) { '--latest' } else { '--latest=false' }
-gh release create "v$Version" $files.FullName --repo $Repo --title $Version --notes $Notes $latest
+if ($Prerelease) { $latest = '--latest=false' }
+$pre = if ($Prerelease) { @('--prerelease') } else { @() }
+gh release create "v$Version" $files.FullName --repo $Repo --title $Version --notes $Notes $latest @pre
 if ($LASTEXITCODE -ne 0) { throw "gh release create failed (exit code $LASTEXITCODE)" }
 Write-Host "Published v$Version to $Repo" -ForegroundColor Green

@@ -7,7 +7,7 @@ import 'package:coreshift/main.dart';
 import 'package:coreshift/state/app_state.dart';
 import 'package:coreshift/ui/countries.dart';
 
-/// The server list (countries, favourites, sorting, swipes), the quick pick
+/// The server list (countries, swipes), the quick pick
 /// on the home page and the traffic card, on the desktop and
 /// on a phone.
 void main() {
@@ -63,7 +63,7 @@ void main() {
     expect(cleanNodeName('\u{1F1E9}\u{1F1EA}'), '\u{1F1E9}\u{1F1EA}');
   });
 
-  testWidgets('servers by country, favourites, folding and sorting', (tester) async {
+  testWidgets('servers by country and folding', (tester) async {
     final state = await pumpApp(tester);
     await tester.tap(navTo('Серверы', phone: false));
     await tester.pump();
@@ -87,27 +87,12 @@ void main() {
     await tester.pump();
     expect(find.text('Frankfurt'), findsOneWidget);
 
-    // A star moves the server to the favourites, on top.
+    // No favourites, no sort button and no transport column.
     expect(find.text('Избранное'), findsNothing);
-    final (sub, helsinki) = node(state, 'Helsinki');
-    state.toggleFavorite(sub, helsinki);
-    await tester.pump();
-    expect(find.text('Избранное'), findsOneWidget);
-    expect(state.isFavorite(sub, helsinki), isTrue);
-    expect(find.byTooltip('Убрать из избранного'), findsOneWidget);
-    await tester.tap(find.byTooltip('Убрать из избранного'));
-    // The row waits for a possible double tap before it lets the star act.
-    await tester.pump(const Duration(milliseconds: 400));
-    expect(state.favorites, isEmpty);
-    expect(find.text('Избранное'), findsNothing);
-
-    // The order is a preference of its own.
-    await tester.tap(find.text('Как в подписке'), warnIfMissed: false);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-    await tester.tap(find.text('По пингу').last, warnIfMissed: false);
-    await tester.pump();
-    expect(state.serverSort, 'ping');
+    expect(find.byIcon(Icons.star_border), findsNothing);
+    expect(find.text('Как в подписке'), findsNothing);
+    expect(find.text('ТРАНСПОРТ'), findsNothing);
+    expect(find.textContaining('tcp'), findsNothing);
     expect(tester.takeException(), isNull);
 
     // Searching by the country's name finds its servers.
@@ -132,22 +117,19 @@ void main() {
     expect(find.textContaining('Проверено'), findsNothing);
   });
 
-  testWidgets('a phone swipes a server to the favourites, and to connect', (tester) async {
+  testWidgets('a phone swipes a server to connect it', (tester) async {
     final state = await pumpApp(tester, size: phone);
     await tester.tap(navTo('Серверы', phone: true));
     await tester.pump();
     await tester.pump(const Duration(seconds: 30));
     expect(find.textContaining('Смахните сервер'), findsOneWidget);
 
-    final (sub, helsinki) = node(state, 'Helsinki');
+    // Swiping left does nothing.
     await tester.ensureVisible(find.text('Helsinki'));
     await tester.pump();
     await tester.drag(find.text('Helsinki'), const Offset(-300, 0));
     await tester.pumpAndSettle();
-    expect(state.isFavorite(sub, helsinki), isTrue);
-    expect(state.prefs['swipe_hint'], isTrue);
-    expect(find.textContaining('Смахните сервер'), findsNothing, reason: 'the hint goes after the first swipe');
-    expect(find.text('Избранное'), findsOneWidget);
+    expect(state.prefs['swipe_hint'], isNull);
 
     final (_, stockholm) = node(state, 'Stockholm');
     await tester.ensureVisible(find.text('Stockholm'));
@@ -158,6 +140,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
     }
     expect(state.quickNodes().map((e) => e.$2.name), contains(stockholm.name));
+    expect(state.prefs['swipe_hint'], isTrue);
+    expect(find.textContaining('Смахните сервер'), findsNothing, reason: 'the hint goes after the first swipe');
     await tester.pump(const Duration(seconds: 30));
     expect(state.status.node, stockholm.name);
     expect(tester.takeException(), isNull);
@@ -170,7 +154,7 @@ void main() {
       final state = await pumpApp(tester, size: isPhone ? phone : const Size(1400, 900));
       await settle(tester);
       final (sub, frankfurt) = node(state, 'Frankfurt');
-      state.toggleFavorite(sub, frankfurt);
+      state.noteRecent(sub.id, frankfurt.fingerprint);
       await tester.pump();
 
       // On the desktop the sidebar's status names the server too, before the card does.
@@ -179,7 +163,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 500));
       expect(find.text('Выбор сервера'), findsOneWidget);
       expect(find.text('Найти самый быстрый'), findsOneWidget);
-      expect(find.text('Избранные и недавние'.toUpperCase()), findsOneWidget);
+      expect(find.text('Недавние'.toUpperCase()), findsOneWidget);
       expect(find.text('Все серверы · ${state.nodeCount}'), findsOneWidget);
       expect(tester.takeException(), isNull);
 

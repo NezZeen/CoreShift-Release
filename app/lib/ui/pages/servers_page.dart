@@ -24,7 +24,7 @@ class ServersPage extends StatefulWidget {
   State<ServersPage> createState() => _ServersPageState();
 }
 
-/// A run of rows under one heading: the favourites, a country, a
+/// A run of rows under one heading: a country, a
 /// subscription, or the whole list with none.
 class _Section {
   final String id;
@@ -72,37 +72,11 @@ class _ServersPageState extends State<ServersPage> {
     return best;
   }
 
-  int _ms((Subscription, NodeView) r) {
-    final l = s.latencyOf(r.$1.id, r.$2.fingerprint);
-    return l != null && l.ok ? l.ms : 1 << 30;
-  }
-
-  List<(Subscription, NodeView)> _order(List<(Subscription, NodeView)> rows) => switch (s.serverSort) {
-    'ping' => [...rows]..sort((a, b) => _ms(a).compareTo(_ms(b))),
-    'name' => [...rows]..sort((a, b) => cleanNodeName(a.$2.name).toLowerCase().compareTo(cleanNodeName(b.$2.name).toLowerCase())),
-    _ => rows,
-  };
-
-  /// The rows in the order and groups the user chose: the favourites first,
-  /// then by country, or by subscription, or as one list.
+  /// The rows in the groups the user chose, in the order the subscription
+  /// lists them: by country, or by subscription, or as one list.
   List<_Section> _sections(List<(Subscription, NodeView)> rows, {required bool multi}) {
-    final favs = s.favorites;
-    bool isFav((Subscription, NodeView) r) => favs.contains(AppStateServers.key(r.$1.id, r.$2.fingerprint));
-    final fav = rows.where(isFav).toList();
-    final rest = rows.where((r) => !isFav(r)).toList();
+    final rest = rows;
     final out = <_Section>[];
-    if (fav.isNotEmpty) {
-      out.add(
-        _Section(
-          id: 'fav',
-          title: 'Избранное',
-          leading: const Icon(Icons.star, size: 16, color: warnColor),
-          rows: _order(fav),
-          collapsible: true,
-          showSub: multi,
-        ),
-      );
-    }
     if (s.serverGroup) {
       final by = <String, List<(Subscription, NodeView)>>{};
       for (final r in rest) {
@@ -111,10 +85,6 @@ class _ServersPageState extends State<ServersPage> {
       final codes = by.keys.toList()
         ..sort((a, b) {
           if (a.isEmpty != b.isEmpty) return a.isEmpty ? 1 : -1;
-          if (s.serverSort == 'ping') {
-            final x = by[a]!.map(_ms).reduce((m, e) => m < e ? m : e), y = by[b]!.map(_ms).reduce((m, e) => m < e ? m : e);
-            if (x != y) return x.compareTo(y);
-          }
           return countryName(a).compareTo(countryName(b));
         });
       for (final code in codes) {
@@ -123,19 +93,19 @@ class _ServersPageState extends State<ServersPage> {
             id: 'c:$code',
             title: code.isEmpty ? 'Другие' : countryName(code),
             leading: CountryBadge(code, width: 26),
-            rows: _order(by[code]!),
+            rows: by[code]!,
             collapsible: true,
             showSub: multi,
           ),
         );
       }
-    } else if (s.serverSort == 'sub' && multi) {
+    } else if (multi) {
       for (final sub in s.subscriptions) {
         final mine = rest.where((r) => r.$1.id == sub.id).toList();
         if (mine.isNotEmpty) out.add(_Section(id: 's:${sub.id}', title: sub.displayName, rows: mine));
       }
     } else if (rest.isNotEmpty) {
-      out.add(_Section(id: 'all', rows: _order(rest), showSub: multi));
+      out.add(_Section(id: 'all', rows: rest, showSub: multi));
     }
     return out;
   }
@@ -180,18 +150,8 @@ class _ServersPageState extends State<ServersPage> {
         child: Btn(label: protoFilter.isEmpty ? 'Все протоколы' : protocolLabel(protoFilter), icon: Icons.filter_list, small: true, onPressed: () {}),
       ),
     );
-    const sorts = [('sub', 'Как в подписке'), ('ping', 'По пингу'), ('name', 'По имени')];
-    final sort = PopupMenuButton<String>(
-      tooltip: 'Порядок серверов',
-      onSelected: (v) => s.setPref('server_sort', v),
-      itemBuilder: (_) => [for (final (v, title) in sorts) CheckedPopupMenuItem(value: v, checked: s.serverSort == v, child: Text(title))],
-      child: IgnorePointer(
-        child: Btn(label: sorts.firstWhere((e) => e.$1 == s.serverSort).$2, icon: Icons.swap_vert, small: true, onPressed: () {}),
-      ),
-    );
     final chips = [
       protocol,
-      sort,
       _Chip(label: 'По странам', on: s.serverGroup, onTap: () => s.setPref('server_group', !s.serverGroup)),
       if (subFilter != null) _Chip(label: '× ${s.subscriptionById(subFilter!)?.displayName ?? ''}', on: true, onTap: () => setState(() => subFilter = null)),
     ];
@@ -244,7 +204,7 @@ class _ServersPageState extends State<ServersPage> {
       children: [
         PageHeader(
           'Серверы',
-          subtitle: 'Двойной щелчок по серверу подключает к нему. Звёздочка — в избранное.',
+          subtitle: 'Двойной щелчок по серверу подключает к нему.',
           actions: [
             if (subs.any((x) => !x.isLocal))
               Btn(
