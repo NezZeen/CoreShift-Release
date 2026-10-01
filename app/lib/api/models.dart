@@ -275,6 +275,7 @@ class Subscription {
 /// The address sites see (GET /v1/ip): the VPN server's while connected.
 class IpInfo {
   final String ip;
+
   /// ISO code, "DE"; empty when unknown.
   final String country;
   final bool vpn;
@@ -376,6 +377,23 @@ class AppUpdateInfo {
   bool get off => state == 'off';
   bool get busy => state == 'checking' || state == 'downloading' || state == 'installing';
   String get label => BuildVersion(version, build).label;
+}
+
+/// The traffic of one day through the VPN (GET /v1/stats), in bytes.
+class TrafficDay {
+  final DateTime date;
+  final int up;
+  final int down;
+  const TrafficDay(this.date, this.up, this.down);
+
+  factory TrafficDay.fromJson(Json j) {
+    // "2026-10-01", a local calendar day.
+    final p = '${j['date']}'.split('-').map(int.tryParse).toList();
+    final ok = p.length == 3 && !p.contains(null);
+    return TrafficDay(ok ? DateTime(p[0]!, p[1]!, p[2]!) : DateTime.now(), (j['up'] as num?)?.toInt() ?? 0, (j['down'] as num?)?.toInt() ?? 0);
+  }
+
+  int get total => up + down;
 }
 
 /// A program running on the computer (GET /v1/apps).

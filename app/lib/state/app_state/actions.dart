@@ -40,6 +40,7 @@ extension AppStateActions on AppState {
   }
 
   Future<void> connect({String? subscription, String? fingerprint, String? name}) async {
+    noteRecent(subscription ?? selection.subscription, fingerprint ?? selection.fingerprint);
     busy = true;
     _logAction(name != null && name.isNotEmpty ? 'подключить: $name' : 'подключить${selection.name.isEmpty ? '' : ': ${selection.name}'}');
     _notify();

@@ -56,6 +56,7 @@ class _CompactHome extends StatelessWidget {
         _NodePick(state: state),
         _BackupBanner(state: state),
         if (st.state == ConnState.connected) ...[const SizedBox(height: 10), _CompactSpeed(state: state)],
+        if (!state.statsUnsupported && state.statsLoaded) _TrafficCard(state: state),
       ],
     );
   }

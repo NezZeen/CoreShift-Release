@@ -267,3 +267,73 @@ class _SubMenu extends StatelessWidget {
     ),
   );
 }
+
+/// While the ping runs: how many servers have answered, and a thin bar.
+class _PingProgress extends StatelessWidget {
+  final int done;
+  final int total;
+  const _PingProgress({required this.done, required this.total});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Row(
+        children: [
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(9),
+              child: LinearProgressIndicator(
+                value: total > 0 ? (done / total).clamp(0, 1).toDouble() : null,
+                minHeight: 4,
+                backgroundColor: p.surface3,
+                color: accent,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            total > 0 ? 'Проверено $done из $total' : 'Проверяю…',
+            style: TextStyle(fontSize: 12, color: p.muted, fontFeatures: const [FontFeature.tabularFigures()]),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Tells a phone's user about the swipes, until they use one or close it.
+class _SwipeHint extends StatelessWidget {
+  final VoidCallback onClose;
+  const _SwipeHint({required this.onClose});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.fromLTRB(12, 4, 2, 4),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: .08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: accent.withValues(alpha: .3)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.swipe, size: 17, color: accent),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text('Смахните сервер вправо — подключить, влево — в избранное', style: TextStyle(fontSize: 12, color: p.muted)),
+          ),
+          IconButton(
+            onPressed: onClose,
+            visualDensity: VisualDensity.compact,
+            icon: Icon(Icons.close, size: 16, color: p.dim),
+            tooltip: 'Понятно',
+          ),
+        ],
+      ),
+    );
+  }
+}

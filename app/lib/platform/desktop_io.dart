@@ -7,6 +7,7 @@ import 'package:window_manager/window_manager.dart';
 
 import '../api/models.dart';
 import '../state/app_state.dart';
+import '../ui/countries.dart' show cleanNodeName;
 import '../ui/theme.dart';
 import '../ui/widgets.dart' show formatRate;
 import 'tray_balloon.dart';
@@ -121,7 +122,11 @@ class _DesktopFrameState extends State<DesktopFrame> with WindowListener {
     if (Platform.isWindows) {
       final id = _tray?.icon.getId();
       if (id != null) {
-        showTrayBalloon(id, 'CoreShift работает в трее', 'Окно свёрнуто, VPN работает как прежде. Чтобы выйти совсем, нажмите на значок правой кнопкой → «Выход».');
+        showTrayBalloon(
+          id,
+          'CoreShift работает в трее',
+          'Окно свёрнуто, VPN работает как прежде. Чтобы выйти совсем, нажмите на значок правой кнопкой → «Выход».',
+        );
       }
     }
   }
@@ -379,7 +384,7 @@ class _Tray {
     _serverItems.clear();
     for (final (sub, n) in list) {
       final l = state.latencyOf(sub.id, n.fingerprint);
-      final label = '${n.name}${l != null && l.ok ? '   ${l.ms} мс' : ''}';
+      final label = '${cleanNodeName(n.name)}${l != null && l.ok ? '   ${l.ms} мс' : ''}';
       final i = tray.MenuItem.createWithLabelAndType(label, tray.MenuItemType.checkbox);
       if (i == null) continue;
       i.state = state.isSelected(sub, n) ? tray.MenuItemState.checked : tray.MenuItemState.unchecked;
