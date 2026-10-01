@@ -7,6 +7,7 @@
 //	coreshiftd dns recover                    undo leftovers of a crashed run
 //	coreshiftd tun-config [flags] [-o file]   render the TUN + DNS layer config
 //	coreshiftd sub [-ua agent] <url|file>     parse a subscription and summarize it
+//	coreshiftd sub -shape <file>              the structure of a saved JSON subscription, secrets left out
 //	coreshiftd connect [flags] <file|->       serve a node on local SOCKS5 with auto-swap
 //	coreshiftd vpn [flags] <file|->           full VPN (TUN + DNS guard) in the foreground
 //	coreshiftd serve [flags]                  the daemon with its UI API, in the foreground;
@@ -80,6 +81,7 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "usage: coreshiftd dns {resolvers|apply|revert|recover} [flags]")
 	fmt.Fprintln(os.Stderr, "       coreshiftd tun-config [flags]")
 	fmt.Fprintln(os.Stderr, "       coreshiftd sub [-ua agent] <url|file>")
+	fmt.Fprintln(os.Stderr, "       coreshiftd sub -shape <file>")
 	fmt.Fprintln(os.Stderr, "       coreshiftd connect [flags] <file|->")
 	fmt.Fprintln(os.Stderr, "       coreshiftd vpn [flags] <file|->")
 	fmt.Fprintln(os.Stderr, "       coreshiftd serve [flags]")
@@ -205,11 +207,27 @@ func defaultJournalPath() string {
 func runSub(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("sub", flag.ExitOnError)
 	ua := fs.String("ua", subscription.DefaultUserAgent, "User-Agent sent to the panel")
+	shape := fs.Bool("shape", false, "print the structure of a JSON subscription saved in a file, with addresses, ids and keys left out")
 	fs.Parse(args)
 	if fs.NArg() != 1 {
 		usage()
 	}
 	src := fs.Arg(0)
+	if *shape {
+		if isURL(src) {
+			return errors.New("-shape reads a file: open the subscription in a browser and save the page, so the link with your token stays out of this")
+		}
+		body, err := os.ReadFile(src)
+		if err != nil {
+			return err
+		}
+		out, err := subscription.Shape(body)
+		if err != nil {
+			return err
+		}
+		fmt.Print(out)
+		return nil
+	}
 
 	var f subscription.Fetched
 	var err error
