@@ -51,6 +51,7 @@ class _CompactHome extends StatelessWidget {
           child: Center(child: line),
         ),
         const SizedBox(height: 22),
+        if (state.serverUnresponsive) ...[_UnresponsiveBanner(state: state), const SizedBox(height: 10)],
         if (st.settingsPending) ...[_PendingBanner(state: state), const SizedBox(height: 10)],
         _NodePick(state: state),
         _BackupBanner(state: state),

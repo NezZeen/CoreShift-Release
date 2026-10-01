@@ -35,6 +35,19 @@ class AppState extends ChangeNotifier {
   /// Cores whose health checks fail right now, to log only the change.
   final _healthFailing = <String>{};
 
+  /// How many checks in a row each core has failed; the first failure is
+  /// often a blip, so the page speaks up from the second.
+  final _healthStreak = <String, int>{};
+
+  /// The connection is up, but the server does not answer: the check through
+  /// the core in use keeps failing (when others did no better, the engine
+  /// leaves the connection as it is, see the "no-better" event).
+  bool get serverUnresponsive => status.state == ConnState.connected && (_healthStreak[status.core] ?? 0) >= 2;
+
+  /// Feeds an event as if the service had sent it, for tests.
+  @visibleForTesting
+  void injectEvent(Event e) => _onEvent(e);
+
   AppState(
     this.backend, {
     Json? prefs,
@@ -361,7 +374,10 @@ class AppState extends ChangeNotifier {
     final live = !e.time.isBefore(_liveSince);
     switch (e.kind) {
       case 'state':
-        if (e.state == 'connecting') _healthFailing.clear();
+        if (e.state == 'connecting') {
+          _healthFailing.clear();
+          _healthStreak.clear();
+        }
         _log(
           e.time,
           'служба',
@@ -406,8 +422,11 @@ class AppState extends ChangeNotifier {
         // when it starts failing and when it works again.
         if (e.error.isNotEmpty) {
           if (_healthFailing.add(e.core)) _log(e.time, e.core, 'проверка связи не прошла: ${e.error}', LogLevel.warn);
+          final streak = _healthStreak[e.core] = (_healthStreak[e.core] ?? 0) + 1;
+          if (streak == 2) _notify();
         } else {
           if (_healthFailing.remove(e.core)) _log(e.time, e.core, 'проверка связи снова проходит', LogLevel.ok);
+          _healthStreak.remove(e.core);
           latencies.add(e.latencyMs);
           if (latencies.length > 60) latencies.removeAt(0);
           _notify();
