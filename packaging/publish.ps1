@@ -44,7 +44,12 @@ if (-not $Notes) { $Notes = ' ' }
 # release with Windows files may be marked so.
 $latest = if (Test-Path (Join-Path $dir 'latest.json')) { '--latest' } else { '--latest=false' }
 if ($Prerelease) { $latest = '--latest=false' }
-$pre = if ($Prerelease) { @('--prerelease') } else { @() }
-gh release create "v$Version" $files.FullName --repo $Repo --title $Version --notes $Notes $latest @pre
+# An array, not the string an if-expression would give: @string splats its characters.
+[string[]]$pre = if ($Prerelease) { '--prerelease' } else { @() }
+# Through a UTF-8 file: several lines or Cyrillic would be split or garbled
+# as an argument by Windows PowerShell.
+$notesFile = Join-Path $env:TEMP "coreshift-notes-$Version.md"
+[IO.File]::WriteAllText($notesFile, $Notes, (New-Object Text.UTF8Encoding $false))
+gh release create "v$Version" $files.FullName --repo $Repo --title $Version --notes-file $notesFile $latest @pre
 if ($LASTEXITCODE -ne 0) { throw "gh release create failed (exit code $LASTEXITCODE)" }
 Write-Host "Published v$Version to $Repo" -ForegroundColor Green
