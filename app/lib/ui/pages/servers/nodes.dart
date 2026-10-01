@@ -98,7 +98,7 @@ class _NodeTable extends StatelessWidget {
       );
     }
     return Padding(
-      padding: EdgeInsets.only(left: 12, right: 4, top: header ? 8 : 6, bottom: header ? 8 : 6),
+      padding: EdgeInsets.only(left: 12, right: 4, top: header ? 8 : 4, bottom: header ? 8 : 4),
       child: Row(
         children: [
           SizedBox(width: 28, child: radio),
@@ -112,8 +112,12 @@ class _NodeTable extends StatelessWidget {
             child: Align(alignment: Alignment.centerLeft, child: proto),
           ),
           SizedBox(width: 84, child: ping),
+          // As tall as the "Подключить" button that shows under the pointer:
+          // a row that grew when hovered would shift the rows below it and
+          // jerk the list as the pointer moves.
           SizedBox(
             width: 118,
+            height: header ? null : 28,
             child: Align(
               alignment: Alignment.centerRight,
               child: FittedBox(fit: BoxFit.scaleDown, child: action),

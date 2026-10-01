@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -103,18 +104,41 @@ void main() {
     await tester.pump(const Duration(seconds: 30));
   });
 
-  testWidgets('the ping says how far it is', (tester) async {
+  testWidgets('the ping test shows no progress strip', (tester) async {
     final state = await pumpApp(tester);
     await tester.tap(navTo('Серверы', phone: false));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
     expect(state.testingLatency, isTrue);
-    expect(state.latencyTotal, state.nodeCount);
-    expect(find.textContaining('Проверено'), findsOneWidget);
+    expect(find.textContaining('Проверено'), findsNothing);
+    expect(find.byType(LinearProgressIndicator), findsNWidgets(2), reason: 'only the traffic bars of the subscriptions');
     await tester.pump(const Duration(seconds: 30));
     expect(state.testingLatency, isFalse);
-    expect(state.latencyDone, state.latencyTotal);
-    expect(find.textContaining('Проверено'), findsNothing);
+  });
+
+  testWidgets('rows keep their place when the pointer moves over them', (tester) async {
+    await pumpApp(tester);
+    await tester.tap(navTo('Серверы', phone: false));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 30));
+    final before = [
+      for (final n in ['Rotterdam', 'Frankfurt', 'Tokyo']) tester.getTopLeft(find.text(n)).dy,
+    ];
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(mouse.removePointer);
+    // Over a row that is not the selected one, which gets a button then.
+    await mouse.addPointer(location: tester.getCenter(find.text('Rotterdam')));
+    await mouse.moveTo(tester.getCenter(find.text('Rotterdam')));
+    await tester.pump();
+    expect(find.text('Подключить'), findsNWidgets(2), reason: 'the selected row and the one under the pointer');
+    expect([
+      for (final n in ['Rotterdam', 'Frankfurt', 'Tokyo']) tester.getTopLeft(find.text(n)).dy,
+    ], before);
+    await mouse.moveTo(tester.getCenter(find.text('Tokyo')));
+    await tester.pump();
+    expect([
+      for (final n in ['Rotterdam', 'Frankfurt', 'Tokyo']) tester.getTopLeft(find.text(n)).dy,
+    ], before);
   });
 
   testWidgets('a phone swipes a server to connect it', (tester) async {
