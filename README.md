@@ -51,4 +51,4 @@ powershell -ExecutionPolicy Bypass -File packaging\android\build.ps1        # AP
 powershell -ExecutionPolicy Bypass -File packaging\android\build.ps1 -Abi x86_64   # APK для эмулятора
 ```
 
-Порядок выпуска (работа идёт в ветке `main_test`, релиз делается из `main`), подпись, токен и самообновление описаны в [packaging/README.md](packaging/README.md).
+Порядок выпуска (работа идёт в ветке `main`, релиз делается из `main`), подпись, токен и самообновление описаны в [packaging/README.md](packaging/README.md).
