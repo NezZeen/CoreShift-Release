@@ -21,7 +21,8 @@ Flutter стоит в `C:\src\flutter` (в PATH пользователя, но �
 
 - Ответы пользователю — на русском; в конце отчёта чек-лист «сделано / осталось».
 - Файлы с кириллицей править через Write/Edit: PowerShell 5 портит кодировку при Get-Content/Set-Content.
-- Работа идёт в ветке `main_test`; `main` — последний выпуск. Выпуск делается только по просьбе пользователя: перемотать `main` на `main_test`, `packaging\release.ps1 -Version X` на `main`, затем `packaging\publish.ps1`, потом перемотать `main_test`.
+- Работа идёт прямо в ветке `main`. Выпуск делается только по просьбе пользователя: `packaging\release.ps1 -Version X` на `main`, затем `packaging\publish.ps1`.
+- После любых изменений кода обновлять граф: `graphify update .`.
 - Версии: патч — исправления, минорная — новые возможности, мажорная — крупные обновления. Пользователь видит только версию, не номер сборки.
 - Старые релизы на GitHub и файлы в `dist/` не удалять и не переименовывать.
 - Тестовые сборки публикуются как пре-релизы; у каждого выпуска есть описание изменений на русском.
@@ -31,3 +32,13 @@ Flutter стоит в `C:\src\flutter` (в PATH пользователя, но �
 ## Проверка Android
 
 Эмулятор: AVD `coreshift-test`, запуск `emulator -avd coreshift-test`. ARM-трансляция эмулятора роняет Go-движок, поэтому для него нужна сборка `build.ps1 -Abi x86_64` (ядра в `engine/testdata/bin/android-x86_64`).
+
+## graphify
+
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+
+Rules:
+- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
+- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
+- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
