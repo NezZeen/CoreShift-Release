@@ -256,6 +256,8 @@ class _SubMenu extends StatelessWidget {
           case 'site':
             await Clipboard.setData(ClipboardData(text: sub.info.webPageUrl));
             state.toast('Адрес страницы скопирован');
+          case 'qr':
+            if (context.mounted) await showSubscriptionQr(context, sub);
           case 'delete':
             if (await _confirm(context, 'Удалить «${sub.displayName}»?', 'Серверы этой подписки пропадут из списка. Текущее подключение не прервётся.')) {
               state.removeSubscription(sub.id);
@@ -265,6 +267,7 @@ class _SubMenu extends StatelessWidget {
       itemBuilder: (context) => [
         if (!sub.isLocal) _item('refresh', Icons.refresh, 'Обновить'),
         _item('rename', Icons.edit_outlined, 'Переименовать'),
+        if (!sub.isLocal) _item('qr', Icons.qr_code_2, platform.isAndroid ? 'Показать QR-код' : 'QR-код для телефона'),
         if (sub.info.webPageUrl.isNotEmpty) ...[
           _item('page', Icons.open_in_new, 'Открыть страницу подписки'),
           _item('site', Icons.link, 'Копировать адрес страницы'),

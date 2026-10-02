@@ -19,6 +19,7 @@ part 'home/connect.dart';
 part 'home/cards.dart';
 part 'home/quick_pick.dart';
 part 'home/traffic.dart';
+part 'home/speed_test.dart';
 
 class HomePage extends StatelessWidget {
   final AppState state;
@@ -53,8 +54,10 @@ class HomePage extends StatelessWidget {
           if (!state.ipUnsupported) _IpCard(state: state),
           // Without a connection it has nothing to show.
           if (state.status.active) _SpeedCard(state: state),
+          if (!state.speedUnsupported) _SpeedTestCard(state: state),
           if (!state.statsUnsupported && state.statsLoaded) _TrafficCard(state: state),
         ];
+        final warning = state.subscriptionWarnings.isNotEmpty;
         final column = Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -63,27 +66,33 @@ class HomePage extends StatelessWidget {
         );
         return PageFrame(
           children: [
-            SizedBox(height: max(0, (c.maxHeight - (wide ? 600 : 780)) / 2)),
+            SizedBox(height: max(0, (c.maxHeight - (wide ? 720 : 900) - (warning ? 70 : 0)) / 2)),
             Center(
               child: ConstrainedBox(
                 constraints: BoxConstraints(maxWidth: wide ? 1060 : 600),
-                child: wide
-                    ? Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(flex: 5, child: _Hero(state: state)),
-                          const SizedBox(width: 16),
-                          Expanded(flex: 6, child: column),
-                        ],
-                      )
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          _Hero(state: state),
-                          if (cards.isNotEmpty) const SizedBox(height: 14),
-                          column,
-                        ],
-                      ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (warning) ...[_SubWarningBanner(state: state), const SizedBox(height: 14)],
+                    wide
+                        ? Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(flex: 5, child: _Hero(state: state)),
+                              const SizedBox(width: 16),
+                              Expanded(flex: 6, child: column),
+                            ],
+                          )
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _Hero(state: state),
+                              if (cards.isNotEmpty) const SizedBox(height: 14),
+                              column,
+                            ],
+                          ),
+                  ],
+                ),
               ),
             ),
           ],

@@ -55,6 +55,27 @@ Source: "{#Stage}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs crea
 Root: HKLM; Subkey: "Software\CoreShift"; ValueType: string; ValueName: "Version"; ValueData: "{#AppNumber}"; Flags: uninsdeletekey
 Root: HKLM; Subkey: "Software\CoreShift"; ValueType: string; ValueName: "Label"; ValueData: "{#AppLabel}"
 Root: HKLM; Subkey: "Software\CoreShift"; ValueType: string; ValueName: "Commit"; ValueData: "{#AppCommit}"
+; coreshift:// links, which subscription panels' "add to app" buttons open.
+Root: HKLM; Subkey: "Software\Classes\coreshift"; ValueType: string; ValueName: ""; ValueData: "URL:CoreShift"; Flags: uninsdeletekey
+Root: HKLM; Subkey: "Software\Classes\coreshift"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
+Root: HKLM; Subkey: "Software\Classes\coreshift\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: """{app}\coreshift.exe"",0"
+Root: HKLM; Subkey: "Software\Classes\coreshift\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\coreshift.exe"" ""%1"""
+; The links of other clients, only where no program of their own takes them.
+Root: HKLM; Subkey: "Software\Classes\happ"; ValueType: string; ValueName: ""; ValueData: "URL:CoreShift"; Flags: uninsdeletekey; Check: SchemeFree('happ')
+Root: HKLM; Subkey: "Software\Classes\happ"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""; Check: SchemeFree('happ')
+Root: HKLM; Subkey: "Software\Classes\happ\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\coreshift.exe"" ""%1"""; Check: SchemeFree('happ')
+Root: HKLM; Subkey: "Software\Classes\hiddify"; ValueType: string; ValueName: ""; ValueData: "URL:CoreShift"; Flags: uninsdeletekey; Check: SchemeFree('hiddify')
+Root: HKLM; Subkey: "Software\Classes\hiddify"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""; Check: SchemeFree('hiddify')
+Root: HKLM; Subkey: "Software\Classes\hiddify\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\coreshift.exe"" ""%1"""; Check: SchemeFree('hiddify')
+Root: HKLM; Subkey: "Software\Classes\clash"; ValueType: string; ValueName: ""; ValueData: "URL:CoreShift"; Flags: uninsdeletekey; Check: SchemeFree('clash')
+Root: HKLM; Subkey: "Software\Classes\clash"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""; Check: SchemeFree('clash')
+Root: HKLM; Subkey: "Software\Classes\clash\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\coreshift.exe"" ""%1"""; Check: SchemeFree('clash')
+Root: HKLM; Subkey: "Software\Classes\sing-box"; ValueType: string; ValueName: ""; ValueData: "URL:CoreShift"; Flags: uninsdeletekey; Check: SchemeFree('sing-box')
+Root: HKLM; Subkey: "Software\Classes\sing-box"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""; Check: SchemeFree('sing-box')
+Root: HKLM; Subkey: "Software\Classes\sing-box\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\coreshift.exe"" ""%1"""; Check: SchemeFree('sing-box')
+Root: HKLM; Subkey: "Software\Classes\v2raytun"; ValueType: string; ValueName: ""; ValueData: "URL:CoreShift"; Flags: uninsdeletekey; Check: SchemeFree('v2raytun')
+Root: HKLM; Subkey: "Software\Classes\v2raytun"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""; Check: SchemeFree('v2raytun')
+Root: HKLM; Subkey: "Software\Classes\v2raytun\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\coreshift.exe"" ""%1"""; Check: SchemeFree('v2raytun')
 
 [UninstallDelete]
 ; Core updates leave the replaced versions (*.old) next to the cores.
@@ -106,6 +127,16 @@ begin
       Exit;
     end;
   end;
+end;
+
+// Whether CoreShift may take another client's links: no program handles
+// them, or CoreShift already does (an earlier install, maybe elsewhere).
+function SchemeFree(Scheme: String): Boolean;
+var
+  Cmd: String;
+begin
+  Result := not RegKeyExists(HKCR, Scheme) or
+    (RegQueryStringValue(HKCR, Scheme + '\shell\open\command', '', Cmd) and (Pos('coreshift.exe', Lowercase(Cmd)) > 0));
 end;
 
 function InitializeSetup: Boolean;

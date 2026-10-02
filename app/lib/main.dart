@@ -20,17 +20,19 @@ Future<void> main(List<String> args) async {
   if (!demo) await platform.initPlatform();
   final prefs = await platform.loadPrefs();
   final Backend backend = demo ? DemoBackend() : platform.createBackend();
-  runApp(
-    CoreShiftApp(
-      state: AppState(
-        backend,
-        prefs: prefs,
-        savePrefs: platform.savePrefs,
-        daemonStarter: demo ? null : platform.daemonStarter,
-        autostartSetter: demo ? null : platform.autostartSetter,
-      )..start(),
-    ),
-  );
+  final state = AppState(
+    backend,
+    prefs: prefs,
+    savePrefs: platform.savePrefs,
+    daemonStarter: demo ? null : platform.daemonStarter,
+    autostartSetter: demo ? null : platform.autostartSetter,
+  )..start();
+  // Links from a panel's "add to app" button: the one CoreShift was opened
+  // with, and those opened while it runs.
+  platform.onLink((link) => state.offerImport(link, ImportFrom.link));
+  final link = await platform.initialLink(args);
+  if (link != null) state.offerImport(link, ImportFrom.link);
+  runApp(CoreShiftApp(state: state));
 }
 
 class CoreShiftApp extends StatefulWidget {

@@ -68,6 +68,54 @@ Future<Uint8List?> appIcon(String package) async {
   }
 }
 
+/// On Windows the running app hears of links opened later through this
+/// channel (windows/runner: a second start hands its link over).
+const _desktop = MethodChannel('coreshift/desktop');
+
+/// The link CoreShift was opened with (coreshift://…, a panel's button),
+/// from the command line or Android's intent; null when there is none.
+Future<String?> initialLink(List<String> args) async {
+  if (Platform.isAndroid) {
+    try {
+      return await _android.invokeMethod<String>('initialLink');
+    } catch (_) {
+      return null;
+    }
+  }
+  return args.where((a) => a.contains('://')).firstOrNull;
+}
+
+/// Calls [handler] with each link opened while the app runs.
+void onLink(void Function(String link) handler) {
+  final channel = Platform.isAndroid ? _android : (Platform.isWindows ? _desktop : null);
+  channel?.setMethodCallHandler((call) async {
+    if (call.method == 'openLink' && call.arguments is String) handler(call.arguments as String);
+  });
+}
+
+/// Whether the phone can scan a QR code for the app.
+bool get canScanQr => Platform.isAndroid;
+
+/// Scans a QR code with Google's scanner (Play services); returns its text,
+/// or null when the user went back. Throws when the scanner is missing.
+Future<String?> scanQr() => _android.invokeMethod<String>('scanQr');
+
+/// What to tell the user when [scanQr] failed with [e].
+String scanQrError(Object e) => e is PlatformException && e.code == 'unavailable'
+    ? 'Сканер QR-кодов ещё загружается сервисами Google Play. Проверьте интернет и попробуйте через минуту'
+    : 'Сканер QR-кодов недоступен: на телефоне нет сервисов Google Play';
+
+/// Shows an Android notification; on the desktop the tray does (see
+/// desktop_io.dart), and only while the window is out of sight.
+Future<void> notify(String title, String body) async {
+  if (!Platform.isAndroid) return;
+  try {
+    await _android.invokeMethod<void>('notify', {'title': title, 'body': body});
+  } catch (_) {
+    // A notification is a courtesy; the app shows the same itself.
+  }
+}
+
 /// Opens a link in the browser or the app that handles it (Telegram for
 /// t.me); false when nothing could. The caller checks the link.
 Future<bool> openUrl(String url) async {

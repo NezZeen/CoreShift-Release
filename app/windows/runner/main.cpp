@@ -2,15 +2,34 @@
 #include <flutter/flutter_view_controller.h>
 #include <windows.h>
 
+#include <string>
+
 #include "flutter_window.h"
 #include "utils.h"
 
+// The link CoreShift was started with, if any: a panel's "add to app"
+// button opens coreshift://… (registered by the installer).
+static std::string LinkArgument() {
+  for (const auto &arg : GetCommandLineArguments()) {
+    if (arg.find("://") != std::string::npos) {
+      return arg;
+    }
+  }
+  return "";
+}
+
 // Brings forward the window of a CoreShift that is already running, which
-// may be hidden in the tray. Returns false if there is none.
-static bool ActivateRunningInstance() {
+// may be hidden in the tray, and hands it |link| if there is one. Returns
+// false if there is no such window.
+static bool ActivateRunningInstance(const std::string &link) {
   HWND window = ::FindWindow(L"FLUTTER_RUNNER_WIN32_WINDOW", L"CoreShift");
   if (window == nullptr) {
     return false;
+  }
+  if (!link.empty()) {
+    COPYDATASTRUCT data{kOpenLinkMessage, static_cast<DWORD>(link.size()),
+                        const_cast<char *>(link.data())};
+    ::SendMessage(window, WM_COPYDATA, 0, reinterpret_cast<LPARAM>(&data));
   }
   ::ShowWindow(window, ::IsIconic(window) ? SW_RESTORE : SW_SHOW);
   ::SetForegroundWindow(window);
@@ -28,7 +47,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
       return EXIT_SUCCESS;
     }
     // The first instance may still be creating its window.
-    for (int i = 0; i < 20 && !ActivateRunningInstance(); i++) {
+    const std::string link = LinkArgument();
+    for (int i = 0; i < 20 && !ActivateRunningInstance(link); i++) {
       ::Sleep(100);
     }
     return EXIT_SUCCESS;

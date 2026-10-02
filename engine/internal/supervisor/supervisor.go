@@ -104,6 +104,8 @@ type Config struct {
 	// the primary again. Zero disables returning.
 	ReturnToPrimaryAfter time.Duration
 	LogLevel             string
+	// Fragment splits the TLS ClientHello to the server (core.Options).
+	Fragment bool
 
 	// OnEvent receives every event. It is called synchronously from the
 	// supervisor's goroutine and must not block.
@@ -263,6 +265,7 @@ type Policy struct {
 	ManualCore           core.Kind
 	Health               Health
 	ReturnToPrimaryAfter time.Duration
+	Fragment             bool
 }
 
 // SetPolicy replaces the swap policy. It stops any running connection, so
@@ -273,7 +276,7 @@ func (s *Supervisor) SetPolicy(p Policy) {
 	defer s.mu.Unlock()
 	c := s.cfg
 	c.Priority, c.Mode, c.ManualCore = slices.Clone(p.Priority), p.Mode, p.ManualCore
-	c.Health, c.ReturnToPrimaryAfter = p.Health, p.ReturnToPrimaryAfter
+	c.Health, c.ReturnToPrimaryAfter, c.Fragment = p.Health, p.ReturnToPrimaryAfter, p.Fragment
 	s.cfg = c.withDefaults()
 }
 
@@ -586,7 +589,7 @@ func (s *Supervisor) launch(ctx context.Context, k core.Kind, n node.Node, serve
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
-	o := core.Options{Listen: listen, LogLevel: s.cfg.LogLevel, ServerAddr: serverAddr}
+	o := core.Options{Listen: listen, LogLevel: s.cfg.LogLevel, ServerAddr: serverAddr, Fragment: s.cfg.Fragment}
 	if !probe {
 		// Traffic counters for the UI. Losing them is not worth failing
 		// the core over, so any trouble here just leaves them off.
