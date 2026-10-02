@@ -59,6 +59,10 @@ type Options struct {
 	// supports a secret: the Clash API could otherwise change the core.
 	Stats       netip.AddrPort
 	StatsSecret string
+	// Fragment splits the TLS ClientHello of the connection to the server
+	// into pieces, which gets past DPI that blocks by the name it carries.
+	// Xray and sing-box support it; mihomo connects without it.
+	Fragment bool
 }
 
 // DefaultListen is where the active core accepts traffic from the TUN layer.

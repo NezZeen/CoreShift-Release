@@ -51,11 +51,13 @@ class _CompactHome extends StatelessWidget {
           child: Center(child: line),
         ),
         const SizedBox(height: 22),
+        if (state.subscriptionWarnings.isNotEmpty) ...[_SubWarningBanner(state: state), const SizedBox(height: 10)],
         if (state.serverUnresponsive) ...[_UnresponsiveBanner(state: state), const SizedBox(height: 10)],
         if (st.settingsPending) ...[_PendingBanner(state: state), const SizedBox(height: 10)],
         _NodePick(state: state),
         _BackupBanner(state: state),
         if (st.state == ConnState.connected) ...[const SizedBox(height: 10), _CompactSpeed(state: state)],
+        if (!state.speedUnsupported) ...[const SizedBox(height: 10), _CompactSpeedTest(state: state)],
         if (!state.statsUnsupported && state.statsLoaded) _TrafficCard(state: state),
       ],
     );

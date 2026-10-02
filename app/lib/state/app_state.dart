@@ -1,21 +1,29 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 import '../api/backend.dart';
 import '../api/demo_backend.dart';
 import '../api/models.dart';
 import '../platform/platform.dart' as platform;
 import 'errors.dart';
+import 'import_link.dart';
 import 'leak.dart';
 import '../version.dart';
+
+export 'import_link.dart' show ImportLink;
 
 part 'app_state/models.dart';
 part 'app_state/actions.dart';
 part 'app_state/settings_diff.dart';
 part 'app_state/servers.dart';
 part 'app_state/traffic.dart';
+part 'app_state/speed_test.dart';
+part 'app_state/imports.dart';
+part 'app_state/sub_alerts.dart';
 
 /// Everything the UI shows, kept in sync with the daemon through its event
 /// stream. Widgets listen to it and call its actions.
@@ -131,6 +139,20 @@ class AppState extends ChangeNotifier {
   String leakError = '';
   bool leakTesting = false;
 
+  /// The last speed test, or the one running (speed_test.dart).
+  SpeedTestState speedTest = const SpeedTestState();
+
+  /// The service is older than the speed test.
+  bool speedUnsupported = false;
+
+  /// A subscription to add that came from outside the add dialog, waiting
+  /// for the user to agree (imports.dart).
+  ImportLink? pendingImport;
+  ImportFrom importFrom = ImportFrom.link;
+
+  /// Looks at the subscriptions' terms now and then (sub_alerts.dart).
+  Timer? _subTimer;
+
   final _alerts = StreamController<Alert>.broadcast();
 
   /// Core swaps and dropped connections, for system notifications.
@@ -171,6 +193,8 @@ class AppState extends ChangeNotifier {
   void start() {
     _noteUpdate();
     _connectDaemon();
+    // A subscription runs out while the app runs, not only on a refresh.
+    _subTimer = Timer.periodic(const Duration(hours: 1), (_) => checkSubscriptions());
   }
 
   /// Tells the user when this version differs from the one that ran last:
@@ -261,6 +285,7 @@ class AppState extends ChangeNotifier {
     subscriptions = _subs(results[3]);
     selection = Selection.fromJson(results[4] as Json);
     loaded = true;
+    checkSubscriptions();
     // Optional, so it does not hold up the rest.
     unawaited(_loadAppUpdate().then((_) => _notify()));
   }
@@ -371,6 +396,7 @@ class AppState extends ChangeNotifier {
         final r = await Future.wait([backend.call('GET', '/v1/subscriptions'), backend.call('GET', '/v1/selection')]);
         subscriptions = _subs(r[0]);
         selection = Selection.fromJson(r[1] as Json);
+        checkSubscriptions();
       }
       _notify();
     } catch (_) {}
@@ -492,6 +518,8 @@ class AppState extends ChangeNotifier {
           if (latencyDone < latencyTotal) latencyDone++;
         }
         _notify();
+      case 'speedtest':
+        _onSpeedEvent(e);
       case 'rules':
         if (e.error.isNotEmpty) {
           _log(e.time, 'правила', e.error, LogLevel.warn);
@@ -729,6 +757,7 @@ class AppState extends ChangeNotifier {
     _retry?.cancel();
     _statusDebounce?.cancel();
     _statsTimer?.cancel();
+    _subTimer?.cancel();
     super.dispose();
   }
 }

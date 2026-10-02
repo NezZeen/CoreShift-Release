@@ -73,9 +73,14 @@ class SettingsPage extends StatelessWidget {
           if (desktop.canNotify)
             SettingRow(
               title: 'Уведомления',
-              description: 'Сообщать о смене ядра и обрывах связи, когда окно CoreShift свёрнуто или в трее',
+              description: 'Сообщать о смене ядра, обрывах связи и окончании подписки, когда окно CoreShift свёрнуто или в трее',
               trailing: Switch(value: state.systemNotifications, onChanged: (v) => state.setPref('notifications', v)),
             ),
+          SettingRow(
+            title: 'Ссылки из буфера обмена',
+            description: 'Предлагать добавить подписку, когда скопирована ссылка на неё',
+            trailing: Switch(value: state.clipboardImport, onChanged: (v) => state.setPref('clipboard_import', v)),
+          ),
           SettingRow(
             title: 'Тема',
             trailing: Seg<ThemeMode>(
@@ -90,7 +95,7 @@ class SettingsPage extends StatelessWidget {
 
     // On Android with every app through the VPN the panel may have nothing
     // to offer: then it is left out.
-    final hasNetwork = !platform.isAndroid || !state.setting('tun', true) || state.hasSetting('ipv6');
+    final hasNetwork = !platform.isAndroid || !state.setting('tun', true) || state.hasSetting('ipv6') || state.hasSetting('cores.fragment');
     final network = Panel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -113,6 +118,15 @@ class SettingsPage extends StatelessWidget {
               title: 'IPv6 через туннель',
               description: 'IPv6-трафик тоже идёт через VPN, а не мимо него. Выключите, если какие-то сайты перестали открываться',
               trailing: _switch('ipv6'),
+            ),
+          if (state.hasSetting('cores.fragment'))
+            SettingRow(
+              first: platform.isAndroid && state.setting('tun', true) && !state.hasSetting('ipv6'),
+              title: 'Обход блокировок (DPI)',
+              description:
+                  'Делит начало защищённого соединения с сервером на части, чтобы провайдер не узнал его. '
+                  'Включите, если VPN то работает, то нет. Работает в Xray и sing-box, mihomo подключается без этого',
+              trailing: _switch('cores.fragment'),
             ),
         ],
       ),

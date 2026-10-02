@@ -3,6 +3,7 @@ package core
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"coreshift/engine/internal/node"
@@ -56,6 +57,17 @@ func (x xray) Render(n *node.Node, o Options) ([]byte, error) {
 			"settings": obj{"auth": "noauth", "udp": true},
 		}},
 		"outbounds": []any{out, obj{"tag": "direct", "protocol": "freedom"}},
+	}
+	if o.Fragment && xrayFragments(n) {
+		// The proxy dials the server through a freedom outbound that cuts
+		// the TLS ClientHello into records sent a moment apart.
+		out["streamSettings"].(obj)["sockopt"] = obj{"dialerProxy": "fragment"}
+		cfg["outbounds"] = append(cfg["outbounds"].([]any), obj{
+			"tag":            "fragment",
+			"protocol":       "freedom",
+			"settings":       obj{"fragment": obj{"packets": "tlshello", "length": "100-200", "interval": "10-20"}},
+			"streamSettings": obj{"sockopt": obj{"tcpNoDelay": true}},
+		})
 	}
 	if o.Stats.IsValid() {
 		cfg["stats"] = obj{}
@@ -211,6 +223,15 @@ func xrayStream(n *node.Node, sni string) (obj, error) {
 		s["tlsSettings"] = ts
 	}
 	return s, nil
+}
+
+// xrayFragments reports whether n has a TLS ClientHello over TCP to split:
+// not WireGuard, nor plain connections, nor XHTTP over HTTP/3 (QUIC).
+func xrayFragments(n *node.Node) bool {
+	if n.Protocol == node.WireGuard || n.TLS == nil {
+		return false
+	}
+	return n.Transport.Network != node.NetXHTTP || !slices.Contains(n.TLS.ALPN, "h3")
 }
 
 func withHost(o obj, host string) obj {

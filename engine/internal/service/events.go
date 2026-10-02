@@ -18,7 +18,8 @@ type Event struct {
 	// options for the next connection changed; "ping" for the connected
 	// server's latency (LatencyMS and Method, or Error), every few seconds;
 	// "traffic" every second while connected (Up, Down and rates); "cores"
-	// when a core was updated (Core, Line is the new version).
+	// when a core was updated (Core, Line is the new version); "speedtest"
+	// while a speed test runs (see Service.SpeedTest).
 	Kind      string `json:"kind"`
 	State     State  `json:"state,omitempty"`
 	Core      string `json:"core,omitempty"`

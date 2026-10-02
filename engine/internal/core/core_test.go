@@ -184,6 +184,33 @@ func TestMihomoRender(t *testing.T) {
 	}
 }
 
+func TestFragment(t *testing.T) {
+	fx := fixtures(t)
+	on := Options{Fragment: true}
+
+	x := decodeJSON(t, render(t, xray{}, fx["vless-reality-vision"], on))
+	if dig(x, "outbounds", 0, "streamSettings", "sockopt", "dialerProxy") != "fragment" ||
+		dig(x, "outbounds", 2, "tag") != "fragment" || dig(x, "outbounds", 2, "settings", "fragment", "packets") != "tlshello" {
+		t.Errorf("xray outbounds = %v", dig(x, "outbounds"))
+	}
+	// Without TLS there is no ClientHello to split.
+	if wg := decodeJSON(t, render(t, xray{}, fx["wireguard"], on)); len(dig(wg, "outbounds").([]any)) != 2 {
+		t.Errorf("xray wireguard outbounds = %v", dig(wg, "outbounds"))
+	}
+	if off := decodeJSON(t, render(t, xray{}, fx["vless-reality-vision"], Options{})); dig(off, "outbounds", 0, "streamSettings", "sockopt") != nil {
+		t.Errorf("xray fragments without being asked: %v", dig(off, "outbounds", 0))
+	}
+
+	s := decodeJSON(t, render(t, singBox{}, fx["vless-reality-vision"], on))
+	if dig(s, "outbounds", 0, "tls", "fragment") != true {
+		t.Errorf("sing-box tls = %v", dig(s, "outbounds", 0, "tls"))
+	}
+	// Hysteria2's TLS runs inside QUIC.
+	if hy2 := decodeJSON(t, render(t, singBox{}, fx["hy2"], on)); dig(hy2, "outbounds", 0, "tls", "fragment") != nil {
+		t.Errorf("sing-box hysteria2 tls = %v", dig(hy2, "outbounds", 0, "tls"))
+	}
+}
+
 func TestServerAddrKeepsHostnameAsSNI(t *testing.T) {
 	n := fixtures(t)["vless-ws-tls-ed"] // server is edge.example.com
 	n.TLS.ServerName = ""               // so SNI must fall back to it

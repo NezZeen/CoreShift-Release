@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../api/models.dart';
+import '../../platform/platform.dart' as platform;
 import '../../state/app_state.dart';
 import '../../state/errors.dart';
+import '../../state/import_link.dart';
 import '../countries.dart';
+import '../qr.dart';
 import '../support.dart';
 import '../theme.dart';
 import '../widgets.dart';

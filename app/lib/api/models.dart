@@ -402,6 +402,27 @@ class TrafficDay {
   int get total => up + down;
 }
 
+/// A speed test of the connection (POST /v1/speedtest): through the VPN
+/// server while connected, else of the device's own. Rates are bytes per
+/// second.
+class SpeedResult {
+  final int downloadBps;
+  final int uploadBps;
+  final int latencyMs;
+  final bool vpn;
+  final String server;
+
+  const SpeedResult({this.downloadBps = 0, this.uploadBps = 0, this.latencyMs = 0, this.vpn = false, this.server = ''});
+
+  factory SpeedResult.fromJson(Json j) => SpeedResult(
+    downloadBps: (j['download_bps'] as num?)?.toInt() ?? 0,
+    uploadBps: (j['upload_bps'] as num?)?.toInt() ?? 0,
+    latencyMs: (j['latency_ms'] as num?)?.toInt() ?? 0,
+    vpn: j['vpn'] == true,
+    server: j['server'] ?? '',
+  );
+}
+
 /// A program running on the computer (GET /v1/apps).
 class RunningApp {
   final String name;

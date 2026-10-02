@@ -7,10 +7,13 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"coreshift/engine/internal/node"
 )
 
 // TestCoresAcceptConfigs validates every fixture a core claims to support
-// with the real binary. Point the variables at the executables to run it:
+// with the real binary, plain and with Fragment. Point the variables at the
+// executables to run it:
 //
 //	XRAY_BIN, SINGBOX_BIN, MIHOMO_BIN
 //
@@ -41,25 +44,29 @@ func TestCoresAcceptConfigs(t *testing.T) {
 				if a.Supports(&n) != nil {
 					continue
 				}
-				t.Run(name, func(t *testing.T) {
-					dir := t.TempDir()
-					cfg, err := a.Render(&n, Options{})
-					if err != nil {
-						t.Fatal(err)
-					}
-					path := filepath.Join(dir, a.ConfigName())
-					if err := os.WriteFile(path, cfg, 0o600); err != nil {
-						t.Fatal(err)
-					}
-					out, err := exec.Command(bin, a.CheckArgs(path, dir)...).CombinedOutput()
-					if err != nil {
-						t.Fatalf("check failed: %v\n%s\nconfig:\n%s", err, out, cfg)
-					}
-					if strings.Contains(strings.ToLower(string(out)), "deprecat") {
-						t.Errorf("deprecation warning:\n%s", out)
-					}
-				})
+				t.Run(name, func(t *testing.T) { checkConfig(t, a, bin, n, Options{}) })
+				t.Run(name+"+fragment", func(t *testing.T) { checkConfig(t, a, bin, n, Options{Fragment: true}) })
 			}
 		})
+	}
+}
+
+// checkConfig has the core itself validate its configuration for n.
+func checkConfig(t *testing.T, a Adapter, bin string, n node.Node, o Options) {
+	dir := t.TempDir()
+	cfg, err := a.Render(&n, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, a.ConfigName())
+	if err := os.WriteFile(path, cfg, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, err := exec.Command(bin, a.CheckArgs(path, dir)...).CombinedOutput()
+	if err != nil {
+		t.Fatalf("check failed: %v\n%s\nconfig:\n%s", err, out, cfg)
+	}
+	if strings.Contains(strings.ToLower(string(out)), "deprecat") {
+		t.Errorf("deprecation warning:\n%s", out)
 	}
 }
