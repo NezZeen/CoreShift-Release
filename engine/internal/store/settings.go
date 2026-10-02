@@ -55,6 +55,9 @@ type CoreSettings struct {
 	// core started) or "proxy" (a request through the node, which also
 	// shows whether it works).
 	LatencyTest string `json:"latency_test"`
+	// Fragment splits the TLS ClientHello to the server to get past DPI
+	// (core.Options.Fragment).
+	Fragment bool `json:"fragment"`
 }
 
 type DNSSettings struct {

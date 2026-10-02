@@ -31,6 +31,7 @@ class DemoBackend implements Backend {
       'max_latency_ms': 0,
       'return_after_min': 10,
       'latency_test': 'ping',
+      'fragment': false,
     },
     'dns': {'remote': 'https://1.1.1.1/dns-query', 'direct': '', 'fake_ip': true, 'block_browser_doh': false, 'block_dot': false, 'strict': true},
     'routing': {
@@ -307,6 +308,28 @@ class DemoBackend implements Backend {
     if (!silent) _emit({'kind': 'state', 'state': 'idle'});
   }
 
+  /// A speed test that ramps up as a real one does, a little slower
+  /// through the "VPN".
+  Future<Json> _speedTest() async {
+    final vpn = _status['state'] == 'connected';
+    final scale = vpn ? .7 : 1.0;
+    _emit({'kind': 'speedtest', 'reason': 'latency', 'latency_ms': vpn ? 48 : 12});
+    var down = 0, up = 0;
+    for (var i = 1; i <= 8; i++) {
+      await Future.delayed(const Duration(milliseconds: 250));
+      down = (11.5e6 * scale * (1 - 1 / (i + 1))).round();
+      _emit({'kind': 'speedtest', 'reason': 'download', 'down_rate': down});
+    }
+    for (var i = 1; i <= 6; i++) {
+      await Future.delayed(const Duration(milliseconds: 250));
+      up = (5.2e6 * scale * (1 - 1 / (i + 1))).round();
+      _emit({'kind': 'speedtest', 'reason': 'upload', 'up_rate': up});
+    }
+    final res = {'download_bps': down, 'upload_bps': up, 'latency_ms': vpn ? 48 : 12, 'vpn': vpn, if (vpn) 'server': _status['node']};
+    _emit({'kind': 'speedtest', 'reason': 'done', 'down_rate': down, 'up_rate': up});
+    return res;
+  }
+
   Json _subBy(String id) => _subs.firstWhere((s) => s['id'] == id, orElse: () => throw const ApiError(404, 'no such subscription'));
 
   @override
@@ -350,6 +373,8 @@ class DemoBackend implements Backend {
         return _status['state'] == 'connected' ? {'ip': '203.0.113.7', 'country': 'DE', 'vpn': true} : {'ip': '198.51.100.20', 'country': 'RU', 'vpn': false};
       case 'GET /stats':
         return _stats(int.tryParse(Uri.parse(path).queryParameters['days'] ?? '') ?? 30);
+      case 'POST /speedtest':
+        return _speedTest();
       case 'POST /reconnect':
         if (_lastNode == null) throw const ApiError(502, 'nothing to reconnect');
         await _connect(_lastNode!);

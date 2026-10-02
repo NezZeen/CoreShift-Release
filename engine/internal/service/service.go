@@ -79,6 +79,7 @@ type Service struct {
 	apps    appWatch
 	stats   *trafficStats
 	fo      failover
+	speedMu sync.Mutex // one speed test at a time
 
 	op       sync.Mutex // serialises connect, disconnect and teardown
 	tun      TUNInstance
@@ -236,6 +237,7 @@ func New(cfg Config) (*Service, error) {
 		Listen:               cfg.Listen,
 		Health:               p.Health,
 		ReturnToPrimaryAfter: p.ReturnToPrimaryAfter,
+		Fragment:             p.Fragment,
 		OnEvent:              s.onSupervisorEvent,
 	})
 	if err != nil {

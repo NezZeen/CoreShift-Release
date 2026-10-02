@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -11,6 +13,7 @@ import 'pages/routing_page.dart';
 import 'pages/servers_page.dart';
 import 'pages/settings_page.dart';
 import 'countries.dart';
+import 'import_offer.dart';
 import 'theme.dart';
 import 'update_offer.dart';
 import 'widgets.dart';
@@ -61,8 +64,28 @@ class _ShellState extends State<Shell> {
   void initState() {
     super.initState();
     widget.state.addListener(_offerUpdate);
+    widget.state.addListener(_offerImport);
     _offerUpdate();
-    _lifecycle = AppLifecycleListener(onResume: widget.state.resumed);
+    _offerImport();
+    _lifecycle = AppLifecycleListener(
+      onResume: () {
+        widget.state.resumed();
+        _lookAtClipboard();
+      },
+    );
+  }
+
+  @override
+  void didUpdateWidget(Shell old) {
+    super.didUpdateWidget(old);
+    if (old.state == widget.state) return;
+    old.state
+      ..removeListener(_offerUpdate)
+      ..removeListener(_offerImport);
+    widget.state
+      ..addListener(_offerUpdate)
+      ..addListener(_offerImport);
+    _wasLoaded = false;
   }
 
   @override
@@ -70,7 +93,39 @@ class _ShellState extends State<Shell> {
     _lifecycle.dispose();
     _serverSearch.dispose();
     widget.state.removeListener(_offerUpdate);
+    widget.state.removeListener(_offerImport);
     super.dispose();
+  }
+
+  bool _importShown = false;
+  bool _wasLoaded = false;
+
+  /// A subscription from a link, the clipboard or a QR code is offered in a
+  /// window once the service answers; on the first load the clipboard is
+  /// looked at too.
+  void _offerImport() {
+    final s = widget.state;
+    if (s.loaded && s.online && !_wasLoaded) {
+      _wasLoaded = true;
+      _lookAtClipboard();
+    }
+    if (s.pendingImport == null || !s.loaded || !s.online || _importShown) return;
+    _importShown = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (mounted) await showImportOffer(context, s);
+      // Closed some other way, such as Android's back: not added.
+      if (s.pendingImport != null) s.dismissImport();
+      _importShown = false;
+    });
+  }
+
+  /// The clipboard, once the window is in front: Android lets an app read
+  /// it only then, a moment after it comes back.
+  void _lookAtClipboard() {
+    Timer(const Duration(milliseconds: 400), () {
+      if (!mounted || WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) return;
+      widget.state.checkClipboard();
+    });
   }
 
   /// A downloaded update is offered in a window, wherever the user is.

@@ -110,7 +110,7 @@ func (s *Supervisor) testCore(ctx context.Context, cfg Config, k core.Kind, n *n
 		return 0, err
 	}
 	defer os.RemoveAll(dir)
-	conf, err := a.Render(n, core.Options{Listen: listen, LogLevel: cfg.LogLevel, ServerAddr: serverAddr})
+	conf, err := a.Render(n, core.Options{Listen: listen, LogLevel: cfg.LogLevel, ServerAddr: serverAddr, Fragment: cfg.Fragment})
 	if err != nil {
 		return 0, err
 	}

@@ -9,6 +9,7 @@ import 'package:coreshift/state/app_state.dart';
 import 'package:coreshift/state/errors.dart';
 import 'package:coreshift/state/leak.dart';
 import 'package:coreshift/ui/pages/android_apps.dart';
+import 'package:coreshift/ui/qr.dart';
 import 'package:coreshift/ui/support.dart';
 import 'package:coreshift/ui/theme.dart';
 import 'package:coreshift/ui/widgets.dart';
@@ -951,6 +952,154 @@ void main() {
     expect(problems, isEmpty);
     expect(state.loaded, isTrue);
     await tester.pump(const Duration(seconds: 30));
+  });
+
+  testWidgets('the speed test shows its figures on the desktop and the phone', (tester) async {
+    for (final size in [const Size(1400, 900), const Size(390, 844)]) {
+      final state = await pumpApp(tester, size: size);
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.textContaining('Скорость вашего интернета без VPN'), findsOneWidget, reason: '$size');
+      await tester.tap(find.text('Проверить'));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 250));
+      }
+      // Live: the download is measured.
+      expect(state.speedTest.running, isTrue);
+      expect(state.speedTest.phase, SpeedPhase.download);
+      expect(find.textContaining('Мбит/с'), findsWidgets);
+      expect(find.textContaining('Проверяем загрузку без VPN'), findsOneWidget);
+      for (var i = 0; i < 16; i++) {
+        await tester.pump(const Duration(milliseconds: 250));
+      }
+      expect(state.speedTest.phase, SpeedPhase.done);
+      expect(state.speedTest.downBps, greaterThan(state.speedTest.upBps));
+      expect(find.textContaining('без VPN, только что'), findsOneWidget, reason: '$size');
+      expect(find.text('Ещё раз'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pump(const Duration(seconds: 6));
+    }
+  });
+
+  testWidgets('a link from a panel or the clipboard is added only once the user agrees', (tester) async {
+    for (final size in [const Size(1400, 900), const Size(390, 844)]) {
+      final state = await pumpApp(tester, size: size);
+      const url = 'https://sub.example.com/AbCdEf1234567890';
+      state.offerImport('happ://add/$url#Дом', ImportFrom.link);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('Добавить подписку?'), findsOneWidget, reason: '$size');
+      expect(find.text('Дом'), findsOneWidget);
+      expect(find.text('sub.example.com'), findsOneWidget);
+      // The link, with its token, is not shown.
+      expect(find.textContaining('AbCdEf'), findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.text('Добавить').last);
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 200));
+      }
+      expect(find.text('Добавить подписку?'), findsNothing);
+      expect(state.subscriptions.where((s) => s.url == url), hasLength(1));
+
+      // Again: already there, nothing to ask.
+      state.offerImport(url, ImportFrom.link);
+      expect(state.pendingImport, isNull);
+      expect(state.toasts.last.message, 'Эта подписка уже добавлена');
+
+      // The clipboard: only links that look like subscriptions, each once.
+      state.offerImport('https://www.youtube.com/watch?v=x', ImportFrom.clipboard);
+      expect(state.pendingImport, isNull);
+      state.offerImport('https://panel.example.org/sub/7f3c9a1e', ImportFrom.clipboard);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('В буфере обмена ссылка на подписку.'), findsOneWidget);
+      await tester.tap(find.text('Не добавлять'));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(state.pendingImport, isNull);
+      state.offerImport('https://panel.example.org/sub/7f3c9a1e', ImportFrom.clipboard);
+      expect(state.pendingImport, isNull);
+      expect(state.prefs['clipboard_offered'], isNot(contains('example')));
+      await tester.pump(const Duration(seconds: 6));
+    }
+  });
+
+  testWidgets('a subscription shows as a QR code on the desktop and the phone', (tester) async {
+    for (final size in [const Size(1400, 900), const Size(390, 844)]) {
+      await pumpApp(tester, size: size);
+      final nav = size.width > 600 ? find.text('Серверы').first : find.descendant(of: find.byType(NavigationBar), matching: find.text('Серверы'));
+      await tester.tap(nav);
+      await tester.pump();
+      await tester.tap(find.byTooltip('Действия').first);
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      await tester.tap(find.text('QR-код для телефона'));
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(find.byType(QrView), findsOneWidget, reason: '$size');
+      expect(find.textContaining('ключом доступа'), findsOneWidget);
+      expect(tester.takeException(), isNull, reason: '$size');
+      await tester.tap(find.text('Готово'));
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(find.byType(QrView), findsNothing);
+      // Let the ping test the page started finish.
+      await tester.pump(const Duration(seconds: 30));
+    }
+  });
+
+  testWidgets('a subscription running out is shown and notified once per step', (tester) async {
+    for (final size in [const Size(1400, 900), const Size(390, 844)]) {
+      final state = await pumpApp(tester, size: size);
+      final base = state.subscriptions.first;
+      Subscription withInfo(SubInfo info) => Subscription(
+        id: base.id,
+        name: base.name,
+        displayName: base.displayName,
+        url: base.url,
+        userAgent: '',
+        info: info,
+        format: base.format,
+        nodes: base.nodes,
+        skipped: const [],
+      );
+      state.subscriptions = [
+        withInfo(
+          SubInfo(
+            expire: DateTime.now().add(const Duration(hours: 10)),
+            total: 100 << 30,
+            upload: 1 << 30,
+            download: 95 << 30,
+            webPageUrl: 'https://example.com/me',
+          ),
+        ),
+      ];
+      state.checkSubscriptions();
+      await tester.pump();
+      final warnings = state.subscriptionWarnings;
+      expect(warnings.map((w) => w.level), [2, 1]);
+      expect(state.toasts.map((t) => t.message), containsAll([warnings[0].title, warnings[1].title]));
+      // The most urgent one is on the home page, with the way to renew.
+      expect(find.text(warnings[0].title), findsWidgets);
+      expect(find.text('Продлить'), findsOneWidget);
+      expect(tester.takeException(), isNull, reason: '$size');
+
+      // Checked again: nothing new to say.
+      state.toasts.clear();
+      state.checkSubscriptions();
+      expect(state.toasts, isEmpty);
+      // Over: the next step is told.
+      state.subscriptions = [withInfo(SubInfo(expire: DateTime.now().subtract(const Duration(hours: 1))))];
+      state.checkSubscriptions();
+      expect(state.toasts.single.message, contains('закончилась'));
+      // Renewed: the warning and what was told go.
+      state.subscriptions = [withInfo(SubInfo(expire: DateTime.now().add(const Duration(days: 30))))];
+      state.checkSubscriptions();
+      expect(state.subscriptionWarnings, isEmpty);
+      expect(state.prefs['sub_warned'], isEmpty);
+      await tester.pump(const Duration(seconds: 6));
+    }
   });
 }
 

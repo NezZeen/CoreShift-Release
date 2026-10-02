@@ -44,6 +44,24 @@
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE_PREFERENCES"/>
             </intent-filter>
+            <!-- The "add to app" buttons of subscription panels: CoreShift's own
+                 links and the common clients' ones. Where another of these apps
+                 is installed, Android asks which one to open. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="coreshift"/>
+                <data android:scheme="happ"/>
+                <data android:scheme="v2rayng"/>
+                <data android:scheme="v2raytun"/>
+                <data android:scheme="hiddify"/>
+                <data android:scheme="streisand"/>
+                <data android:scheme="sing-box"/>
+                <data android:scheme="clash"/>
+                <data android:scheme="clashmeta"/>
+                <data android:scheme="karing"/>
+            </intent-filter>
         </activity>
 
         <service

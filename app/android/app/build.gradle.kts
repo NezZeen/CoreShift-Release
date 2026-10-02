@@ -64,6 +64,7 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 }
@@ -81,4 +82,7 @@ flutter {
 dependencies {
     // The Go engine, bound by gomobile (packaging/android/build.ps1).
     implementation(files("libs/coreshift-engine.aar"))
+    // Google's QR scanner: Play services show the camera, so the app needs
+    // no camera permission (MainActivity.scanQr).
+    implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
 }

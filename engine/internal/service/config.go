@@ -45,6 +45,8 @@ type Options struct {
 	ReturnToPrimaryAfter time.Duration
 	// LatencyTest is store.LatencyPing (the default) or store.LatencyProxy.
 	LatencyTest string
+	// Fragment splits the TLS ClientHello to get past DPI.
+	Fragment bool
 
 	// TUN routes all system traffic through the tunnel and guards DNS.
 	// Without it only the SOCKS port is served.
@@ -127,6 +129,7 @@ type Config struct {
 	icmpPing     func(ctx context.Context, ip netip.Addr, b ping.Bind) (time.Duration, error)
 	tcpPing      func(ctx context.Context, ap netip.AddrPort, b ping.Bind) (time.Duration, error)
 	netInterval  time.Duration
+	speedURL     string // instead of speedServer
 
 	checkRelease     func(ctx context.Context, client *http.Client, src selfupdate.Source) (selfupdate.Release, error)
 	downloadRelease  func(ctx context.Context, client *http.Client, rel selfupdate.Release, dir string) (string, error)
@@ -169,6 +172,7 @@ func OptionsFromSettings(set store.Settings) Options {
 		},
 		ReturnToPrimaryAfter: time.Duration(c.ReturnAfterMin) * time.Minute,
 		LatencyTest:          c.LatencyTest,
+		Fragment:             c.Fragment,
 		TUN:                  set.TUN,
 		IPv6:                 set.IPv6,
 		DirectApps:           slices.Clone(set.Routing.DirectApps),
@@ -229,6 +233,6 @@ func (o Options) withDefaults() Options {
 func (o Options) policy() supervisor.Policy {
 	return supervisor.Policy{
 		Priority: o.Priority, Mode: o.Mode, ManualCore: o.ManualCore,
-		Health: o.Health, ReturnToPrimaryAfter: o.ReturnToPrimaryAfter,
+		Health: o.Health, ReturnToPrimaryAfter: o.ReturnToPrimaryAfter, Fragment: o.Fragment,
 	}
 }

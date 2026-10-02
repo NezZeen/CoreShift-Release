@@ -36,6 +36,18 @@ Future<void> allowInstallUpdates() async {}
 
 Future<bool> openUrl(String url) async => false;
 
+Future<String?> initialLink(List<String> args) async => null;
+
+void onLink(void Function(String link) handler) {}
+
+bool get canScanQr => false;
+
+Future<String?> scanQr() async => null;
+
+String scanQrError(Object e) => 'Сканер QR-кодов недоступен';
+
+Future<void> notify(String title, String body) async {}
+
 typedef AndroidApp = ({String package, String label, bool system});
 
 Future<List<AndroidApp>> installedApps() async => [];

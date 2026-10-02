@@ -139,7 +139,13 @@ func singBoxOutbound(n *node.Node, o Options) (obj, error) {
 		out["transport"] = tr
 	}
 	if n.TLS != nil {
-		out["tls"] = singBoxTLS(n.TLS, sni)
+		tls := singBoxTLS(n.TLS, sni)
+		// Hysteria2 and TUIC run TLS inside QUIC: no ClientHello over TCP
+		// to split.
+		if o.Fragment && n.Protocol != node.Hysteria2 && n.Protocol != node.TUIC {
+			tls["fragment"] = true
+		}
+		out["tls"] = tls
 	}
 	return out, nil
 }
