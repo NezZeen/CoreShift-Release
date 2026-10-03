@@ -47,15 +47,23 @@ func (m mihomo) Render(n *node.Node, o Options) ([]byte, error) {
 		level = o.LogLevel
 	}
 	cfg := obj{
-		"socks-port":   o.Listen.Port(),
-		"bind-address": o.Listen.Addr().String(),
-		"allow-lan":    false,
-		"mode":         "rule",
-		"log-level":    level,
-		"ipv6":         true,
-		"profile":      obj{"store-selected": false, "store-fake-ip": false},
-		"proxies":      []any{p},
-		"rules":        []string{"MATCH,proxy"},
+		"allow-lan": false,
+		"mode":      "rule",
+		"log-level": level,
+		"ipv6":      true,
+		"profile":   obj{"store-selected": false, "store-fake-ip": false},
+		"proxies":   []any{p},
+		"rules":     []string{"MATCH,proxy"},
+	}
+	if o.Auth.Set() {
+		// A listener of its own: its users replace the global
+		// authentication, which loopback clients may skip.
+		cfg["listeners"] = []any{obj{
+			"name": "socks-in", "type": "socks", "listen": o.Listen.Addr().String(), "port": o.Listen.Port(), "udp": true,
+			"users": []any{obj{"username": o.Auth.User, "password": o.Auth.Pass}},
+		}}
+	} else {
+		cfg["socks-port"], cfg["bind-address"] = o.Listen.Port(), o.Listen.Addr().String()
 	}
 	if o.Stats.IsValid() {
 		cfg["external-controller"] = o.Stats.String()

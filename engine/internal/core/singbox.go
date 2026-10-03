@@ -40,15 +40,19 @@ func (s singBox) Render(n *node.Node, o Options) ([]byte, error) {
 	if level == "none" {
 		level = "panic"
 	}
+	in := obj{
+		"type":        "socks",
+		"tag":         "socks-in",
+		"listen":      o.Listen.Addr().String(),
+		"listen_port": o.Listen.Port(),
+	}
+	if o.Auth.Set() {
+		in["users"] = []any{obj{"username": o.Auth.User, "password": o.Auth.Pass}}
+	}
 	cfg := obj{
-		"log": obj{"level": level, "timestamp": true},
-		"inbounds": []any{obj{
-			"type":        "socks",
-			"tag":         "socks-in",
-			"listen":      o.Listen.Addr().String(),
-			"listen_port": o.Listen.Port(),
-		}},
-		"route": obj{"final": "proxy"},
+		"log":      obj{"level": level, "timestamp": true},
+		"inbounds": []any{in},
+		"route":    obj{"final": "proxy"},
 	}
 	if o.Stats.IsValid() {
 		cfg["experimental"] = obj{"clash_api": obj{"external_controller": o.Stats.String(), "secret": o.StatsSecret}}

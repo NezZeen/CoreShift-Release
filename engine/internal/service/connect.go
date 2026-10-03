@@ -257,11 +257,13 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 	if o.DNS.RussiaDirect && !o.Selective {
 		suffixes = mergeSuffixes(suffixes, russiaSuffixes)
 		// The core is up, so a blocked source can be reached through it.
-		domainSets, ipSets, proxySets = s.rules.get(ctx, russiaSets, s.cfg.Listen)
+		domainSets, ipSets, proxySets = s.rules.get(ctx, russiaSets, s.proxyURL())
 	}
 	opts := tunlayer.Options{
 		StrictRoute:     true,
 		Upstream:        s.cfg.Listen,
+		UpstreamUser:    s.socks.User,
+		UpstreamPass:    s.socks.Pass,
 		BypassProcesses: slices.Sorted(maps.Values(s.cfg.Binaries)),
 		DirectApps:      o.DirectApps,
 		DirectIPs:       o.DirectIPs,

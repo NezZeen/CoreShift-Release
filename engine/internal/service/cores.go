@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -165,21 +166,44 @@ func (s *Service) UpdateCore(ctx context.Context, k core.Kind) (string, error) {
 }
 
 // viaProxyOrDirect runs do through the active core first, as GitHub may be
-// blocked where the user is, then directly.
+// blocked where the user is, then directly. Each client's connections are
+// closed when it is done.
 func (s *Service) viaProxyOrDirect(ctx context.Context, timeout time.Duration, do func(*http.Client) error) error {
-	var clients []*http.Client
+	proxies := []*url.URL{nil}
 	if st := s.Status().State; st == Connected {
-		proxy := &url.URL{Scheme: "socks5", Host: s.cfg.Listen.String()}
-		clients = append(clients, &http.Client{Timeout: timeout, Transport: &http.Transport{Proxy: http.ProxyURL(proxy)}})
+		proxies = []*url.URL{s.proxyURL(), nil}
 	}
-	clients = append(clients, &http.Client{Timeout: timeout, Transport: &http.Transport{Proxy: nil}})
 	var err error
-	for _, c := range clients {
-		if err = do(c); err == nil || ctx.Err() != nil {
+	for _, p := range proxies {
+		tr := newTransport(p)
+		err = do(&http.Client{Timeout: timeout, Transport: tr})
+		tr.CloseIdleConnections()
+		if err == nil || ctx.Err() != nil {
 			return err
 		}
 	}
 	return err
+}
+
+// proxyURL is the active core's SOCKS inbound as a proxy for the
+// service's own requests, credentials included: never print it.
+func (s *Service) proxyURL() *url.URL { return s.socks.ProxyURL(s.cfg.Listen) }
+
+// newTransport is an HTTP transport through proxy (nil for none) whose
+// connections give up when the other side goes quiet; the caller's
+// context or client timeout bounds the whole request.
+func newTransport(proxy *url.URL) *http.Transport {
+	tr := &http.Transport{
+		DialContext:           (&net.Dialer{Timeout: 15 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+		TLSHandshakeTimeout:   15 * time.Second,
+		ResponseHeaderTimeout: 30 * time.Second,
+		IdleConnTimeout:       30 * time.Second,
+		ExpectContinueTimeout: time.Second,
+	}
+	if proxy != nil {
+		tr.Proxy = http.ProxyURL(proxy)
+	}
+	return tr
 }
 
 // newerVersion reports whether a is a later version than b, comparing the
