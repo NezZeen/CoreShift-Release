@@ -354,6 +354,7 @@ func (s *Service) tunLayer() (TUNLayer, error) {
 // cleanly. Call it once at start: DNS, and on Linux the TUN layer's ip
 // rules, which outlive a sing-box killed with the daemon.
 func (s *Service) Recover(ctx context.Context) error {
+	removeStaleResolverRules()
 	return errors.Join(s.cfg.guard.Recover(ctx), tunlayer.CleanupRoutes(ctx, tunlayer.DefaultInterface))
 }
 
