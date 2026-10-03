@@ -12,6 +12,9 @@ func TestRunningIncludesThisTest(t *testing.T) {
 	if runtime.GOOS != "windows" && runtime.GOOS != "linux" {
 		t.Skip("not implemented here")
 	}
+	if runtime.GOOS == "linux" && os.Getuid() == 0 {
+		t.Skip("root's own processes are left out of the list")
+	}
 	list, err := Running()
 	if err != nil {
 		t.Fatal(err)
