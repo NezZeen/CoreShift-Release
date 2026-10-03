@@ -1052,10 +1052,36 @@ void main() {
       expect(state.speedTest.phase, SpeedPhase.done);
       expect(state.speedTest.downBps, greaterThan(state.speedTest.upBps));
       expect(find.textContaining('без VPN, только что'), findsOneWidget, reason: '$size');
+      // Which speedtest.net server measured, quietly under it.
+      expect(find.text('Сервер теста: Moscow, Rostelecom'), findsOneWidget, reason: '$size');
       expect(find.text('Ещё раз'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pump(const Duration(seconds: 6));
     }
+  });
+
+  testWidgets('a speed test Cloudflare measured says so on the desktop and the phone', (tester) async {
+    for (final size in [const Size(1400, 900), const Size(390, 844)]) {
+      final state = await pumpApp(tester, size: size, custom: AppState(_CloudflareSpeedBackend()));
+      await tester.runAsync(() => state.runSpeedTest());
+      await tester.pump();
+      expect(state.speedTest.phase, SpeedPhase.done);
+      await tester.ensureVisible(find.text('Ещё раз'));
+      await tester.pump();
+      expect(find.text('Сервер теста: Cloudflare'), findsOneWidget, reason: '$size');
+      expect(tester.takeException(), isNull);
+      await tester.pump(const Duration(seconds: 6));
+    }
+  });
+
+  test('speed test errors read the same for speedtest.net and Cloudflare', () {
+    expect(speedTestError('speed test server unreachable: dial tcp: i/o timeout'), allOf(contains('speedtest.net'), contains('Cloudflare')));
+    expect(
+      speedTestError('upload: upload request failed: 403 Forbidden'),
+      'Не удалось замерить отдачу: сервер теста ограничил запросы, попробуйте через несколько минут.',
+    );
+    expect(speedTestError('download: context canceled'), 'Тест скорости прерван.');
+    expect(speedTestError('download: read tcp 10.0.0.2:5000->1.2.3.4:8080: connection reset by peer'), contains('оборвалась'));
   });
 
   testWidgets('a link from a panel or the clipboard is added only once the user agrees', (tester) async {
@@ -1406,4 +1432,15 @@ class _OfflineBackend implements Backend {
 
   @override
   String get description => 'test';
+}
+
+/// speedtest.net out of reach: the service measured with Cloudflare.
+class _CloudflareSpeedBackend extends DemoBackend {
+  @override
+  Future<dynamic> call(String method, String path, [Object? body]) async {
+    if (method == 'POST' && path == '/v1/speedtest') {
+      return {'download_bps': 9000000, 'upload_bps': 4000000, 'latency_ms': 18, 'vpn': false, 'test_server': 'Cloudflare'};
+    }
+    return super.call(method, path, body);
+  }
 }
