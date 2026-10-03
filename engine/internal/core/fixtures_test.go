@@ -58,6 +58,10 @@ func fixtures(t *testing.T) map[string]node.Node {
 		"ss-v2ray": "ss://" + ssUser + "@203.0.113.7:443/?plugin=" +
 			url.QueryEscape("v2ray-plugin;mode=websocket;tls;host=example.com;path=/v"),
 		"hy2": "hy2://auth@203.0.113.10:443,20000-30000/?sni=h.example.com&obfs=salamander&obfs-password=ob",
+		"hy2-pin": "hy2://auth@203.0.113.10:443/?sni=h.example.com&pinSHA256=" +
+			"21:14:0E:7C:D8:91:35:E9:7D:3F:9C:4B:89:A1:54:06:33:51:B2:77:E0:3F:D6:96:46:9F:DF:ED:12:FD:43:D0",
+		"hy2-insecure":    "hy2://auth@203.0.113.10:443/?sni=h.example.com&insecure=1",
+		"trojan-insecure": "trojan://pw@203.0.113.5:443?sni=t.example.com&allowInsecure=1",
 		"tuic": "tuic://" + testUUID + ":pw@203.0.113.11:443?congestion_control=bbr&udp_relay_mode=native" +
 			"&alpn=h3&sni=tu.example.com",
 		"anytls": "anytls://pw@203.0.113.12:443?sni=a.example.com",

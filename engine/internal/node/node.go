@@ -12,6 +12,8 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"strconv"
+	"strings"
 )
 
 type Protocol string
@@ -86,6 +88,26 @@ type TLS struct {
 	Insecure    bool     `json:"insecure,omitempty"`
 	Fingerprint string   `json:"fingerprint,omitempty"` // uTLS: chrome, firefox, safari, random…
 	Reality     *Reality `json:"reality,omitempty"`
+
+	// PinSHA256 is the SHA-256 of the server's certificate, 64 lowercase hex
+	// digits (see NormalizePin): the certificate is accepted if it matches,
+	// whoever signed it. Panels use it for self-signed certificates since
+	// Xray dropped allowInsecure.
+	PinSHA256 string `json:"pin_sha256,omitempty"`
+}
+
+// NormalizePin turns a certificate SHA-256 as panels write it ("AB:CD:…" or
+// "abcd…") into 64 lowercase hex digits. Several, comma-separated, are not
+// taken: not every core accepts more than one.
+func NormalizePin(s string) (string, error) {
+	s = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(s), ":", ""))
+	if len(s) != 64 {
+		return "", errors.New("the certificate pin is not one SHA-256")
+	}
+	if _, err := hex.DecodeString(s); err != nil {
+		return "", errors.New("the certificate pin is not hexadecimal")
+	}
+	return s, nil
 }
 
 type Reality struct {
@@ -106,6 +128,35 @@ type Hysteria2Options struct {
 	DownMbps     int    `json:"down_mbps,omitempty"`
 	// Ports is a port-hopping spec such as "20000-30000" or "443,5000-6000".
 	Ports string `json:"ports,omitempty"`
+}
+
+// NormalizePorts checks a port-hopping spec, ports and ranges separated by
+// commas ("443, 20000-30000"), and returns it without spaces.
+func NormalizePorts(spec string) (string, error) {
+	var out []string
+	for _, part := range strings.Split(spec, ",") {
+		if part = strings.TrimSpace(part); part == "" {
+			continue
+		}
+		lo, hi, isRange := strings.Cut(part, "-")
+		a, errA := strconv.ParseUint(strings.TrimSpace(lo), 10, 16)
+		b, errB := a, error(nil)
+		if isRange {
+			b, errB = strconv.ParseUint(strings.TrimSpace(hi), 10, 16)
+		}
+		if errA != nil || errB != nil || a == 0 || b < a {
+			return "", fmt.Errorf("invalid port range %q", part)
+		}
+		if isRange {
+			out = append(out, fmt.Sprintf("%d-%d", a, b))
+		} else {
+			out = append(out, strconv.FormatUint(a, 10))
+		}
+	}
+	if len(out) == 0 {
+		return "", errors.New("no ports to hop between")
+	}
+	return strings.Join(out, ","), nil
 }
 
 type TUICOptions struct {
