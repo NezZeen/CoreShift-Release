@@ -91,6 +91,10 @@ type Config struct {
 	// SelfUpdate lets the service update CoreShift: only the installed
 	// service of a release build may run an installer over itself.
 	SelfUpdate bool
+	// SelfUpdateOff, with SelfUpdate false, says why, for the UI: Linux
+	// leaves updates to its package manager. Empty means a development
+	// build.
+	SelfUpdateOff string
 	// InstallUpdate, if set, hands a verified update to the system's
 	// installer, which asks the user (Android): nothing installs by
 	// itself, and an update the user declined is offered again.
