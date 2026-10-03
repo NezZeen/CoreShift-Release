@@ -250,7 +250,6 @@ class SettingsPage extends StatelessWidget {
     final prio = state.setting('cores.mode', 'auto') == 'manual'
         ? [state.setting('cores.manual', '')]
         : state.setting<List>('cores.priority', const []).cast<String>();
-    final fresh = state.coreUpdates.where((u) => u.available).map((u) => coreStyle(u.kind).name).toList();
     final cores = Panel(
       onTap: () => Nav.to(context, PageId.cores),
       child: Row(
@@ -275,12 +274,8 @@ class SettingsPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  fresh.isNotEmpty
-                      ? 'Доступна новая версия: ${fresh.join(', ')}'
-                      : prio.length == 1
-                      ? 'Работает одно ядро, без переключения при сбое'
-                      : 'Если ядро перестанет работать, CoreShift переключится на следующее',
-                  style: TextStyle(fontSize: 12, color: fresh.isNotEmpty ? p.accentInk : p.muted),
+                  prio.length == 1 ? 'Работает одно ядро, без переключения при сбое' : 'Если ядро перестанет работать, CoreShift переключится на следующее',
+                  style: TextStyle(fontSize: 12, color: p.muted),
                 ),
               ],
             ),

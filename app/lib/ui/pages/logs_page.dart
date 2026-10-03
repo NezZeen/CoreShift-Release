@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../state/app_state.dart';
-import '../shell.dart';
 import '../theme.dart';
 import '../widgets.dart';
 
@@ -70,7 +69,6 @@ class _LogsPageState extends State<LogsPage> {
           PageHeader(
             'Журнал',
             subtitle: 'Подключения, смены ядер и ошибки. Скопируйте журнал, чтобы отправить его в поддержку.',
-            back: ('Проверка', () => Nav.to(context, PageId.checks)),
             actions: [
               SizedBox(
                 width: compact ? 140 : 220,
