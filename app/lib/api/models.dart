@@ -219,11 +219,41 @@ class SubInfo {
   int get used => upload + download;
 }
 
+/// A subscription link as the daemon shows it (maskURL in
+/// engine/internal/service/api_store.go): scheme and host, then "/…" and the
+/// last four characters, without the access token. Links are compared in
+/// this form.
+String maskedUrl(String url) {
+  if (url.isEmpty || url.contains('…')) return url;
+  final i = url.indexOf('://');
+  if (i < 0) return '…';
+  var authority = url.substring(i + 3);
+  var rest = '';
+  final j = authority.indexOf(RegExp(r'[/?#]'));
+  if (j >= 0) {
+    rest = authority.substring(j);
+    authority = authority.substring(0, j);
+  }
+  final at = authority.lastIndexOf('@');
+  if (at >= 0) authority = authority.substring(at + 1);
+  final head = '${url.substring(0, i).toLowerCase()}://${authority.toLowerCase()}';
+  final r = rest.runes.toList();
+  if (r.isEmpty || rest == '/') return head;
+  if (r.length < 12) return '$head/…';
+  return '$head/…${String.fromCharCodes(r.sublist(r.length - 4))}';
+}
+
 class Subscription {
   final String id;
   final String name;
   final String displayName;
+
+  /// The link without its access token ([maskedUrl]); the whole link is
+  /// asked for where it is needed, for the QR code.
   final String url;
+
+  /// The link is plain http://: its token crosses the network as it is.
+  final bool insecure;
   final String userAgent;
   final SubInfo info;
   final String format;
@@ -243,6 +273,7 @@ class Subscription {
     required this.name,
     required this.displayName,
     required this.url,
+    this.insecure = false,
     required this.userAgent,
     required this.info,
     required this.format,
@@ -260,6 +291,7 @@ class Subscription {
     name: j['name'] ?? '',
     displayName: _placeholderNames[j['display_name']] ?? j['display_name'] ?? '',
     url: j['url'] ?? '',
+    insecure: j['insecure'] == true,
     userAgent: j['user_agent'] ?? '',
     info: SubInfo.fromJson((j['info'] as Map?)?.cast<String, dynamic>() ?? {}),
     format: j['format'] ?? '',
