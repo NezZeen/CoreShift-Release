@@ -1,11 +1,14 @@
 # Releases a version: writes VERSION, commits it, tags the commit v<version>,
 # creates the branch release/<version> there and builds its Windows
-# installer and Android APK.
+# installer, Android APK and Linux packages.
 #
 #   powershell -ExecutionPolicy Bypass -File packaging\release.ps1 -Version 0.3.0
 #
-# -Platform windows or -Platform android builds one of them only; the other
-# platform keeps updating to its previous release.
+# -Platform windows, android or linux builds one of them only; the other
+# platforms keep updating to their previous release. The Linux packages are
+# built in WSL (Ubuntu-24.04, packaging\linux\build-wsl.ps1) from the
+# tagged commit; without WSL the release fails, unless -NoLinux leaves
+# Linux out.
 #
 # Run it on main with everything committed. main then goes on; the branch
 # keeps the released code, so the version can be rebuilt, compared or fixed
@@ -14,8 +17,11 @@ param(
     [Parameter(Mandatory = $true)][string]$Version,
     # Only commit, tag and branch; build later.
     [switch]$NoBuild,
-    [ValidateSet('all', 'windows', 'android')]
-    [string]$Platform = 'all'
+    [ValidateSet('all', 'windows', 'android', 'linux')]
+    [string]$Platform = 'all',
+    # Leave the Linux packages out, e.g. on a computer without WSL.
+    [switch]$NoLinux,
+    [string]$LinuxDistro = 'Ubuntu-24.04'
 )
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path "$PSScriptRoot\..").Path
@@ -25,6 +31,20 @@ function Check($what) {
 }
 
 if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw "the version must look like 1.2.3, not '$Version'" }
+$linux = ($Platform -eq 'all' -or $Platform -eq 'linux') -and -not $NoLinux
+if ($Platform -eq 'linux' -and $NoLinux) { throw '-Platform linux with -NoLinux builds nothing' }
+# Before anything is committed or tagged: a release without its Linux
+# packages must be asked for.
+if ($linux -and -not $NoBuild) {
+    if (-not (Get-Command wsl.exe -ErrorAction SilentlyContinue)) {
+        throw 'WSL is not installed: the Linux packages are built in WSL. Install it, or pass -NoLinux to release without Linux'
+    }
+    $env:WSL_UTF8 = '1'
+    $distros = (wsl.exe -l -q) | ForEach-Object { $_.Trim([char]0, ' ') } | Where-Object { $_ }
+    if ($distros -notcontains $LinuxDistro) {
+        throw "WSL distribution $LinuxDistro not found: install it (see packaging\linux\README.md), or pass -NoLinux to release without Linux"
+    }
+}
 Push-Location $root
 try {
     if (git status --porcelain) { throw 'commit or stash your changes first: the release must be exactly what is committed' }
@@ -59,23 +79,43 @@ if (-not $NoBuild) {
         $commit = (git rev-parse --short=7 HEAD).Trim()
     } finally { Pop-Location }
     $installers = @()
-    if ($Platform -ne 'android') {
+    if ($Platform -eq 'all' -or $Platform -eq 'windows') {
         & "$root\packaging\windows\build.ps1"
         $installers += "$root\dist\coreshift-setup-$Version.exe"
     }
-    if ($Platform -ne 'windows') {
+    if ($Platform -eq 'all' -or $Platform -eq 'android') {
         & "$root\packaging\android\build.ps1"
         $installers += "$root\dist\coreshift-$Version.apk"
     }
+    $out = Join-Path $root "dist\release\$Version"
+    if ($linux) {
+        $linuxDir = Join-Path $root "dist\linux\$Version"
+        & "$root\packaging\linux\build-wsl.ps1" -Ref "v$Version" -Distro $LinuxDistro -OutDir $linuxDir
+        # The release carries them under fixed names, the ones the public
+        # downloads link to (packaging\README.md); the manifest names the .deb.
+        New-Item -ItemType Directory $out -Force | Out-Null
+        $fixed = [ordered]@{
+            "coreshift_$($Version)_amd64.deb"                = 'CoreShift-amd64.deb'
+            "coreshift-$Version-1.x86_64.rpm"                = 'CoreShift-x86_64.rpm'
+            "coreshift-$Version-1-x86_64.pkg.tar.zst"        = 'CoreShift-x86_64.pkg.tar.zst'
+            "coreshift-$Version-linux-amd64.tar.gz"          = 'CoreShift-linux-amd64.tar.gz'
+        }
+        foreach ($from in $fixed.Keys) {
+            $src = Join-Path $linuxDir $from
+            if (-not (Test-Path $src)) { throw "the Linux build made no $from" }
+            Copy-Item $src (Join-Path $out $fixed[$from]) -Force
+        }
+        $installers += (Join-Path $out 'CoreShift-amd64.deb')
+    }
 
     # The self-update files: for each installer its manifest (latest.json,
-    # latest-android.json) and signature, in dist\release\<version>, ready
-    # for packaging\publish.ps1.
+    # latest-android.json, latest-linux.json) and signature, in
+    # dist\release\<version>, ready for packaging\publish.ps1. Linux only
+    # announces new versions from latest-linux.json.
     $key = Join-Path $env:USERPROFILE '.coreshift\update-signing.key'
     if (-not (Test-Path $key)) {
         Write-Warning "no signing key ($key): no self-update files; installed copies will not see this release"
     } else {
-        $out = Join-Path $root "dist\release\$Version"
         Push-Location "$root\engine"
         try {
             foreach ($installer in $installers) {
