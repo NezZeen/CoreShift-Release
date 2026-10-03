@@ -149,7 +149,18 @@ func (g *linuxGuard) Apply(ctx context.Context, cfg Config) error {
 	case stackResolvconf:
 		err = g.applyResolvconf(ctx, cfg)
 	case stackNetconfig:
-		err = g.applyNetconfig(ctx, cfg)
+		if err = g.applyNetconfig(ctx, cfg); err == nil && !g.resolvConfLeadsWith(cfg) {
+			// netconfig took our service but did not put it first. With
+			// NetworkManager its "auto" policy is "STATIC_FALLBACK
+			// NetworkManager" and ignores every other service (openSUSE's
+			// default desktop); with wicked it may rank ours after the
+			// LAN's resolver, which the TUN routes leave outside the tunnel.
+			// Write the file then, as where NetworkManager writes it.
+			if err = g.applyResolvConf(ctx, cfg); err == nil {
+				c := cfg
+				g.written = &c
+			}
+		}
 	default:
 		if err = g.applyResolvConf(ctx, cfg); err == nil {
 			c := cfg
@@ -251,6 +262,17 @@ func (g *linuxGuard) applyNetconfig(ctx context.Context, cfg Config) error {
 		return fmt.Errorf("dnsguard: netconfig modify: %w", err)
 	}
 	return nil
+}
+
+// resolvConfLeadsWith reports whether resolv.conf's first nameserver is the
+// tunnel's: glibc asks the first one first.
+func (g *linuxGuard) resolvConfLeadsWith(cfg Config) bool {
+	b, err := os.ReadFile(g.resolvConfPath)
+	if err != nil || len(cfg.Servers) == 0 {
+		return false
+	}
+	ns := resolvConfNameservers(b)
+	return len(ns) > 0 && ns[0] == cfg.Servers[0]
 }
 
 func (g *linuxGuard) applyResolvConf(ctx context.Context, cfg Config) error {
