@@ -183,7 +183,7 @@ class _DeviceStation extends StatelessWidget {
         : selected
         ? 'в VPN только выбранные сайты и программы'
         : russia
-        ? 'российские сайты напрямую, остальное в VPN'
+        ? 'российские сайты напрямую, кроме Google и YouTube, остальное в VPN'
         : 'весь трафик идёт в VPN';
     return _Station(
       caption: 'Это устройство',

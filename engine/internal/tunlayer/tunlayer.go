@@ -156,6 +156,10 @@ type DNSOptions struct {
 	FakeIPRange6 netip.Prefix
 
 	DirectSuffixes []string
+	// DirectFirst are direct names that win over the proxy lists and rule
+	// sets: those the user sends direct although a preset's proxy rule set
+	// has them (a Google service with the Russian preset's geosite-google).
+	DirectFirst []string
 	// ProxySuffixes are resolved through the tunnel and routed through the
 	// proxy even when a direct suffix or rule set also matches them.
 	ProxySuffixes []string
@@ -415,6 +419,9 @@ func buildDNS(o Options) (obj, error) {
 			rules = append(rules, to)
 		}
 	}
+	if len(o.DNS.DirectFirst) > 0 {
+		direct("domain_suffix", o.DNS.DirectFirst)
+	}
 	if len(o.DNS.ProxySuffixes) > 0 {
 		proxied("domain_suffix", o.DNS.ProxySuffixes)
 	}
@@ -479,6 +486,9 @@ func buildRoute(o Options) obj {
 	}
 	if o.DNS.BlockBrowserDoH {
 		rules = append(rules, obj{"domain_suffix": browserDoHDomains, "outbound": tagProxy})
+	}
+	if len(o.DNS.DirectFirst) > 0 {
+		rules = append(rules, obj{"domain_suffix": o.DNS.DirectFirst, "outbound": tagDirect})
 	}
 	if len(o.DNS.ProxySuffixes) > 0 {
 		rules = append(rules, obj{"domain_suffix": o.DNS.ProxySuffixes, "outbound": tagProxy})

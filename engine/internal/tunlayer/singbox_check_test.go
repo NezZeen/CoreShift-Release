@@ -72,7 +72,9 @@ func TestSingBoxAcceptsConfig(t *testing.T) {
 			o.DNS.DirectSuffixes = []string{"ru"}
 			o.DNS.DirectRuleSets = []RuleSet{{Tag: "geosite-ru", Path: geosite}}
 			o.DNS.DirectIPRuleSets = []RuleSet{{Tag: "geoip-ru", Path: geoip}}
-			o.DNS.ProxyRuleSets = []RuleSet{{Tag: "geosite-media-ru-blocked", Path: geosite}}
+			o.DNS.ProxyRuleSets = []RuleSet{{Tag: "geosite-media-ru-blocked", Path: geosite}, {Tag: "geosite-google", Path: geosite}}
+			o.DNS.ProxySuffixes = []string{"google.com", "googlevideo.com"}
+			o.DNS.DirectFirst = []string{"maps.google.com"}
 		},
 		"proxy rule set in selective mode": func(o *Options) {
 			o.Selective = true

@@ -614,7 +614,10 @@ class AppState extends ChangeNotifier {
       case 'rules':
         if (e.error.isNotEmpty) {
           _log(e.time, 'правила', e.error, LogLevel.warn);
-          if (live) toast('Базы российских сайтов не загрузились — они пойдут через туннель. Подробности в журнале.', ToastKind.err);
+          // Without geosite-google the built-in list keeps Google in the tunnel.
+          if (live && e.reason != 'geosite-google') {
+            toast('Базы российских сайтов не загрузились — они пойдут через туннель. Подробности в журнале.', ToastKind.err);
+          }
         } else {
           _log(e.time, 'правила', '${e.reason}: ${e.line == 'updated' ? 'обновлена' : 'загружена'}', LogLevel.info);
         }
