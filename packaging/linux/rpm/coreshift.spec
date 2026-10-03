@@ -25,9 +25,12 @@ AutoReqProv:    no
 Requires:       (gtk3 or libgtk-3-0)
 Requires:       (libX11 or libX11-6)
 Requires:       (libXi or libXi6)
-# The Flutter engine opens EGL and GLES through libepoxy at run time.
-Requires:       (libglvnd-egl or libEGL1)
-Requires:       (libglvnd-gles or libGLESv2-2)
+# The Flutter engine opens EGL and GLES through libepoxy at run time. By
+# library, not package: Fedora and RHEL ship them in libglvnd-egl and
+# libglvnd-gles, openSUSE in libglvnd itself. "(64bit)": the packages are
+# built for x86_64 and aarch64 only.
+Requires:       libEGL.so.1()(64bit)
+Requires:       libGLESv2.so.2()(64bit)
 Requires:       systemd
 Requires:       (shadow-utils or shadow)
 Recommends:     polkit
