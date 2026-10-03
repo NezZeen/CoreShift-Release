@@ -16,3 +16,5 @@ func (*processGroup) add(*os.Process) error { return nil }
 func prepareCmd(*exec.Cmd, bool) {}
 
 func interrupt(p *os.Process) error { return p.Signal(os.Interrupt) }
+
+func resume(*os.Process) error { return nil }
