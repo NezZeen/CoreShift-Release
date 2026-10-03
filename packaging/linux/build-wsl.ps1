@@ -8,8 +8,9 @@
 # The distribution (-Distro, default Ubuntu-24.04) needs Go, Flutter and
 # the build tools of packaging/linux/README.md; packaging\release.ps1 calls
 # this script for the Linux part of a release. Cores come from
-# engine\testdata\bin\linux-amd64 when it holds them, else the build
-# downloads the latest releases.
+# engine\testdata\bin\linux-amd64 when it holds them, else from
+# /root/coreshift-cores/linux-amd64 in the distribution (downloaded there
+# the first time; delete the folder to take newer ones).
 param(
     [Parameter(Mandatory = $true)][string]$Ref,
     [string]$Distro = 'Ubuntu-24.04',
@@ -39,10 +40,12 @@ function WslPath([string]$p) {
 # Clone from the repository itself (.git), which also works from a worktree.
 Push-Location $root
 try { $gitDir = (Resolve-Path (git rev-parse --git-common-dir).Trim()).Path } finally { Pop-Location }
+# Cores: engine\testdata\bin\linux-amd64 when it holds them; else a cache
+# in the distribution (/root/coreshift-cores), filled with the latest
+# releases the first time, so a release does not hang on GitHub's speed.
 $cores = Join-Path $root 'engine\testdata\bin\linux-amd64'
-$coresArg = if ((Test-Path "$cores\xray") -and (Test-Path "$cores\sing-box") -and (Test-Path "$cores\mihomo")) {
-    "--cores '$(WslPath $cores)'"
-} else { '--fetch-cores' }
+$haveCores = (Test-Path "$cores\xray") -and (Test-Path "$cores\sing-box") -and (Test-Path "$cores\mihomo")
+$coresDir = if ($haveCores) { WslPath $cores } else { '/root/coreshift-cores/linux-amd64' }
 
 # Through a script file: quotes and pipes do not survive the way from
 # Windows PowerShell through wsl.exe to bash.
@@ -56,7 +59,11 @@ git config --global --get-all safe.directory | grep -qx '$(WslPath $gitDir)' ||
 	git config --global --add safe.directory '$(WslPath $gitDir)'
 git clone -q --branch '$Ref' '$(WslPath $gitDir)' "`$work"
 cd "`$work"
-packaging/linux/build.sh $coresArg --out "`$work/dist"
+cores='$coresDir'
+if [ ! -x "`$cores/xray" ] || [ ! -x "`$cores/sing-box" ] || [ ! -x "`$cores/mihomo" ]; then
+	(cd engine && go run ./cmd/coreshiftd cores fetch -dir "`$cores")
+fi
+packaging/linux/build.sh --cores "`$cores" --out "`$work/dist"
 cp "`$work"/dist/coreshift[-_]* '$(WslPath $OutDir)/'
 rm -rf "`$work"
 "@
