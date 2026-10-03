@@ -336,17 +336,22 @@ extension AppStateActions on AppState {
   }
 
   /// Checks whether DNS queries escape the tunnel; the result lands in
-  /// [leakReport] or [leakError].
+  /// [leakReport] or [leakError]. The engine runs the test, through the
+  /// tunnel: on Android the app itself is outside the VPN.
   Future<void> runLeakTest() async {
     leakTesting = true;
     leakError = '';
     _notify();
     try {
-      final runner = leakTestRunner ?? (backend is DemoBackend ? DemoBackend.leakSample : platform.dnsLeakTest);
-      leakReport = LeakReport.fromEntries(await runner());
+      final runner = leakTestRunner ?? () async => await backend.call('POST', '/v1/leaktest') as Json;
+      leakReport = LeakReport.fromJson(await runner());
     } catch (e) {
       leakReport = null;
-      leakError = 'Не удалось связаться с сервисом проверки bash.ws. Проверьте, что интернет работает, и попробуйте ещё раз.';
+      leakError = e is ApiError && e.status == 409
+          ? 'Сначала подключитесь к VPN.'
+          : e is DaemonOffline
+          ? e.message
+          : 'Не удалось связаться с сервисом проверки bash.ws через VPN. Проверьте, что сайты открываются, и попробуйте ещё раз.';
     }
     leakTesting = false;
     _notify();

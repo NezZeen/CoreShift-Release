@@ -21,8 +21,6 @@ bool Function(bool on)? get autostartSetter => null;
 
 Future<String?> startService() async => 'Недоступно в браузере';
 
-Future<List<Map<String, dynamic>>> dnsLeakTest() async => throw UnsupportedError('Недоступно в браузере');
-
 /// The system, for the journal's header.
 String get osDescription => 'браузер (демо)';
 

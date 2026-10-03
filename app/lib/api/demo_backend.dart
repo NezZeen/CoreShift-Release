@@ -422,6 +422,9 @@ class DemoBackend implements Backend {
         return _stats(int.tryParse(Uri.parse(path).queryParameters['days'] ?? '') ?? 30);
       case 'POST /speedtest':
         return _speedTest();
+      case 'POST /leaktest':
+        if (_status['state'] != 'connected') throw const ApiError(409, 'not connected');
+        return leakSample();
       case 'POST /reconnect':
         if (_lastNode == null) throw const ApiError(502, 'nothing to reconnect');
         await _connect(_lastNode!);
@@ -651,15 +654,22 @@ class DemoBackend implements Backend {
     throw ApiError(404, 'demo: $route');
   }
 
-  /// What bash.ws reports when DNS goes through the tunnel as it should.
-  static Future<List<Json>> leakSample() async {
+  /// The engine's DNS leak test when DNS goes through the tunnel as it
+  /// should: the tunnel answers apps itself (fake IP), and the server's
+  /// resolvers look up the names of connections.
+  static Future<Json> leakSample() async {
     await Future.delayed(const Duration(milliseconds: 1200));
-    return [
-      {'ip': '203.0.113.40', 'country': 'nl', 'country_name': 'Netherlands', 'asn': 'AS64500 Example Hosting', 'type': 'ip'},
-      {'ip': '172.253.10.1', 'country': 'nl', 'country_name': 'Netherlands', 'asn': 'AS15169 Google LLC', 'type': 'dns'},
-      {'ip': '162.158.1.1', 'country': 'nl', 'country_name': 'Netherlands', 'asn': 'AS13335 CloudFlare Inc', 'type': 'dns'},
-      {'type': 'conclusion'},
-    ];
+    return {
+      'server': 'Amsterdam',
+      'server_ip': '203.0.113.40',
+      'exit': {'ip': '203.0.113.40', 'country': 'nl', 'country_name': 'Netherlands', 'org': 'Example Hosting'},
+      'dns': [
+        {'ip': '172.253.10.1', 'country': 'nl', 'country_name': 'Netherlands', 'org': 'Google LLC', 'path': 'proxy'},
+        {'ip': '162.158.1.1', 'country': 'nl', 'country_name': 'Netherlands', 'org': 'CloudFlare Inc', 'path': 'proxy'},
+      ],
+      'system': {'checked': true, 'fake_ip': true},
+      'home': {'ip': '95.31.18.119', 'country': 'RU'},
+    };
   }
 
   static String _featureName(String f) => switch (f) {
