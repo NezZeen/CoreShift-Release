@@ -116,6 +116,10 @@ type Config struct {
 	// so the daemon's own lookups of servers go to the system's resolver
 	// even while connected; the TUN layer's is out of its reach.
 	AppOutsideVPN bool
+	// TUNLookup resolves a name the way apps inside the VPN do, through
+	// the TUN layer's DNS, for the DNS leak test. nil means the system's
+	// resolver as another program would use it (systemLookup).
+	TUNLookup func(ctx context.Context, host string) ([]netip.Addr, error)
 
 	// Test seams; nil means the real implementation.
 	guard     dnsguard.Guard
@@ -132,6 +136,11 @@ type Config struct {
 	netInterval  time.Duration
 	speedURL     string // instead of speedServer
 	ookla        func(proxy *url.URL) ooklaTest
+	// leakBase and leakDomain stand in for bash.ws; leakHome for looking
+	// up the address outside the VPN.
+	leakBase   string
+	leakDomain string
+	leakHome   func(ctx context.Context) (IPInfo, error)
 
 	checkRelease     func(ctx context.Context, client *http.Client, src selfupdate.Source) (selfupdate.Release, error)
 	downloadRelease  func(ctx context.Context, client *http.Client, rel selfupdate.Release, dir string) (string, error)
