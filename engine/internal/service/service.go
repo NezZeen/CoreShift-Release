@@ -193,6 +193,9 @@ func New(cfg Config) (*Service, error) {
 	}
 	cfg.Binaries = bins
 	coreupdate.Cleanup(bins)
+	if err := prepareDataDir(cfg.DataDir); err != nil {
+		return nil, fmt.Errorf("data directory: %w", err)
+	}
 	for _, sub := range []string{"work", "tun"} {
 		dir := filepath.Join(cfg.DataDir, sub)
 		if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -214,6 +217,9 @@ func New(cfg Config) (*Service, error) {
 	s.upd.state = AppUpdate{State: UpdateIdle}
 	if !cfg.SelfUpdate {
 		s.upd.state = AppUpdate{State: UpdateOff, Reason: "only the installed service of a release build updates itself"}
+		if cfg.SelfUpdateOff != "" {
+			s.upd.state.Reason = cfg.SelfUpdateOff
+		}
 	}
 	if cfg.fetchRuleSet != nil {
 		s.rules.fetch = cfg.fetchRuleSet
@@ -253,6 +259,9 @@ func New(cfg Config) (*Service, error) {
 // OpenStore opens the store kept in dataDir, in a directory only the service
 // can read: it holds subscription URLs and node credentials.
 func OpenStore(dataDir string, opts store.Options) (*store.Store, error) {
+	if err := prepareDataDir(dataDir); err != nil {
+		return nil, fmt.Errorf("data directory: %w", err)
+	}
 	dir := filepath.Join(dataDir, "state")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
