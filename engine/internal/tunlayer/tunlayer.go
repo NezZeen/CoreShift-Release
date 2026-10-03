@@ -97,9 +97,14 @@ type Options struct {
 	// (Linux): sing-box's routing table there would otherwise take the
 	// replies to connections made to this machine from the local network
 	// (SSH, file sharing, a VM's host) into the TUN, where they die. Those
-	// ranges go direct anyway; DNS to them is then not hijacked, but the
-	// system's resolver is redirected by the DNS guard.
+	// ranges go direct anyway. LANResolvers are carved out of them.
 	ExcludeLAN bool
+	// LANResolvers are the system's resolvers (a home router, WSL's host):
+	// with ExcludeLAN they stay routed into the TUN, so DNS sent to them
+	// straight, past the DNS guard, is still hijacked instead of leaking.
+	// Addresses outside the private ranges, loopback and link-local ones
+	// (which need a zone) are ignored.
+	LANResolvers []netip.Addr
 	// DirectApps are executable names ("qbittorrent.exe") whose traffic goes
 	// direct instead of through the proxy, wherever they are installed.
 	// Names match case-insensitively.
@@ -210,7 +215,7 @@ func (o Options) withDefaults() Options {
 	if o.Platform {
 		o.BypassProcesses, o.DirectDNSProcesses, o.DirectApps, o.ProxyApps = nil, nil, nil, nil
 		o.BypassAddresses = nil
-		o.ExcludeLAN = false
+		o.ExcludeLAN, o.LANResolvers = false, nil
 		// The system stack answers TCP from a kernel socket of this process,
 		// which Android keeps outside its own VPN: the answers leave by the
 		// physical network and every TCP connection hangs. gVisor answers
@@ -294,7 +299,7 @@ func build(o Options) (obj, error) {
 	}
 	exclude := prefixStrings(o.BypassAddresses)
 	if o.ExcludeLAN {
-		exclude = append(exclude, lanRanges...)
+		exclude = append(exclude, prefixStrings(excludeLAN(o.LANResolvers))...)
 	}
 	if len(exclude) > 0 {
 		tun["route_exclude_address"] = exclude
