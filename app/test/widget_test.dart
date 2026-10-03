@@ -8,6 +8,7 @@ import 'package:coreshift/main.dart';
 import 'package:coreshift/state/app_state.dart';
 import 'package:coreshift/state/errors.dart';
 import 'package:coreshift/state/leak.dart';
+import 'package:coreshift/ui/countries.dart';
 import 'package:coreshift/ui/pages/android_apps.dart';
 import 'package:coreshift/ui/qr.dart';
 import 'package:coreshift/ui/support.dart';
@@ -1045,6 +1046,49 @@ void main() {
       }
       expect(find.byType(QrView), findsNothing);
       // Let the ping test the page started finish.
+      await tester.pump(const Duration(seconds: 30));
+    }
+  });
+
+  testWidgets('subscriptions fold away in the server list and stay folded', (tester) async {
+    for (final size in [const Size(1400, 900), const Size(390, 844)]) {
+      final state = await pumpApp(tester, size: size);
+      expect(state.subscriptions.length, greaterThan(1));
+      final sub = state.subscriptions.first;
+      final node = cleanNodeName(sub.nodes.first.name);
+      final nav = size.width > 600 ? find.text('Серверы').first : find.descendant(of: find.byType(NavigationBar), matching: find.text('Серверы'));
+      final home = size.width > 600 ? find.text('Главная').first : find.descendant(of: find.byType(NavigationBar), matching: find.text('Главная'));
+      await tester.tap(nav);
+      await tester.pump();
+      final shown = find.text(node).evaluate().length;
+      expect(shown, greaterThan(0));
+
+      await tester.ensureVisible(find.byIcon(Icons.expand_less).first);
+      await tester.tap(find.byIcon(Icons.expand_less).first);
+      await tester.pump();
+      expect(find.text(node).evaluate().length, lessThan(shown), reason: '$size');
+      expect(state.prefs['servers_folded'], contains('s:${sub.id}'));
+
+      // Still folded after another page.
+      await tester.tap(home);
+      await tester.pump();
+      await tester.tap(nav);
+      await tester.pump();
+      expect(find.text(node).evaluate().length, lessThan(shown), reason: '$size');
+
+      // A search shows what it finds, folded or not.
+      await tester.enterText(find.byType(TextField).first, node);
+      await tester.pump();
+      expect(find.text(node), findsWidgets);
+      await tester.enterText(find.byType(TextField).first, '');
+      await tester.pump();
+
+      await tester.ensureVisible(find.byIcon(Icons.expand_more).first);
+      await tester.tap(find.byIcon(Icons.expand_more).first);
+      await tester.pump();
+      expect(find.text(node).evaluate().length, shown);
+      expect(state.prefs['servers_folded'], isEmpty);
+      expect(tester.takeException(), isNull, reason: '$size');
       await tester.pump(const Duration(seconds: 30));
     }
   });

@@ -149,34 +149,59 @@ class _SectionHeading extends StatelessWidget {
     }
     final content = Padding(
       padding: EdgeInsets.fromLTRB(12, first ? 6 : 14, 8, 6),
-      child: Row(
-        children: [
-          if (section.leading != null) ...[section.leading!, const SizedBox(width: 9)],
-          Flexible(
-            child: Text(
-              section.title!,
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: section.leading == null ? p.muted : p.text),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text('${section.rows.length}', style: TextStyle(fontSize: 12, color: p.dim)),
-          if (best < 1 << 30) ...[
-            const SizedBox(width: 8),
-            Text(
-              'от $best мс',
-              style: TextStyle(
-                fontSize: 11.5,
-                color: best < 200 ? okColor : (best < 500 ? warnColor : errColor),
-                fontFamily: monoFont,
-                fontFamilyFallback: monoFallback,
+      child: LayoutBuilder(
+        builder: (context, c) {
+          final titleStyle = TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: section.leading == null ? p.muted : p.text);
+          final countStyle = TextStyle(fontSize: 12, color: p.dim);
+          final pingStyle = TextStyle(
+            fontSize: 11.5,
+            color: best < 200 ? okColor : (best < 500 ? warnColor : errColor),
+            fontFamily: monoFont,
+            fontFamilyFallback: monoFallback,
+          );
+          final count = '${section.rows.length}', ping = best < 1 << 30 ? 'от $best мс' : null;
+          final scaler = MediaQuery.textScalerOf(context);
+          double width(String s, TextStyle st) {
+            final tp = TextPainter(
+              text: TextSpan(text: s, style: st),
+              textDirection: TextDirection.ltr,
+              textScaler: scaler,
+              maxLines: 1,
+            )..layout();
+            final w = tp.width;
+            tp.dispose();
+            return w;
+          }
+
+          // The title takes what it needs and the line the rest, so the fold
+          // arrow stays at the right edge; a flexible title would split the
+          // free width with the line and leave the arrow halfway. A long
+          // title is cut where the line would get too short.
+          final others =
+              (section.leading != null ? 26 + 9 : 0) +
+              8 +
+              width(count, countStyle) +
+              (ping != null ? 8 + width(ping, pingStyle) : 0) +
+              10 +
+              24 +
+              (onTap != null ? 18 : 0);
+          final titleWidth = min(width(section.title!, titleStyle) + 1, max(0.0, c.maxWidth - others));
+          return Row(
+            children: [
+              if (section.leading != null) ...[section.leading!, const SizedBox(width: 9)],
+              SizedBox(
+                width: titleWidth,
+                child: Text(section.title!, style: titleStyle, maxLines: 1, overflow: TextOverflow.ellipsis),
               ),
-            ),
-          ],
-          const SizedBox(width: 10),
-          Expanded(child: Divider(height: 1, color: p.border)),
-          if (onTap != null) Icon(folded ? Icons.expand_more : Icons.expand_less, size: 18, color: p.dim),
-        ],
+              const SizedBox(width: 8),
+              Text(count, style: countStyle),
+              if (ping != null) ...[const SizedBox(width: 8), Text(ping, style: pingStyle)],
+              const SizedBox(width: 10),
+              Expanded(child: Divider(height: 1, color: p.border)),
+              if (onTap != null) Icon(folded ? Icons.expand_more : Icons.expand_less, size: 18, color: p.dim),
+            ],
+          );
+        },
       ),
     );
     if (onTap == null) return content;
