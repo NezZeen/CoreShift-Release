@@ -215,7 +215,11 @@ func transportFromQuery(q url.Values) (node.Transport, error) {
 		if t.Mode == "auto" {
 			t.Mode = ""
 		}
-		t.Extra = q.Get("extra")
+		extra, err := node.SanitizeXHTTPExtra(q.Get("extra"))
+		if err != nil {
+			return t, err
+		}
+		t.Extra = extra
 	default:
 		return t, fmt.Errorf("unsupported transport %q", typ)
 	}

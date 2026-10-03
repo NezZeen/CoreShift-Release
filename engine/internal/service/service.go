@@ -80,12 +80,20 @@ type Service struct {
 	stats   *trafficStats
 	fo      failover
 	speedMu sync.Mutex // one speed test at a time
+	// socks are the credentials of the cores' SOCKS inbound, new each
+	// start; only the TUN layer and the service's own clients know them.
+	socks core.SOCKSAuth
 
 	op       sync.Mutex // serialises connect, disconnect and teardown
 	tun      TUNInstance
 	stopPing context.CancelFunc // ends the connection's watchers: traffic, network
 
-	mu       sync.Mutex
+	mu sync.Mutex
+	// opCancel cancels the operation holding op (beginOp); opSeq tells
+	// operations apart, discGen counts Disconnect calls.
+	opCancel context.CancelCauseFunc
+	opSeq    uint64
+	discGen  uint64
 	gen      int // incremented per connection; stale teardowns compare it
 	status   Status
 	opts     Options
@@ -204,7 +212,7 @@ func New(cfg Config) (*Service, error) {
 		}
 	}
 
-	s := &Service{cfg: cfg, hub: newHub(), opts: cfg.Options, status: Status{State: Idle, TUN: cfg.TUN}}
+	s := &Service{cfg: cfg, hub: newHub(), opts: cfg.Options, status: Status{State: Idle, TUN: cfg.TUN}, socks: core.NewSOCKSAuth()}
 	s.logs = newLogGrouper(logGroupEvery, func(source, line string) {
 		s.hub.publish(Event{Kind: "log", Source: source, Line: line})
 	})
@@ -235,6 +243,7 @@ func New(cfg Config) (*Service, error) {
 		ManualCore:           p.ManualCore,
 		WorkDir:              filepath.Join(cfg.DataDir, "work"),
 		Listen:               cfg.Listen,
+		Auth:                 s.socks,
 		Health:               p.Health,
 		ReturnToPrimaryAfter: p.ReturnToPrimaryAfter,
 		Fragment:             p.Fragment,

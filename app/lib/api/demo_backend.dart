@@ -190,6 +190,7 @@ class DemoBackend implements Backend {
       'name': name,
       'display_name': name.isNotEmpty ? name : (title.isNotEmpty ? title : 'Subscription'),
       'url': url,
+      if (url.startsWith('http://')) 'insecure': true,
       'info': {
         'title': title,
         'upload': (used * .1).round(),
@@ -526,6 +527,8 @@ class DemoBackend implements Backend {
         return sub;
       case 'GET /subscriptions/{id}':
         return _subBy(id());
+      case 'GET /subscriptions/{id}/url':
+        return {'url': _subBy(id())['url']};
       case 'PATCH /subscriptions/{id}':
         final s = _subBy(id());
         if (b['name'] != null) {

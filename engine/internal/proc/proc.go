@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/netip"
 	"os/exec"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -52,8 +53,10 @@ type Process struct {
 	err      error // exit status; valid once exited is closed
 }
 
-// Start launches spec. Failing to tie the process to the group is reported
-// through OnLine rather than failing the start.
+// Start launches spec. On Windows the process starts suspended and runs
+// only once it is in the group's job, so nothing it starts, however quickly,
+// escapes the job. Failing to tie it to the group is reported through
+// OnLine rather than failing the start.
 func (g *Group) Start(spec Spec) (*Process, error) {
 	p := &Process{name: spec.Name, graceful: spec.Graceful, tail: &tail{max: 20}, exited: make(chan struct{})}
 	w := &lineWriter{onLine: func(line string) {
@@ -72,6 +75,11 @@ func (g *Group) Start(spec Spec) (*Process, error) {
 	p.cmd = cmd
 	if err := g.g.add(cmd.Process); err != nil {
 		w.onLine("warning: process is not tied to the daemon's lifetime: " + err.Error())
+	}
+	if err := resume(cmd.Process); err != nil {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		return nil, fmt.Errorf("start %s: %w", spec.Name, err)
 	}
 	go func() {
 		p.err = cmd.Wait()
@@ -209,27 +217,36 @@ func (w *lineWriter) flush() {
 }
 
 func (w *lineWriter) emit(line []byte) {
-	if s := strings.TrimSpace(stripANSI(string(line))); s != "" {
+	if s := strings.TrimSpace(StripANSI(string(line))); s != "" {
 		w.onLine(s)
 	}
 }
 
-// stripANSI removes color codes some cores print even without a terminal.
-func stripANSI(s string) string {
-	if !strings.Contains(s, "\x1b[") {
+// bareSGR is a colour code whose escape byte was lost, as when a log is
+// pasted: "[31m", "[38;5;207m", "[0m".
+var bareSGR = regexp.MustCompile(`\[\d+(?:;\d+)*m`)
+
+// StripANSI removes the terminal codes cores and the TUN layer print even
+// without a terminal: whole escape sequences, and colour codes that lost
+// their escape byte.
+func StripANSI(s string) string {
+	if strings.IndexByte(s, 0x1b) >= 0 {
+		var b strings.Builder
+		for i := 0; i < len(s); i++ {
+			if s[i] == 0x1b && i+1 < len(s) && s[i+1] == '[' {
+				j := i + 2
+				for j < len(s) && (s[j] < '@' || s[j] > '~') {
+					j++
+				}
+				i = j
+				continue
+			}
+			b.WriteByte(s[i])
+		}
+		s = b.String()
+	}
+	if strings.IndexByte(s, '[') < 0 {
 		return s
 	}
-	var b strings.Builder
-	for i := 0; i < len(s); i++ {
-		if s[i] == 0x1b && i+1 < len(s) && s[i+1] == '[' {
-			j := i + 2
-			for j < len(s) && (s[j] < '@' || s[j] > '~') {
-				j++
-			}
-			i = j
-			continue
-		}
-		b.WriteByte(s[i])
-	}
-	return b.String()
+	return bareSGR.ReplaceAllString(s, "")
 }

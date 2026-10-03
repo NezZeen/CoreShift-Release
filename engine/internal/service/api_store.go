@@ -25,6 +25,7 @@ import (
 //	GET    /v1/subscriptions
 //	POST   /v1/subscriptions                   {"url": …} or {"content": …}, optional "name", "user_agent"
 //	GET    /v1/subscriptions/{id}
+//	GET    /v1/subscriptions/{id}/url          {"url": …}, the whole link, which the others mask
 //	PATCH  /v1/subscriptions/{id}              {"name"?, "url"?, "user_agent"?, "content"?}
 //	DELETE /v1/subscriptions/{id}
 //	POST   /v1/subscriptions/{id}/refresh
@@ -53,6 +54,7 @@ func (a *api) routeStore(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/subscriptions", a.withStore(a.listSubscriptions))
 	mux.HandleFunc("POST /v1/subscriptions", a.withStore(a.addSubscription))
 	mux.HandleFunc("GET /v1/subscriptions/{id}", a.withStore(a.getSubscription))
+	mux.HandleFunc("GET /v1/subscriptions/{id}/url", a.withStore(a.subscriptionURL))
 	mux.HandleFunc("PATCH /v1/subscriptions/{id}", a.withStore(a.editSubscription))
 	mux.HandleFunc("DELETE /v1/subscriptions/{id}", a.withStore(a.removeSubscription))
 	mux.HandleFunc("POST /v1/subscriptions/{id}/refresh", a.withStore(a.refreshSubscription))
@@ -196,17 +198,21 @@ func (a *api) putSettings(w http.ResponseWriter, r *http.Request, st *store.Stor
 }
 
 // subscriptionView is a subscription as the UI shows it: nodes without
-// their credentials, with the cores able to run each.
+// their credentials, with the cores able to run each, and the link without
+// its access token (maskURL).
 type subscriptionView struct {
-	ID          string     `json:"id"`
-	Name        string     `json:"name"`
-	DisplayName string     `json:"display_name"`
-	URL         string     `json:"url,omitempty"`
-	UserAgent   string     `json:"user_agent,omitempty"`
-	Info        store.Info `json:"info"`
-	Format      string     `json:"format"`
-	Nodes       []nodeView `json:"nodes"`
-	Skipped     []string   `json:"skipped,omitempty"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	DisplayName string `json:"display_name"`
+	URL         string `json:"url,omitempty"`
+	// Insecure: the link is plain http://, and its token crosses the
+	// network as it is.
+	Insecure  bool       `json:"insecure,omitempty"`
+	UserAgent string     `json:"user_agent,omitempty"`
+	Info      store.Info `json:"info"`
+	Format    string     `json:"format"`
+	Nodes     []nodeView `json:"nodes"`
+	Skipped   []string   `json:"skipped,omitempty"`
 	// Auto is the fingerprints of the servers the panel set up for automatic
 	// selection: the connection moves down them when a server stops answering.
 	Auto       []string  `json:"auto,omitempty"`
@@ -236,13 +242,14 @@ type nodeView struct {
 	LatencyMethod string `json:"latency_method,omitempty"`
 }
 
-func (a *api) nodeView(subID string, n *node.Node) nodeView {
+// nodeView describes n, whose fingerprint is fp.
+func (a *api) nodeView(subID string, n *node.Node, fp string) nodeView {
 	cores := a.svc.Compatible(n)
 	if cores == nil {
 		cores = []core.Kind{}
 	}
 	v := nodeView{
-		Fingerprint: n.Fingerprint(), Name: n.Name, Protocol: n.Protocol,
+		Fingerprint: fp, Name: n.Name, Protocol: n.Protocol,
 		Transport: n.TransportLabel(), Security: n.SecurityLabel(),
 		Server: n.Server, Port: n.Port, Cores: cores,
 	}
@@ -254,13 +261,14 @@ func (a *api) nodeView(subID string, n *node.Node) nodeView {
 
 func (a *api) subscriptionView(sub *store.Subscription, set store.Settings) subscriptionView {
 	v := subscriptionView{
-		ID: sub.ID, Name: sub.Name, DisplayName: sub.DisplayName(), URL: sub.URL, UserAgent: sub.UserAgent,
+		ID: sub.ID, Name: sub.Name, DisplayName: sub.DisplayName(), URL: maskURL(sub.URL), Insecure: sub.Insecure(), UserAgent: sub.UserAgent,
 		Info: sub.Info, Format: sub.Format, Nodes: make([]nodeView, len(sub.Nodes)), Skipped: sub.Skipped, Auto: sub.Auto,
 		AddedAt: sub.AddedAt, UpdatedAt: sub.UpdatedAt, CheckedAt: sub.CheckedAt,
 		NextUpdate: store.NextRefresh(sub, set), LastError: sub.LastError,
 	}
+	fps := sub.Fingerprints()
 	for i := range sub.Nodes {
-		v.Nodes[i] = a.nodeView(sub.ID, &sub.Nodes[i])
+		v.Nodes[i] = a.nodeView(sub.ID, &sub.Nodes[i], fps[i])
 	}
 	return v
 }
@@ -282,6 +290,48 @@ func (a *api) getSubscription(w http.ResponseWriter, r *http.Request, st *store.
 		return
 	}
 	writeJSON(w, http.StatusOK, a.subscriptionView(&sub, st.Settings()))
+}
+
+// subscriptionURL answers the whole link, for the one place the UI needs
+// it: the QR code that adds the subscription on a phone.
+func (a *api) subscriptionURL(w http.ResponseWriter, r *http.Request, st *store.Store) {
+	sub, ok := st.Subscription(r.PathValue("id"))
+	if !ok {
+		writeError(w, http.StatusNotFound, store.ErrNotFound)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"url": sub.URL})
+}
+
+// maskURL is a subscription link fit to show and to tell links apart:
+// scheme and host, then "/…" and the last four characters of the rest when
+// it is long enough to keep its secret without them. The path and query,
+// which carry the access token, and any user name and password are left
+// out. The app makes the same of a link to compare (maskedUrl in Dart).
+func maskURL(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	i := strings.Index(raw, "://")
+	if i < 0 {
+		return "…"
+	}
+	authority, rest := raw[i+3:], ""
+	if j := strings.IndexAny(authority, "/?#"); j >= 0 {
+		authority, rest = authority[:j], authority[j:]
+	}
+	if at := strings.LastIndex(authority, "@"); at >= 0 {
+		authority = authority[at+1:]
+	}
+	head := strings.ToLower(raw[:i]) + "://" + strings.ToLower(authority)
+	r := []rune(rest)
+	switch {
+	case len(r) == 0 || rest == "/":
+		return head
+	case len(r) < 12:
+		return head + "/…"
+	}
+	return head + "/…" + string(r[len(r)-4:])
 }
 
 func (a *api) addSubscription(w http.ResponseWriter, r *http.Request, st *store.Store) {
@@ -369,7 +419,7 @@ func (a *api) selectionView(st *store.Store) selectionView {
 	sel, n, ok := st.Selected()
 	v := selectionView{Selection: sel, Available: ok}
 	if ok {
-		nv := a.nodeView(sel.Subscription, &n)
+		nv := a.nodeView(sel.Subscription, &n, n.Fingerprint())
 		v.Node = &nv
 	}
 	return v

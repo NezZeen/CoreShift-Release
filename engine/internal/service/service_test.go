@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net"
 	"net/netip"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -141,15 +142,21 @@ func (g *fakeGuard) active() *dnsguard.Config {
 type fakeTUN struct {
 	log      *callLog
 	startErr error
+	hang     bool // Start waits until cancelled
 	mu       sync.Mutex
 	opts     tunlayer.Options
 	inst     *fakeInstance
 }
 
-func (f *fakeTUN) Start(_ context.Context, o tunlayer.Options) (TUNInstance, error) {
+func (f *fakeTUN) Start(ctx context.Context, o tunlayer.Options) (TUNInstance, error) {
 	f.log.add("tun.start")
 	if f.startErr != nil {
 		return nil, f.startErr
+	}
+	if f.hang {
+		// Like an adapter Windows has not freed yet: only cancelling ends it.
+		<-ctx.Done()
+		return nil, ctx.Err()
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -470,11 +477,19 @@ func TestRussiaDirectDownloadsRuleSets(t *testing.T) {
 	var via []string
 	h := newHarness(t, func(c *Config) {
 		c.DNS.RussiaDirect = true
-		c.fetchRuleSet = func(_ context.Context, url string, proxy netip.AddrPort) ([]byte, error) {
+		c.fetchRuleSet = func(_ context.Context, _ string, proxy *url.URL) ([]byte, error) {
 			mu.Lock()
-			via = append(via, proxy.String())
+			if proxy == nil {
+				via = append(via, "direct")
+			} else {
+				via = append(via, proxy.Host)
+				// The core's inbound takes only its credentials.
+				if p, ok := proxy.User.Password(); !ok || p == "" || proxy.User.Username() == "" {
+					via[len(via)-1] += " without credentials"
+				}
+			}
 			mu.Unlock()
-			if !proxy.IsValid() {
+			if proxy == nil {
 				return nil, errors.New("blocked")
 			}
 			return []byte("SRS\x02fake"), nil
@@ -511,7 +526,7 @@ func TestRussiaDirectDownloadsRuleSets(t *testing.T) {
 func TestRussiaDirectWithoutRuleSetsStillConnects(t *testing.T) {
 	h := newHarness(t, func(c *Config) {
 		c.DNS.RussiaDirect = true
-		c.fetchRuleSet = func(context.Context, string, netip.AddrPort) ([]byte, error) {
+		c.fetchRuleSet = func(context.Context, string, *url.URL) ([]byte, error) {
 			return []byte("<html>blocked</html>"), nil
 		}
 	})
@@ -641,7 +656,7 @@ func TestRoutingSettingsReachTheTunnel(t *testing.T) {
 		c.Options.Selective, c.Options.ProxyDomains, c.Options.ProxyIPs = o.Selective, o.ProxyDomains, o.ProxyIPs
 		c.Options.ProxyApps, c.Options.DirectIPs, c.Options.BlockDomains = o.ProxyApps, o.DirectIPs, o.BlockDomains
 		c.DNS.RussiaDirect = o.DNS.RussiaDirect
-		c.fetchRuleSet = func(context.Context, string, netip.AddrPort) ([]byte, error) {
+		c.fetchRuleSet = func(context.Context, string, *url.URL) ([]byte, error) {
 			fetched = true
 			return nil, errors.New("not needed")
 		}

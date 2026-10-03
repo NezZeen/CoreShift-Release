@@ -39,9 +39,16 @@ type Fetched struct {
 	Info Info
 }
 
-// Fetch downloads and parses a subscription. Errors never include the URL,
-// because it usually carries the access token.
+// Fetch downloads and parses a subscription, identifying this device with
+// the HWID derived for the panel (Device.ForPanel). Errors never include the
+// URL, because it usually carries the access token.
 func Fetch(ctx context.Context, client *http.Client, rawURL, userAgent string) (Fetched, error) {
+	return FetchAs(ctx, client, rawURL, userAgent, false)
+}
+
+// FetchAs is Fetch; legacyHWID sends the machine-wide HWID of earlier
+// versions instead, for subscriptions added before per-panel HWIDs.
+func FetchAs(ctx context.Context, client *http.Client, rawURL, userAgent string, legacyHWID bool) (Fetched, error) {
 	if userAgent == "" {
 		userAgent = DefaultUserAgent
 	}
@@ -51,7 +58,7 @@ func Fetch(ctx context.Context, client *http.Client, rawURL, userAgent string) (
 	}
 	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Accept", "*/*")
-	ThisDevice().setHeaders(req.Header)
+	ThisDevice().ForPanel(rawURL, legacyHWID).setHeaders(req.Header)
 	resp, err := client.Do(req)
 	if err != nil {
 		var ue *url.Error

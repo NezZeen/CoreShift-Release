@@ -6,14 +6,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
-	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
 
+	"coreshift/engine/internal/fsutil"
 	"coreshift/engine/internal/tunlayer"
 )
 
@@ -56,7 +57,7 @@ const (
 // refreshing them in the background when old.
 type ruleSets struct {
 	dir     string
-	fetch   func(ctx context.Context, url string, proxy netip.AddrPort) ([]byte, error)
+	fetch   func(ctx context.Context, url string, proxy *url.URL) ([]byte, error)
 	publish func(Event)
 
 	mu         sync.Mutex
@@ -68,14 +69,20 @@ func newRuleSets(dir string, publish func(Event)) *ruleSets {
 }
 
 // get returns the sets available on disk, split into direct domain, direct
-// IP and proxy sets. A
-// missing set is downloaded now, through proxy (the active core) and then
+// IP and proxy sets. A missing set is downloaded now, through proxy (the
+// active core's SOCKS inbound, credentials included; nil for none) and then
 // directly; one that cannot be had is reported and left out, so connecting
 // still works, only with fewer names going direct.
-func (r *ruleSets) get(ctx context.Context, sets []geoSet, proxy netip.AddrPort) (domain, ip, proxied []tunlayer.RuleSet) {
+func (r *ruleSets) get(ctx context.Context, sets []geoSet, proxy *url.URL) (domain, ip, proxied []tunlayer.RuleSet) {
 	for _, gs := range sets {
 		path := filepath.Join(r.dir, gs.Tag+".srs")
-		fi, err := os.Stat(path)
+		fi, err := os.Lstat(path)
+		if err == nil && !fi.Mode().IsRegular() {
+			// A link or anything else in place of a file the service
+			// wrote: fetched anew.
+			os.RemoveAll(path)
+			err = fs.ErrNotExist
+		}
 		switch {
 		case err != nil:
 			if err := r.download(ctx, gs, path, proxy); err != nil {
@@ -102,7 +109,7 @@ func (r *ruleSets) get(ctx context.Context, sets []geoSet, proxy netip.AddrPort)
 
 // refresh replaces an old file in the background; the TUN layer picks the
 // new one up on its next start.
-func (r *ruleSets) refresh(gs geoSet, path string, proxy netip.AddrPort) {
+func (r *ruleSets) refresh(gs geoSet, path string, proxy *url.URL) {
 	r.mu.Lock()
 	if r.refreshing[gs.Tag] {
 		r.mu.Unlock()
@@ -122,11 +129,11 @@ func (r *ruleSets) refresh(gs geoSet, path string, proxy netip.AddrPort) {
 	r.publish(Event{Kind: "rules", Reason: gs.Tag, Line: "updated"})
 }
 
-func (r *ruleSets) download(ctx context.Context, gs geoSet, path string, proxy netip.AddrPort) error {
+func (r *ruleSets) download(ctx context.Context, gs geoSet, path string, proxy *url.URL) error {
 	// Through the proxy first: the source may be blocked where the user is.
-	vias := []netip.AddrPort{{}}
-	if proxy.IsValid() {
-		vias = []netip.AddrPort{proxy, {}}
+	vias := []*url.URL{nil}
+	if proxy != nil {
+		vias = []*url.URL{proxy, nil}
 	}
 	var errs []error
 	for _, via := range vias {
@@ -138,7 +145,7 @@ func (r *ruleSets) download(ctx context.Context, gs geoSet, path string, proxy n
 			return writeAtomic(path, b)
 		}
 		how := "directly"
-		if via.IsValid() {
+		if via != nil {
 			how = "through the proxy"
 		}
 		errs = append(errs, fmt.Errorf("%s: %w", how, err))
@@ -157,11 +164,8 @@ func checkRuleSet(b []byte) error {
 	return nil
 }
 
-func fetchRuleSet(ctx context.Context, rawURL string, proxy netip.AddrPort) ([]byte, error) {
-	tr := &http.Transport{}
-	if proxy.IsValid() {
-		tr.Proxy = http.ProxyURL(&url.URL{Scheme: "socks5", Host: proxy.String()})
-	}
+func fetchRuleSet(ctx context.Context, rawURL string, proxy *url.URL) ([]byte, error) {
+	tr := newTransport(proxy)
 	defer tr.CloseIdleConnections()
 	ctx, cancel := context.WithTimeout(ctx, ruleSetTimeout)
 	defer cancel()
@@ -192,20 +196,8 @@ func fetchRuleSet(ctx context.Context, rawURL string, proxy netip.AddrPort) ([]b
 }
 
 func writeAtomic(path string, b []byte) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name())
-	if _, err := tmp.Write(b); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmp.Name(), path)
+	return fsutil.WriteAtomic(path, b, 0o600)
 }
