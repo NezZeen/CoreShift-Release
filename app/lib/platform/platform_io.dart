@@ -347,37 +347,6 @@ Future<void> savePrefs(Map<String, dynamic> prefs) async {
   }
 }
 
-/// Runs the DNS leak test (see state/leak.dart) and returns bash.ws's
-/// entries. The lookups go through the system resolver, the way every app's
-/// do, so they take the tunnel's path when it is up.
-Future<List<Map<String, dynamic>>> dnsLeakTest() async {
-  final c = HttpClient()
-    ..connectionTimeout = const Duration(seconds: 8)
-    ..findProxy = ((_) => 'DIRECT')
-    ..userAgent = 'CoreShift';
-  Future<String> get(String url, {Duration timeout = const Duration(seconds: 15)}) async {
-    final req = await c.getUrl(Uri.parse(url)).timeout(timeout);
-    final resp = await req.close().timeout(timeout);
-    final body = await resp.transform(utf8.decoder).join().timeout(timeout);
-    if (resp.statusCode != HttpStatus.ok) throw HttpException('bash.ws: HTTP ${resp.statusCode}');
-    return body;
-  }
-
-  try {
-    final id = (await get('https://bash.ws/id')).trim();
-    if (!RegExp(r'^[a-z0-9]{4,64}$').hasMatch(id)) throw const FormatException('bash.ws: unexpected test id');
-    // Each name is unique, so no cache can answer it: some resolver has to
-    // ask bash.ws. The requests themselves are expected to fail.
-    await Future.wait([
-      for (var i = 1; i <= 6; i++) get('http://$i.$id.bash.ws/', timeout: const Duration(seconds: 6)).then((_) => null, onError: (_) => null),
-    ]);
-    final list = jsonDecode(await get('https://bash.ws/dnsleak/test/$id?json')) as List;
-    return [for (final e in list) (e as Map).cast<String, dynamic>()];
-  } finally {
-    c.close(force: true);
-  }
-}
-
 /// The system, for the journal's header: "Windows 10 Pro 10.0 (Build 19045)".
 /// Windows 11 still calls itself "Windows 10" there; its build number tells.
 String get osDescription {

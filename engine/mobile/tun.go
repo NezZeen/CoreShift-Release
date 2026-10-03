@@ -71,7 +71,7 @@ func (t *vpnTUN) Start(ctx context.Context, o tunlayer.Options) (service.TUNInst
 		t.platform.CloseTun()
 		return nil, err
 	}
-	i := &vpnInstance{box: instance, platform: t.platform, exited: make(chan struct{})}
+	i := &vpnInstance{box: instance, ctx: bctx, platform: t.platform, exited: make(chan struct{})}
 	currentTUN.set(i)
 	return i, nil
 }
@@ -92,6 +92,8 @@ type vpnInstance struct {
 	exited   chan struct{}
 	mu       sync.Mutex
 	err      error
+	// ctx holds the instance's services, its DNS router among them.
+	ctx context.Context
 }
 
 func (i *vpnInstance) Exited() <-chan struct{} { return i.exited }

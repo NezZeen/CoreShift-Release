@@ -10,6 +10,9 @@
 //	unhealthy-after:<dur>   healthy at first, 503 afterwards
 //	hang-after:<dur>        serve, then stop taking connections but keep running
 //
+// FAKECORE_FORWARD=<zone>=<host:port> relays connections to names in the
+// zone to host:port, as a real core reaches them, name resolved remotely.
+//
 // The SOCKS port, and the credentials it then requires, are read from the
 // config the supervisor generated, so the real adapters and config files
 // are exercised. With a Clash API address in
@@ -208,7 +211,36 @@ func authenticate(c net.Conn, r *bufio.Reader, methods []byte) bool {
 	return true
 }
 
-// serve speaks just enough SOCKS5 for a CONNECT, then answers one HTTP request.
+// forwardTo is where FAKECORE_FORWARD ("zone=host:port") sends names in
+// the zone, the way a real core would reach them; empty for other names.
+func forwardTo(name string) string {
+	zone, to, ok := strings.Cut(os.Getenv("FAKECORE_FORWARD"), "=")
+	if !ok || (name != zone && !strings.HasSuffix(name, "."+zone)) {
+		return ""
+	}
+	return to
+}
+
+// forward relays c, whose reader r may hold buffered bytes, to addr.
+func forward(c net.Conn, r *bufio.Reader, addr string) {
+	up, err := net.Dial("tcp", addr)
+	if err != nil {
+		return
+	}
+	defer up.Close()
+	c.SetDeadline(time.Time{})
+	done := make(chan struct{})
+	go func() {
+		io.Copy(up, r)
+		up.(*net.TCPConn).CloseWrite()
+		close(done)
+	}()
+	io.Copy(c, up)
+	<-done
+}
+
+// serve speaks just enough SOCKS5 for a CONNECT, then answers one HTTP
+// request, or relays names in FAKECORE_FORWARD's zone.
 func serve(c net.Conn, healthy bool) {
 	defer c.Close()
 	c.SetDeadline(time.Now().Add(5 * time.Second))
@@ -243,12 +275,21 @@ func serve(c net.Conn, healthy bool) {
 		}
 		addrLen = int(l)
 	}
-	if _, err := io.ReadFull(r, make([]byte, addrLen+2)); err != nil {
+	target := make([]byte, addrLen+2)
+	if _, err := io.ReadFull(r, target); err != nil {
 		return
 	}
 	reply := []byte{5, 0, 0, 1, 0, 0, 0, 0, 0, 0}
 	binary.BigEndian.PutUint16(reply[8:], 0)
 	c.Write(reply)
+
+	// A name, as clients send it to have the server resolve it.
+	if req[3] == 3 {
+		if to := forwardTo(string(target[:addrLen])); to != "" {
+			forward(c, r, to)
+			return
+		}
+	}
 
 	if _, err := http.ReadRequest(r); err != nil {
 		return
