@@ -40,6 +40,27 @@ static gboolean has_argument(gchar** argv, const gchar* arg) {
   return FALSE;
 }
 
+// Gives the window CoreShift's icon (app/tool/make_icons.py): from the icon
+// theme where the package installed it, else data/coreshift.png beside the
+// executable. On Wayland the dock takes it from the desktop entry instead.
+static void set_window_icon(GtkWindow* window) {
+  GtkIconTheme* theme = gtk_icon_theme_get_default();
+  if (theme != nullptr && gtk_icon_theme_has_icon(theme, "coreshift")) {
+    gtk_window_set_icon_name(window, "coreshift");
+    return;
+  }
+  g_autofree gchar* exe = g_file_read_link("/proc/self/exe", nullptr);
+  if (exe == nullptr) {
+    return;
+  }
+  g_autofree gchar* dir = g_path_get_dirname(exe);
+  g_autofree gchar* path =
+      g_build_filename(dir, "data", "coreshift.png", nullptr);
+  if (!gtk_window_set_icon_from_file(window, path, nullptr)) {
+    g_debug("no window icon at %s", path);
+  }
+}
+
 // Creates the window and the Flutter view: once, for the first start.
 static void create_window(MyApplication* self) {
   GtkWindow* window =
@@ -49,6 +70,7 @@ static void create_window(MyApplication* self) {
   // so there is no GTK header bar here.
   gtk_window_set_title(window, "CoreShift");
   gtk_window_set_default_size(window, 1320, 860);
+  set_window_icon(window);
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   fl_dart_project_set_dart_entrypoint_arguments(

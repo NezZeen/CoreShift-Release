@@ -11,6 +11,7 @@ Writes:
   assets/tray/{idle,busy,connected}.png            tray icons: the state on the mark
   android/app/src/main/res/mipmap-*/               legacy, round and adaptive layers
   web/favicon.png, web/icons/*                     the web demo
+  linux/icons/hicolor/*/apps/coreshift.*           Linux: the menu entry and the window
 
 The Android notification icon (res/drawable/ic_stat_vpn.xml) is a vector of
 the same glyph, kept by hand.
@@ -267,6 +268,12 @@ def main():
         write_png(f"{res}/mipmap-{name}/ic_launcher.png", mark(s, pad=2 * scale))
         write_png(f"{res}/mipmap-{name}/ic_launcher_round.png", mark(s, pad=2 * scale, shape="circle"))
         write_png(f"{res}/mipmap-{name}/ic_launcher_foreground.png", layer(round(108 * scale)))
+
+    # Linux: the desktop entry's and the window's icon, in the sizes the
+    # hicolor theme looks for (packaging/linux installs them).
+    for s in (16, 24, 32, 48, 64, 128, 256, 512):
+        write_png(f"linux/icons/hicolor/{s}x{s}/apps/coreshift.png", mark(s))
+    write("linux/icons/hicolor/scalable/apps/coreshift.svg", SVG.encode())
 
     write_png("web/favicon.png", mark(32))
     for s in (192, 512):

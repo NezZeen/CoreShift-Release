@@ -20,7 +20,7 @@ fi
 
 rm -f /etc/systemd/system/coreshift.service
 rm -f /usr/local/share/applications/dev.coreshift.coreshift.desktop
-rm -f /usr/local/share/icons/hicolor/512x512/apps/coreshift.png
+rm -f /usr/local/share/icons/hicolor/*/apps/coreshift.png /usr/local/share/icons/hicolor/scalable/apps/coreshift.svg
 rm -f /usr/local/bin/coreshift /usr/local/bin/coreshiftd
 rm -rf /opt/coreshift
 if [ -n "${SUDO_USER:-}" ] && home=$(getent passwd "$SUDO_USER" | cut -d: -f6) && [ -n "$home" ]; then
