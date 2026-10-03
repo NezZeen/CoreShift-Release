@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"io"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -30,13 +31,12 @@ func TestEffectiveCaps(t *testing.T) {
 	}
 }
 
-// fakeSession plays the app coming and going for followApp.
+// fakeSession plays the app coming and going for autoConnectWithApp.
 type fakeSession struct {
 	mu          sync.Mutex
 	attached    chan struct{} // receives when the app comes
 	gone        chan bool     // what WaitAppGone returns
 	autoConnect int
-	disconnect  int
 }
 
 func (f *fakeSession) WaitAppAttached(ctx context.Context) bool {
@@ -57,32 +57,28 @@ func (f *fakeSession) WaitAppGone(ctx context.Context, _, _ time.Duration) bool 
 	}
 }
 
-func (f *fakeSession) AutoConnect(ctx context.Context) error {
+func (f *fakeSession) AutoConnect(context.Context) error {
 	f.mu.Lock()
 	f.autoConnect++
 	f.mu.Unlock()
-	<-ctx.Done() // retrying until the app goes
-	return ctx.Err()
+	return nil
 }
 
-func (f *fakeSession) Disconnect() {
-	f.mu.Lock()
-	f.disconnect++
-	f.mu.Unlock()
-}
-
-func (f *fakeSession) counts() (int, int) {
+func (f *fakeSession) connects() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.autoConnect, f.disconnect
+	return f.autoConnect
 }
 
-func TestFollowApp(t *testing.T) {
+// Each start of the app auto-connects, as the Windows service does when
+// the app starts it; closing the app disconnects nothing (the fake has no
+// Disconnect to call).
+func TestAutoConnectWithApp(t *testing.T) {
 	f := &fakeSession{attached: make(chan struct{}), gone: make(chan bool)}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
-		followApp(ctx, f, io.Discard)
+		autoConnectWithApp(ctx, f, io.Discard)
 		close(done)
 	}()
 	waitFor := func(what string, cond func() bool) {
@@ -93,23 +89,61 @@ func TestFollowApp(t *testing.T) {
 			}
 		}
 	}
-	if a, d := f.counts(); a != 0 || d != 0 {
-		t.Fatalf("before the app: autoConnect %d, disconnect %d", a, d)
+	time.Sleep(20 * time.Millisecond)
+	if f.connects() != 0 {
+		t.Fatal("auto-connect before the app started: the daemon runs from boot, not from sign-in")
 	}
 	for round := 1; round <= 2; round++ {
 		f.attached <- struct{}{}
-		waitFor("no auto-connect when the app came", func() bool { a, _ := f.counts(); return a == round })
+		waitFor("no auto-connect when the app started", func() bool { return f.connects() == round })
 		f.gone <- true
-		waitFor("no disconnect when the app went", func() bool { _, d := f.counts(); return d == round })
 	}
 	cancel()
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		t.Fatal("followApp did not end with its context")
+		t.Fatal("autoConnectWithApp did not end with its context")
 	}
-	if _, d := f.counts(); d != 2 {
-		t.Fatalf("disconnected %d times on shutdown, want no extra", d)
+}
+
+func TestDetectInit(t *testing.T) {
+	for _, c := range []struct {
+		paths []string
+		want  initSystem
+	}{
+		{[]string{"/run/systemd/system", "/run/openrc"}, initSystemd},
+		{[]string{"/run/openrc"}, initOpenRC},
+		{[]string{"/run/runit"}, initRunit},
+		{[]string{"/var/service", "/usr/bin/sv"}, initRunit},
+		{[]string{"/var/service"}, initUnknown},
+		{nil, initUnknown},
+	} {
+		has := map[string]bool{}
+		for _, p := range c.paths {
+			has[p] = true
+		}
+		if got := detectInit(func(p string) bool { return has[p] }); got != c.want {
+			t.Errorf("detectInit(%v) = %q, want %q", c.paths, got, c.want)
+		}
+	}
+}
+
+func TestServiceCommand(t *testing.T) {
+	for init, want := range map[initSystem]string{
+		initSystemd: "systemctl start coreshift.service",
+		initOpenRC:  "rc-service coreshift start",
+		initRunit:   "sv start coreshift",
+	} {
+		argv, err := serviceCommand(init, "start")
+		if err != nil || strings.Join(argv, " ") != want {
+			t.Errorf("%s: %v, %v", init, argv, err)
+		}
+	}
+	if _, err := serviceCommand(initUnknown, "start"); err == nil {
+		t.Error("no init system, yet a command")
+	}
+	if _, err := serviceCommand(initSystemd, "enable; rm -rf /"); err == nil {
+		t.Error("unknown action accepted")
 	}
 }
 

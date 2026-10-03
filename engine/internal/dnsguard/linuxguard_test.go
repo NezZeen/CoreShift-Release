@@ -17,6 +17,9 @@ type linuxHarness struct {
 	commands []string
 	link     bool
 	nm       bool
+	fw       bool
+	stack    dnsStack
+	inputs   []string
 }
 
 func newLinuxHarness(t *testing.T, resolved bool, resolvConfPath string) *linuxHarness {
@@ -25,7 +28,10 @@ func newLinuxHarness(t *testing.T, resolved bool, resolvConfPath string) *linuxH
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := &linuxHarness{link: true}
+	h := &linuxHarness{link: true, stack: stackFile}
+	if resolved {
+		h.stack = stackResolved
+	}
 	dirs := slices.Clone(trustedLinkDirs)
 	if resolvConfPath != "" {
 		dirs = append(dirs, filepath.Dir(resolvConfPath))
@@ -36,8 +42,14 @@ func newLinuxHarness(t *testing.T, resolved bool, resolvConfPath string) *linuxH
 			h.commands = append(h.commands, name+" "+strings.Join(args, " "))
 			return nil
 		},
+		runInput: func(_ context.Context, in []byte, name string, args ...string) error {
+			h.commands = append(h.commands, name+" "+strings.Join(args, " "))
+			h.inputs = append(h.inputs, string(in))
+			return nil
+		},
 		resolvConfPath: resolvConfPath,
-		useResolved:    func() bool { return resolved },
+		detect:         func() dnsStack { return h.stack },
+		firewalld:      func() bool { return h.fw },
 		networkManager: func() bool { return h.nm },
 		linkExists:     func(string) bool { return h.link },
 		linkDirs:       dirs,

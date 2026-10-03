@@ -18,22 +18,32 @@ import (
 // This file holds the Linux guard's logic. Commands and the resolv.conf path
 // are injected so it can be tested on any OS; guard_linux.go wires it up.
 //
-// Three setups are handled:
+// The setups (linuxstack.go, detected on every Apply):
 //   - systemd-resolved with /etc/resolv.conf pointing at its stub (Ubuntu,
-//     Fedora, and NetworkManager on top of either): the TUN link gets our
+//     Fedora, and NetworkManager on top of it): the TUN link gets our
 //     servers and the "~." routing domain, so every query goes there.
+//   - resolvconf / openresolv: a record of ours, exclusive where openresolv
+//     allows it.
+//   - netconfig (openSUSE): our servers handed to it as a service.
 //   - NetworkManager writing /etc/resolv.conf itself (Debian without
-//     resolved, Arch, older Fedora): we write the file, and Keep writes it
-//     again whenever NetworkManager replaces it, say after a DHCP renewal.
-//   - plain /etc/resolv.conf (resolvconf, dhclient, a hand-written file):
-//     the same as NetworkManager.
+//     resolved, Arch), or a plain file, symlink or not: we write the file,
+//     and Keep writes it again whenever someone replaces it, say after a
+//     DHCP renewal.
+//
+// With firewalld running, the TUN interface also goes into its trusted
+// zone while the tunnel is up (runtime only): the TUN layer answers
+// connections from the system through it, which the default zones refuse.
 //
 // Whatever the setup, the TUN layer also hijacks every port-53 packet
-// routed into the tunnel, so a resolver the guard missed still cannot leak.
+// routed into the tunnel, so a resolver the guard missed still cannot leak:
+// the guard keeps lookups fast and tidy rather than being the only wall.
 
 const (
 	kindResolvedLink = "linux.resolved"
 	kindResolvConf   = "linux.resolvconf"
+	kindResolvconf   = "linux.resolvconf-record"
+	kindNetconfig    = "linux.netconfig"
+	kindFirewalld    = "linux.firewalld"
 )
 
 // maxResolvConf bounds a resolv.conf the journal may restore.
@@ -46,8 +56,26 @@ var trustedLinkDirs = []string{"/run/", "/var/run/", "/etc/resolvconf/", "/usr/l
 
 type commandRunner func(ctx context.Context, name string, args ...string) error
 
+// inputRunner runs a command with input on its stdin.
+type inputRunner func(ctx context.Context, input []byte, name string, args ...string) error
+
 type resolvedLinkChange struct {
 	Interface string `json:"interface"`
+}
+
+// resolvconfChange is our resolvconf record; netconfigChange our netconfig
+// service; firewalldChange the TUN interface in a firewalld zone.
+type resolvconfChange struct {
+	Record string `json:"record"`
+}
+
+type netconfigChange struct {
+	Interface string `json:"interface"`
+}
+
+type firewalldChange struct {
+	Interface string `json:"interface"`
+	Zone      string `json:"zone"`
 }
 
 type resolvConfChange struct {
@@ -64,9 +92,12 @@ type resolvConfChange struct {
 type linuxGuard struct {
 	journal        *Journal
 	run            commandRunner
+	runInput       inputRunner
 	resolvConfPath string
-	// useResolved reports whether systemd-resolved serves the system's DNS.
-	useResolved func() bool
+	// detect says what manages the system's DNS now.
+	detect func() dnsStack
+	// firewalld reports whether firewalld runs.
+	firewalld func() bool
 	// networkManager reports whether NetworkManager runs: it is told to
 	// leave the TUN link alone.
 	networkManager func() bool
@@ -97,12 +128,27 @@ func (g *linuxGuard) Apply(ctx context.Context, cfg Config) error {
 		// own; the setting goes away with the link. Best effort.
 		_ = g.run(ctx, "nmcli", "device", "set", cfg.Interface, "managed", "no")
 	}
+	if g.firewalld != nil && g.firewalld() {
+		if err := g.journal.Record(kindFirewalld, firewalldChange{Interface: cfg.Interface, Zone: firewalldZone}); err != nil {
+			return err
+		}
+		// Best effort: without it TCP through the TUN may stall, which the
+		// health checks report, but DNS is still redirected.
+		_ = g.run(ctx, "firewall-cmd", "--zone="+firewalldZone, "--change-interface="+cfg.Interface)
+	}
 	var err error
-	if g.useResolved() {
+	switch g.detect() {
+	case stackResolved:
 		err = g.applyResolved(ctx, cfg)
-	} else if err = g.applyResolvConf(cfg); err == nil {
-		c := cfg
-		g.written = &c
+	case stackResolvconf:
+		err = g.applyResolvconf(ctx, cfg)
+	case stackNetconfig:
+		err = g.applyNetconfig(ctx, cfg)
+	default:
+		if err = g.applyResolvConf(cfg); err == nil {
+			c := cfg
+			g.written = &c
+		}
 	}
 	if err != nil {
 		return errors.Join(err, g.revertLocked(ctx))
@@ -173,6 +219,34 @@ func (g *linuxGuard) applyResolved(ctx context.Context, cfg Config) error {
 	return nil
 }
 
+// applyResolvconf adds a record of ours to resolvconf: exclusive (-x) and
+// first (-m 0) with openresolv; Debian's resolvconf knows neither, and
+// orders it by name (resolvconfRecord).
+func (g *linuxGuard) applyResolvconf(ctx context.Context, cfg Config) error {
+	rec := resolvconfRecord(cfg.Interface)
+	if err := g.journal.Record(kindResolvconf, resolvconfChange{Record: rec}); err != nil {
+		return err
+	}
+	in := renderResolvConf(cfg)
+	if err := g.runInput(ctx, in, "resolvconf", "-a", rec, "-m", "0", "-x"); err != nil {
+		if err2 := g.runInput(ctx, in, "resolvconf", "-a", rec); err2 != nil {
+			return fmt.Errorf("dnsguard: resolvconf -a %s: %w", rec, errors.Join(err, err2))
+		}
+	}
+	return nil
+}
+
+// applyNetconfig hands our servers to netconfig as a service of our own.
+func (g *linuxGuard) applyNetconfig(ctx context.Context, cfg Config) error {
+	if err := g.journal.Record(kindNetconfig, netconfigChange{Interface: cfg.Interface}); err != nil {
+		return err
+	}
+	if err := g.runInput(ctx, renderNetconfig(cfg), "netconfig", "modify", "-s", "coreshift", "-i", cfg.Interface); err != nil {
+		return fmt.Errorf("dnsguard: netconfig modify: %w", err)
+	}
+	return nil
+}
+
 func (g *linuxGuard) applyResolvConf(cfg Config) error {
 	ch, err := snapshotFile(g.resolvConfPath)
 	if err != nil {
@@ -217,6 +291,41 @@ func (g *linuxGuard) undo(ctx context.Context, c Change) error {
 			return nil
 		}
 		return g.run(ctx, "resolvectl", "revert", ch.Interface)
+	case kindResolvconf:
+		var ch resolvconfChange
+		if err := json.Unmarshal(c.Data, &ch); err != nil {
+			return fmt.Errorf("%w: %v", ErrRejected, err)
+		}
+		iface, ok := strings.CutPrefix(ch.Record, "tun.")
+		if !ok || !validInterfaceName(iface) {
+			return fmt.Errorf("%w: resolvconf record %q", ErrRejected, ch.Record)
+		}
+		// Best effort, and never left to retry: the records live in /run,
+		// which a reboot empties, and a record already gone fails the call.
+		_ = g.run(ctx, "resolvconf", "-d", ch.Record)
+		return nil
+	case kindNetconfig:
+		var ch netconfigChange
+		if err := json.Unmarshal(c.Data, &ch); err != nil {
+			return fmt.Errorf("%w: %v", ErrRejected, err)
+		}
+		if !validInterfaceName(ch.Interface) {
+			return fmt.Errorf("%w: interface name %q", ErrRejected, ch.Interface)
+		}
+		// As with resolvconf: netconfig keeps services in /run.
+		_ = g.run(ctx, "netconfig", "remove", "-s", "coreshift", "-i", ch.Interface)
+		return nil
+	case kindFirewalld:
+		var ch firewalldChange
+		if err := json.Unmarshal(c.Data, &ch); err != nil {
+			return fmt.Errorf("%w: %v", ErrRejected, err)
+		}
+		if !validInterfaceName(ch.Interface) || ch.Zone != firewalldZone {
+			return fmt.Errorf("%w: firewalld %q in zone %q", ErrRejected, ch.Interface, ch.Zone)
+		}
+		// Runtime only: a reload or reboot drops it anyway.
+		_ = g.run(ctx, "firewall-cmd", "--zone="+ch.Zone, "--remove-interface="+ch.Interface)
+		return nil
 	case kindResolvConf:
 		var ch resolvConfChange
 		if err := json.Unmarshal(c.Data, &ch); err != nil {

@@ -117,10 +117,11 @@ type serveOptions struct {
 	// exitWithoutApp stops the daemon once the app has been closed for
 	// appGrace (the Windows service, which the app starts).
 	exitWithoutApp bool
-	// followApp keeps the daemon running, but connects (with auto-connect
-	// on) when the app comes and disconnects when it has been closed for
-	// appGrace (the Linux service, which runs from boot).
-	followApp bool
+	// connectWithApp runs auto-connect each time the app starts rather
+	// than when the daemon does (the Linux service, which runs from boot,
+	// so that "Автозапуск" connects at sign-in as on Windows). The VPN
+	// stays up when the app is closed, until the user turns it off.
+	connectWithApp bool
 }
 
 func serveWith(ctx context.Context, cfg service.Config, apiAddr string, log io.Writer, o serveOptions) error {
@@ -191,8 +192,8 @@ func serveWith(ctx context.Context, cfg service.Config, apiAddr string, log io.W
 	}
 	go st.RunUpdater(ctx, time.Minute)
 	go svc.RunAppUpdates(ctx)
-	if o.followApp {
-		go followApp(ctx, svc, log)
+	if o.connectWithApp {
+		go autoConnectWithApp(ctx, svc, log)
 	} else {
 		go func() {
 			if err := svc.AutoConnect(ctx); err != nil && ctx.Err() == nil {
@@ -210,42 +211,6 @@ func serveWith(ctx context.Context, cfg service.Config, apiAddr string, log io.W
 		srv.Close() // event streams never go idle
 	}
 	return nil
-}
-
-// appSession is what followApp needs of the service.
-type appSession interface {
-	WaitAppAttached(ctx context.Context) bool
-	WaitAppGone(ctx context.Context, first, grace time.Duration) bool
-	AutoConnect(ctx context.Context) error
-	Disconnect()
-}
-
-// followApp ties the VPN to the app for a daemon that outlives it: each
-// time the app comes, auto-connect runs as when the Windows service starts
-// with the app; once it has been gone for appGrace, the VPN goes down, so
-// it never runs unseen. Until ctx ends.
-func followApp(ctx context.Context, svc appSession, log io.Writer) {
-	for {
-		if !svc.WaitAppAttached(ctx) {
-			return
-		}
-		round, stop := context.WithCancel(ctx)
-		done := make(chan struct{})
-		go func() {
-			defer close(done)
-			if err := svc.AutoConnect(round); err != nil && round.Err() == nil {
-				fmt.Fprintln(log, "auto-connect:", err)
-			}
-		}()
-		gone := svc.WaitAppGone(ctx, appGrace, appGrace)
-		stop()
-		<-done
-		if !gone {
-			return
-		}
-		fmt.Fprintln(log, "the app is closed; disconnecting")
-		svc.Disconnect()
-	}
 }
 
 func parseAddrPort(s string) (netip.AddrPort, error) { return netip.ParseAddrPort(s) }

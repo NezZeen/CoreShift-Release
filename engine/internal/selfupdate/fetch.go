@@ -30,20 +30,29 @@ func HasToken() bool { return token != "" }
 // Source is where releases come from: a GitHub repository or a folder.
 type Source struct {
 	Repo string // OWNER/REPO
-	Dir  string
+	// Public: the repository is public and read without the token, which
+	// is then never sent (Linux builds have none, see PublicSource).
+	Public bool
+	Dir    string
 }
 
 var repoRE = regexp.MustCompile(`^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$`)
 
-// ParseSource accepts "github:OWNER/REPO" or an absolute folder path on this
-// computer (not a network path).
+// ParseSource accepts "github:OWNER/REPO" (private, read with the token),
+// "github-public:OWNER/REPO" (public, read without it) or an absolute folder
+// path on this computer (not a network path).
 func ParseSource(s string) (Source, error) {
 	s = strings.TrimSpace(s)
-	if repo, ok := strings.CutPrefix(s, "github:"); ok {
-		if !repoRE.MatchString(repo) {
-			return Source{}, fmt.Errorf("%q is not github:OWNER/REPO", s)
+	for _, p := range []struct {
+		prefix string
+		public bool
+	}{{"github:", false}, {"github-public:", true}} {
+		if repo, ok := strings.CutPrefix(s, p.prefix); ok {
+			if !repoRE.MatchString(repo) {
+				return Source{}, fmt.Errorf("%q is not %sOWNER/REPO", s, p.prefix)
+			}
+			return Source{Repo: repo, Public: p.public}, nil
 		}
-		return Source{Repo: repo}, nil
 	}
 	// A network path (\\host\share) would make the service, which runs as
 	// SYSTEM, sign in to that host: the setting is writable by any local user.
@@ -57,6 +66,9 @@ func ParseSource(s string) (Source, error) {
 }
 
 func (s Source) String() string {
+	if s.Repo != "" && s.Public {
+		return "github-public:" + s.Repo
+	}
 	if s.Repo != "" {
 		return "github:" + s.Repo
 	}
@@ -66,6 +78,10 @@ func (s Source) String() string {
 // Release is a verified manifest and where its installer is.
 type Release struct {
 	Manifest
+	// Page is the release's page on GitHub, for downloading it by hand
+	// (Linux); empty for a folder. It is not signed, so it is only ever an
+	// address under the source repository's releases.
+	Page      string
 	src       Source
 	installer string // the asset's API URL, or the file's path
 }
@@ -103,7 +119,7 @@ func checkDir(src Source, manifest string, keys []string) (Release, error) {
 }
 
 func checkGitHub(ctx context.Context, client *http.Client, src Source, manifest string, keys []string) (Release, error) {
-	assets, err := releaseAssets(ctx, client, src.Repo, manifest)
+	assets, page, err := releaseAssets(ctx, client, src, manifest)
 	if err != nil {
 		return Release{}, err
 	}
@@ -113,7 +129,7 @@ func checkGitHub(ctx context.Context, client *http.Client, src Source, manifest 
 		if !ok {
 			return Release{}, fmt.Errorf("check for updates: the latest release has no %s", name)
 		}
-		if files[name], err = fetchAsset(ctx, client, a.URL, 1<<20); err != nil {
+		if files[name], err = fetchAsset(ctx, client, src, a.URL, 1<<20); err != nil {
 			return Release{}, err
 		}
 	}
@@ -128,7 +144,7 @@ func checkGitHub(ctx context.Context, client *http.Client, src Source, manifest 
 	if a.Size != m.Size {
 		return Release{}, fmt.Errorf("check for updates: %s is %d bytes, the manifest says %d", m.Installer, a.Size, m.Size)
 	}
-	return Release{Manifest: m, src: src, installer: a.URL}, nil
+	return Release{Manifest: m, Page: page, src: src, installer: a.URL}, nil
 }
 
 type asset struct {
@@ -138,32 +154,33 @@ type asset struct {
 }
 
 // releaseAssets returns the assets of the newest published release that has
-// the file manifest: a release for one platform does not hide the previous
-// one of the other.
-func releaseAssets(ctx context.Context, client *http.Client, repo, manifest string) (map[string]asset, error) {
-	if token == "" {
-		return nil, errors.New("this build has no token for the private releases")
+// the file manifest, and its page: a release for one platform does not hide
+// the previous one of the other.
+func releaseAssets(ctx context.Context, client *http.Client, src Source, manifest string) (map[string]asset, string, error) {
+	if token == "" && !src.Public {
+		return nil, "", errors.New("this build has no token for the private releases")
 	}
 	// Newest first.
-	req, err := githubRequest(ctx, APIBase+"/repos/"+repo+"/releases?per_page=30", "application/vnd.github+json")
+	req, err := githubRequest(ctx, src, APIBase+"/repos/"+src.Repo+"/releases?per_page=30", "application/vnd.github+json")
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	resp, err := do(client, req)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	defer resp.Body.Close()
 	if err := statusError(resp); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	var releases []struct {
 		Draft      bool    `json:"draft"`
 		Prerelease bool    `json:"prerelease"`
+		Page       string  `json:"html_url"`
 		Assets     []asset `json:"assets"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(&releases); err != nil {
-		return nil, fmt.Errorf("check for updates: %w", err)
+		return nil, "", fmt.Errorf("check for updates: %w", err)
 	}
 	for _, rel := range releases {
 		if rel.Draft || rel.Prerelease {
@@ -174,15 +191,29 @@ func releaseAssets(ctx context.Context, client *http.Client, repo, manifest stri
 			out[a.Name] = a
 		}
 		if _, ok := out[manifest]; ok {
-			return out, nil
+			return out, releasePage(src.Repo, rel.Page), nil
 		}
 	}
-	return nil, fmt.Errorf("check for updates: no release has %s", manifest)
+	return nil, "", fmt.Errorf("check for updates: no release has %s", manifest)
 }
 
-// githubRequest adds the token. The asset download redirects to another
-// host, and net/http does not forward Authorization there.
-func githubRequest(ctx context.Context, rawURL, accept string) (*http.Request, error) {
+// releasePage keeps page only when it is a release page of repo on GitHub,
+// else gives the repository's releases: the address comes unsigned from
+// the API, and the user opens it.
+func releasePage(repo, page string) string {
+	prefix := "/" + repo + "/releases/"
+	u, err := url.Parse(page)
+	if err != nil || u.Scheme != "https" || u.Host != "github.com" || u.User != nil || u.RawQuery != "" || u.Fragment != "" ||
+		!strings.HasPrefix(u.Path, prefix) || len(u.Path) == len(prefix) || strings.Contains(u.Path, "..") {
+		return "https://github.com/" + repo + "/releases"
+	}
+	return "https://github.com" + u.EscapedPath()
+}
+
+// githubRequest adds the token, except for a public source. The asset
+// download redirects to another host, and net/http does not forward
+// Authorization there.
+func githubRequest(ctx context.Context, src Source, rawURL, accept string) (*http.Request, error) {
 	// The token goes to GitHub's API only; asset URLs come from its answers.
 	if !strings.HasPrefix(rawURL, APIBase+"/") {
 		return nil, errors.New("check for updates: unexpected address")
@@ -192,7 +223,9 @@ func githubRequest(ctx context.Context, rawURL, accept string) (*http.Request, e
 		return nil, err
 	}
 	req.Header.Set("Accept", accept)
-	req.Header.Set("Authorization", "Bearer "+token)
+	if !src.Public {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	req.Header.Set("User-Agent", "CoreShift")
 	return req, nil
@@ -225,8 +258,8 @@ func statusError(resp *http.Response) error {
 	return fmt.Errorf("check for updates: server returned %s", resp.Status)
 }
 
-func fetchAsset(ctx context.Context, client *http.Client, apiURL string, limit int64) ([]byte, error) {
-	req, err := githubRequest(ctx, apiURL, "application/octet-stream")
+func fetchAsset(ctx context.Context, client *http.Client, src Source, apiURL string, limit int64) ([]byte, error) {
+	req, err := githubRequest(ctx, src, apiURL, "application/octet-stream")
 	if err != nil {
 		return nil, err
 	}
@@ -291,7 +324,7 @@ func copyInstaller(ctx context.Context, client *http.Client, rel Release, w io.W
 		}
 		r = f
 	} else {
-		req, err := githubRequest(ctx, rel.installer, "application/octet-stream")
+		req, err := githubRequest(ctx, rel.src, rel.installer, "application/octet-stream")
 		if err != nil {
 			return err
 		}
