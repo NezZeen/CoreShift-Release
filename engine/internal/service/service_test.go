@@ -555,6 +555,7 @@ func TestIPv6Tunnel(t *testing.T) {
 		h := newHarness(t, func(c *Config) {
 			c.IPv6 = true
 			c.hostIPv6 = func() bool { return hostV6 }
+			c.ipv6Off = func() bool { return false } // whatever the test machine has
 		})
 		if err := h.connect(t, trojanLink); err != nil {
 			t.Fatal(err)
