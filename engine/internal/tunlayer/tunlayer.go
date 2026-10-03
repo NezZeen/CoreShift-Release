@@ -93,6 +93,13 @@ type Options struct {
 	// BypassAddresses are proxy server IPs, excluded from TUN routes for the
 	// same reason. Needed where process matching is unavailable.
 	BypassAddresses []netip.Prefix
+	// ExcludeLAN keeps the local network ranges out of the TUN routes
+	// (Linux): sing-box's routing table there would otherwise take the
+	// replies to connections made to this machine from the local network
+	// (SSH, file sharing, a VM's host) into the TUN, where they die. Those
+	// ranges go direct anyway; DNS to them is then not hijacked, but the
+	// system's resolver is redirected by the DNS guard.
+	ExcludeLAN bool
 	// DirectApps are executable names ("qbittorrent.exe") whose traffic goes
 	// direct instead of through the proxy, wherever they are installed.
 	// Names match case-insensitively.
@@ -203,6 +210,7 @@ func (o Options) withDefaults() Options {
 	if o.Platform {
 		o.BypassProcesses, o.DirectDNSProcesses, o.DirectApps, o.ProxyApps = nil, nil, nil, nil
 		o.BypassAddresses = nil
+		o.ExcludeLAN = false
 		// The system stack answers TCP from a kernel socket of this process,
 		// which Android keeps outside its own VPN: the answers leave by the
 		// physical network and every TCP connection hangs. gVisor answers
@@ -284,8 +292,12 @@ func build(o Options) (obj, error) {
 		"strict_route":   o.StrictRoute,
 		"stack":          o.Stack,
 	}
-	if len(o.BypassAddresses) > 0 {
-		tun["route_exclude_address"] = prefixStrings(o.BypassAddresses)
+	exclude := prefixStrings(o.BypassAddresses)
+	if o.ExcludeLAN {
+		exclude = append(exclude, lanRanges...)
+	}
+	if len(exclude) > 0 {
+		tun["route_exclude_address"] = exclude
 	}
 
 	upstream := obj{
