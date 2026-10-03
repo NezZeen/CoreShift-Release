@@ -142,7 +142,26 @@ if have firewall-cmd && [ -d /run/firewalld ]; then
 	say "firewalld runs: the TUN interface goes into its trusted zone while connected"
 fi
 
+# The app's libraries: unlike a package, the archive cannot pull them in.
+# EGL and GLES are opened at run time, so ldd does not show them missing;
+# without them the app exits at once and nothing appears.
+missing=""
+if [ "$daemon_only" = 0 ] && have ldconfig; then
+	libs=$(ldconfig -p 2>/dev/null)
+	for l in libgtk-3.so.0 libEGL.so.1 libGLESv2.so.2 libX11.so.6 libXi.so.6; do
+		case "$libs" in
+		*"$l "*) ;;
+		*) missing="$missing $l" ;;
+		esac
+	done
+fi
+
 say "CoreShift $("$BINDIR/coreshiftd" version | cut -d' ' -f2-) is installed."
+if [ -n "$missing" ]; then
+	say "the app cannot start: missing$missing. Install them, e.g."
+	say "  Debian, Ubuntu: apt install libgtk-3-0 libegl1 libgles2 libx11-6 libxi6"
+	say "  Fedora: dnf install gtk3 libglvnd-egl libglvnd-gles    Arch: pacman -S gtk3 libglvnd"
+fi
 if [ "$daemon_only" = 0 ]; then
 	say "sign out and in again (for the group), then open CoreShift from the applications menu."
 fi
