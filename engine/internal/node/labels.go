@@ -24,13 +24,16 @@ func (n *Node) TransportLabel() string {
 	return t
 }
 
-// SecurityLabel is "none", "tls", "tls (insecure)" or "reality".
+// SecurityLabel is "none", "tls", "tls (pinned)", "tls (insecure)" or
+// "reality".
 func (n *Node) SecurityLabel() string {
 	switch {
 	case n.TLS == nil:
 		return "none"
 	case n.TLS.Reality != nil:
 		return "reality"
+	case n.TLS.PinSHA256 != "":
+		return "tls (pinned)"
 	case n.TLS.Insecure:
 		return "tls (insecure)"
 	}

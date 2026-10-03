@@ -69,7 +69,7 @@ class DemoBackend implements Backend {
   }
 
   static const _features = {
-    'xray': ['vless', 'vmess', 'trojan', 'shadowsocks', 'wireguard', 'ws', 'grpc', 'httpupgrade', 'xhttp', 'reality'],
+    'xray': ['vless', 'vmess', 'trojan', 'shadowsocks', 'hysteria2', 'wireguard', 'ws', 'grpc', 'httpupgrade', 'xhttp', 'reality'],
     'sing-box': ['vless', 'vmess', 'trojan', 'shadowsocks', 'hysteria2', 'tuic', 'anytls', 'wireguard', 'ws', 'grpc', 'http', 'httpupgrade', 'reality'],
     'mihomo': ['vless', 'vmess', 'trojan', 'shadowsocks', 'hysteria2', 'tuic', 'anytls', 'wireguard', 'ws', 'grpc', 'http', 'httpupgrade', 'reality'],
   };
