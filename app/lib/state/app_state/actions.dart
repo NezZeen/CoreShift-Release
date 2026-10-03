@@ -139,9 +139,15 @@ extension AppStateActions on AppState {
 
   /// Tests the latency of the nodes of [subscription], or of all nodes.
   /// Results arrive as events while the test runs.
+  ///
+  /// The method is the service's own choice: a TCP or ICMP ping, and for a
+  /// server the ping cannot time a request through its core. The setting
+  /// that forced every server through a core has no control any more, so a
+  /// copy left with it goes back to the automatic way.
   Future<void> testLatency([String? subscription]) async {
     testingLatency = true;
     _notify();
+    if (setting('cores.latency_test', 'ping') == 'proxy') await updateSettings((s) => s['cores']['latency_test'] = 'ping');
     await _act(() => backend.call('POST', '/v1/latency', {'subscription': ?subscription}));
     testingLatency = false;
     _notify();
@@ -203,36 +209,64 @@ extension AppStateActions on AppState {
     _notify();
   }
 
-  /// Asks the daemon for the latest release of each core.
+  /// Asks the daemon for the latest release of each core. Nothing is told:
+  /// what is found is installed by [installCoreUpdates], and a check that
+  /// fails, often only for want of a network, goes to the journal.
   Future<void> checkCoreUpdates() async {
     checkingUpdates = true;
     _notify();
-    await _act(() async {
-      coreUpdates = [for (final u in await backend.call('GET', '/v1/cores/updates') as List) CoreUpdate.fromJson((u as Map).cast())];
-      final failed = coreUpdates.where((u) => u.error.isNotEmpty).toList();
-      if (failed.isNotEmpty && failed.length == coreUpdates.length) {
-        toast(humanError(failed.first.error), ToastKind.err);
-      } else if (!coreUpdates.any((u) => u.available)) {
-        toast('Все ядра последних версий', ToastKind.ok);
+    try {
+      final found = [for (final u in await backend.call('GET', '/v1/cores/updates') as List) CoreUpdate.fromJson((u as Map).cast())];
+      // A core updated meanwhile keeps what its update said.
+      if (updatingCore.isEmpty) coreUpdates = found;
+      for (final u in found.where((u) => u.error.isNotEmpty)) {
+        _log(DateTime.now(), u.kind, 'не удалось узнать о новой версии: ${humanError(u.error)}', LogLevel.warn);
       }
-    });
+    } catch (e) {
+      _log(DateTime.now(), 'ядра', 'не удалось узнать о новых версиях: ${humanError('$e')}', LogLevel.warn);
+      if (e is DaemonOffline) _lost(e);
+    }
     checkingUpdates = false;
     _notify();
   }
 
   CoreUpdate? updateOf(String kind) => coreUpdates.where((u) => u.kind == kind).firstOrNull;
 
-  /// Installs the latest release of [kind].
+  /// The cores with a newer version found and not installed yet.
+  List<String> get coreUpdatesWaiting => [
+    for (final u in coreUpdates)
+      if (u.available && u.error.isEmpty && info.installed(u.kind)) u.kind,
+  ];
+
+  /// Installs every newer core found, one after another, without asking.
+  /// Only while the VPN is off: a connection is never broken for it, the
+  /// update waits for the next disconnect. The service checks each download
+  /// as it always does; the journal tells what was installed.
+  Future<void> installCoreUpdates() async {
+    for (final kind in coreUpdatesWaiting) {
+      if (!online || status.active || busy || updatingCore.isNotEmpty) return;
+      await updateCore(kind);
+    }
+  }
+
+  /// Installs the latest release of [kind]. Only a failure is told; the
+  /// service's event puts the new version in the journal.
   Future<void> updateCore(String kind) async {
     updatingCore = kind;
     _notify();
-    await _act(() async {
+    try {
       final r = await backend.call('POST', '/v1/cores/$kind/update') as Json;
       final v = r['version'] as String? ?? '';
       coreUpdates = [for (final u in coreUpdates) u.kind == kind ? CoreUpdate(kind: kind, current: v, latest: v) : u];
       await _reloadInfo();
-      toast('${AppState.coreName(kind)} обновлён до $v${status.active ? '. Новая версия заработает после переподключения' : ''}', ToastKind.ok);
-    });
+    } catch (e) {
+      final msg = 'Не удалось обновить ${AppState.coreName(kind)}: ${humanError('$e')}';
+      _log(DateTime.now(), kind, msg, LogLevel.err);
+      toast(msg, ToastKind.err);
+      // Not tried again until the next check.
+      coreUpdates = [for (final u in coreUpdates) u.kind == kind ? CoreUpdate(kind: kind, current: u.current, latest: u.latest, error: '$e') : u];
+      if (e is DaemonOffline) _lost(e);
+    }
     updatingCore = '';
     _notify();
   }

@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -35,6 +37,22 @@ void main() {
 
   const pages = ['Серверы', 'Правила', 'Настройки', 'Ядра', 'Журнал', 'Главная'];
 
+  /// Opens [page]: a main page from the navigation, the cores from their
+  /// card in the settings.
+  Future<void> open(WidgetTester tester, String page) async {
+    final phone = find.byType(NavigationBar).evaluate().isNotEmpty;
+    Finder nav(String p) => phone ? find.descendant(of: find.byType(NavigationBar), matching: find.text(p)) : find.text(p).first;
+    final from = page == 'Ядра' ? 'Настройки' : null;
+    if (from == null) {
+      await tester.tap(nav(page));
+      return;
+    }
+    await tester.tap(nav(from));
+    await tester.pump();
+    await tester.ensureVisible(find.text(page).last);
+    await tester.tap(find.text(page).last);
+  }
+
   testWidgets('every page renders on demo data', (tester) async {
     final state = await pumpApp(tester);
     expect(state.loaded, isTrue);
@@ -42,9 +60,14 @@ void main() {
     expect(find.text('Amsterdam'), findsWidgets);
 
     for (final page in pages) {
-      await tester.tap(find.text(page).first);
+      await open(tester, page);
       await tester.pump();
       expect(tester.takeException(), isNull, reason: page);
+      expect(
+        find.descendant(of: find.byType(PageHeader), matching: find.text(page)),
+        page == 'Главная' ? findsNothing : findsOneWidget,
+        reason: page,
+      );
     }
     await tester.tap(find.text('Серверы').first);
     await tester.pump();
@@ -61,9 +84,14 @@ void main() {
     // The window's minimum size less the title bar.
     await pumpApp(tester, size: const Size(960, 606));
     for (final page in pages) {
-      await tester.tap(find.text(page).first);
+      await open(tester, page);
       await tester.pump();
       expect(tester.takeException(), isNull, reason: page);
+      expect(
+        find.descendant(of: find.byType(PageHeader), matching: find.text(page)),
+        page == 'Главная' ? findsNothing : findsOneWidget,
+        reason: page,
+      );
     }
     await tester.pump(const Duration(seconds: 30));
   });
@@ -189,20 +217,42 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
   }, timeout: const Timeout(Duration(minutes: 1)));
 
-  testWidgets('core versions and updates', (tester) async {
+  testWidgets('cores update themselves while the VPN is off', (tester) async {
     final state = await pumpApp(tester);
-    await tester.tap(find.text('Ядра').first);
-    await tester.pump();
-    expect(find.text('версия 1.14.2'), findsOneWidget);
-    await tester.runAsync(() => state.checkCoreUpdates());
-    await tester.pump();
-    expect(find.text('Доступна 1.14.3 · 33 МБ'), findsOneWidget);
-    expect(find.text('Последняя версия'), findsNWidgets(2));
-    await tester.runAsync(() => state.updateCore('sing-box'));
+    // Looked for and installed by the app itself, without a word.
+    await tester.runAsync(() async {
+      for (var i = 0; i < 200 && state.info.versionOf('sing-box') != '1.14.3'; i++) {
+        await Future.delayed(const Duration(milliseconds: 20));
+      }
+      await Future.delayed(const Duration(milliseconds: 100));
+    });
     await tester.pump();
     expect(state.info.versionOf('sing-box'), '1.14.3');
-    expect(find.text('версия 1.14.3'), findsOneWidget);
+    expect(state.logs.any((l) => l.source == 'sing-box' && l.message == 'обновлено до 1.14.3'), isTrue);
+    expect(state.toasts, isEmpty);
+    await open(tester, 'Ядра');
+    await tester.pump();
+    for (final gone in ['Проверить обновления', 'Обновить']) {
+      expect(find.text(gone), findsNothing, reason: gone);
+    }
     expect(find.textContaining('Доступна'), findsNothing);
+    expect(find.text('версия 1.14.3'), findsOneWidget);
+
+    // Found while connected: it waits for the VPN to be off.
+    await tester.runAsync(() => state.connect());
+    state.coreUpdates = [const CoreUpdate(kind: 'xray', current: '26.3.27', latest: '26.4.1', available: true)];
+    await tester.runAsync(() => state.installCoreUpdates());
+    await tester.pump();
+    expect(state.coreUpdatesWaiting, ['xray']);
+    expect(find.text('Версия 26.4.1 установится, когда VPN будет выключен'), findsOneWidget);
+    await tester.runAsync(() async {
+      await state.disconnect();
+      for (var i = 0; i < 200 && state.coreUpdatesWaiting.isNotEmpty; i++) {
+        await Future.delayed(const Duration(milliseconds: 20));
+      }
+    });
+    await tester.pump();
+    expect(state.coreUpdatesWaiting, isEmpty);
     expect(tester.takeException(), isNull);
     await tester.pump(const Duration(seconds: 6));
   });
@@ -249,8 +299,10 @@ void main() {
 
   testWidgets('DNS leak check', (tester) async {
     final state = await pumpApp(tester);
-    await tester.tap(find.text('Настройки').first);
+    // In the settings, beside the switch that guards against leaks.
+    await open(tester, 'Настройки');
     await tester.pump();
+    await tester.ensureVisible(find.text('Проверка утечки DNS'));
     expect(find.text('Подключитесь в режиме «Все приложения», чтобы проверить'), findsOneWidget);
     await tester.runAsync(() async {
       await state.connect();
@@ -263,6 +315,7 @@ void main() {
     expect(tester.takeException(), isNull);
     await tester.runAsync(() => state.disconnect());
     // The home page's traffic history is on its way.
+    await tester.pump(const Duration(seconds: 1));
     await tester.pump(const Duration(seconds: 1));
   });
 
@@ -407,9 +460,14 @@ void main() {
     });
     await tester.pump();
     for (final page in pages) {
-      await tester.tap(find.text(page).first);
+      await open(tester, page);
       await tester.pump();
       expect(tester.takeException(), isNull, reason: page);
+      expect(
+        find.descendant(of: find.byType(PageHeader), matching: find.text(page)),
+        page == 'Главная' ? findsNothing : findsOneWidget,
+        reason: page,
+      );
     }
     await tester.tap(find.text('Правила').first);
     await tester.pump();
@@ -438,6 +496,12 @@ void main() {
       await tester.pump();
     }
 
+    // The lists few people need are folded away.
+    for (final fold in ['Всегда через VPN', 'Блокировать']) {
+      await tester.ensureVisible(find.text(fold));
+      await tester.tap(find.text(fold));
+      await tester.pump();
+    }
     await add('gosuslugi.ru, 10.8.0.0/16', 'bank.example 10.8.0.0/16, 2001:db8::/32');
     expect(list('direct_domains'), ['bank.example']);
     expect(list('direct_ips'), ['10.8.0.0/16', '2001:db8::/32']);
@@ -747,7 +811,9 @@ void main() {
       expect(find.text('Amsterdam'), findsWidgets);
       // The subscription is on its card, the cores on their page, the mode
       // in the settings.
-      for (final t in ['Очередь ядер', 'Через VPN', 'Смен ядра', 'Трафик', 'АВТОСВАП', 'Xray-core', 'подписка ещё']) {
+      // No tab of tests either: the speed test and the traffic are a line
+      // each under the route.
+      for (final t in ['Очередь ядер', 'Через VPN', 'Смен ядра', 'АВТОСВАП', 'Xray-core', 'подписка ещё', 'Проверка']) {
         expect(find.textContaining(t), findsNothing, reason: '$t at $size');
       }
       await tester.runAsync(() async {
@@ -921,52 +987,55 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
   });
 
-  testWidgets('every page fits a phone', (tester) async {
-    final state = await pumpApp(tester, size: const Size(390, 844));
-    expect(find.byType(NavigationBar), findsOneWidget);
-    final problems = <String>[];
-    Future<void> check(String page) async {
-      await tester.pump();
-      for (Object? e = tester.takeException(); e != null; e = tester.takeException()) {
-        problems.add('$page: ${'$e'.split('\n').first}');
+  for (final width in [390.0, 360.0]) {
+    testWidgets('every page fits a phone ${width.round()} wide', (tester) async {
+      final state = await pumpApp(tester, size: Size(width, 800));
+      expect(find.byType(NavigationBar), findsOneWidget);
+      // Five tabs, the journal one of them.
+      expect(find.byType(NavigationDestination), findsNWidgets(5));
+      final problems = <String>[];
+      Future<void> check(String page) async {
+        await tester.pump();
+        for (Object? e = tester.takeException(); e != null; e = tester.takeException()) {
+          problems.add('$page: ${'$e'.split('\n').first}');
+        }
       }
-    }
 
-    for (final page in ['Серверы', 'Правила', 'Настройки', 'Главная']) {
-      await tester.tap(find.descendant(of: find.byType(NavigationBar), matching: find.text(page)));
-      await check(page);
-      // Scroll through the page, so rows further down are laid out too.
-      final scrollable = find.byType(Scrollable);
-      if (scrollable.evaluate().isNotEmpty) {
-        await tester.drag(scrollable.first, const Offset(0, -2000));
-        await check('$page (scrolled)');
+      for (final page in ['Серверы', 'Правила', 'Журнал', 'Настройки', 'Главная']) {
+        await tester.tap(find.descendant(of: find.byType(NavigationBar), matching: find.text(page)));
+        await check(page);
+        // Scroll through the page, so rows further down are laid out too.
+        final scrollable = find.byType(Scrollable);
+        if (scrollable.evaluate().isNotEmpty) {
+          await tester.drag(scrollable.first, const Offset(0, -2000));
+          await check('$page (scrolled)');
+        }
       }
-    }
-    for (final page in ['Ядра', 'Журнал']) {
-      // A frame to start each sheet animation, then time for it to end.
-      await tester.tap(find.text('Ещё'));
+      // The cores open from the settings.
+      await open(tester, 'Ядра');
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 600));
-      await tester.tap(find.text(page).last);
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 600));
-      expect(find.byType(BottomSheet), findsNothing, reason: page);
-      expect(
-        find.descendant(of: find.byType(PageHeader), matching: find.text(page)),
-        findsOneWidget,
-        reason: page,
-      );
-      await check(page);
-    }
-    expect(problems, isEmpty);
-    expect(state.loaded, isTrue);
-    await tester.pump(const Duration(seconds: 30));
-  });
+      expect(find.descendant(of: find.byType(PageHeader), matching: find.text('Ядра')), findsOneWidget);
+      await check('Ядра');
+      expect(problems, isEmpty);
+      expect(state.loaded, isTrue);
+      await tester.pump(const Duration(seconds: 30));
+    });
+  }
 
   testWidgets('the speed test shows its figures on the desktop and the phone', (tester) async {
     for (final size in [const Size(1400, 900), const Size(390, 844)]) {
       final state = await pumpApp(tester, size: size);
+      // The cores' own update, which runs on the real clock, done first:
+      // the test steps the speed test on the test's clock.
+      await tester.runAsync(() async {
+        for (var i = 0; i < 200 && (state.checkingUpdates || state.updatingCore.isNotEmpty || state.coreUpdatesWaiting.isNotEmpty); i++) {
+          await Future.delayed(const Duration(milliseconds: 20));
+        }
+      });
+      // The speed test is a line on the home page.
       await tester.pump(const Duration(seconds: 1));
+      await tester.ensureVisible(find.text('Проверить'));
+      await tester.pump();
       expect(find.textContaining('Скорость вашего интернета без VPN'), findsOneWidget, reason: '$size');
       await tester.tap(find.text('Проверить'));
       for (var i = 0; i < 6; i++) {
@@ -1152,6 +1221,149 @@ void main() {
       expect(state.prefs['sub_warned'], isEmpty);
       await tester.pump(const Duration(seconds: 6));
     }
+  });
+
+  testWidgets('the cores: one list, the manual mode is one core switched on', (tester) async {
+    final state = await pumpApp(tester);
+    await tester.runAsync(
+      () => state.updateSettings((s) {
+        s['cores']['mode'] = 'manual';
+        s['cores']['manual'] = 'xray';
+      }),
+    );
+    await open(tester, 'Ядра');
+    await tester.pump();
+    for (final gone in ['Автосвап', 'Вручную', 'Совместимость', 'Проверить обновления']) {
+      expect(find.text(gone), findsNothing, reason: gone);
+    }
+    expect(find.textContaining('Включено одно ядро: Xray-core'), findsOneWidget);
+    // Switching another core on goes back to the automatic order.
+    // The name's own row, then the core's.
+    final singBox = find.ancestor(of: find.text('sing-box'), matching: find.byType(Row)).at(1);
+    await tester.runAsync(() async {
+      await tester.tap(find.descendant(of: singBox, matching: find.byType(Switch)));
+      await Future.delayed(const Duration(milliseconds: 300));
+    });
+    await tester.pump();
+    expect(state.setting('cores.mode', ''), 'auto');
+    expect(state.setting<List>('cores.priority', const []), ['xray', 'sing-box']);
+    // Only the way back is in sight; the rest is under «Дополнительно».
+    expect(find.text('Возвращаться к основному ядру'), findsOneWidget);
+    expect(find.text('Адрес проверки связи'), findsNothing);
+    await tester.ensureVisible(find.text('Дополнительно'));
+    await tester.tap(find.text('Дополнительно'));
+    await tester.pump();
+    expect(find.text('Адрес проверки связи'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(seconds: 6));
+  });
+
+  testWidgets('the servers have one search and no duplicate controls', (tester) async {
+    final state = await pumpApp(tester);
+    await open(tester, 'Серверы');
+    await tester.pump();
+    for (final gone in ['Все протоколы', 'Самый быстрый']) {
+      expect(find.text(gone), findsNothing, reason: gone);
+    }
+    expect(find.byTooltip('Как проверять пинг'), findsNothing);
+    // The search finds a protocol by its name or its link scheme.
+    await tester.enterText(find.byType(TextField).first, 'hy2');
+    await tester.pump();
+    expect(find.text('Helsinki'), findsOneWidget);
+    expect(find.text('Rotterdam'), findsNothing);
+    // The subscription's menu keeps one way to its page.
+    await tester.tap(find.byTooltip('Действия').first);
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('Копировать адрес страницы'), findsNothing);
+    expect(state.latencyAutoTested, isTrue);
+    await tester.pump(const Duration(seconds: 30));
+  });
+
+  testWidgets('a forced test through the core goes back to the automatic one', (tester) async {
+    final state = await pumpApp(tester);
+    await tester.runAsync(() async {
+      await state.updateSettings((s) => s['cores']['latency_test'] = 'proxy');
+      await state.testLatency();
+    });
+    expect(state.setting('cores.latency_test', ''), 'ping');
+    await tester.pump(const Duration(seconds: 6));
+  });
+
+  testWidgets('one switch guards against every DNS leak', (tester) async {
+    final state = await pumpApp(tester);
+    await open(tester, 'Настройки');
+    await tester.pump();
+    expect(find.text('Обновлять каждые, ч'), findsNothing);
+    expect(find.text('DNS браузеров только через VPN'), findsNothing);
+    final row = find.ancestor(of: find.text('Защита от утечек DNS'), matching: find.byType(Row)).first;
+    await tester.ensureVisible(row);
+    await tester.runAsync(() async {
+      await tester.tap(find.descendant(of: row, matching: find.byType(Switch)));
+      await Future.delayed(const Duration(milliseconds: 300));
+    });
+    await tester.pump();
+    for (final g in ['dns.block_browser_doh', 'dns.block_dot', 'dns.strict']) {
+      expect(state.setting(g, false), isTrue, reason: g);
+    }
+    // The expert settings are folded away.
+    expect(find.text('User-Agent'), findsNothing);
+    await tester.ensureVisible(find.text('Дополнительно'));
+    await tester.tap(find.text('Дополнительно'));
+    await tester.pump();
+    expect(find.text('User-Agent'), findsOneWidget);
+    expect(find.text('DNS через VPN'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(seconds: 6));
+  });
+
+  test('tinted text reads on the light theme', () {
+    double contrast(Color a, Color b) {
+      final la = a.computeLuminance(), lb = b.computeLuminance();
+      return (max(la, lb) + .05) / (min(la, lb) + .05);
+    }
+
+    const p = Palette.light;
+    final colors = [
+      for (final pr in ['vless', 'vmess', 'trojan', 'shadowsocks', 'hysteria2', 'tuic', 'wireguard', 'anytls', 'other']) protocolColor(pr),
+      for (final k in allCores) coreStyle(k).color,
+      accent,
+      okColor,
+      warnColor,
+      errColor,
+      swapColor,
+    ];
+    for (final c in colors) {
+      // On a chip: the panel with the colour's tint over it.
+      final chip = Color.alphaBlend(c.withValues(alpha: .14), p.surface);
+      expect(contrast(p.ink(c), chip), greaterThanOrEqualTo(4.5), reason: '$c');
+    }
+    // The dark theme keeps its colours.
+    expect(Palette.dark.ink(protocolColor('hysteria2')), protocolColor('hysteria2'));
+  });
+
+  testWidgets('the journal: all or errors, and a copy for support', (tester) async {
+    final state = await pumpApp(tester);
+    await open(tester, 'Журнал');
+    await tester.pump();
+    // A main page: no way back to another one.
+    expect(find.byIcon(Icons.arrow_back), findsNothing);
+    expect(find.text('Все'), findsOneWidget);
+    expect(find.text('Ошибки'), findsOneWidget);
+    for (final gone in ['Автосвап', 'Ядра', 'Очистить']) {
+      expect(find.text(gone), findsNothing, reason: gone);
+    }
+    // The demo's earlier session: a switch of cores and an error.
+    expect(find.textContaining('Xray-core → sing-box'), findsOneWidget);
+    // The cores' own output is in the copy, not on the page.
+    expect(find.text('Xray 26.3.27 started'), findsNothing);
+    expect(state.logs.any((l) => l.message == 'Xray 26.3.27 started'), isTrue);
+    await tester.tap(find.text('Ошибки'));
+    await tester.pump();
+    expect(find.textContaining('Xray-core → sing-box'), findsNothing);
+    expect(find.textContaining('502'), findsOneWidget);
+    expect(find.text('Копировать'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(seconds: 6));
   });
 }
 

@@ -5,7 +5,7 @@ import '../../state/app_state.dart';
 import '../theme.dart';
 import '../widgets.dart';
 
-enum _Filter { all, swap, cores, errors }
+enum _Filter { all, errors }
 
 class LogsPage extends StatefulWidget {
   final AppState state;
@@ -36,16 +36,14 @@ class _LogsPageState extends State<LogsPage> {
     super.dispose();
   }
 
-  /// The cores' own output shows under "Ядра" only: elsewhere it drowns
-  /// the events.
+  /// The cores' own output is left out of the page: it drowns the events.
+  /// A search finds it, and the copy for support has it all.
   bool _keep(LogLine l) {
     if (query.isNotEmpty && !'${l.source} ${l.message}'.toLowerCase().contains(query)) return false;
     final isCore = allCores.contains(l.source);
-    if (filter != _Filter.cores && isCore && l.level == LogLevel.info && !_isEvent(l)) return false;
+    if (query.isEmpty && isCore && l.level == LogLevel.info && !_isEvent(l)) return false;
     return switch (filter) {
       _Filter.all => true,
-      _Filter.swap => l.level == LogLevel.swap,
-      _Filter.cores => isCore,
       _Filter.errors => l.level == LogLevel.err || l.level == LogLevel.warn,
     };
   }
@@ -64,13 +62,13 @@ class _LogsPageState extends State<LogsPage> {
     }
     final compact = isCompact(context);
     return Padding(
-      padding: compact ? const EdgeInsets.fromLTRB(14, 14, 14, 12) : const EdgeInsets.fromLTRB(28, 24, 28, 24),
+      padding: compact ? const EdgeInsets.fromLTRB(16, 16, 16, 12) : const EdgeInsets.fromLTRB(32, 28, 32, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           PageHeader(
             'Журнал',
-            subtitle: 'События службы, ядер и автосвапа. Построчный вывод ядер — в фильтре «Ядра».',
+            subtitle: 'Подключения, смены ядер и ошибки. Скопируйте журнал, чтобы отправить его в поддержку.',
             actions: [
               SizedBox(
                 width: compact ? 140 : 220,
@@ -85,30 +83,20 @@ class _LogsPageState extends State<LogsPage> {
                   ),
                 ),
               ),
-              Seg<_Filter>(
-                value: filter,
-                options: const [(_Filter.all, 'Все'), (_Filter.swap, 'Автосвап'), (_Filter.cores, 'Ядра'), (_Filter.errors, 'Ошибки')],
-                tooltips: const {_Filter.cores: 'События ядер и их построчный вывод'},
-                onChanged: (v) => setState(() => filter = v),
-              ),
+              Seg<_Filter>(value: filter, options: const [(_Filter.all, 'Все'), (_Filter.errors, 'Ошибки')], onChanged: (v) => setState(() => filter = v)),
+              // The whole journal, the cores' output too: what support needs.
               Btn(
+                label: 'Копировать',
                 icon: Icons.copy,
                 small: true,
-                tooltip: 'Скопировать',
-                onPressed: lines.isEmpty
+                tooltip: 'Скопировать весь журнал с версиями и режимом, для поддержки',
+                onPressed: widget.state.logs.isEmpty
                     ? null
                     : () {
-                        final text = [...widget.state.diagnosticsHeader(), for (final l in lines) '${_time(l.time)}  ${l.source}  ${l.message}'];
+                        final text = [...widget.state.diagnosticsHeader(), for (final l in widget.state.logs) '${_time(l.time)}  ${l.source}  ${l.message}'];
                         Clipboard.setData(ClipboardData(text: text.join('\n')));
                         widget.state.toast('Журнал скопирован');
                       },
-              ),
-              Btn(
-                label: compact ? null : 'Очистить',
-                icon: compact ? Icons.delete_outline : null,
-                tooltip: compact ? 'Очистить' : null,
-                small: true,
-                onPressed: widget.state.clearLogs,
               ),
             ],
           ),
@@ -116,12 +104,28 @@ class _LogsPageState extends State<LogsPage> {
             child: Container(
               decoration: BoxDecoration(
                 color: p.bg2,
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: p.border),
               ),
               child: lines.isEmpty
                   ? Center(
-                      child: Text('Пусто', style: TextStyle(color: p.dim)),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.receipt_long_outlined, size: 32, color: p.dim),
+                          const SizedBox(height: 10),
+                          Text(
+                            'Пусто',
+                            style: TextStyle(color: p.muted, fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Здесь появятся подключения, смены ядер и ошибки',
+                            style: TextStyle(color: p.dim, fontSize: 12),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
                     )
                   : Scrollbar(
                       controller: _scroll,
@@ -152,12 +156,12 @@ class _Line extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.pal;
     final isCore = allCores.contains(l.source);
-    final srcColor = isCore ? coreStyle(l.source).color : (l.level == LogLevel.swap ? swapColor : p.muted);
+    final srcColor = isCore ? p.ink(coreStyle(l.source).color) : (l.level == LogLevel.swap ? p.ink(swapColor) : p.muted);
     final msgColor = switch (l.level) {
-      LogLevel.err => errColor,
-      LogLevel.warn => warnColor,
-      LogLevel.ok => okColor,
-      LogLevel.swap => swapColor,
+      LogLevel.err => p.errInk,
+      LogLevel.warn => p.warnInk,
+      LogLevel.ok => p.okInk,
+      LogLevel.swap => p.ink(swapColor),
       LogLevel.info => p.text,
     };
     const mono = TextStyle(fontFamily: monoFont, fontFamilyFallback: monoFallback, fontSize: 12.5, height: 1.45);

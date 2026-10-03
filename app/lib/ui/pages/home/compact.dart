@@ -1,64 +1,27 @@
 part of '../home_page.dart';
 
-/// The home page on a phone: the button, the server, and while connected
-/// the speed. The chart stays on the desktop; the mode is in the settings.
+/// The home page on a phone: the button, the way the traffic takes, while
+/// connected the speed, and the speed test and traffic a line each.
 class _CompactHome extends StatelessWidget {
   final AppState state;
   const _CompactHome({required this.state});
 
   @override
   Widget build(BuildContext context) {
-    final p = context.pal;
     final st = state.status;
-    final sel = state.selection;
-    final (title, color) = switch (st.state) {
-      ConnState.connected => ('Подключено', okColor),
-      ConnState.connecting => ('Подключение…', accent),
-      ConnState.disconnecting => ('Отключение…', p.muted),
-      ConnState.failed => ('Ошибка подключения', errColor),
-      ConnState.idle => ('Отключено', p.text),
-    };
-    final canConnect = state.online && (st.active || (sel.available && !state.busy));
-    final muted = TextStyle(color: p.muted, fontSize: 13);
-    final Widget line = switch (st.state) {
-      ConnState.connected when st.since != null => _Elapsed(since: st.since!, tun: st.tun, short: true),
-      ConnState.failed => Text(humanError(st.error), textAlign: TextAlign.center, maxLines: 3, overflow: TextOverflow.ellipsis, style: muted),
-      ConnState.idle when sel.isEmpty => Text('Сначала выберите сервер', style: muted),
-      ConnState.idle when !sel.available => Text(
-        'Сервер «${sel.name}» пропал из подписки',
-        textAlign: TextAlign.center,
-        style: const TextStyle(color: warnColor, fontSize: 13),
-      ),
-      ConnState.idle => Text('Нажмите, чтобы подключиться', style: muted),
-      _ => const SizedBox(),
-    };
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const SizedBox(height: 16),
-        Center(
-          child: _ConnectButton(state: st.state, enabled: canConnect, onTap: state.toggleConnect, size: 150),
-        ),
-        const SizedBox(height: 26),
-        Text(
-          title,
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: st.state == ConnState.idle ? p.text : color),
-        ),
-        const SizedBox(height: 4),
-        ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 20),
-          child: Center(child: line),
-        ),
-        const SizedBox(height: 22),
-        if (state.subscriptionWarnings.isNotEmpty) ...[_SubWarningBanner(state: state), const SizedBox(height: 10)],
+        if (state.subscriptionWarnings.isNotEmpty) ...[_SubWarningBanner(state: state), const SizedBox(height: 14)],
+        _Hero(state: state, size: 150),
+        const SizedBox(height: 20),
         if (state.serverUnresponsive) ...[_UnresponsiveBanner(state: state), const SizedBox(height: 10)],
         if (st.settingsPending) ...[_PendingBanner(state: state), const SizedBox(height: 10)],
-        _NodePick(state: state),
-        _BackupBanner(state: state),
+        _BackupBanner(state: state, below: true),
+        _Route(state: state),
         if (st.state == ConnState.connected) ...[const SizedBox(height: 10), _CompactSpeed(state: state)],
-        if (!state.speedUnsupported) ...[const SizedBox(height: 10), _CompactSpeedTest(state: state)],
-        if (!state.statsUnsupported && state.statsLoaded) _TrafficCard(state: state),
+        const SizedBox(height: 10),
+        _HomeTools(state: state),
       ],
     );
   }
@@ -68,7 +31,10 @@ class _CompactHome extends StatelessWidget {
 /// without waiting for the timer. The rest about cores is on their page.
 class _BackupBanner extends StatelessWidget {
   final AppState state;
-  const _BackupBanner({required this.state});
+
+  /// Spaced from what follows rather than from what precedes.
+  final bool below;
+  const _BackupBanner({required this.state, this.below = false});
 
   @override
   Widget build(BuildContext context) {
@@ -79,27 +45,14 @@ class _BackupBanner extends StatelessWidget {
     final primary = coreStyle(chain.first).name;
     final why = st.failed[chain.first] ?? '';
     return Padding(
-      padding: const EdgeInsets.only(top: 12),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
-        decoration: BoxDecoration(
-          color: swapColor.withValues(alpha: .08),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: swapColor.withValues(alpha: .35)),
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.swap_horiz, size: 16, color: swapColor),
-            const SizedBox(width: 9),
-            Expanded(
-              child: Tooltip(
-                message: why.isEmpty ? '' : '$primary: $why',
-                child: Text('$primary не работает, подключено через ${coreStyle(st.core).name}', style: const TextStyle(fontSize: 12)),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Btn(label: 'Вернуть $primary', small: true, loading: state.returning, onPressed: state.busy ? null : state.returnToPrimary),
-          ],
+      padding: below ? const EdgeInsets.only(bottom: 10) : const EdgeInsets.only(top: 12),
+      child: Tooltip(
+        message: why.isEmpty ? '' : '$primary: $why',
+        child: _Notice(
+          color: swapColor,
+          icon: Icons.swap_horiz,
+          text: '$primary не работает, подключено через ${coreStyle(st.core).name}',
+          action: Btn(label: 'Вернуть $primary', small: true, loading: state.returning, onPressed: state.busy ? null : state.returnToPrimary),
         ),
       ),
     );
@@ -129,11 +82,7 @@ class _CompactSpeed extends StatelessWidget {
                   style: TextStyle(fontSize: 11, color: p.muted),
                   overflow: TextOverflow.ellipsis,
                 ),
-                Text(
-                  formatRate(rate),
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontFamily: monoFont, fontFamilyFallback: monoFallback, fontSize: 15, fontWeight: FontWeight.w500),
-                ),
+                Text(formatRate(rate), overflow: TextOverflow.ellipsis, style: figures(17)),
               ],
             ),
           ),
@@ -141,7 +90,7 @@ class _CompactSpeed extends StatelessWidget {
       ),
     );
     return Panel(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(children: [metric(Icons.south, okColor, 'Загрузка', down), metric(Icons.north, accent, 'Отдача', up)]),
     );
   }
@@ -152,21 +101,11 @@ class _PendingBanner extends StatelessWidget {
   const _PendingBanner({required this.state});
 
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
-    decoration: BoxDecoration(
-      color: warnColor.withValues(alpha: .08),
-      borderRadius: BorderRadius.circular(10),
-      border: Border.all(color: warnColor.withValues(alpha: .35)),
-    ),
-    child: Row(
-      children: [
-        const Icon(Icons.info_outline, size: 16, color: warnColor),
-        const SizedBox(width: 9),
-        const Expanded(child: Text('Настройки изменены и применятся после переподключения', style: TextStyle(fontSize: 12))),
-        Btn(label: 'Применить', small: true, onPressed: state.busy ? null : state.reconnect),
-      ],
-    ),
+  Widget build(BuildContext context) => _Notice(
+    color: warnColor,
+    icon: Icons.info_outline,
+    text: 'Настройки изменены и применятся после переподключения',
+    action: Btn(label: 'Применить', small: true, onPressed: state.busy ? null : state.reconnect),
   );
 }
 
@@ -178,30 +117,45 @@ class _Welcome extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.pal;
-    Widget step(int n, String title, String text) => Padding(
-      padding: const EdgeInsets.only(bottom: 14),
+    Widget step(int n, String title, String text, {bool last = false}) => IntrinsicHeight(
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            width: 26,
-            height: 26,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(color: accent.withValues(alpha: .15), shape: BoxShape.circle),
-            child: Text(
-              '$n',
-              style: const TextStyle(color: accent, fontWeight: FontWeight.w700, fontSize: 13),
+          // The steps as stations on a line, like the way the traffic takes.
+          SizedBox(
+            width: 30,
+            child: Column(
+              children: [
+                Container(
+                  width: 28,
+                  height: 28,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: n == 1 ? accent : p.surface2,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: n == 1 ? accent : p.border2, width: 2),
+                  ),
+                  child: Text(
+                    '$n',
+                    style: figures(14, weight: FontWeight.w600, color: n == 1 ? onAccent : p.muted),
+                  ),
+                ),
+                if (!last) Expanded(child: Container(width: 2, color: p.border2)),
+              ],
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 14),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-                const SizedBox(height: 2),
-                Text(text, style: TextStyle(color: p.muted, fontSize: 13)),
-              ],
+            child: Padding(
+              padding: EdgeInsets.only(top: 4, bottom: last ? 0 : 18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5)),
+                  const SizedBox(height: 3),
+                  Text(text, style: TextStyle(color: p.muted, fontSize: 13, height: 1.4)),
+                ],
+              ),
             ),
           ),
         ],
@@ -210,19 +164,26 @@ class _Welcome extends StatelessWidget {
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 560),
-        child: Panel(
-          padding: const EdgeInsets.fromLTRB(28, 30, 28, 26),
+        child: Padding(
+          padding: const EdgeInsets.only(top: 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Добро пожаловать в CoreShift', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600)),
+              const CoreShiftMark(size: 44),
+              const SizedBox(height: 18),
+              Text('Добро пожаловать в CoreShift', style: display(isCompact(context) ? 26 : 32, spacing: -.3)),
               const SizedBox(height: 6),
-              Text('Три шага до подключения:', style: TextStyle(color: p.muted)),
-              const SizedBox(height: 22),
+              Text('Три шага до подключения:', style: TextStyle(color: p.muted, fontSize: 14)),
+              const SizedBox(height: 24),
               step(1, 'Добавьте подписку', 'Скопируйте ссылку на подписку из бота, панели или письма провайдера и вставьте её сюда.'),
               step(2, 'Выберите сервер', 'CoreShift сам замерит пинг и подскажет самый быстрый.'),
-              step(3, 'Нажмите кнопку подключения', 'Через VPN пойдут все приложения. Если одно ядро перестанет работать, CoreShift переключится на другое.'),
-              const SizedBox(height: 8),
+              step(
+                3,
+                'Нажмите кнопку подключения',
+                'Через VPN пойдут все приложения. Если одно ядро перестанет работать, CoreShift переключится на другое.',
+                last: true,
+              ),
+              const SizedBox(height: 26),
               Btn(label: 'Добавить подписку', icon: Icons.add, kind: BtnKind.primary, onPressed: () => showAddSubscription(context, state)),
             ],
           ),

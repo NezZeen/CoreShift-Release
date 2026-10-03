@@ -14,104 +14,80 @@ String _speedNote(AppState state) {
   };
 }
 
-/// The speed test on the desktop: download, upload and delay, live while
-/// it runs.
-class _SpeedTestCard extends StatelessWidget {
+/// Under the route on the home page, quiet: the speed test and the
+/// traffic, a line each. The week in bars opens from its line.
+class _HomeTools extends StatelessWidget {
   final AppState state;
-  const _SpeedTestCard({required this.state});
+  const _HomeTools({required this.state});
 
   @override
   Widget build(BuildContext context) {
-    final p = context.pal;
-    final t = state.speedTest;
-    final shown = t.phase != SpeedPhase.idle && t.phase != SpeedPhase.failed;
-
-    Widget metric(IconData icon, Color color, String label, String value, bool active) => Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 16, color: active ? color : p.dim),
-        const SizedBox(width: 6),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label, style: TextStyle(fontSize: 11, color: p.muted)),
-            Text(
-              value,
-              style: TextStyle(
-                fontFamily: monoFont,
-                fontFamilyFallback: monoFallback,
-                fontSize: 17,
-                fontWeight: FontWeight.w500,
-                color: active ? p.text : p.muted,
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-
-    String rate(int bps, SpeedPhase from) => shown && (t.phase.index >= from.index) && bps > 0 ? formatRate(bps) : '—';
+    final rows = [if (!state.speedUnsupported) _SpeedTestRow(state: state), if (!state.statsUnsupported && state.statsLoaded) _TrafficRow(state: state)];
+    if (rows.isEmpty) return const SizedBox();
     return Panel(
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          PanelTitle(
-            'Тест скорости',
-            trailing: Btn(
-              label: t.phase == SpeedPhase.done ? 'Ещё раз' : 'Проверить',
-              icon: Icons.speed,
-              small: true,
-              loading: t.running,
-              onPressed: state.online && !state.busy && !t.running ? state.runSpeedTest : null,
-            ),
-          ),
-          Wrap(
-            spacing: 28,
-            runSpacing: 8,
-            children: [
-              metric(Icons.south, okColor, 'Загрузка', rate(t.downBps, SpeedPhase.download), t.phase == SpeedPhase.download || t.phase == SpeedPhase.done),
-              metric(Icons.north, accent, 'Отдача', rate(t.upBps, SpeedPhase.upload), t.phase == SpeedPhase.upload || t.phase == SpeedPhase.done),
-              metric(Icons.timer_outlined, p.muted, 'Задержка', shown && t.latencyMs > 0 ? '${t.latencyMs} мс' : '—', shown && t.latencyMs > 0),
-            ],
-          ),
-          const SizedBox(height: 10),
-          if (t.running) ...[
-            ClipRRect(
-              borderRadius: BorderRadius.circular(9),
-              child: LinearProgressIndicator(
-                minHeight: 4,
-                value: switch (t.phase) {
-                  SpeedPhase.latency => .05,
-                  SpeedPhase.download => .45,
-                  _ => .85,
-                },
-                backgroundColor: p.surface3,
-              ),
-            ),
-            const SizedBox(height: 8),
-          ],
-          Text(
-            _speedNote(state),
-            style: TextStyle(fontSize: 12, color: t.phase == SpeedPhase.failed ? errColor : p.dim),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
+          for (final (i, r) in rows.indexed) ...[if (i > 0) Divider(height: 1, indent: 16, endIndent: 16, color: context.pal.border), r],
         ],
       ),
     );
   }
 }
 
-/// The speed test on the phone: one line with the figures and the button.
-class _CompactSpeedTest extends StatelessWidget {
+/// A tool's line: an icon, what it says, and its button.
+class _ToolRow extends StatelessWidget {
+  final IconData icon;
+  final Color? iconColor;
+  final Widget title;
+  final String note;
+  final Color? noteColor;
+  final Widget action;
+  const _ToolRow({required this.icon, this.iconColor, required this.title, required this.note, this.noteColor, required this.action});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 11, 12, 11),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: iconColor ?? p.muted),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                title,
+                const SizedBox(height: 2),
+                Text(
+                  note,
+                  style: TextStyle(fontSize: 12, color: noteColor ?? p.dim),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          action,
+        ],
+      ),
+    );
+  }
+}
+
+/// The speed test: download, upload and delay in one line, live while it
+/// runs.
+class _SpeedTestRow extends StatelessWidget {
   final AppState state;
-  const _CompactSpeedTest({required this.state});
+  const _SpeedTestRow({required this.state});
 
   @override
   Widget build(BuildContext context) {
     final p = context.pal;
     final t = state.speedTest;
-    final mono = TextStyle(fontFamily: monoFont, fontFamilyFallback: monoFallback, fontSize: 14, fontWeight: FontWeight.w500, color: p.text);
     final bits = max(t.downBps, t.upBps) * 8.0;
     final (unit, scale) = bits >= 1e9 ? ('Гбит/с', 1e9) : (bits >= 1e6 ? ('Мбит/с', 1e6) : ('Кбит/с', 1e3));
     String figure(int bps) {
@@ -120,53 +96,36 @@ class _CompactSpeedTest extends StatelessWidget {
       return v.toStringAsFixed(v >= 100 ? 0 : 1);
     }
 
-    // One unit for both: a phone has no room for two. The line shrinks as
-    // a whole rather than cutting the unit when the width is short.
-    final figures = t.phase == SpeedPhase.idle || t.phase == SpeedPhase.failed
-        ? null
-        : FittedBox(
+    // One unit for both; the line shrinks as a whole rather than cutting
+    // the unit when the width is short.
+    final measured = t.phase != SpeedPhase.idle && t.phase != SpeedPhase.failed;
+    final title = measured
+        ? FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.south, size: 14, color: okColor),
-                Text(' ${figure(t.downBps)}  ', style: mono),
-                Icon(Icons.north, size: 14, color: accent),
-                Text(' ${figure(t.upBps)} ', style: mono),
+                const Icon(Icons.south, size: 14, color: okColor),
+                Text(' ${figure(t.downBps)}  ', style: figures(17)),
+                const Icon(Icons.north, size: 14, color: accent),
+                Text(' ${figure(t.upBps)} ', style: figures(17)),
                 Text('$unit${t.latencyMs > 0 ? ' · ${t.latencyMs} мс' : ''}', style: TextStyle(fontSize: 12, color: p.muted)),
               ],
             ),
-          );
-    return Panel(
-      padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
-      child: Row(
-        children: [
-          Icon(Icons.speed, size: 20, color: t.running ? accent : p.muted),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                figures ?? Text('Тест скорости', style: const TextStyle(fontWeight: FontWeight.w600)),
-                const SizedBox(height: 2),
-                Text(
-                  _speedNote(state),
-                  style: TextStyle(fontSize: 11.5, color: t.phase == SpeedPhase.failed ? errColor : p.dim),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Btn(
-            label: t.phase == SpeedPhase.done ? 'Ещё раз' : 'Проверить',
-            small: true,
-            loading: t.running,
-            onPressed: state.online && !state.busy && !t.running ? state.runSpeedTest : null,
-          ),
-        ],
+          )
+        : const Text('Тест скорости', style: TextStyle(fontWeight: FontWeight.w600));
+    return _ToolRow(
+      icon: Icons.speed,
+      iconColor: t.running ? p.accentInk : null,
+      title: title,
+      note: _speedNote(state),
+      noteColor: t.phase == SpeedPhase.failed ? p.errInk : null,
+      action: Btn(
+        label: t.phase == SpeedPhase.done ? 'Ещё раз' : 'Проверить',
+        small: true,
+        loading: t.running,
+        onPressed: state.online && !state.busy && !t.running ? state.runSpeedTest : null,
       ),
     );
   }
@@ -182,30 +141,12 @@ class _SubWarningBanner extends StatelessWidget {
     final warnings = state.subscriptionWarnings;
     if (warnings.isEmpty) return const SizedBox();
     final w = warnings.first;
-    final color = w.over ? errColor : warnColor;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 9, 8, 9),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: .08),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withValues(alpha: .35)),
-      ),
-      child: Row(
-        children: [
-          Icon(w.traffic ? Icons.data_usage : Icons.event_busy, size: 18, color: color),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(w.title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                Text(w.body, style: TextStyle(fontSize: 12, color: context.pal.muted)),
-              ],
-            ),
-          ),
-          if (w.renewUrl.isNotEmpty) ...[const SizedBox(width: 8), Btn(label: 'Продлить', small: true, onPressed: () => state.openLink(w.renewUrl))],
-        ],
-      ),
+    return _Notice(
+      color: w.over ? errColor : warnColor,
+      icon: w.traffic ? Icons.data_usage : Icons.event_busy,
+      title: w.title,
+      text: w.body,
+      action: w.renewUrl.isEmpty ? null : Btn(label: 'Продлить', small: true, kind: BtnKind.primary, onPressed: () => state.openLink(w.renewUrl)),
     );
   }
 }

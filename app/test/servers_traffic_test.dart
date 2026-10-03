@@ -187,7 +187,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 500));
       expect(find.text('Выбор сервера'), findsOneWidget);
       expect(find.text('Найти самый быстрый'), findsOneWidget);
-      expect(find.text('Недавние'.toUpperCase()), findsOneWidget);
+      expect(find.text('Недавние'), findsOneWidget);
       expect(find.text('Все серверы · ${state.nodeCount}'), findsOneWidget);
       expect(tester.takeException(), isNull);
 
@@ -215,27 +215,25 @@ void main() {
       await settle(tester);
       expect(state.statsLoaded, isTrue);
       expect(state.stats.length, 30);
-      if (isPhone) {
-        expect(find.text('Сегодня'), findsOneWidget);
-        await tester.tap(find.text('Сегодня'));
-      } else {
-        expect(find.text('Трафик'), findsOneWidget);
-        await tester.tap(find.text('Подробнее'));
-      }
+      // One line on the home page; the week's bars behind «Подробнее».
+      expect(find.text('Трафик'), findsOneWidget);
+      await tester.ensureVisible(find.text('Подробнее'));
+      await tester.tap(find.text('Подробнее'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
       expect(find.text('Трафик через VPN'), findsOneWidget);
       expect(find.text('Скачано'), findsOneWidget);
-      await tester.tap(find.text('30 дней'));
-      await tester.pump();
+      // A week only: no month view.
+      expect(find.text('30 дней'), findsNothing);
+      expect(find.text('за 7 дней'), findsOneWidget);
       expect(tester.takeException(), isNull);
       // Pointing at a day names it.
       // The chart is above its caption: a tap on its left edge picks the oldest day.
       final caption = find.descendant(of: find.byType(isPhone ? BottomSheet : Dialog), matching: find.textContaining('Сегодня:'));
       await tester.tapAt(tester.getTopLeft(caption) + const Offset(6, -50));
       await tester.pump();
-      // The picked day is named; the card's own chart still says "Сегодня".
-      expect(find.textContaining('Сегодня:'), isPhone ? findsNothing : findsOneWidget);
+      // The picked day is named instead of «Сегодня».
+      expect(find.textContaining('Сегодня:'), findsNothing);
       expect(tester.takeException(), isNull);
       await tester.pump(const Duration(seconds: 6));
     });

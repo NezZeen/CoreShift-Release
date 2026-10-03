@@ -7,7 +7,7 @@ Future<void> showQuickPick(BuildContext context, AppState state, {required VoidC
   if (isCompact(context)) {
     return showModalBottomSheet<void>(
       context: context,
-      backgroundColor: p.bg2,
+      backgroundColor: p.surface,
       isScrollControlled: true,
       showDragHandle: true,
       builder: (c) => SafeArea(
@@ -60,9 +60,7 @@ class _QuickPick extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
                 child: Row(
                   children: [
-                    const Expanded(
-                      child: Text('Выбор сервера', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
-                    ),
+                    Expanded(child: Text('Выбор сервера', style: dialogTitle)),
                     if (!compact)
                       IconButton(
                         onPressed: () => Navigator.pop(context),
@@ -123,7 +121,7 @@ class _FastestTile extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           child: Row(
             children: [
-              const Icon(Icons.bolt, color: accent, size: 22),
+              Icon(Icons.bolt, color: p.accentInk, size: 22),
               const SizedBox(width: 12),
               Expanded(
                 child: f != null
@@ -152,10 +150,7 @@ class _FastestTile extends StatelessWidget {
                       ),
               ),
               if (f != null)
-                Text(
-                  '$ms мс',
-                  style: TextStyle(fontFamily: monoFont, fontFamilyFallback: monoFallback, color: ms < 200 ? okColor : (ms < 500 ? warnColor : errColor)),
-                )
+                Text('$ms мс', style: figures(15, color: p.ink(ms < 200 ? okColor : (ms < 500 ? warnColor : errColor))))
               else if (state.testingLatency)
                 const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
               else
@@ -226,16 +221,7 @@ class _QuickRow extends StatelessWidget {
                   ],
                 ),
               ),
-              if (l != null && l.ok)
-                Text(
-                  '${l.ms} мс',
-                  style: TextStyle(
-                    fontFamily: monoFont,
-                    fontFamilyFallback: monoFallback,
-                    fontSize: 12,
-                    color: l.ms < 200 ? okColor : (l.ms < 500 ? warnColor : errColor),
-                  ),
-                ),
+              if (l != null && l.ok) Text('${l.ms} мс', style: figures(13, color: p.ink(l.ms < 200 ? okColor : (l.ms < 500 ? warnColor : errColor)))),
               const SizedBox(width: 8),
               Icon(sel ? Icons.radio_button_checked : Icons.radio_button_off, size: 18, color: sel ? accent : p.dim),
             ],
