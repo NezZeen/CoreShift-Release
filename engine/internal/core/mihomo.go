@@ -16,7 +16,7 @@ var mihomoFeatures = features(
 	[]node.Protocol{node.VLESS, node.VMess, node.Trojan, node.Shadowsocks, node.Hysteria2, node.TUIC, node.AnyTLS, node.WireGuard},
 	[]node.Network{node.NetWS, node.NetGRPC, node.NetHTTP, node.NetHTTPUpgrade},
 	"flow:xtls-rprx-vision",
-	FeatVMessAlterID, FeatTCPHTTPHeader, FeatReality, FeatHysteria2PortHop,
+	FeatVMessAlterID, FeatTCPHTTPHeader, FeatReality, FeatHysteria2PortHop, FeatTLSInsecure, FeatTLSPin,
 	"ss-plugin:obfs-local", "ss-plugin:v2ray-plugin",
 )
 
@@ -174,7 +174,10 @@ func mihomoProxy(n *node.Node, o Options) (obj, error) {
 		if len(t.ALPN) > 0 {
 			p["alpn"] = t.ALPN
 		}
-		if t.Insecure {
+		if t.PinSHA256 != "" && t.Reality == nil {
+			// The certificate's SHA-256, checked in place of its signature.
+			p["fingerprint"] = t.PinSHA256
+		} else if t.Insecure {
 			p["skip-cert-verify"] = true
 		}
 		fp := t.Fingerprint

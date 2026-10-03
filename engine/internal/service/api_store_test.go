@@ -66,7 +66,9 @@ func callJSON(t *testing.T, srv *httptest.Server, method, path string, body any,
 	return resp.StatusCode
 }
 
-const hy2Link = "hy2://auth@203.0.113.10:443/?sni=h.example.com#Helsinki"
+// hy2Link is a server xray cannot run: Xray no longer skips the certificate
+// check.
+const hy2Link = "hy2://auth@203.0.113.10:443/?sni=h.example.com&insecure=1#Helsinki"
 
 func TestAPISubscriptionLifecycle(t *testing.T) {
 	// A real panel over HTTP, so the whole fetch path runs.
