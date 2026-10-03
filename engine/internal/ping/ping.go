@@ -62,10 +62,7 @@ func ICMP(ctx context.Context, dst netip.Addr, b Bind, count int, timeout time.D
 // handshake seldom answers the next, and waiting for each would make a list
 // of servers slow to test.
 func TCP(ctx context.Context, dst netip.AddrPort, b Bind, count int, timeout time.Duration) (time.Duration, error) {
-	d := net.Dialer{Timeout: timeout, Control: control(b)}
-	if b.Source.IsValid() {
-		d.LocalAddr = &net.TCPAddr{IP: b.Source.AsSlice()}
-	}
+	d := b.Dialer(timeout)
 	best, err := time.Duration(0), error(nil)
 	for range count {
 		if ctx.Err() != nil {
@@ -93,6 +90,16 @@ func TCP(ctx context.Context, dst netip.AddrPort, b Bind, count int, timeout tim
 		err = ctx.Err()
 	}
 	return 0, err
+}
+
+// Dialer makes TCP connections that leave as b says: around the tunnel,
+// through the physical interface.
+func (b Bind) Dialer(timeout time.Duration) *net.Dialer {
+	d := &net.Dialer{Timeout: timeout, Control: control(b)}
+	if b.Source.IsValid() {
+		d.LocalAddr = &net.TCPAddr{IP: b.Source.AsSlice()}
+	}
+	return d
 }
 
 type route struct {
