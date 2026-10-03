@@ -74,7 +74,8 @@ func startCore(t *testing.T, bin string, args []string, dir string) {
 }
 
 // TestTrafficCounters runs each core against a local Shadowsocks server
-// (sing-box) and checks that ReadTraffic sees a download through it. Needs
+// (sing-box) and checks that ReadTraffic sees a download through it, and
+// that the SOCKS inbound takes only its credentials. Needs
 // XRAY_BIN, SINGBOX_BIN and MIHOMO_BIN, like TestCoresAcceptConfigs.
 func TestTrafficCounters(t *testing.T) {
 	bins := map[Kind]string{Xray: os.Getenv("XRAY_BIN"), SingBox: os.Getenv("SINGBOX_BIN"), Mihomo: os.Getenv("MIHOMO_BIN")}
@@ -115,7 +116,7 @@ func TestTrafficCounters(t *testing.T) {
 			t.Logf("version %s", v)
 
 			dir := t.TempDir()
-			o := Options{Listen: freePort(t), Stats: freePort(t), StatsSecret: "s3cret"}
+			o := Options{Listen: freePort(t), Stats: freePort(t), StatsSecret: "s3cret", Auth: NewSOCKSAuth()}
 			cfg, err := a.Render(&n, o)
 			if err != nil {
 				t.Fatal(err)
@@ -132,8 +133,21 @@ func TestTrafficCounters(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ReadTraffic before: %v", err)
 			}
-			client := &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{
+			// Without the credentials the inbound refuses.
+			open := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{
 				Proxy: http.ProxyURL(&url.URL{Scheme: "socks5", Host: o.Listen.String()}),
+			}}
+			if resp, err := open.Get(web.URL); err == nil {
+				resp.Body.Close()
+				t.Fatal("the SOCKS inbound let a client in without credentials")
+			}
+			wrong := SOCKSAuth{User: o.Auth.User, Pass: "wrong"}
+			if resp, err := (&http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{Proxy: http.ProxyURL(wrong.ProxyURL(o.Listen))}}).Get(web.URL); err == nil {
+				resp.Body.Close()
+				t.Fatal("the SOCKS inbound took a wrong password")
+			}
+			client := &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{
+				Proxy: http.ProxyURL(o.Auth.ProxyURL(o.Listen)),
 			}}
 			resp, err := client.Get(web.URL)
 			if err != nil {

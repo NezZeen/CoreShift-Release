@@ -71,11 +71,13 @@ func (s *Service) speedTest(ctx context.Context) (SpeedResult, error) {
 	defer cancel()
 	st := s.Status()
 	res := SpeedResult{VPN: st.State == Connected}
-	tr := &http.Transport{Proxy: nil, MaxIdleConnsPerHost: speedDownStreams, ForceAttemptHTTP2: false}
+	var proxy *url.URL
 	if res.VPN {
 		res.Server = st.Node
-		tr.Proxy = http.ProxyURL(&url.URL{Scheme: "socks5", Host: s.cfg.Listen.String()})
+		proxy = s.proxyURL()
 	}
+	tr := newTransport(proxy)
+	tr.MaxIdleConnsPerHost, tr.ForceAttemptHTTP2 = speedDownStreams, false
 	defer tr.CloseIdleConnections()
 	client := &http.Client{Transport: tr}
 	base := s.cfg.speedURL

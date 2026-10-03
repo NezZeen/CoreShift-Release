@@ -48,6 +48,8 @@ type Adapter interface {
 type Options struct {
 	// Listen is the SOCKS5 inbound the TUN layer forwards to.
 	Listen netip.AddrPort
+	// Auth, when set, is required by the inbound.
+	Auth SOCKSAuth
 	// LogLevel is one of debug, info, warn, error, none. Default warn.
 	LogLevel string
 	// ServerAddr, if set, is dialled instead of the node's server. The engine
