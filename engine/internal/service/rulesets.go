@@ -11,6 +11,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -46,6 +48,34 @@ var (
 			Proxy: true},
 	}
 )
+
+// videoSuffixes stay in the tunnel with the Russian preset on, whatever
+// address they resolve to: YouTube and the Google servers that carry its
+// video. A video server of Google Global Cache inside a Russian provider has
+// that provider's address, which geoip-ru sends direct, where YouTube is
+// slowed down; the stream would also be refused there, as its links are
+// signed for the address that asked for them, the tunnel's. A connection
+// made by such an address (a name the browser looked up before connecting,
+// its own DNS over HTTPS, QUIC kept from before) matches by the name the
+// TUN layer sniffs from it, which the rule sees before geoip-ru. A name the
+// user listed to go direct is left to that list.
+var videoSuffixes = []string{
+	"youtube.com", "youtu.be", "yt.be", "youtube-nocookie.com", "youtubekids.com",
+	"googlevideo.com", "ytimg.com", "ggpht.com",
+	"youtubei.googleapis.com", "youtube.googleapis.com", "yt3.googleusercontent.com",
+}
+
+// presetProxySuffixes returns videoSuffixes without those the user's direct
+// list covers: the name itself or a domain above it.
+func presetProxySuffixes(userDirect []string) []string {
+	var out []string
+	for _, v := range videoSuffixes {
+		if !slices.ContainsFunc(userDirect, func(d string) bool { return v == d || strings.HasSuffix(v, "."+d) }) {
+			out = append(out, v)
+		}
+	}
+	return out
+}
 
 const (
 	ruleSetMaxAge  = 7 * 24 * time.Hour

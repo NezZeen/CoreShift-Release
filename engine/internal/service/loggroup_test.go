@@ -155,3 +155,59 @@ func TestGrouperDropsTheLayersOwnClock(t *testing.T) {
 		t.Fatalf("after a period: %q, want the two timeouts as one group", got)
 	}
 }
+
+// Lines from the Android journal of 2026-10-03: the server did not answer,
+// and every app's lookups through the tunnel timed out, each name a line.
+var deadLookups = []string{
+	"ERROR[2770] [3310814267 10.0s] dns: lookup failed for search32-normal-useast1a.tiktokv.com: (exchange4: context deadline exceeded | exchange6: context deadline exceeded)",
+	"ERROR[2770] [859274356 20.2s] dns: lookup failed for log22-normal-alisg.tiktokv.com: (exchange6: context deadline exceeded | exchange4: context deadline exceeded)",
+	"ERROR[2780] [4040236007 1m0s] dns: lookup failed for rezvorck.github.io: (exchange4: context deadline exceeded | exchange6: context deadline exceeded)",
+	"ERROR[2780] [4288490590 20.3s] dns: lookup failed for ru-comort-stsdk.vivoglobal.com: (exchange4: context deadline exceeded | exchange6: context deadline exceeded)",
+}
+
+func TestLookupFailuresGroupByCauseNotName(t *testing.T) {
+	want := logShape(deadLookups[0])
+	if want != "ERROR dns: lookup failed for <имя>: (exchange4: context deadline exceeded | exchange6: context deadline exceeded)" {
+		t.Errorf("shape = %q", want)
+	}
+	for _, l := range deadLookups[1:] {
+		if got := logShape(l); got != want {
+			t.Errorf("%q: shape %q, want %q", l, got, want)
+		}
+	}
+	// One lookup of the two is another cause.
+	if logShape("ERROR[2784] [4060424138 10.0s] dns: lookup failed for ru-comonrt-stsdk.vivoglobal.com: exchange4: context deadline exceeded") == want {
+		t.Error("a single failed lookup grouped with a double one")
+	}
+	// Connections by name too.
+	a := logShape("ERROR [1010360205 5.0s] connection: open connection to cp.cloudflare.com:80 using outbound/vless[proxy]: dial tcp 179.254.115.13:443: i/o timeout")
+	b := logShape("ERROR [4052028970 5.0s] connection: open connection to captive.apple.com:80 using outbound/vless[proxy]: dial tcp 179.254.115.13:443: i/o timeout")
+	if a != b || strings.Contains(a, "cloudflare") {
+		t.Errorf("connections by name: %q and %q", a, b)
+	}
+}
+
+// While the server does not answer, the flood of timed-out lookups is one
+// line that says why, counted like any other repeat.
+func TestDeadUpstreamLookupsAreOneLine(t *testing.T) {
+	var c collected
+	s := &Service{logs: newLogGrouper(40*time.Millisecond, c.emit)}
+	s.Log("tun", deadLookups[0])
+	if got := c.get(); len(got) != 1 || !strings.Contains(got[0], "tiktokv.com") {
+		t.Fatalf("before the checks fail: %q, want the line itself", got)
+	}
+	s.healthFails.Store(upstreamDeadChecks)
+	for _, l := range append(deadLookups, deadLookups...) {
+		s.Log("tun", l)
+	}
+	s.Log("tun", "ERROR[2790] some other failure")
+	got := c.get()
+	if len(got) != 3 || got[1] != "tun: "+upstreamDNSDead || !strings.Contains(got[2], "some other failure") {
+		t.Fatalf("while the server is down: %q", got)
+	}
+	time.Sleep(120 * time.Millisecond)
+	got = c.get()
+	if len(got) < 4 || !strings.HasPrefix(got[3], "tun: "+upstreamDNSDead+" — ещё 7 раз") {
+		t.Fatalf("after a period: %q", got)
+	}
+}
