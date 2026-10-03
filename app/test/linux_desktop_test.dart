@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:coreshift/api/models.dart';
 import 'package:coreshift/platform/linux_desktop.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -29,6 +30,30 @@ void main() {
   test('an AppImage starts from its own file', () {
     expect(appExecutable({'APPIMAGE': '/home/me/CoreShift.AppImage'}), '/home/me/CoreShift.AppImage');
     expect(appExecutable({}), Platform.resolvedExecutable);
+  });
+
+  test('a tray is there only when gdbus says yes', () {
+    expect(parseNameHasOwner('(true,)\n'), isTrue);
+    expect(parseNameHasOwner('(false,)\n'), isFalse);
+    expect(parseNameHasOwner(''), isFalse);
+  });
+
+  test('an announced update may open only a GitHub release page', () {
+    expect(isReleasePage('https://github.com/NezZeen/CoreShift-Release/releases/tag/v0.7.0'), isTrue);
+    expect(isReleasePage('https://github.com/NezZeen/CoreShift-Release/releases'), isTrue);
+    for (final bad in [
+      'http://github.com/o/r/releases/tag/v1',
+      'https://github.com.evil.example/o/r/releases/tag/v1',
+      'https://user@github.com/o/r/releases/tag/v1',
+      'https://github.com/o/r/releases/../../x',
+      'https://github.com/o/r/blob/main/x',
+      'https://github.com/o/r/releases/tag/v1?x=1',
+      'https://github.com:8443/o/r/releases',
+      'file:///etc/passwd',
+      '',
+    ]) {
+      expect(isReleasePage(bad), isFalse, reason: bad);
+    }
   });
 
   test('autostart is written and removed', () {
