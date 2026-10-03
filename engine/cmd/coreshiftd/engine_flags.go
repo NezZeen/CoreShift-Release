@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"coreshift/engine/internal/core"
@@ -115,6 +116,12 @@ func coresDir(flagValue string) (string, error) {
 	var candidates []string
 	if exe, err := os.Executable(); err == nil {
 		candidates = append(candidates, filepath.Join(filepath.Dir(exe), "cores"))
+	}
+	// Elsewhere than Windows the test binaries sit in a folder of their
+	// platform, beside the Windows ones.
+	if runtime.GOOS != "windows" {
+		plat := runtime.GOOS + "-" + runtime.GOARCH
+		candidates = append(candidates, filepath.Join("testdata", "bin", plat), filepath.Join("engine", "testdata", "bin", plat))
 	}
 	candidates = append(candidates, filepath.Join("testdata", "bin"), filepath.Join("engine", "testdata", "bin"))
 	for _, c := range candidates {
