@@ -1,0 +1,40 @@
+# Maintainer: CoreShift
+#
+# CoreShift for Arch, Manjaro and EndeavourOS, from the universal archive
+# that packaging/linux/build.sh makes (coreshift-<version>-linux-<arch>.tar.gz):
+#
+#   cp dist/coreshift-0.7.0-linux-amd64.tar.gz packaging/linux/arch/
+#   cd packaging/linux/arch && makepkg -f && sudo pacman -U coreshift-*.pkg.tar.zst
+#
+# build.sh also packs the same .pkg.tar.zst itself when zstd is there, so
+# makepkg is needed only to build on Arch the usual way.
+
+pkgname=coreshift
+pkgver=${CORESHIFT_VERSION:-0.0.0}
+pkgrel=1
+pkgdesc="VPN client for subscriptions with automatic core switching"
+arch=('x86_64' 'aarch64')
+url="https://github.com/NezZeen/CoreShift-Release"
+license=('LicenseRef-Proprietary')
+depends=('gtk3' 'libx11' 'libxi' 'systemd')
+optdepends=('polkit: start the service from the app'
+	'libnotify: notifications'
+	'gnome-shell-extension-appindicator: the tray icon in GNOME')
+install=coreshift.install
+options=('!strip' '!debug')
+_arch() { [ "$CARCH" = aarch64 ] && echo arm64 || echo amd64; }
+source=("coreshift-${pkgver}-linux-$(_arch).tar.gz")
+sha256sums=('SKIP')
+
+package() {
+	local src="$srcdir/coreshift-${pkgver}-linux-$(_arch)"
+	render() { sed -e 's|@BINDIR@|/usr/bin|g' -e 's|@LIBDIR@|/usr/lib/coreshift|g' "$1"; }
+	install -d "$pkgdir/usr/lib" "$pkgdir/usr/bin"
+	cp -a "$src/lib/coreshift" "$pkgdir/usr/lib/coreshift"
+	install -m 755 "$src/bin/coreshiftd" "$pkgdir/usr/bin/coreshiftd"
+	ln -s ../lib/coreshift/coreshift "$pkgdir/usr/bin/coreshift"
+	install -d "$pkgdir/usr/lib/systemd/system" "$pkgdir/usr/share/applications"
+	render "$src/service/coreshift.service" >"$pkgdir/usr/lib/systemd/system/coreshift.service"
+	render "$src/share/applications/dev.coreshift.coreshift.desktop" >"$pkgdir/usr/share/applications/dev.coreshift.coreshift.desktop"
+	cp -a "$src/share/icons" "$pkgdir/usr/share/icons"
+}
