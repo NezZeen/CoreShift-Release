@@ -86,3 +86,13 @@ func TestSanitizeXHTTPExtraRejectsNonObjects(t *testing.T) {
 		t.Errorf("only forbidden keys: %q, %v", got, err)
 	}
 }
+
+// Xray 26 refuses to start with allowInsecure; a pinned certificate is its
+// replacement and passes.
+func TestSanitizeXHTTPExtraDropsAllowInsecure(t *testing.T) {
+	in := `{"downloadSettings":{"security":"tls","tlsSettings":{"serverName":"d.example","allowInsecure":true,"pinnedPeerCertSha256":"abcd"}}}`
+	out, err := SanitizeXHTTPExtra(in)
+	if err != nil || strings.Contains(out, "allowInsecure") || !strings.Contains(out, "pinnedPeerCertSha256") || !strings.Contains(out, "d.example") {
+		t.Errorf("SanitizeXHTTPExtra = %s", out)
+	}
+}
