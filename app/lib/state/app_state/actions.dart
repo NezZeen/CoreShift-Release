@@ -1,5 +1,28 @@
 part of '../app_state.dart';
 
+/// What the cores printed this long before a failure, and after it, goes
+/// into the copied journal whatever its level.
+const _nearFailureBefore = Duration(seconds: 10);
+const _nearFailureAfter = Duration(seconds: 2);
+
+/// A warning or an error in the formats of Xray ("[Warning]", "[Error]"),
+/// sing-box ("WARN", "ERROR", "FATAL") and mihomo ("level=warning"); the
+/// Go runtime's "panic:" too.
+final _outputWarnRe = RegExp(r'\[(warning|error)\]|\b(warn|warning|error|fatal|panic)\b|level=(warn|warning|error|fatal)', caseSensitive: false);
+bool _outputWarns(String line) => _outputWarnRe.hasMatch(line);
+
+/// What a core prints every time it starts: its banner, the config it
+/// reads, that it started. Xray says the last as a warning.
+final _startupRes = [
+  RegExp(r'^Xray \S+ \(Xray, Penetrates Everything\.\)'),
+  RegExp(r'^A unified platform for anti-censorship\.?$'),
+  RegExp(r'infra/conf/serial: Reading config:'),
+  RegExp(r'core: Xray \S+ started'),
+  RegExp(r'sing-box started \('),
+  RegExp(r'Start initial configuration in progress|Initial configuration complete'),
+];
+bool _startupLine(String line) => _startupRes.any((re) => re.hasMatch(line));
+
 /// What the app does on the user's behalf: connecting, subscriptions, settings,
 /// cores, the leak test. Kept apart from the state it works on.
 extension AppStateActions on AppState {
@@ -24,6 +47,27 @@ extension AppStateActions on AppState {
       'Сейчас: ${AppState._stateText(status.state.name)}${status.core.isEmpty ? '' : ' через ${status.core}'}'
           '${selection.name.isEmpty ? '' : ', сервер «${selection.name}»'}',
       '',
+    ];
+  }
+
+  /// The journal as «Копировать» puts it on the clipboard for support: the
+  /// header, every event, and of what the cores and the TUN layer print
+  /// themselves only warnings and errors, plus everything they printed
+  /// around a failure. Their start-up lines are left out: the banner, the
+  /// config's path, "started"; the header has the versions.
+  List<String> journalForSupport() {
+    final failures = [
+      for (final l in logs)
+        if (!l.output && (l.level == LogLevel.err || l.level == LogLevel.swap)) l.time,
+    ];
+    bool nearFailure(DateTime t) => failures.any((f) => !t.isBefore(f.subtract(_nearFailureBefore)) && !t.isAfter(f.add(_nearFailureAfter)));
+    String two(int n) => n.toString().padLeft(2, '0');
+    String time(DateTime t) => '${two(t.hour)}:${two(t.minute)}:${two(t.second)}';
+
+    return [
+      ...diagnosticsHeader(),
+      for (final l in logs)
+        if (!l.output || (!_startupLine(l.message) && (_outputWarns(l.message) || nearFailure(l.time)))) '${time(l.time)}  ${l.source}  ${l.message}',
     ];
   }
 
@@ -223,24 +267,25 @@ extension AppStateActions on AppState {
   }
 
   /// Asks the daemon for the latest release of each core. Nothing is told:
-  /// what is found is installed by [installCoreUpdates], and a check that
-  /// fails, often only for want of a network, goes to the journal.
-  Future<void> checkCoreUpdates() async {
+  /// what is found is installed by [installCoreUpdates]. Returns the
+  /// service's error for each core whose check failed, often only for want
+  /// of a network, or for '' when the service could not be asked; the
+  /// automatic check decides whether the journal hears of it.
+  Future<Map<String, String>> checkCoreUpdates() async {
     checkingUpdates = true;
     _notify();
     try {
       final found = [for (final u in await backend.call('GET', '/v1/cores/updates') as List) CoreUpdate.fromJson((u as Map).cast())];
       // A core updated meanwhile keeps what its update said.
       if (updatingCore.isEmpty) coreUpdates = found;
-      for (final u in found.where((u) => u.error.isNotEmpty)) {
-        _log(DateTime.now(), u.kind, 'не удалось узнать о новой версии: ${humanError(u.error)}', LogLevel.warn);
-      }
+      return {for (final u in found.where((u) => u.error.isNotEmpty)) u.kind: u.error};
     } catch (e) {
-      _log(DateTime.now(), 'ядра', 'не удалось узнать о новых версиях: ${humanError('$e')}', LogLevel.warn);
       if (e is DaemonOffline) _lost(e);
+      return {'': '$e'};
+    } finally {
+      checkingUpdates = false;
+      _notify();
     }
-    checkingUpdates = false;
-    _notify();
   }
 
   CoreUpdate? updateOf(String kind) => coreUpdates.where((u) => u.kind == kind).firstOrNull;

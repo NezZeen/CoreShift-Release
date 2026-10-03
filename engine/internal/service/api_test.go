@@ -103,7 +103,7 @@ func TestAPIConnectFlow(t *testing.T) {
 
 func TestAPIParseSubscription(t *testing.T) {
 	_, srv := newAPIServer(t)
-	content := trojanLink + "\nhy2://auth@203.0.113.10:443/?sni=h.example.com#Hy2\nsocks://a@203.0.113.1:1#Socks"
+	content := trojanLink + "\nhy2://auth@203.0.113.10:443/?sni=h.example.com&insecure=1#Hy2\nsocks://a@203.0.113.1:1#Socks"
 	body, _ := json.Marshal(map[string]string{"content": content})
 	code, out := call(t, srv, "POST", "/v1/subscription/parse", string(body))
 	if code != http.StatusOK {

@@ -153,8 +153,8 @@ func mustNode(t *testing.T, link string) node.Node {
 }
 
 var (
-	trojanLink = "trojan://pw@203.0.113.5:443?sni=t.example.com#Trojan"                                // every core
-	hy2Link    = "hy2://auth@203.0.113.10:443/?sni=h.example.com&obfs=salamander&obfs-password=ob#Hy2" // no xray
+	trojanLink = "trojan://pw@203.0.113.5:443?sni=t.example.com#Trojan"                                   // every core
+	tuicLink   = "tuic://11111111-2222-3333-4444-555555555555:pw@203.0.113.10:443?sni=h.example.com#Tuic" // no xray
 )
 
 func connect(t *testing.T, h *harness, link string) {
@@ -255,7 +255,7 @@ func TestHealthCheckUsesFallbacks(t *testing.T) {
 
 func TestSkipsIncompatibleCore(t *testing.T) {
 	h := newHarness(t, nil)
-	connect(t, h, hy2Link)
+	connect(t, h, tuicLink)
 	st := h.s.Status()
 	if st.Core != core.SingBox || !slices.Equal(st.Chain, []core.Kind{core.SingBox, core.Mihomo}) {
 		t.Fatalf("status = %+v", st)
@@ -298,8 +298,8 @@ func TestManualModeDoesNotSwap(t *testing.T) {
 	}
 
 	var ue *core.UnsupportedError
-	if err := h.s.Connect(context.Background(), mustNode(t, hy2Link), ""); !errors.As(err, &ue) {
-		t.Errorf("manual xray with hysteria2: err = %v, want UnsupportedError", err)
+	if err := h.s.Connect(context.Background(), mustNode(t, tuicLink), ""); !errors.As(err, &ue) {
+		t.Errorf("manual xray with tuic: err = %v, want UnsupportedError", err)
 	}
 }
 
@@ -327,8 +327,8 @@ func TestReturnToPrimary(t *testing.T) {
 
 func TestNoInstalledCoreSupportsNode(t *testing.T) {
 	h := newHarness(t, func(c *Config) { c.Binaries = installCores(t, core.Xray) })
-	err := h.s.Connect(context.Background(), mustNode(t, hy2Link), "")
-	if !errors.Is(err, ErrNoCore) || !strings.Contains(err.Error(), "protocol:hysteria2") {
+	err := h.s.Connect(context.Background(), mustNode(t, tuicLink), "")
+	if !errors.Is(err, ErrNoCore) || !strings.Contains(err.Error(), "protocol:tuic") {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -369,7 +369,7 @@ func TestRelativeBinaryPath(t *testing.T) {
 func TestLatencyTest(t *testing.T) {
 	t.Setenv("FAKECORE_MIHOMO", "unhealthy")
 	h := newHarness(t, func(c *Config) { c.Priority = []core.Kind{core.Xray, core.SingBox, core.Mihomo} })
-	nodes := []node.Node{mustNode(t, trojanLink), mustNode(t, hy2Link), mustNode(t, trojanLink)}
+	nodes := []node.Node{mustNode(t, trojanLink), mustNode(t, tuicLink), mustNode(t, trojanLink)}
 	h.s.SetPolicy(Policy{Priority: []core.Kind{core.Xray, core.SingBox, core.Mihomo}, Health: h.s.cfg.Health})
 	var mu sync.Mutex
 	got := map[int]LatencyResult{}
@@ -385,7 +385,7 @@ func TestLatencyTest(t *testing.T) {
 		t.Errorf("trojan: %+v", r)
 	}
 	if r := got[1]; r.Err != nil || r.Core != core.SingBox {
-		t.Errorf("hysteria2 must be tested with sing-box: %+v", r)
+		t.Errorf("tuic must be tested with sing-box: %+v", r)
 	}
 
 	// A core that fails the test gives way to the node's next core.

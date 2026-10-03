@@ -14,7 +14,7 @@ var singBoxFeatures = features(
 	[]node.Protocol{node.VLESS, node.VMess, node.Trojan, node.Shadowsocks, node.Hysteria2, node.TUIC, node.AnyTLS, node.WireGuard},
 	[]node.Network{node.NetWS, node.NetGRPC, node.NetHTTP, node.NetHTTPUpgrade},
 	"flow:xtls-rprx-vision",
-	FeatVMessAlterID, FeatReality, FeatHysteria2PortHop,
+	FeatVMessAlterID, FeatReality, FeatHysteria2PortHop, FeatTLSInsecure,
 	"ss-plugin:obfs-local", "ss-plugin:v2ray-plugin",
 )
 
