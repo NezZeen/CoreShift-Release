@@ -16,6 +16,9 @@ import (
 
 var (
 	ansiRE = regexp.MustCompile(`\x1b?\[[0-9;]*m`)
+	// The TUN layer's own clock, "+0400 2026-10-03 10:26:50 ", which the
+	// journal already shows and which made every line a different one.
+	stampRE = regexp.MustCompile(`^[+-]\d{4} \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\s+`)
 	// The layer's own bookkeeping, which differs on every line: its uptime
 	// "[15370]" and the connection's "[ 534559423 15.12s]".
 	uptimeRE = regexp.MustCompile(`\[\s*\d+\s*\]`)
@@ -28,6 +31,9 @@ var (
 
 // stripANSI removes the colour codes the TUN layer writes around ERROR.
 func stripANSI(s string) string { return ansiRE.ReplaceAllString(s, "") }
+
+// tidy is the line as the journal shows it: no colour codes, no second clock.
+func tidy(s string) string { return stampRE.ReplaceAllString(stripANSI(s), "") }
 
 // logShape is the line without what changes from one failure to the next,
 // "" for lines that are not errors or warnings, which are never grouped.
@@ -66,7 +72,7 @@ func newLogGrouper(every time.Duration, emit func(source, line string)) *logGrou
 
 // add passes a line on, or counts it as a repeat of one passed on lately.
 func (g *logGrouper) add(source, line string) {
-	line = stripANSI(line)
+	line = tidy(line)
 	shape := logShape(line)
 	if shape == "" {
 		g.emit(source, line)

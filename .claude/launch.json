@@ -6,6 +6,12 @@
       "runtimeExecutable": "python",
       "runtimeArgs": ["-m", "http.server", "18765", "--directory", "app/build/web"],
       "port": 18765
+    },
+    {
+      "name": "ui-redesign",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "18766", "--bind", "127.0.0.1", "--directory", ".claude/worktrees/agent-aa5c8f5cac7f5f681/app/build/web"],
+      "port": 18766
     }
   ]
 }
