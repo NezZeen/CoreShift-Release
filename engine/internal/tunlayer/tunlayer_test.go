@@ -592,3 +592,45 @@ func TestPlatformTUN(t *testing.T) {
 		}
 	}
 }
+
+// Linux keeps the local network out of the TUN routes, so replies to
+// connections made to the machine leave by its own interface.
+func TestExcludeLAN(t *testing.T) {
+	server := netip.MustParsePrefix("203.0.113.7/32")
+	base := Options{Upstream: netip.MustParseAddrPort("127.0.0.1:17890"), DNS: DNSOptions{Remote: "1.1.1.1", Direct: "192.168.1.1"}, BypassAddresses: []netip.Prefix{server}}
+	excluded := func(o Options) []any {
+		cfg, err := build(o)
+		if err != nil {
+			t.Fatal(err)
+		}
+		list, _ := cfg["inbounds"].([]any)[0].(obj)["route_exclude_address"].([]string)
+		out := make([]any, len(list))
+		for i, v := range list {
+			out[i] = v
+		}
+		return out
+	}
+	if got := excluded(base); len(got) != 1 || got[0] != server.String() {
+		t.Fatalf("without ExcludeLAN: %v", got)
+	}
+	lan := base
+	lan.ExcludeLAN = true
+	got := excluded(lan)
+	if len(got) != 1+len(lanRanges) || got[0] != server.String() {
+		t.Fatalf("with ExcludeLAN: %v", got)
+	}
+	for _, want := range []string{"192.168.0.0/16", "10.0.0.0/8", "172.16.0.0/12", "fe80::/10"} {
+		found := false
+		for _, g := range got {
+			found = found || g == want
+		}
+		if !found {
+			t.Errorf("%s not excluded: %v", want, got)
+		}
+	}
+	// Android's VpnService owns the routes: nothing is excluded there.
+	lan.Platform = true
+	if got := excluded(lan); len(got) != 0 {
+		t.Errorf("platform TUN: %v", got)
+	}
+}
