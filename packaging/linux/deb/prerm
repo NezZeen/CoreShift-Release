@@ -1,0 +1,11 @@
+#!/bin/sh
+# Removing the package stops the service first, which disconnects the VPN
+# and restores the system's DNS. An upgrade keeps it running: postinst
+# restarts it with the new files.
+set -e
+case "$1" in
+remove | deconfigure)
+	/opt/coreshift/coreshift-setup.sh stop
+	;;
+esac
+exit 0

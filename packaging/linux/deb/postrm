@@ -1,0 +1,16 @@
+#!/bin/sh
+# purge also removes settings and subscriptions. The files are gone by now,
+# so this does not call coreshift-setup.sh.
+set -e
+case "$1" in
+purge)
+	rm -rf /var/lib/coreshift
+	;;
+esac
+if [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1; then
+	systemctl daemon-reload || true
+fi
+if command -v update-desktop-database >/dev/null 2>&1; then
+	update-desktop-database -q 2>/dev/null || true
+fi
+exit 0
