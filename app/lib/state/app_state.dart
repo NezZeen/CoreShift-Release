@@ -351,8 +351,20 @@ class AppState extends ChangeNotifier {
 
   /// On the desktop an update that installs by itself right away (automatic
   /// updates on, VPN off) is not offered: the installer is already starting.
+  /// On Linux a newer version is only announced ('available'), to be
+  /// downloaded from its page.
   bool get offerUpdate =>
-      appUpdate.state == 'ready' && appUpdate.label != _updateOffered && (platform.isAndroid || appUpdate.waiting || !setting('app_update.auto', true));
+      appUpdate.label != _updateOffered &&
+      ((appUpdate.state == 'ready' && (platform.isAndroid || appUpdate.waiting || !setting('app_update.auto', true))) || appUpdate.state == 'available');
+
+  /// Opens the page of an announced update (Linux) in the browser; false
+  /// when there is none or it could not be opened. Only GitHub release
+  /// pages, which the daemon has checked too.
+  Future<bool> openUpdatePage() async {
+    final url = appUpdate.url;
+    if (!isReleasePage(url)) return false;
+    return platform.openUrl(url);
+  }
 
   void updateOffered() => _updateOffered = appUpdate.label;
 

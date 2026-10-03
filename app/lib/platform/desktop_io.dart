@@ -10,9 +10,13 @@ import '../state/app_state.dart';
 import '../ui/countries.dart' show cleanNodeName;
 import '../ui/theme.dart';
 import '../ui/widgets.dart' show formatRate;
+import 'linux_desktop.dart' as linux;
 import 'tray_balloon.dart';
 
 bool _enabled = false;
+
+/// The session shows no tray icons (Linux): closing the window minimizes it.
+bool _noTray = false;
 
 /// Whether the system can show CoreShift's notifications.
 bool get canNotify => Platform.isWindows || Platform.isLinux;
@@ -23,6 +27,10 @@ bool get canNotify => Platform.isWindows || Platform.isLinux;
 /// [DesktopFrame] adds nothing.
 Future<bool> initWindow({bool hidden = false}) async {
   if (!Platform.isWindows && !Platform.isLinux) return false;
+  // A Linux session may have no tray (plain GNOME, WSLg): then the window
+  // never hides, or nothing could bring it back.
+  if (Platform.isLinux) _noTray = !await linux.trayAvailable();
+  if (_noTray) hidden = false;
   await windowManager.ensureInitialized();
   await windowManager.waitUntilReadyToShow(const WindowOptions(title: 'CoreShift', titleBarStyle: TitleBarStyle.hidden, minimumSize: Size(960, 640)), () async {
     if (hidden) return;
@@ -113,6 +121,12 @@ class _DesktopFrameState extends State<DesktopFrame> with WindowListener {
 
   @override
   void onWindowClose() {
+    if (_noTray) {
+      // No tray to come back from: the window stays on the taskbar, and
+      // the VPN runs on regardless.
+      windowManager.minimize();
+      return;
+    }
     windowManager.hide();
     // Once: a window that just vanishes reads as CoreShift having quit,
     // while it runs on in the tray, the VPN with it.
