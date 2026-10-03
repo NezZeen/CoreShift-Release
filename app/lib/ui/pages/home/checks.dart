@@ -29,7 +29,7 @@ class ChecksPage extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Журнал событий', style: display(16)),
+                Text('Журнал', style: display(16)),
                 const SizedBox(height: 3),
                 Text('Подключения, смены ядер и ошибки. Его можно скопировать и отправить в поддержку.', style: TextStyle(fontSize: 12, color: p.muted)),
               ],
