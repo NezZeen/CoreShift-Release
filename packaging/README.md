@@ -87,7 +87,7 @@ powershell -ExecutionPolicy Bypass -File packaging\publish.ps1 -Version 0.3.0
 
 ### Linux в релизе
 
-`release.ps1` собирает и Linux-пакеты (amd64). Это делает `packaging\linux\build-wsl.ps1` в WSL-дистрибутиве `Ubuntu-24.04`: он клонирует помеченный тегом коммит в файловую систему Linux и запускает там `packaging/linux/build.sh`. Если WSL или дистрибутива нет, `release.ps1` останавливается ещё до коммита и тега; выпустить версию без Linux можно с `-NoLinux`. Ядра берутся из `engine\testdata\bin\linux-amd64`, а если их там нет, скачиваются последние релизы.
+`release.ps1` собирает и Linux-пакеты (amd64). Это делает `packaging\linux\build-wsl.ps1` в WSL-дистрибутиве `Ubuntu-24.04`: он клонирует помеченный тегом коммит в файловую систему Linux и запускает там `packaging/linux/build.sh`. Если WSL или дистрибутива нет, `release.ps1` останавливается ещё до коммита и тега; выпустить версию без Linux можно с `-NoLinux`. Ядра берутся из `engine\testdata\bin\linux-amd64`, а если их там нет — из `/root/coreshift-cores/linux-amd64` внутри WSL. При первом запуске туда скачиваются последние релизы; чтобы взять более новые, удалите эту папку.
 
 В `dist\release\<версия>\` пакеты кладутся под постоянными именами, на них ссылается README публичного репозитория:
 
