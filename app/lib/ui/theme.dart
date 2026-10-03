@@ -7,11 +7,14 @@ import 'package:flutter/material.dart';
 class Palette extends ThemeExtension<Palette> {
   final Color bg, bg2, surface, surface2, surface3, border, border2, text, muted, dim;
 
-  /// The amber as text and thin lines: on the light theme the lamp itself
-  /// is too pale to read.
-  final Color accentInk;
+  /// The lamps as text and thin lines: on the light theme the lamps
+  /// themselves are too pale to read. [ink] picks them.
+  final Color accentInk, okInk, warnInk, errInk;
 
   const Palette({
+    required this.okInk,
+    required this.warnInk,
+    required this.errInk,
     required this.bg,
     required this.bg2,
     required this.surface,
@@ -37,6 +40,9 @@ class Palette extends ThemeExtension<Palette> {
     muted: Color(0xFF9AA5A7),
     dim: Color(0xFF6A777C),
     accentInk: Color(0xFFF5B25E),
+    okInk: okColor,
+    warnInk: warnColor,
+    errInk: errColor,
   );
 
   static const light = Palette(
@@ -50,8 +56,21 @@ class Palette extends ThemeExtension<Palette> {
     text: Color(0xFF172024),
     muted: Color(0xFF4E5D62),
     dim: Color(0xFF7D8B90),
-    accentInk: Color(0xFF9A5208),
+    // At least 4.5:1 on the light panels.
+    accentInk: Color(0xFF8F4C06),
+    okInk: Color(0xFF0F7552),
+    warnInk: Color(0xFF856000),
+    errInk: Color(0xFFC0322D),
   );
+
+  /// A lamp's colour fit for text on this theme's panels.
+  Color ink(Color lamp) => switch (lamp) {
+    accent => accentInk,
+    okColor => okInk,
+    warnColor => warnInk,
+    errColor => errInk,
+    _ => lamp,
+  };
 
   @override
   Palette copyWith() => this;
@@ -72,6 +91,9 @@ class Palette extends ThemeExtension<Palette> {
       muted: c(muted, other.muted),
       dim: c(dim, other.dim),
       accentInk: c(accentInk, other.accentInk),
+      okInk: c(okInk, other.okInk),
+      warnInk: c(warnInk, other.warnInk),
+      errInk: c(errInk, other.errInk),
     );
   }
 }
@@ -92,9 +114,11 @@ const monoFont = 'Consolas';
 const monoFallback = ['Cascadia Mono', 'DejaVu Sans Mono', 'monospace'];
 
 /// Headings and figures: Bahnschrift, the DIN of road and rail signs, which
-/// Windows ships; Android takes its condensed Roboto.
+/// Windows ships. Android has no Bahnschrift: "sans-serif-condensed" is the
+/// name its fonts.xml gives Roboto Condensed, the nearest it has; failing
+/// that, the plain UI face of each system.
 const displayFont = 'Bahnschrift';
-const displayFallback = ['sans-serif-condensed', 'Roboto Condensed', 'Segoe UI'];
+const displayFallback = ['sans-serif-condensed', 'Roboto Condensed', 'Segoe UI', 'Roboto', 'sans-serif'];
 
 /// A heading in the display face.
 TextStyle display(double size, {FontWeight weight = FontWeight.w600, Color? color, double spacing = 0}) => TextStyle(

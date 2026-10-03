@@ -195,6 +195,19 @@ class AppState extends ChangeNotifier {
     _connectDaemon();
     // A subscription runs out while the app runs, not only on a refresh.
     _subTimer = Timer.periodic(const Duration(hours: 1), (_) => checkSubscriptions());
+    // The cores' new versions are looked for by themselves, once a day.
+    _coreTimer = Timer.periodic(const Duration(hours: 24), (_) => _autoCoreUpdates());
+  }
+
+  Timer? _coreTimer;
+  bool _coresChecked = false;
+
+  /// Looks for newer cores without a word unless one is found. Android
+  /// updates its cores with the app.
+  Future<void> _autoCoreUpdates() async {
+    if (platform.isAndroid || !online || checkingUpdates || updatingCore.isNotEmpty) return;
+    _coresChecked = true;
+    await checkCoreUpdates(quiet: true);
   }
 
   /// Tells the user when this version differs from the one that ran last:
@@ -235,6 +248,7 @@ class AppState extends ChangeNotifier {
       daemonStarting = false;
       daemonStartRefused = false;
       _notify();
+      if (!_coresChecked) unawaited(_autoCoreUpdates());
     } catch (e) {
       // The service runs only while the app does: the app starts it.
       final now = DateTime.now();
@@ -758,6 +772,7 @@ class AppState extends ChangeNotifier {
     _statusDebounce?.cancel();
     _statsTimer?.cancel();
     _subTimer?.cancel();
+    _coreTimer?.cancel();
     super.dispose();
   }
 }

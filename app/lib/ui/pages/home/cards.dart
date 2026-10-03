@@ -114,7 +114,7 @@ class _IpCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     note,
-                    style: TextStyle(fontSize: 12, color: vpn ? okColor : (color == warnColor ? warnColor : p.muted)),
+                    style: TextStyle(fontSize: 12, color: vpn ? p.okInk : (color == warnColor ? p.warnInk : p.muted)),
                     overflow: TextOverflow.ellipsis,
                     maxLines: 2,
                   ),
@@ -160,7 +160,6 @@ class _SpeedCard extends StatelessWidget {
         children: [
           PanelTitle(
             'Скорость',
-            sub: 'за 2 минуты',
             trailing: active && (state.sessionDown > 0 || state.sessionUp > 0)
                 ? Tooltip(
                     message: 'Скачано и отправлено за это подключение',
@@ -176,87 +175,10 @@ class _SpeedCard extends StatelessWidget {
                   )
                 : null,
           ),
+          // The figures only: a chart of the last minutes says little more.
           Wrap(spacing: 28, runSpacing: 8, children: [metric(Icons.south, okColor, 'Загрузка', down), metric(Icons.north, accent, 'Отдача', up)]),
-          const SizedBox(height: 12),
-          SizedBox(
-            height: 80,
-            child: data.length < 2
-                ? Center(
-                    child: Text(active ? 'Собираем данные…' : 'Появится после подключения', style: TextStyle(color: p.dim, fontSize: 12)),
-                  )
-                : CustomPaint(
-                    painter: _SpeedPainter(data, grid: p.border, label: p.dim),
-                    size: Size.infinite,
-                  ),
-          ),
         ],
       ),
     );
   }
-}
-
-class _SpeedPainter extends CustomPainter {
-  final List<(int, int)> data;
-  final Color grid;
-  final Color label;
-  _SpeedPainter(this.data, {required this.grid, required this.label});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final peak = data.fold<int>(0, (m, e) => max(m, max(e.$1, e.$2)));
-    final maxV = max(peak * 1.2, 125000.0); // at least 1 Mbit/s tall
-    const left = 64.0;
-    final w = size.width - left;
-    final h = size.height - 4;
-    final gridPaint = Paint()
-      ..color = grid
-      ..strokeWidth = 1;
-    for (var i = 0; i <= 2; i++) {
-      final y = h - h * i / 2;
-      canvas.drawLine(Offset(left, y), Offset(size.width, y), gridPaint);
-      final tp = TextPainter(
-        text: TextSpan(
-          text: i == 0 ? '0' : formatRate((maxV * i / 2).round()),
-          style: TextStyle(color: label, fontSize: 10, fontFamily: displayFont, fontFamilyFallback: displayFallback),
-        ),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      tp.paint(canvas, Offset(0, (y - tp.height / 2).clamp(0, size.height - tp.height)));
-    }
-    const slots = AppState.speedKeep;
-    final step = w / (slots - 1);
-    final start = slots - data.length;
-    Path line(int Function((int, int)) pick) {
-      final path = Path();
-      for (var i = 0; i < data.length; i++) {
-        final pt = Offset(left + (start + i) * step, h - h * pick(data[i]) / maxV);
-        i == 0 ? path.moveTo(pt.dx, pt.dy) : path.lineTo(pt.dx, pt.dy);
-      }
-      return path;
-    }
-
-    final down = line((e) => e.$2);
-    final fill = Path.from(down)
-      ..lineTo(left + (slots - 1) * step, h)
-      ..lineTo(left + start * step, h)
-      ..close();
-    canvas.drawPath(
-      fill,
-      Paint()
-        ..shader = LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [okColor.withValues(alpha: .25), okColor.withValues(alpha: 0)],
-        ).createShader(Rect.fromLTWH(0, 0, size.width, h)),
-    );
-    final stroke = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2
-      ..strokeJoin = StrokeJoin.round;
-    canvas.drawPath(down, stroke..color = okColor);
-    canvas.drawPath(line((e) => e.$1), stroke..color = accent.withValues(alpha: .9));
-  }
-
-  @override
-  bool shouldRepaint(_SpeedPainter old) => true;
 }

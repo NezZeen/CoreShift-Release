@@ -150,7 +150,7 @@ class _FastestTile extends StatelessWidget {
                       ),
               ),
               if (f != null)
-                Text('$ms мс', style: figures(15, color: ms < 200 ? okColor : (ms < 500 ? warnColor : errColor)))
+                Text('$ms мс', style: figures(15, color: p.ink(ms < 200 ? okColor : (ms < 500 ? warnColor : errColor))))
               else if (state.testingLatency)
                 const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
               else
@@ -221,7 +221,7 @@ class _QuickRow extends StatelessWidget {
                   ],
                 ),
               ),
-              if (l != null && l.ok) Text('${l.ms} мс', style: figures(13, color: l.ms < 200 ? okColor : (l.ms < 500 ? warnColor : errColor))),
+              if (l != null && l.ok) Text('${l.ms} мс', style: figures(13, color: p.ink(l.ms < 200 ? okColor : (l.ms < 500 ? warnColor : errColor)))),
               const SizedBox(width: 8),
               Icon(sel ? Icons.radio_button_checked : Icons.radio_button_off, size: 18, color: sel ? accent : p.dim),
             ],

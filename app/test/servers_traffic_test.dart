@@ -223,8 +223,9 @@ void main() {
       await tester.pump(const Duration(milliseconds: 500));
       expect(find.text('Трафик через VPN'), findsOneWidget);
       expect(find.text('Скачано'), findsOneWidget);
-      await tester.tap(find.text('30 дней'));
-      await tester.pump();
+      // A week only: no month view.
+      expect(find.text('30 дней'), findsNothing);
+      expect(find.text('за 7 дней'), findsOneWidget);
       expect(tester.takeException(), isNull);
       // Pointing at a day names it.
       // The chart is above its caption: a tap on its left edge picks the oldest day.

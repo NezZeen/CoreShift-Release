@@ -20,9 +20,16 @@ import 'widgets.dart';
 
 /// The pages. Five are stations on the main line: connecting, the
 /// servers, what goes through the VPN, checking that it works, and the
-/// settings. The cores and the journal are for the curious and hang off
-/// the settings.
+/// settings. Two hang off them, each reached from one place: the cores
+/// from the settings, the journal from «Проверка».
 enum PageId { home, servers, routing, checks, settings, cores, logs }
+
+/// The main page a page belongs to: the one lit in the navigation.
+PageId stationOf(PageId p) => switch (p) {
+  PageId.cores => PageId.settings,
+  PageId.logs => PageId.checks,
+  _ => p,
+};
 
 /// The main pages in the order the navigation shows them.
 const mainPages = [
@@ -32,9 +39,6 @@ const mainPages = [
   (PageId.checks, Icons.speed, 'Проверка'),
   (PageId.settings, Icons.tune, 'Настройки'),
 ];
-
-/// The advanced pages, reached from the settings.
-const advancedPages = [(PageId.cores, Icons.memory, 'Ядра'), (PageId.logs, Icons.receipt_long_outlined, 'Журнал')];
 
 /// Lets pages switch to another page, e.g. the home page's node picker.
 class Nav extends InheritedWidget {
@@ -228,8 +232,8 @@ class _ShellState extends State<Shell> {
   }
 }
 
-/// The phone's navigation: the five main pages. The cores and the journal
-/// open from the settings, so the settings stay lit on them.
+/// The phone's navigation: the five main pages. On the cores the settings
+/// stay lit, on the journal «Проверка».
 class _BottomNav extends StatelessWidget {
   final AppState state;
   final PageId page;
@@ -238,11 +242,11 @@ class _BottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final index = mainPages.indexWhere((m) => m.$1 == page);
+    final index = mainPages.indexWhere((m) => m.$1 == stationOf(page));
     return NavigationBar(
       height: 68,
       labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-      selectedIndex: index < 0 ? mainPages.length - 1 : index,
+      selectedIndex: index,
       onDestinationSelected: (i) => onPage(mainPages[i].$1),
       destinations: [for (final (_, icon, label) in mainPages) NavigationDestination(icon: Icon(icon), label: label)],
     );
@@ -285,7 +289,7 @@ class _Sidebar extends StatelessWidget {
                       : 'Версия ${state.version.label}${state.version.commit.isEmpty ? '' : ', коммит ${state.version.commit}'}',
                   child: Text(
                     state.version.known ? state.version.version : state.info.version,
-                    style: TextStyle(color: state.versionMismatch ? warnColor : p.dim, fontSize: 11, fontWeight: FontWeight.w500),
+                    style: TextStyle(color: state.versionMismatch ? p.warnInk : p.dim, fontSize: 11, fontWeight: FontWeight.w500),
                   ),
                 ),
               ],
@@ -295,12 +299,8 @@ class _Sidebar extends StatelessWidget {
           const SizedBox(height: 18),
           // The pages as stations on one line.
           for (final (i, (id, icon, label)) in mainPages.indexed)
-            _NavItem(icon: icon, label: label, active: page == id, first: i == 0, last: i == mainPages.length - 1, onTap: () => onPage(id)),
+            _NavItem(icon: icon, label: label, active: stationOf(page) == id, first: i == 0, last: i == mainPages.length - 1, onTap: () => onPage(id)),
           const Spacer(),
-          // The advanced pages, quiet at the bottom: they also open from
-          // the settings.
-          const Padding(padding: EdgeInsets.fromLTRB(8, 0, 8, 2), child: SectionLabel('Для опытных')),
-          for (final (id, icon, label) in advancedPages) _ToolLink(icon: icon, label: label, active: page == id, onTap: () => onPage(id)),
         ],
       ),
     );
@@ -345,7 +345,7 @@ class _StatusPill extends StatelessWidget {
               children: [
                 Text(
                   text,
-                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: on ? okColor : p.text),
+                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: on ? p.okInk : p.text),
                   overflow: TextOverflow.ellipsis,
                 ),
                 if (state.online && server.isNotEmpty)
@@ -462,42 +462,6 @@ class _StationPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_StationPainter old) => old.active != active || old.hover != hover || old.line != line || old.hollow != hollow;
-}
-
-/// An advanced page in the sidebar's footer: a small line of text.
-class _ToolLink extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
-  const _ToolLink({required this.icon, required this.label, required this.active, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.pal;
-    final fg = active ? p.text : p.muted;
-    return InkWell(
-      borderRadius: BorderRadius.circular(8),
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
-        decoration: BoxDecoration(color: active ? p.surface : Colors.transparent, borderRadius: BorderRadius.circular(8)),
-        child: Row(
-          children: [
-            Icon(icon, size: 16, color: active ? p.accentInk : p.dim),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                label,
-                style: TextStyle(fontSize: 13, color: fg, fontWeight: active ? FontWeight.w600 : FontWeight.w500),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 class _Offline extends StatefulWidget {

@@ -47,7 +47,6 @@ class _Section {
 
 class _ServersPageState extends State<ServersPage> {
   String? subFilter; // null = all subscriptions
-  String protoFilter = '';
   String query = '';
 
   /// Folded countries and subscriptions; kept, so they stay folded when
@@ -69,20 +68,6 @@ class _ServersPageState extends State<ServersPage> {
       // Not while the page is being built: the test notifies listeners.
       WidgetsBinding.instance.addPostFrameCallback((_) => s.testLatency());
     }
-  }
-
-  /// The fastest working node among [rows], if any was tested.
-  (Subscription, NodeView)? _fastest(List<(Subscription, NodeView)> rows) {
-    (Subscription, NodeView)? best;
-    var bestMs = 0;
-    for (final (sub, n) in rows) {
-      final l = s.latencyOf(sub.id, n.fingerprint);
-      if (l != null && l.ok && n.cores.isNotEmpty && (best == null || l.ms < bestMs)) {
-        best = (sub, n);
-        bestMs = l.ms;
-      }
-    }
-    return best;
   }
 
   /// The rows in the groups the user chose, in the order the subscription
@@ -131,13 +116,8 @@ class _ServersPageState extends State<ServersPage> {
       for (final sub in subs)
         if (subFilter == null || sub.id == subFilter)
           for (final n in sub.nodes)
-            if ((protoFilter.isEmpty || n.protocol == protoFilter) && _matches(n, sub)) (sub, n),
+            if (_matches(n, sub)) (sub, n),
     ];
-    final protocols = {
-      for (final sub in subs)
-        for (final n in sub.nodes) n.protocol,
-    }.toList()..sort();
-    final fastest = _fastest(rows);
     final compact = isCompact(context);
     final sections = _sections(rows, multi: subs.length > 1 && subFilter == null);
 
@@ -151,52 +131,14 @@ class _ServersPageState extends State<ServersPage> {
         prefixIconConstraints: const BoxConstraints(minWidth: 34),
       ),
     );
-    // The protocols in a menu rather than a row of chips that wraps.
-    final protocol = PopupMenuButton<String>(
-      tooltip: 'Показать только один протокол',
-      onSelected: (v) => setState(() => protoFilter = v),
-      itemBuilder: (_) => [
-        CheckedPopupMenuItem(value: '', checked: protoFilter.isEmpty, child: const Text('Все протоколы')),
-        for (final pr in protocols) CheckedPopupMenuItem(value: pr, checked: protoFilter == pr, child: Text(protocolLabel(pr))),
-      ],
-      child: IgnorePointer(
-        child: Btn(label: protoFilter.isEmpty ? 'Все протоколы' : protocolLabel(protoFilter), icon: Icons.filter_list, small: true, onPressed: () {}),
-      ),
-    );
+    // The search finds protocols too, so there is no protocol filter; the
+    // fastest server is picked in the home page's quick pick.
     final chips = [
-      protocol,
       _Chip(label: 'По странам', on: s.serverGroup, onTap: () => s.setPref('server_group', !s.serverGroup)),
       if (subFilter != null) _Chip(label: '× ${s.subscriptionById(subFilter!)?.displayName ?? ''}', on: true, onTap: () => setState(() => subFilter = null)),
     ];
-    final pingMode = s.setting('cores.latency_test', 'ping');
-    // How to ping, next to the button that pings.
-    final pingHow = s.hasSetting('cores.latency_test')
-        ? PopupMenuButton<String>(
-            tooltip: 'Как проверять пинг',
-            onSelected: (v) => s.updateSettings((x) => x['cores']['latency_test'] = v),
-            itemBuilder: (_) => [
-              for (final (v, title, text) in const [
-                ('ping', 'Пинг до сервера', 'Время TCP-подключения к серверу: быстро, без запуска ядер'),
-                ('proxy', 'Запрос через ядро', 'Реальная задержка с шифрованием, заодно видно, работает ли сервер'),
-              ])
-                CheckedPopupMenuItem(
-                  value: v,
-                  checked: pingMode == v,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(title),
-                      Text(text, style: TextStyle(fontSize: 11, color: context.pal.muted)),
-                    ],
-                  ),
-                ),
-            ],
-            child: IgnorePointer(
-              child: Btn(icon: Icons.tune, small: true, onPressed: () {}),
-            ),
-          )
-        : null;
+    // How to ping is the service's choice: a ping, or a request through the
+    // core for a server a ping cannot time.
     final ping = Btn(
       label: 'Проверить пинг',
       icon: Icons.speed,
@@ -204,13 +146,6 @@ class _ServersPageState extends State<ServersPage> {
       loading: s.testingLatency,
       tooltip: subFilter == null ? 'Проверить все серверы' : 'Проверить серверы этой подписки',
       onPressed: () => s.testLatency(subFilter),
-    );
-    final best = Btn(
-      label: 'Самый быстрый',
-      icon: Icons.bolt,
-      small: true,
-      tooltip: fastest == null ? 'Сначала запустите тест задержки' : '${fastest.$2.name}: ${s.latencyOf(fastest.$1.id, fastest.$2.fingerprint)!.ms} мс',
-      onPressed: fastest == null ? null : () => s.selectNode(fastest.$1.id, fastest.$2.fingerprint, fastest.$2.name),
     );
 
     return PageFrame(
@@ -237,17 +172,7 @@ class _ServersPageState extends State<ServersPage> {
             builder: (context, c) {
               Widget card(Subscription sub) =>
                   _SubCard(state: s, sub: sub, selected: subFilter == sub.id, onTap: () => setState(() => subFilter = subFilter == sub.id ? null : sub.id));
-              final list = _serverList(
-                context,
-                compact: compact,
-                search: search,
-                chips: chips,
-                pingHow: pingHow,
-                ping: ping,
-                best: best,
-                rows: rows,
-                sections: sections,
-              );
+              final list = _serverList(context, compact: compact, search: search, chips: chips, ping: ping, rows: rows, sections: sections);
               // A wide window: the subscriptions as a column beside the
               // servers, like folders beside their files.
               if (!compact && c.maxWidth >= 940) {
@@ -328,9 +253,7 @@ class _ServersPageState extends State<ServersPage> {
     required bool compact,
     required Widget search,
     required List<Widget> chips,
-    required Widget? pingHow,
     required Btn ping,
-    required Btn best,
     required List<(Subscription, NodeView)> rows,
     required List<_Section> sections,
   }) {
@@ -338,15 +261,12 @@ class _ServersPageState extends State<ServersPage> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (compact) ...[
-          // A phone: the search with the buttons as icons, then one
-          // sideways row of filters.
+          // A phone: the search with the ping as an icon, then the filters.
           Row(
             children: [
               Expanded(child: search),
               const SizedBox(width: 8),
               Btn(icon: ping.icon, tooltip: ping.tooltip, loading: ping.loading, onPressed: ping.onPressed),
-              const SizedBox(width: 6),
-              Btn(icon: best.icon, tooltip: best.tooltip, onPressed: best.onPressed),
             ],
           ),
           const SizedBox(height: 10),
@@ -355,26 +275,16 @@ class _ServersPageState extends State<ServersPage> {
             child: Row(
               children: [
                 for (final (i, c) in chips.indexed) ...[if (i > 0) const SizedBox(width: 6), c],
-                if (pingHow != null) ...[const SizedBox(width: 6), pingHow],
               ],
             ),
           ),
         ] else
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            crossAxisAlignment: WrapCrossAlignment.center,
+          Row(
             children: [
-              SizedBox(width: 300, child: search),
-              ...chips,
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ping,
-                  if (pingHow != null) ...[const SizedBox(width: 4), pingHow],
-                ],
-              ),
-              best,
+              Expanded(child: search),
+              const SizedBox(width: 10),
+              for (final c in chips) ...[c, const SizedBox(width: 10)],
+              ping,
             ],
           ),
         if (compact && rows.isNotEmpty && s.prefs['swipe_hint'] != true) _SwipeHint(onClose: () => s.setPref('swipe_hint', true)),
@@ -399,6 +309,9 @@ class _ServersPageState extends State<ServersPage> {
     return n.name.toLowerCase().contains(query) ||
         n.server.toLowerCase().contains(query) ||
         protocolLabel(n.protocol).toLowerCase().contains(query) ||
+        n.protocol.toLowerCase().contains(query) ||
+        (query == 'hy2' && n.protocol == 'hysteria2') ||
+        (query == 'ss' && n.protocol == 'shadowsocks') ||
         (code != null && (code.toLowerCase() == query || countryName(code).toLowerCase().contains(query))) ||
         sub.displayName.toLowerCase().contains(query);
   }

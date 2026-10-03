@@ -2,10 +2,10 @@ part of '../home_page.dart';
 
 /// The state in words and the colour of its lamp.
 (String, Color) _stateTitle(BuildContext context, ConnState st) => switch (st) {
-  ConnState.connected => ('Подключено', okColor),
+  ConnState.connected => ('Подключено', context.pal.okInk),
   ConnState.connecting => ('Подключение…', context.pal.accentInk),
   ConnState.disconnecting => ('Отключение…', context.pal.muted),
-  ConnState.failed => ('Ошибка подключения', errColor),
+  ConnState.failed => ('Ошибка подключения', context.pal.errInk),
   ConnState.idle => ('Отключено', context.pal.text),
 };
 
@@ -34,7 +34,7 @@ class _Hero extends StatelessWidget {
       ConnState.idle when !sel.available => Text(
         'Сервер «${sel.name}» пропал из подписки',
         textAlign: TextAlign.center,
-        style: const TextStyle(color: warnColor, fontSize: 13.5),
+        style: TextStyle(color: p.warnInk, fontSize: 13.5),
       ),
       ConnState.idle => Text('Нажмите, чтобы подключиться', style: muted),
       _ => const SizedBox(),
@@ -228,7 +228,7 @@ class _ServerStation extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (l != null && l.ok) ...[
-            Text('${l.ms} мс', style: figures(14, color: l.ms < 200 ? okColor : (l.ms < 500 ? warnColor : errColor))),
+            Text('${l.ms} мс', style: figures(14, color: p.ink(l.ms < 200 ? okColor : (l.ms < 500 ? warnColor : errColor)))),
             const SizedBox(width: 8),
           ],
           Tooltip(

@@ -46,7 +46,6 @@ class RoutingPage extends StatelessWidget {
             description: 'Весь трафик этих программ идёт через VPN, куда бы они ни подключались. Удобно для мессенджеров и игр, заблокированных целиком.',
           ),
         _blockPanel(),
-        _localNote(context),
       ];
     } else {
       left = [
@@ -100,6 +99,18 @@ class RoutingPage extends StatelessWidget {
           subtitle: selected
               ? 'Через VPN идут только выбранные сайты и программы, остальное — напрямую.'
               : 'Сайты и программы, которые работают напрямую, без VPN. Всё остальное идёт через VPN.',
+          // What always goes direct, for the curious: behind an icon.
+          actions: [
+            Tooltip(
+              message: 'Что всегда работает напрямую',
+              child: InfoIcon(
+                title: 'Всегда напрямую',
+                text: selected
+                    ? 'Локальная сеть и российские сайты в этом режиме и так работают напрямую.'
+                    : 'Локальная сеть (10.0.0.0/8, 192.168.0.0/16, .local, .lan) и адрес VPN-сервера всегда работают напрямую.',
+              ),
+            ),
+          ],
         ),
         _notice(context, tun),
         if (full) ...[_modePanel(context, selected), const SizedBox(height: 18)],
@@ -247,9 +258,6 @@ class RoutingPage extends StatelessWidget {
   }
 
   Widget _presetsPanel(BuildContext context) {
-    final p = context.pal;
-    // What always goes direct is news only to the curious: not on a phone.
-    final always = !isCompact(context);
     return Panel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -265,25 +273,10 @@ class RoutingPage extends StatelessWidget {
                   'Списки обновляются сами раз в неделю.',
               trailing: Switch(value: s.setting('routing.russia_direct', false), onChanged: (v) => s.updateSettings((x) => x['routing']['russia_direct'] = v)),
             ),
-          if (always)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                'Локальная сеть (10.0.0.0/8, 192.168.0.0/16, .local, .lan) и адрес VPN-сервера всегда работают напрямую.',
-                style: TextStyle(fontSize: 11.5, color: p.dim),
-              ),
-            ),
         ],
       ),
     );
   }
-
-  /// In the "only selected" mode everything else is direct anyway; a note
-  /// says the local network stays reachable.
-  Widget _localNote(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 4),
-    child: Text('Локальная сеть и российские сайты в этом режиме и так работают напрямую.', style: TextStyle(fontSize: 11.5, color: context.pal.dim)),
-  );
 
   Widget _blockPanel() => Fold(
     title: 'Блокировать',

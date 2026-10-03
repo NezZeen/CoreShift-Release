@@ -107,7 +107,7 @@ class _TrafficChart extends StatefulWidget {
   /// A sparkline: no labels, no picking. Not used since the phone shows
   /// the full card too.
   final bool mini = false;
-  const _TrafficChart({super.key, required this.days});
+  const _TrafficChart({required this.days});
 
   @override
   State<_TrafficChart> createState() => _TrafficChartState();
@@ -227,7 +227,7 @@ class _ChartPainter extends CustomPainter {
   bool shouldRepaint(_ChartPainter old) => true;
 }
 
-/// The traffic in detail: a week or a month, the totals and the busiest day.
+/// The week's traffic in detail: the totals, the average and the busiest day.
 /// A window on the desktop, a sheet on a phone.
 Future<void> showTrafficStats(BuildContext context, AppState state) {
   final p = context.pal;
@@ -251,25 +251,19 @@ Future<void> showTrafficStats(BuildContext context, AppState state) {
   );
 }
 
-class _TrafficDetails extends StatefulWidget {
+/// The last week only: what is useful to know about one's traffic.
+class _TrafficDetails extends StatelessWidget {
   final AppState state;
   const _TrafficDetails({required this.state});
-
-  @override
-  State<_TrafficDetails> createState() => _TrafficDetailsState();
-}
-
-class _TrafficDetailsState extends State<_TrafficDetails> {
-  int span = 7;
 
   @override
   Widget build(BuildContext context) {
     final compact = isCompact(context);
     return ListenableBuilder(
-      listenable: widget.state,
+      listenable: state,
       builder: (context, _) {
         final p = context.pal;
-        final days = widget.state.statsDays(span);
+        final days = state.statsDays(7);
         final down = days.fold<int>(0, (n, d) => n + d.down);
         final up = days.fold<int>(0, (n, d) => n + d.up);
         final busiest = days.isEmpty ? null : days.reduce((a, b) => a.total >= b.total ? a : b);
@@ -291,12 +285,9 @@ class _TrafficDetailsState extends State<_TrafficDetails> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  Expanded(child: Text('Трафик через VPN', style: dialogTitle)),
-                  Seg<int>(value: span, options: const [(7, '7 дней'), (30, '30 дней')], onChanged: (v) => setState(() => span = v)),
-                ],
-              ),
+              Text('Трафик через VPN', style: dialogTitle),
+              const SizedBox(height: 2),
+              Text('за 7 дней', style: TextStyle(fontSize: 12.5, color: p.muted)),
               const SizedBox(height: 16),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -307,10 +298,7 @@ class _TrafficDetailsState extends State<_TrafficDetails> {
                 ],
               ),
               const SizedBox(height: 16),
-              SizedBox(
-                height: 150,
-                child: _TrafficChart(key: ValueKey(span), days: days),
-              ),
+              SizedBox(height: 150, child: _TrafficChart(days: days)),
               if (busiest != null && busiest.total > 0) ...[
                 const SizedBox(height: 12),
                 Text('Больше всего: ${_dayLabel(busiest.date)}, ${formatBytes(busiest.total)}', style: TextStyle(fontSize: 12.5, color: p.muted)),

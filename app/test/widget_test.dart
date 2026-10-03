@@ -35,6 +35,26 @@ void main() {
 
   const pages = ['Серверы', 'Правила', 'Проверка', 'Настройки', 'Ядра', 'Журнал', 'Главная'];
 
+  /// Opens [page]: a main page from the navigation; the cores from their
+  /// card in the settings, the journal from «Проверка», the one place each.
+  Future<void> open(WidgetTester tester, String page) async {
+    final phone = find.byType(NavigationBar).evaluate().isNotEmpty;
+    Finder nav(String p) => phone ? find.descendant(of: find.byType(NavigationBar), matching: find.text(p)) : find.text(p).first;
+    final from = switch (page) {
+      'Ядра' => 'Настройки',
+      'Журнал' => 'Проверка',
+      _ => null,
+    };
+    if (from == null) {
+      await tester.tap(nav(page));
+      return;
+    }
+    await tester.tap(nav(from));
+    await tester.pump();
+    await tester.ensureVisible(find.text(page).last);
+    await tester.tap(find.text(page).last);
+  }
+
   testWidgets('every page renders on demo data', (tester) async {
     final state = await pumpApp(tester);
     expect(state.loaded, isTrue);
@@ -42,9 +62,14 @@ void main() {
     expect(find.text('Amsterdam'), findsWidgets);
 
     for (final page in pages) {
-      await tester.tap(find.text(page).first);
+      await open(tester, page);
       await tester.pump();
       expect(tester.takeException(), isNull, reason: page);
+      expect(
+        find.descendant(of: find.byType(PageHeader), matching: find.text(page)),
+        page == 'Главная' ? findsNothing : findsOneWidget,
+        reason: page,
+      );
     }
     await tester.tap(find.text('Серверы').first);
     await tester.pump();
@@ -61,9 +86,14 @@ void main() {
     // The window's minimum size less the title bar.
     await pumpApp(tester, size: const Size(960, 606));
     for (final page in pages) {
-      await tester.tap(find.text(page).first);
+      await open(tester, page);
       await tester.pump();
       expect(tester.takeException(), isNull, reason: page);
+      expect(
+        find.descendant(of: find.byType(PageHeader), matching: find.text(page)),
+        page == 'Главная' ? findsNothing : findsOneWidget,
+        reason: page,
+      );
     }
     await tester.pump(const Duration(seconds: 30));
   });
@@ -183,18 +213,30 @@ void main() {
 
   testWidgets('core versions and updates', (tester) async {
     final state = await pumpApp(tester);
-    await tester.tap(find.text('Ядра').first);
+    // New versions are looked for by the app itself, once it is connected.
+    await tester.runAsync(() async {
+      for (var i = 0; i < 100 && (state.coreUpdates.isEmpty || state.checkingUpdates); i++) {
+        await Future.delayed(const Duration(milliseconds: 20));
+      }
+    });
     await tester.pump();
+    expect(state.coreUpdates, isNotEmpty);
+    expect(state.toasts.map((t) => t.message), contains(contains('Доступна новая версия: sing-box')));
+    await open(tester, 'Настройки');
+    await tester.pump();
+    expect(find.text('Доступна новая версия: sing-box'), findsOneWidget);
+    await open(tester, 'Ядра');
+    await tester.pump();
+    expect(find.text('Проверить обновления'), findsNothing);
     expect(find.text('версия 1.14.2'), findsOneWidget);
-    await tester.runAsync(() => state.checkCoreUpdates());
-    await tester.pump();
     expect(find.text('Доступна 1.14.3 · 33 МБ'), findsOneWidget);
     expect(find.text('Последняя версия'), findsNWidgets(2));
     await tester.runAsync(() => state.updateCore('sing-box'));
     await tester.pump();
     expect(state.info.versionOf('sing-box'), '1.14.3');
     expect(find.text('версия 1.14.3'), findsOneWidget);
-    expect(find.textContaining('Доступна'), findsNothing);
+    // The toast of the automatic check may still be up; the list is done.
+    expect(find.textContaining('Доступна 1.14'), findsNothing);
     expect(tester.takeException(), isNull);
     await tester.pump(const Duration(seconds: 6));
   });
@@ -400,9 +442,14 @@ void main() {
     });
     await tester.pump();
     for (final page in pages) {
-      await tester.tap(find.text(page).first);
+      await open(tester, page);
       await tester.pump();
       expect(tester.takeException(), isNull, reason: page);
+      expect(
+        find.descendant(of: find.byType(PageHeader), matching: find.text(page)),
+        page == 'Главная' ? findsNothing : findsOneWidget,
+        reason: page,
+      );
     }
     await tester.tap(find.text('Правила').first);
     await tester.pump();
@@ -942,11 +989,8 @@ void main() {
       }
     }
     for (final page in ['Ядра', 'Журнал']) {
-      // The advanced pages open from the settings.
-      await tester.tap(find.descendant(of: find.byType(NavigationBar), matching: find.text('Настройки')));
-      await tester.pump();
-      await tester.ensureVisible(find.text(page));
-      await tester.tap(find.text(page));
+      // The cores open from the settings, the journal from «Проверка».
+      await open(tester, page);
       await tester.pump();
       expect(
         find.descendant(of: find.byType(PageHeader), matching: find.text(page)),
@@ -1151,6 +1195,122 @@ void main() {
       expect(state.prefs['sub_warned'], isEmpty);
       await tester.pump(const Duration(seconds: 6));
     }
+  });
+
+  testWidgets('the cores: one list, the manual mode is one core switched on', (tester) async {
+    final state = await pumpApp(tester);
+    await tester.runAsync(
+      () => state.updateSettings((s) {
+        s['cores']['mode'] = 'manual';
+        s['cores']['manual'] = 'xray';
+      }),
+    );
+    await open(tester, 'Ядра');
+    await tester.pump();
+    for (final gone in ['Автосвап', 'Вручную', 'Совместимость', 'Проверить обновления']) {
+      expect(find.text(gone), findsNothing, reason: gone);
+    }
+    expect(find.textContaining('Включено одно ядро: Xray-core'), findsOneWidget);
+    // Switching another core on goes back to the automatic order.
+    // The name's own row, then the core's.
+    final singBox = find.ancestor(of: find.text('sing-box'), matching: find.byType(Row)).at(1);
+    await tester.runAsync(() async {
+      await tester.tap(find.descendant(of: singBox, matching: find.byType(Switch)));
+      await Future.delayed(const Duration(milliseconds: 300));
+    });
+    await tester.pump();
+    expect(state.setting('cores.mode', ''), 'auto');
+    expect(state.setting<List>('cores.priority', const []), ['xray', 'sing-box']);
+    // Only the way back is in sight; the rest is under «Дополнительно».
+    expect(find.text('Возвращаться к основному ядру'), findsOneWidget);
+    expect(find.text('Адрес проверки связи'), findsNothing);
+    await tester.ensureVisible(find.text('Дополнительно'));
+    await tester.tap(find.text('Дополнительно'));
+    await tester.pump();
+    expect(find.text('Адрес проверки связи'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(seconds: 6));
+  });
+
+  testWidgets('the servers have one search and no duplicate controls', (tester) async {
+    final state = await pumpApp(tester);
+    await open(tester, 'Серверы');
+    await tester.pump();
+    for (final gone in ['Все протоколы', 'Самый быстрый']) {
+      expect(find.text(gone), findsNothing, reason: gone);
+    }
+    expect(find.byTooltip('Как проверять пинг'), findsNothing);
+    // The search finds a protocol by its name or its link scheme.
+    await tester.enterText(find.byType(TextField).first, 'hy2');
+    await tester.pump();
+    expect(find.text('Helsinki'), findsOneWidget);
+    expect(find.text('Rotterdam'), findsNothing);
+    // The subscription's menu keeps one way to its page.
+    await tester.tap(find.byTooltip('Действия').first);
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('Копировать адрес страницы'), findsNothing);
+    expect(state.latencyAutoTested, isTrue);
+    await tester.pump(const Duration(seconds: 30));
+  });
+
+  testWidgets('a forced test through the core goes back to the automatic one', (tester) async {
+    final state = await pumpApp(tester);
+    await tester.runAsync(() async {
+      await state.updateSettings((s) => s['cores']['latency_test'] = 'proxy');
+      await state.testLatency();
+    });
+    expect(state.setting('cores.latency_test', ''), 'ping');
+    await tester.pump(const Duration(seconds: 6));
+  });
+
+  testWidgets('one switch guards against every DNS leak', (tester) async {
+    final state = await pumpApp(tester);
+    await open(tester, 'Настройки');
+    await tester.pump();
+    expect(find.text('Обновлять каждые, ч'), findsNothing);
+    expect(find.text('DNS браузеров только через VPN'), findsNothing);
+    final row = find.ancestor(of: find.text('Защита от утечек DNS'), matching: find.byType(Row)).first;
+    await tester.ensureVisible(row);
+    await tester.runAsync(() async {
+      await tester.tap(find.descendant(of: row, matching: find.byType(Switch)));
+      await Future.delayed(const Duration(milliseconds: 300));
+    });
+    await tester.pump();
+    for (final g in ['dns.block_browser_doh', 'dns.block_dot', 'dns.strict']) {
+      expect(state.setting(g, false), isTrue, reason: g);
+    }
+    // The expert settings are folded away.
+    expect(find.text('User-Agent'), findsNothing);
+    await tester.ensureVisible(find.text('Дополнительно'));
+    await tester.tap(find.text('Дополнительно'));
+    await tester.pump();
+    expect(find.text('User-Agent'), findsOneWidget);
+    expect(find.text('DNS через VPN'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(seconds: 6));
+  });
+
+  testWidgets('the journal: all or errors, and a copy for support', (tester) async {
+    final state = await pumpApp(tester);
+    await open(tester, 'Журнал');
+    await tester.pump();
+    expect(find.text('Все'), findsOneWidget);
+    expect(find.text('Ошибки'), findsOneWidget);
+    for (final gone in ['Автосвап', 'Ядра', 'Очистить']) {
+      expect(find.text(gone), findsNothing, reason: gone);
+    }
+    // The demo's earlier session: a switch of cores and an error.
+    expect(find.textContaining('Xray-core → sing-box'), findsOneWidget);
+    // The cores' own output is in the copy, not on the page.
+    expect(find.text('Xray 26.3.27 started'), findsNothing);
+    expect(state.logs.any((l) => l.message == 'Xray 26.3.27 started'), isTrue);
+    await tester.tap(find.text('Ошибки'));
+    await tester.pump();
+    expect(find.textContaining('Xray-core → sing-box'), findsNothing);
+    expect(find.textContaining('502'), findsOneWidget);
+    expect(find.text('Копировать'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(seconds: 6));
   });
 }
 

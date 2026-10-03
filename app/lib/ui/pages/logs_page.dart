@@ -6,7 +6,7 @@ import '../shell.dart';
 import '../theme.dart';
 import '../widgets.dart';
 
-enum _Filter { all, swap, cores, errors }
+enum _Filter { all, errors }
 
 class LogsPage extends StatefulWidget {
   final AppState state;
@@ -37,16 +37,14 @@ class _LogsPageState extends State<LogsPage> {
     super.dispose();
   }
 
-  /// The cores' own output shows under "Ядра" only: elsewhere it drowns
-  /// the events.
+  /// The cores' own output is left out of the page: it drowns the events.
+  /// A search finds it, and the copy for support has it all.
   bool _keep(LogLine l) {
     if (query.isNotEmpty && !'${l.source} ${l.message}'.toLowerCase().contains(query)) return false;
     final isCore = allCores.contains(l.source);
-    if (filter != _Filter.cores && isCore && l.level == LogLevel.info && !_isEvent(l)) return false;
+    if (query.isEmpty && isCore && l.level == LogLevel.info && !_isEvent(l)) return false;
     return switch (filter) {
       _Filter.all => true,
-      _Filter.swap => l.level == LogLevel.swap,
-      _Filter.cores => isCore,
       _Filter.errors => l.level == LogLevel.err || l.level == LogLevel.warn,
     };
   }
@@ -71,8 +69,8 @@ class _LogsPageState extends State<LogsPage> {
         children: [
           PageHeader(
             'Журнал',
-            subtitle: 'События службы, ядер и автосвапа. Построчный вывод ядер — в фильтре «Ядра».',
-            back: ('Настройки', () => Nav.to(context, PageId.settings)),
+            subtitle: 'Подключения, смены ядер и ошибки. Скопируйте журнал, чтобы отправить его в поддержку.',
+            back: ('Проверка', () => Nav.to(context, PageId.checks)),
             actions: [
               SizedBox(
                 width: compact ? 140 : 220,
@@ -87,30 +85,20 @@ class _LogsPageState extends State<LogsPage> {
                   ),
                 ),
               ),
-              Seg<_Filter>(
-                value: filter,
-                options: const [(_Filter.all, 'Все'), (_Filter.swap, 'Автосвап'), (_Filter.cores, 'Ядра'), (_Filter.errors, 'Ошибки')],
-                tooltips: const {_Filter.cores: 'События ядер и их построчный вывод'},
-                onChanged: (v) => setState(() => filter = v),
-              ),
+              Seg<_Filter>(value: filter, options: const [(_Filter.all, 'Все'), (_Filter.errors, 'Ошибки')], onChanged: (v) => setState(() => filter = v)),
+              // The whole journal, the cores' output too: what support needs.
               Btn(
+                label: 'Копировать',
                 icon: Icons.copy,
                 small: true,
-                tooltip: 'Скопировать',
-                onPressed: lines.isEmpty
+                tooltip: 'Скопировать весь журнал с версиями и режимом, для поддержки',
+                onPressed: widget.state.logs.isEmpty
                     ? null
                     : () {
-                        final text = [...widget.state.diagnosticsHeader(), for (final l in lines) '${_time(l.time)}  ${l.source}  ${l.message}'];
+                        final text = [...widget.state.diagnosticsHeader(), for (final l in widget.state.logs) '${_time(l.time)}  ${l.source}  ${l.message}'];
                         Clipboard.setData(ClipboardData(text: text.join('\n')));
                         widget.state.toast('Журнал скопирован');
                       },
-              ),
-              Btn(
-                label: compact ? null : 'Очистить',
-                icon: compact ? Icons.delete_outline : null,
-                tooltip: compact ? 'Очистить' : null,
-                small: true,
-                onPressed: widget.state.clearLogs,
               ),
             ],
           ),
