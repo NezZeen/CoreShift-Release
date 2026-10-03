@@ -84,6 +84,10 @@ type Service struct {
 	// start; only the TUN layer and the service's own clients know them.
 	socks core.SOCKSAuth
 
+	// startConn is held by the connection made on the service's own at
+	// start (connectAtStart): only one may run at a time.
+	startConn sync.Mutex
+
 	op       sync.Mutex // serialises connect, disconnect and teardown
 	tun      TUNInstance
 	stopPing context.CancelFunc // ends the connection's watchers: traffic, network
