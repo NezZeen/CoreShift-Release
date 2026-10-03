@@ -195,20 +195,78 @@ class AppState extends ChangeNotifier {
     _connectDaemon();
     // A subscription runs out while the app runs, not only on a refresh.
     _subTimer = Timer.periodic(const Duration(hours: 1), (_) => checkSubscriptions());
-    // The cores' new versions are looked for by themselves, once a day.
-    _coreTimer = Timer.periodic(const Duration(hours: 24), (_) => _autoCoreUpdates());
   }
 
+  /// The cores' new versions are looked for by the app itself: first when
+  /// it reaches the service, then once a day, and an hour after a check
+  /// that failed for want of a network.
   Timer? _coreTimer;
   bool _coresChecked = false;
 
-  /// Looks for newer cores and installs them, without a word unless it
-  /// fails. Android updates its cores with the app.
+  /// When the connection last changed state, by the service's events: a
+  /// check waits for it to settle.
+  DateTime? _stateChangedAt;
+
+  /// Automatic checks failed in a row; the journal hears of it from
+  /// [_coreCheckFailuresToLog] on, as one failure is usually a network that
+  /// is not there yet.
+  int _coreCheckFailures = 0;
+
+  static const _coreCheckEvery = Duration(hours: 24);
+  static const _coreCheckRetry = Duration(hours: 1);
+  static const _coreCheckSettle = Duration(seconds: 30);
+  static const _coreCheckFailuresToLog = 3;
+
+  /// When the next automatic check of the cores runs, from when it was set.
+  @visibleForTesting
+  Duration? coreCheckScheduled;
+
+  /// Runs the automatic check of the cores now, as its timer would.
+  @visibleForTesting
+  Future<void> autoCoreUpdatesNow() => _autoCoreUpdates();
+
+  void _scheduleCoreCheck(Duration after) {
+    _coreTimer?.cancel();
+    coreCheckScheduled = after;
+    if (_disposed) return;
+    _coreTimer = Timer(after, () => unawaited(_autoCoreUpdates()));
+  }
+
+  /// How long the automatic check has to wait. Not while the service
+  /// connects or disconnects, nor in the first seconds of a connection:
+  /// a check started then, as the app opens with a service that connects
+  /// by itself, failed for every core at once.
+  Duration _coreCheckWait() {
+    if (!online || busy || checkingUpdates || updatingCore.isNotEmpty) return const Duration(minutes: 1);
+    if (status.state == ConnState.connecting || status.state == ConnState.disconnecting) return const Duration(seconds: 5);
+    // The status the app loaded tells it before the events do.
+    final changed = [_stateChangedAt, status.since].nonNulls.fold<DateTime?>(null, (a, b) => a == null || b.isAfter(a) ? b : a);
+    final since = changed == null ? null : DateTime.now().difference(changed);
+    if (since != null && since < _coreCheckSettle) return _coreCheckSettle - since;
+    return Duration.zero;
+  }
+
+  /// Looks for newer cores and installs them, without a word. A check that
+  /// fails is tried again in an hour, and only one that keeps failing is
+  /// told, in one line of the journal for every core. Android updates its
+  /// cores with the app.
   Future<void> _autoCoreUpdates() async {
-    if (platform.isAndroid || !online || checkingUpdates || updatingCore.isNotEmpty) return;
+    if (platform.isAndroid || _disposed) return;
     _coresChecked = true;
-    await checkCoreUpdates();
+    final wait = _coreCheckWait();
+    if (wait > Duration.zero) {
+      _scheduleCoreCheck(wait);
+      return;
+    }
+    final failed = await checkCoreUpdates();
+    final temporary = failed.values.any(coreCheckTemporary);
+    if (failed.isEmpty) {
+      _coreCheckFailures = 0;
+    } else if (++_coreCheckFailures == _coreCheckFailuresToLog) {
+      _log(DateTime.now(), 'ядра', coreCheckFailedText(failed, _coreCheckFailures, retryInHour: temporary), LogLevel.warn);
+    }
     await installCoreUpdates();
+    _scheduleCoreCheck(temporary ? _coreCheckRetry : _coreCheckEvery);
   }
 
   /// Tells the user when this version differs from the one that ran last:
@@ -433,6 +491,7 @@ class AppState extends ChangeNotifier {
     final live = !e.time.isBefore(_liveSince);
     switch (e.kind) {
       case 'state':
+        _stateChangedAt = e.time;
         if (e.state == 'connecting') {
           _healthFailing.clear();
           _healthStreak.clear();
@@ -513,7 +572,7 @@ class AppState extends ChangeNotifier {
           _notify();
         }
       case 'log':
-        _log(e.time, e.source, e.line, LogLevel.info, quiet: true);
+        _log(e.time, e.source, e.line, LogLevel.info, output: true);
       case 'app-update':
         _onAppUpdate(e, live);
       case 'tun':
@@ -562,10 +621,12 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  void _log(DateTime t, String source, String msg, LogLevel level, {bool quiet = false}) {
-    logs.add(LogLine(t, source, msg, level));
+  /// Adds a line to the journal. The output of cores and of the TUN layer
+  /// comes in bursts, so it redraws only now and then.
+  void _log(DateTime t, String source, String msg, LogLevel level, {bool output = false}) {
+    logs.add(LogLine(t, source, msg, level, output: output));
     if (logs.length > 2000) logs.removeRange(0, logs.length - 2000);
-    if (!quiet || logs.length % 20 == 0) _notify();
+    if (!output || logs.length % 20 == 0) _notify();
   }
 
   static String _stateText(String s) => switch (s) {

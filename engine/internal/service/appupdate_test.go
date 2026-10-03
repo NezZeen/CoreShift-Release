@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"coreshift/engine/internal/selfupdate"
+	"coreshift/engine/internal/store"
 )
 
 // updateFake plays the release source, the installer and the user's
@@ -125,7 +127,7 @@ func TestAppUpdateInstallsWhileDisconnected(t *testing.T) {
 		t.Errorf("launched %s", launched)
 	}
 	// The next start removes it.
-	h.svc.finishAppUpdate()
+	h.svc.finishAppUpdate(context.Background())
 	if _, err := os.Stat(filepath.Dir(launched)); err == nil {
 		t.Error("the installer's folder stays after the update")
 	}
@@ -286,7 +288,7 @@ func TestUpdateTheUserInstalls(t *testing.T) {
 
 	// Declined: the next start neither reports a failure nor stops
 	// offering it.
-	h.svc.finishAppUpdate()
+	h.svc.finishAppUpdate(context.Background())
 	if st := h.svc.AppUpdateState(); st.State == UpdateError || h.svc.upd.failed != "" {
 		t.Errorf("declined update counted as failed: %+v", st)
 	}
@@ -325,5 +327,78 @@ func TestAppUpdateAnnouncedOnly(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	if downloads != 0 || f.launches() != 0 {
 		t.Errorf("%d downloads, %d launches", downloads, f.launches())
+	}
+}
+
+// After an update that interrupted a connection, with "Автозапуск" on, the
+// new service has two reasons to connect at start: the update's reconnect
+// and AutoConnect. It must connect once, not connect, tear the connection
+// down a second later and connect again.
+func TestOneConnectAfterAnUpdate(t *testing.T) {
+	for i := range 6 { // the two race: either may come first
+		t.Run(fmt.Sprint(i), func(t *testing.T) {
+			st, err := store.Open(filepath.Join(t.TempDir(), "store.json"), store.Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			set := st.Settings()
+			set.AutoConnect = true
+			set.Cores.HealthURL, set.Cores.HealthIntervalS = "http://health.test/generate_204", 3600
+			if _, err := st.SetSettings(set); err != nil {
+				t.Fatal(err)
+			}
+			sub, err := st.Add(context.Background(), store.AddRequest{Name: "s", Content: trojanLink})
+			if err != nil {
+				t.Fatal(err)
+			}
+			n := sub.Nodes[0]
+			if _, err := st.Select(sub.ID, n.Fingerprint(), n.Name); err != nil {
+				t.Fatal(err)
+			}
+			f := newUpdateFake("0.0.0", 0)
+			h := newHarness(t, func(c *Config) {
+				f.install(c)
+				c.Store = st
+			})
+			os.MkdirAll(h.svc.updatesDir(), 0o700)
+			b, _ := json.Marshal(pendingUpdate{From: "0.0.0+0", To: releaseKey(Version, BuildNumber()), Label: "dev", Reconnect: true})
+			os.WriteFile(filepath.Join(h.svc.updatesDir(), "pending.json"), b, 0o600)
+
+			events, unsubscribe := h.svc.Subscribe(false)
+			defer unsubscribe()
+			var mu sync.Mutex
+			connecting := 0
+			go func() {
+				for e := range events {
+					if e.Kind == "state" && e.State == Connecting {
+						mu.Lock()
+						connecting++
+						mu.Unlock()
+					}
+				}
+			}()
+
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			done := make(chan error, 1)
+			if i%2 == 0 {
+				runUpdates(t, h)
+				go func() { done <- h.svc.AutoConnect(ctx) }()
+			} else {
+				go func() { done <- h.svc.AutoConnect(ctx) }()
+				runUpdates(t, h)
+			}
+			if err := <-done; err != nil {
+				t.Fatalf("AutoConnect: %v", err)
+			}
+			h.waitState(t, Connected, 10*time.Second)
+			time.Sleep(300 * time.Millisecond) // a second connect would be under way by now
+			mu.Lock()
+			got := connecting
+			mu.Unlock()
+			if got != 1 || h.svc.Status().State != Connected {
+				t.Errorf("connected %d times, status %+v; calls %v", got, h.svc.Status(), h.log.get())
+			}
+		})
 	}
 }

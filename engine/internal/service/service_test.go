@@ -581,7 +581,7 @@ func TestIPv6Tunnel(t *testing.T) {
 
 func TestTrafficEvents(t *testing.T) {
 	h := newHarness(t, nil)
-	// Only sing-box runs Hysteria2; the fake core answers its Clash API.
+	// Xray cannot run hy2Link, sing-box can; the fake core answers its Clash API.
 	if err := h.connect(t, hy2Link); err != nil {
 		t.Fatal(err)
 	}

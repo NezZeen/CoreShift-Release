@@ -1330,6 +1330,17 @@ void main() {
     await tester.pump();
     expect(find.text('User-Agent'), findsOneWidget);
     expect(find.text('DNS через VPN'), findsOneWidget);
+    // Each guard can also be turned off on its own there.
+    final dot = find.ancestor(of: find.text('Блокировать DNS-over-TLS (порт 853)'), matching: find.byType(Row)).first;
+    await tester.ensureVisible(dot);
+    await tester.runAsync(() async {
+      await tester.tap(find.descendant(of: dot, matching: find.byType(Switch)));
+      await Future.delayed(const Duration(milliseconds: 300));
+    });
+    await tester.pump();
+    expect(state.setting('dns.block_dot', true), isFalse);
+    expect(state.setting('dns.block_browser_doh', false), isTrue);
+    expect(find.textContaining('Включено не всё: 2 из 3'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pump(const Duration(seconds: 6));
   });
@@ -1372,7 +1383,7 @@ void main() {
     }
     // The demo's earlier session: a switch of cores and an error.
     expect(find.textContaining('Xray-core → sing-box'), findsOneWidget);
-    // The cores' own output is in the copy, not on the page.
+    // The cores' own output is kept for a search, not shown on the page.
     expect(find.text('Xray 26.3.27 started'), findsNothing);
     expect(state.logs.any((l) => l.message == 'Xray 26.3.27 started'), isTrue);
     await tester.tap(find.text('Ошибки'));

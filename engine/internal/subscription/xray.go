@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
 
 	"coreshift/engine/internal/node"
@@ -140,6 +142,8 @@ func xrayOutbound(o fields, remarks string, only bool) (node.Node, error) {
 		}
 	case "wireguard":
 		return xrayWireGuard(n, settings)
+	case "hysteria":
+		return xrayHysteria(n, settings, o.sub("streamSettings"))
 	default:
 		return n, fmt.Errorf("unsupported protocol %q", proto)
 	}
@@ -184,6 +188,142 @@ func xrayWireGuard(n node.Node, s fields) (node.Node, error) {
 	}
 	n.WireGuard = wg
 	return n, finish(&n)
+}
+
+// xrayHysteria reads Xray's Hysteria2 client, as Xray 26 and Remnawave
+// (2.7+) write it:
+//
+//	"protocol": "hysteria", "settings": {"version": 2, "address": …, "port": …},
+//	"streamSettings": {"network": "hysteria", "security": "tls",
+//	  "hysteriaSettings": {"version": 2, "auth": …},
+//	  "tlsSettings": {"serverName", "alpn", "pinnedPeerCertSha256", …},
+//	  "finalmask": {"udp": [{"type": "salamander", "settings": {"password": …}}],
+//	    "quicParams": {"congestion", "brutalUp", "brutalDown", "udpHop": {"ports", "interval"}}}}
+//
+// Only these options are read. A UDP mask other than Salamander, which the
+// server would expect and no other client speaks, makes the server unusable.
+func xrayHysteria(n node.Node, settings, ss fields) (node.Node, error) {
+	n.Protocol = node.Hysteria2
+	hs := ss.sub("hysteriaSettings")
+	for _, v := range []string{settings.str("version"), hs.str("version")} {
+		if v != "" && v != "2" {
+			return n, fmt.Errorf("hysteria version %s is not supported, only 2", v)
+		}
+	}
+	if network := strings.ToLower(ss.str("network")); network != "hysteria" && network != "" {
+		return n, fmt.Errorf("hysteria over transport %q is not supported", network)
+	}
+	n.Server = strings.TrimSpace(settings.str("address"))
+	var err error
+	if n.Port, err = parsePort(settings.str("port")); err != nil {
+		return n, err
+	}
+	n.Password = hs.str("auth")
+	switch security := strings.ToLower(ss.str("security")); security {
+	case "tls":
+		if n.TLS, err = xrayTLS(ss); err != nil {
+			return n, err
+		}
+	case "", "none":
+		// Hysteria is QUIC, always TLS: without settings the defaults apply.
+		n.TLS = &node.TLS{}
+	default:
+		return n, fmt.Errorf("hysteria with security %q is not supported", security)
+	}
+	n.TLS.Fingerprint = "" // uTLS has no QUIC form; the cores ignore it
+	if pin := ss.sub("tlsSettings").str("pinnedPeerCertSha256"); pin != "" {
+		if n.TLS.PinSHA256, err = node.NormalizePin(pin); err != nil {
+			return n, err
+		}
+	}
+	opts, err := xrayFinalMask(ss.sub("finalmask"))
+	if err != nil {
+		return n, err
+	}
+	if opts != (node.Hysteria2Options{}) {
+		n.Hysteria2 = &opts
+	}
+	return n, finish(&n)
+}
+
+// xrayFinalMask reads what of Xray's finalmask a Hysteria2 client needs:
+// Salamander obfuscation, the bandwidth for Brutal and port hopping. The
+// rest of quicParams (windows, timeouts) tunes the client alone, and TCP
+// masks do not apply to QUIC.
+func xrayFinalMask(fm fields) (node.Hysteria2Options, error) {
+	var o node.Hysteria2Options
+	for _, m := range fm.list("udp") {
+		switch typ := strings.ToLower(m.str("type")); typ {
+		case "salamander":
+			if o.Obfs != "" {
+				return o, errors.New("hysteria: more than one salamander mask")
+			}
+			o.Obfs, o.ObfsPassword = "salamander", m.sub("settings").str("password")
+			if o.ObfsPassword == "" {
+				return o, errors.New("hysteria: salamander without a password")
+			}
+		default:
+			return o, fmt.Errorf("hysteria: UDP mask %q is not supported", typ)
+		}
+	}
+	qp := fm.sub("quicParams")
+	switch congestion := strings.ToLower(qp.str("congestion")); congestion {
+	case "", "brutal", "force-brutal":
+		// Brutal at the given rates; without them the cores fall back to BBR.
+		var err error
+		if o.UpMbps, err = xrayMbps(qp.str("brutalUp")); err != nil {
+			return o, err
+		}
+		if o.DownMbps, err = xrayMbps(qp.str("brutalDown")); err != nil {
+			return o, err
+		}
+	case "bbr", "reno":
+		// sing-box and mihomo pick BBR when given no rates.
+	default:
+		return o, fmt.Errorf("hysteria: unknown congestion control %q", congestion)
+	}
+	if ports := qp.sub("udpHop").str("ports"); ports != "" {
+		var err error
+		if o.Ports, err = node.NormalizePorts(ports); err != nil {
+			return o, fmt.Errorf("hysteria: port hopping: %w", err)
+		}
+	}
+	return o, nil
+}
+
+// xrayMbps converts an Xray bandwidth ("100 mbps", "1g", "500kbps"; a bare
+// number is bits per second) to whole Mbps, the unit of the other cores.
+// Xray counts a megabit as 1024 kilobits, so "100 mbps" stays 100.
+func xrayMbps(s string) (int, error) {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "" {
+		return 0, nil
+	}
+	end := strings.IndexFunc(s, func(r rune) bool { return (r < '0' || r > '9') && r != '.' })
+	if end < 0 {
+		end = len(s)
+	}
+	v, err := strconv.ParseFloat(s[:end], 64)
+	if err != nil || v < 0 {
+		return 0, fmt.Errorf("hysteria: invalid bandwidth %q", s)
+	}
+	switch unit := strings.TrimSpace(s[end:]); unit {
+	case "", "b", "bps":
+		v /= 1 << 20
+	case "k", "kb", "kbps":
+		v /= 1 << 10
+	case "m", "mb", "mbps":
+	case "g", "gb", "gbps":
+		v *= 1 << 10
+	case "t", "tb", "tbps":
+		v *= 1 << 20
+	default:
+		return 0, fmt.Errorf("hysteria: invalid bandwidth %q", s)
+	}
+	if v > 1<<20 {
+		return 0, fmt.Errorf("hysteria: bandwidth %q is out of range", s)
+	}
+	return int(math.Round(v)), nil
 }
 
 // splitEndpoint splits "host:port" and "[v6]:port".
