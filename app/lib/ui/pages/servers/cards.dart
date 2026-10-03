@@ -251,7 +251,8 @@ class _SubMenu extends StatelessWidget {
           case 'page':
             state.openLink(sub.info.webPageUrl);
           case 'qr':
-            if (context.mounted) await showSubscriptionQr(context, sub);
+            final url = await state.subscriptionUrl(sub.id);
+            if (url != null && context.mounted) await showSubscriptionQr(context, sub, url);
           case 'delete':
             if (await _confirm(context, 'Удалить «${sub.displayName}»?', 'Серверы этой подписки пропадут из списка. Текущее подключение не прервётся.')) {
               state.removeSubscription(sub.id);

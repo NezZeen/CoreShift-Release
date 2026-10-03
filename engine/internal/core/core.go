@@ -48,6 +48,8 @@ type Adapter interface {
 type Options struct {
 	// Listen is the SOCKS5 inbound the TUN layer forwards to.
 	Listen netip.AddrPort
+	// Auth, when set, is required by the inbound.
+	Auth SOCKSAuth
 	// LogLevel is one of debug, info, warn, error, none. Default warn.
 	LogLevel string
 	// ServerAddr, if set, is dialled instead of the node's server. The engine
@@ -249,6 +251,31 @@ func sip003Opts(s string) map[string]string {
 		out[k] = v
 	}
 	return out
+}
+
+// sip003Keys are the plugin options a subscription may set. sing-box's
+// v2ray-plugin also reads "cert", a certificate file path, which a core
+// running as SYSTEM must not be pointed at by a panel.
+var sip003Keys = map[string][]string{
+	"obfs-local":   {"obfs", "obfs-host"},
+	"v2ray-plugin": {"mode", "host", "path", "tls", "mux", "certRaw"},
+}
+
+// sip003Clean keeps the options of plugin that sip003Keys allows, in their
+// order; values are kept as written.
+func sip003Clean(plugin, opts string) string {
+	allowed := sip003Keys[plugin]
+	var out []string
+	for _, part := range strings.Split(opts, ";") {
+		if part = strings.TrimSpace(part); part == "" {
+			continue
+		}
+		k, _, _ := strings.Cut(part, "=")
+		if slices.Contains(allowed, k) {
+			out = append(out, part)
+		}
+	}
+	return strings.Join(out, ";")
 }
 
 var errNoWireGuard = errors.New("wireguard options missing")

@@ -101,6 +101,9 @@ type Config struct {
 	Listen netip.AddrPort
 	// ProbeListen is a spare port for trying the primary core before moving back.
 	ProbeListen netip.AddrPort
+	// Auth is required by every core's SOCKS inbound, the probes' and the
+	// latency tests' too; zero means New makes random ones (SOCKSAuth).
+	Auth core.SOCKSAuth
 
 	Health       Health
 	StartTimeout time.Duration
@@ -225,6 +228,9 @@ func New(cfg Config) (*Supervisor, error) {
 		bins[k] = abs
 	}
 	cfg.Binaries = bins
+	if !cfg.Auth.Set() {
+		cfg.Auth = core.NewSOCKSAuth()
+	}
 	g, err := proc.NewGroup()
 	if err != nil {
 		return nil, fmt.Errorf("supervisor: %w", err)
@@ -284,6 +290,13 @@ func (s *Supervisor) SetPolicy(p Policy) {
 	c.Priority, c.Mode, c.ManualCore = slices.Clone(p.Priority), p.Mode, p.ManualCore
 	c.Health, c.ReturnToPrimaryAfter, c.Fragment = p.Health, p.ReturnToPrimaryAfter, p.Fragment
 	s.cfg = c.withDefaults()
+}
+
+// SOCKSAuth returns the credentials of the cores' SOCKS inbound.
+func (s *Supervisor) SOCKSAuth() core.SOCKSAuth {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.cfg.Auth
 }
 
 // Disconnect stops the running core. It is a no-op when idle.
@@ -619,7 +632,7 @@ func (s *Supervisor) awaitHealthy(ctx context.Context, p *process) (time.Duratio
 }
 
 func (s *Supervisor) check(ctx context.Context, p *process) (time.Duration, error) {
-	lat, err := checkHealth(ctx, p.listen, s.cfg.Health)
+	lat, err := checkHealth(ctx, s.cfg.Auth.ProxyURL(p.listen), s.cfg.Health)
 	s.emit(Event{Kind: EventHealth, Core: p.kind, Latency: lat, Err: err, Probe: p.probe})
 	return lat, err
 }
@@ -635,7 +648,7 @@ func (s *Supervisor) launch(ctx context.Context, k core.Kind, n node.Node, serve
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
-	o := core.Options{Listen: listen, LogLevel: s.cfg.LogLevel, ServerAddr: serverAddr, Fragment: s.cfg.Fragment}
+	o := core.Options{Listen: listen, Auth: s.cfg.Auth, LogLevel: s.cfg.LogLevel, ServerAddr: serverAddr, Fragment: s.cfg.Fragment}
 	if !probe {
 		// Traffic counters for the UI. Losing them is not worth failing
 		// the core over, so any trouble here just leaves them off.

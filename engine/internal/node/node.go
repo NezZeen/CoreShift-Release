@@ -75,7 +75,8 @@ type Transport struct {
 	HeaderType string `json:"header_type,omitempty"`
 	// EarlyData is the WebSocket max early data size (the "?ed=" of share links).
 	EarlyData uint32 `json:"early_data,omitempty"`
-	// Extra is xhttp's raw "extra" JSON, passed through to xray untouched.
+	// Extra is xhttp's "extra" JSON, limited to the options a subscription
+	// may set (SanitizeXHTTPExtra).
 	Extra string `json:"extra,omitempty"`
 }
 
