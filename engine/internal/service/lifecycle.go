@@ -22,6 +22,21 @@ func (s *Service) AutoConnect(ctx context.Context) error {
 	if !s.AutoConnectEnabled() {
 		return nil
 	}
+	return s.connectAtStart(ctx)
+}
+
+// connectAtStart connects the selected node when nothing is connected yet,
+// retrying while the network comes up. Two things ask for it at the same
+// start, each on its own goroutine: AutoConnect, and a self-update that
+// interrupted a connection (finishAppUpdate). Both used to connect: the
+// second Connect tore down the first connection a second after it came
+// up, and made it again. Whichever comes first connects; the other
+// returns nil, and so does a later one that finds the VPN already up.
+func (s *Service) connectAtStart(ctx context.Context) error {
+	if !s.startConn.TryLock() {
+		return nil // the other one connects
+	}
+	defer s.startConn.Unlock()
 	var err error
 	for i, delay := range []time.Duration{0, 5 * time.Second, 15 * time.Second, 30 * time.Second, time.Minute} {
 		select {

@@ -145,7 +145,10 @@ var xhttpExtra = func() rule {
 			"shortId": str, "spiderX": str, "mldsa65Verify": str,
 		}),
 		"tlsSettings": object(map[string]rule{
-			"serverName": str, "alpn": listOf(str), "fingerprint": str, "allowInsecure": boolean,
+			// No allowInsecure: Xray 26 refuses to start with it ("migrated to
+			// pinnedPeerCertSha256"), so a downloadSettings carrying it would
+			// stop the whole core.
+			"serverName": str, "alpn": listOf(str), "fingerprint": str, "pinnedPeerCertSha256": str,
 		}),
 	})
 	return object(top)

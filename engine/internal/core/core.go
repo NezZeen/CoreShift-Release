@@ -120,6 +120,15 @@ const (
 	featSSPluginPrefix           = "ss-plugin:"
 )
 
+const (
+	// FeatTLSInsecure: certificates are not checked. Xray removed
+	// allowInsecure (an error since 2026-06-01).
+	FeatTLSInsecure Feature = "tls-insecure"
+	// FeatTLSPin: the server's certificate is checked against its SHA-256
+	// (node.TLS.PinSHA256). sing-box pins public keys, not certificates.
+	FeatTLSPin Feature = "tls-pin"
+)
+
 func protocolFeature(p node.Protocol) Feature { return Feature(featProtocolPrefix + string(p)) }
 func transportFeature(n node.Network) Feature { return Feature(featTransportPrefix + string(n)) }
 
@@ -141,8 +150,17 @@ func Requirements(n *node.Node) []Feature {
 	if n.Transport.HeaderType == "http" {
 		f = append(f, FeatTCPHTTPHeader)
 	}
-	if n.TLS != nil && n.TLS.Reality != nil {
-		f = append(f, FeatReality)
+	if t := n.TLS; t != nil {
+		// A pin is checked instead of the signature: it makes "insecure"
+		// moot.
+		switch {
+		case t.Reality != nil:
+			f = append(f, FeatReality)
+		case t.PinSHA256 != "":
+			f = append(f, FeatTLSPin)
+		case t.Insecure:
+			f = append(f, FeatTLSInsecure)
+		}
 	}
 	if n.Shadowsocks != nil && n.Shadowsocks.Plugin != "" {
 		f = append(f, Feature(featSSPluginPrefix+n.Shadowsocks.Plugin))

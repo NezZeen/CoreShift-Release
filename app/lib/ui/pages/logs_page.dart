@@ -37,7 +37,8 @@ class _LogsPageState extends State<LogsPage> {
   }
 
   /// The cores' own output is left out of the page: it drowns the events.
-  /// A search finds it, and the copy for support has it all.
+  /// A search finds it, and the copy for support has its warnings and
+  /// errors (AppState.journalForSupport).
   bool _keep(LogLine l) {
     if (query.isNotEmpty && !'${l.source} ${l.message}'.toLowerCase().contains(query)) return false;
     final isCore = allCores.contains(l.source);
@@ -84,7 +85,7 @@ class _LogsPageState extends State<LogsPage> {
                 ),
               ),
               Seg<_Filter>(value: filter, options: const [(_Filter.all, 'Все'), (_Filter.errors, 'Ошибки')], onChanged: (v) => setState(() => filter = v)),
-              // The whole journal, the cores' output too: what support needs.
+              // The whole journal with the cores' warnings and errors: what support needs.
               Btn(
                 label: 'Копировать',
                 icon: Icons.copy,
@@ -93,8 +94,7 @@ class _LogsPageState extends State<LogsPage> {
                 onPressed: widget.state.logs.isEmpty
                     ? null
                     : () {
-                        final text = [...widget.state.diagnosticsHeader(), for (final l in widget.state.logs) '${_time(l.time)}  ${l.source}  ${l.message}'];
-                        Clipboard.setData(ClipboardData(text: text.join('\n')));
+                        Clipboard.setData(ClipboardData(text: widget.state.journalForSupport().join('\n')));
                         widget.state.toast('Журнал скопирован');
                       },
               ),

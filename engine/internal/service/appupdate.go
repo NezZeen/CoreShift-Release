@@ -149,7 +149,7 @@ func (s *Service) RunAppUpdates(ctx context.Context) {
 	}
 	if s.cfg.SelfUpdate {
 		s.loadFailedUpdate()
-		s.finishAppUpdate()
+		s.finishAppUpdate(ctx)
 	}
 	next := time.Now().Add(s.cfg.updateFirstCheck)
 	first := time.NewTimer(s.cfg.updateFirstCheck) // sooner than the next tick
@@ -315,8 +315,10 @@ func (s *Service) installAppUpdate(reconnect bool) error {
 }
 
 // finishAppUpdate runs at start: after an update it brings back what the
-// update interrupted, or reports that it did not install.
-func (s *Service) finishAppUpdate() {
+// update interrupted, or reports that it did not install. The connection
+// comes back through connectAtStart, which AutoConnect uses as well: with
+// "Автозапуск" on, both run at this start, and only one may connect.
+func (s *Service) finishAppUpdate(ctx context.Context) {
 	path := filepath.Join(s.updatesDir(), "pending.json")
 	// The installers of earlier updates have finished by now.
 	cleanStaged(s.updatesDir())
@@ -351,7 +353,7 @@ func (s *Service) finishAppUpdate() {
 		}
 	}
 	if p.Reconnect {
-		go s.ConnectSelected(context.Background())
+		go s.connectAtStart(ctx)
 	}
 }
 

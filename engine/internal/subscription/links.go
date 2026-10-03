@@ -437,6 +437,11 @@ func parseHysteria2(link string) (node.Node, error) {
 		ALPN:       splitList(q.Get("alpn")),
 		Insecure:   boolParam(q, "insecure", "allowInsecure"),
 	}
+	if pin := q.Get("pinSHA256"); pin != "" {
+		if n.TLS.PinSHA256, err = node.NormalizePin(pin); err != nil {
+			return n, err
+		}
+	}
 	opts := node.Hysteria2Options{Obfs: q.Get("obfs"), ObfsPassword: q.Get("obfs-password"), Ports: hop}
 	if m := q.Get("mport"); m != "" {
 		opts.Ports = m
