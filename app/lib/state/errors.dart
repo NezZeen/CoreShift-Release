@@ -119,6 +119,46 @@ String humanError(String raw) {
   return e;
 }
 
+/// Whether a core's update check failed for a reason that passes: no
+/// network, GitHub not answering or limiting checks, the service not
+/// reachable. Not: the release itself, such as no build for this system.
+bool coreCheckTemporary(String raw) {
+  final low = raw.toLowerCase();
+  // Reaching GitHub, or what it answered (coreupdate.Latest).
+  if (low.contains('check for updates')) return true;
+  const release = ['no release build for', 'release has no', 'not a version', 'not where the project publishes', 'gives no sha-256', 'unknown core'];
+  return !release.any(low.contains);
+}
+
+/// Why a core's update check failed, to end a sentence of the journal that
+/// already says what failed: "нет связи с GitHub", not "Не удалось
+/// проверить обновления: нет связи с GitHub.".
+String coreCheckReason(String raw) {
+  final low = raw.toLowerCase();
+  if (low.contains('403') || low.contains('429') || low.contains('rate limit')) return 'GitHub временно ограничил проверки';
+  if (low.contains('check for updates')) {
+    if (low.contains('timeout') || low.contains('deadline exceeded')) return 'GitHub не ответил вовремя';
+    return 'нет связи с GitHub';
+  }
+  if (low.contains('no release build for')) return 'для этой системы нет готовой сборки';
+  final text = humanError(raw);
+  if (text.isEmpty) return text;
+  // A sentence of its own: lower-case and without the full stop.
+  final s = text.endsWith('.') ? text.substring(0, text.length - 1) : text;
+  return s[0].toLowerCase() + s.substring(1);
+}
+
+/// The one journal line for automatic checks of the cores that keep
+/// failing: [failed] maps each core to the service's error, '' meaning
+/// the service could not be asked at all.
+String coreCheckFailedText(Map<String, String> failed, int times, {required bool retryInHour}) {
+  final cores = failed.keys.where((k) => k.isNotEmpty).toList();
+  final reasons = failed.values.map(coreCheckReason).toSet().join('; ');
+  final word = times % 10 >= 2 && times % 10 <= 4 && (times % 100 < 12 || times % 100 > 14) ? 'раза' : 'раз';
+  return 'не удалось проверить обновления${cores.isEmpty ? '' : ' (${cores.join(', ')})'} $times $word подряд: $reasons. '
+      'Следующая попытка ${retryInHour ? 'через час' : 'завтра'}';
+}
+
 /// The store reports every invalid setting on its own line, e.g.
 /// `routing.direct_domains: "bad domain" is not a domain`. Returns null
 /// when no line is about a list the user typed.

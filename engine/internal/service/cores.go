@@ -171,24 +171,67 @@ func (s *Service) UpdateCore(ctx context.Context, k core.Kind) (string, error) {
 	return v, nil
 }
 
+// settleWait is how long viaProxyOrDirect waits for a connection that is
+// coming up or going down.
+const settleWait = 30 * time.Second
+
 // viaProxyOrDirect runs do through the active core first, as GitHub may be
 // blocked where the user is, then directly. Each client's connections are
-// closed when it is done.
+// closed when it is done. When both fail, the error tells both reasons: a
+// refusal through the proxy (GitHub's rate limit on a shared server
+// address) is not lost behind the direct attempt's.
+//
+// A connection that is coming up or going down is waited for first: the
+// app checks the cores' updates as it starts, which is when the service
+// connects by itself. Chosen mid-way, the proxy stops under the request,
+// and a direct request made before the TUN layer is up is cut off by its
+// strict routes; every check then failed as "no connection to GitHub".
 func (s *Service) viaProxyOrDirect(ctx context.Context, timeout time.Duration, do func(*http.Client) error) error {
+	s.waitSettled(ctx, settleWait)
 	proxies := []*url.URL{nil}
 	if st := s.Status().State; st == Connected {
 		proxies = []*url.URL{s.proxyURL(), nil}
 	}
-	var err error
+	var errs []error
 	for _, p := range proxies {
 		tr := newTransport(p)
-		err = do(&http.Client{Timeout: timeout, Transport: tr})
+		err := do(&http.Client{Timeout: timeout, Transport: tr})
 		tr.CloseIdleConnections()
-		if err == nil || ctx.Err() != nil {
-			return err
+		if err == nil {
+			return nil
+		}
+		if len(proxies) > 1 {
+			how := "directly"
+			if p != nil {
+				how = "through the proxy"
+			}
+			err = fmt.Errorf("%s: %w", how, err)
+		}
+		errs = append(errs, err)
+		if ctx.Err() != nil {
+			break
 		}
 	}
-	return err
+	if len(errs) == 2 {
+		return fmt.Errorf("%w; %w", errs[0], errs[1]) // on one line, for the journal
+	}
+	return errs[0]
+}
+
+// waitSettled waits, at most max, while a connection is coming up or going
+// down.
+func (s *Service) waitSettled(ctx context.Context, max time.Duration) {
+	deadline := time.Now().Add(max)
+	for time.Now().Before(deadline) {
+		if st := s.Status().State; st != Connecting && st != Disconnecting {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
 }
 
 // proxyURL is the active core's SOCKS inbound as a proxy for the
