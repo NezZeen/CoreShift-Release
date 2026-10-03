@@ -175,7 +175,7 @@ Architecture: $arch
 Maintainer: CoreShift <coreshift@localhost>
 Installed-Size: $size_kb
 Depends: libgtk-3-0 | libgtk-3-0t64, libegl1, libgles2, libx11-6, libxi6, passwd
-Recommends: pkexec | policykit-1, libnotify-bin
+Recommends: pkexec | policykit-1, libnotify-bin, xdg-utils, desktop-file-utils
 Suggests: gnome-shell-extension-appindicator
 Homepage: https://github.com/NezZeen/CoreShift-Release
 Description: VPN client for subscriptions with automatic core switching
