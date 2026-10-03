@@ -3,7 +3,7 @@
 set -e
 case "$1" in
 configure)
-	/opt/coreshift/coreshift-setup.sh configure
+	/usr/lib/coreshift/coreshift-setup.sh configure
 	;;
 esac
 exit 0
