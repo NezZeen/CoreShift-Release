@@ -3,12 +3,14 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"coreshift/engine/internal/core"
 	"coreshift/engine/internal/coreupdate"
@@ -61,5 +63,57 @@ func TestUpdateCoreNeverGoesBack(t *testing.T) {
 	tag.Store("v1.3.0")
 	if _, err := h.svc.UpdateCore(context.Background(), core.Xray); err == nil || downloads.Load() == 0 {
 		t.Errorf("newer release: %v, %d downloads", err, downloads.Load())
+	}
+}
+
+// A request made while the connection comes up waits for it, rather than
+// going direct before the tunnel exists, and then goes through the core.
+func TestRequestsWaitForTheConnection(t *testing.T) {
+	h := newHarness(t, nil)
+	h.svc.setStatus(Status{State: Connecting})
+	var proxied atomic.Bool
+	done := make(chan error, 1)
+	go func() {
+		done <- h.svc.viaProxyOrDirect(context.Background(), time.Second, func(c *http.Client) error {
+			tr := c.Transport.(*http.Transport)
+			if tr.Proxy != nil {
+				proxied.Store(true)
+			}
+			return nil
+		})
+	}()
+	select {
+	case <-done:
+		t.Fatal("the request did not wait for the connection")
+	case <-time.After(300 * time.Millisecond):
+	}
+	h.svc.setStatus(Status{State: Connected})
+	select {
+	case err := <-done:
+		if err != nil || !proxied.Load() {
+			t.Errorf("err %v, through the proxy %v", err, proxied.Load())
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the request never ran")
+	}
+}
+
+// When the proxy and the direct way both fail, both reasons are told: a
+// rate limit through the proxy must not read as "no connection".
+func TestBothReasonsOfAFailedRequest(t *testing.T) {
+	h := newHarness(t, nil)
+	h.svc.setStatus(Status{State: Connected})
+	err := h.svc.viaProxyOrDirect(context.Background(), time.Second, func(c *http.Client) error {
+		if c.Transport.(*http.Transport).Proxy != nil {
+			return errors.New("xray: check for updates: GitHub answered 403 Forbidden")
+		}
+		return errors.New("xray: check for updates: dial tcp: i/o timeout")
+	})
+	want := "through the proxy: xray: check for updates: GitHub answered 403 Forbidden; directly: xray: check for updates: dial tcp: i/o timeout"
+	if err == nil || err.Error() != want {
+		t.Errorf("err = %v", err)
+	}
+	if strings.Contains(err.Error(), h.svc.socks.Pass) {
+		t.Error("the error carries the proxy's password")
 	}
 }
