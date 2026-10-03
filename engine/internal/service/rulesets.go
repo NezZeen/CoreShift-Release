@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/netip"
 	"net/url"
@@ -14,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"coreshift/engine/internal/fsutil"
 	"coreshift/engine/internal/tunlayer"
 )
 
@@ -75,7 +77,13 @@ func newRuleSets(dir string, publish func(Event)) *ruleSets {
 func (r *ruleSets) get(ctx context.Context, sets []geoSet, proxy netip.AddrPort) (domain, ip, proxied []tunlayer.RuleSet) {
 	for _, gs := range sets {
 		path := filepath.Join(r.dir, gs.Tag+".srs")
-		fi, err := os.Stat(path)
+		fi, err := os.Lstat(path)
+		if err == nil && !fi.Mode().IsRegular() {
+			// A link or anything else in place of a file the service
+			// wrote: fetched anew.
+			os.RemoveAll(path)
+			err = fs.ErrNotExist
+		}
 		switch {
 		case err != nil:
 			if err := r.download(ctx, gs, path, proxy); err != nil {
@@ -192,20 +200,8 @@ func fetchRuleSet(ctx context.Context, rawURL string, proxy netip.AddrPort) ([]b
 }
 
 func writeAtomic(path string, b []byte) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name())
-	if _, err := tmp.Write(b); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmp.Name(), path)
+	return fsutil.WriteAtomic(path, b, 0o600)
 }
