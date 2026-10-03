@@ -527,6 +527,9 @@ class _OfflineState extends State<_Offline> {
                 platform.isAndroid
                     ? 'Движок VPN работает внутри приложения и обычно запускается за секунду. '
                           'Если этот экран не пропадает, закройте CoreShift в списке недавних приложений и откройте снова.'
+                    : platform.isLinux
+                    ? 'VPN работает через системную службу CoreShift (systemd). Она запускается вместе с компьютером, '
+                          'а VPN включается, только пока открыто приложение.'
                     : state.daemonStartRefused
                     ? 'VPN работает через фоновую службу CoreShift. Windows не дал запустить её без прав администратора: '
                           'так бывает со службой, установленной версией до 0.4. Запустите её кнопкой ниже или переустановите CoreShift.'
@@ -534,14 +537,18 @@ class _OfflineState extends State<_Offline> {
                           'и останавливается, когда его закрывают. Обычно это занимает пару секунд.',
                 style: TextStyle(color: p.muted, fontSize: 13, height: 1.5),
               ),
-              if (platform.canStartService && !state.daemonStarting) ...[
+              // Without access to the service, starting it would not help.
+              if (platform.canStartService && !state.daemonStarting && !platform.daemonAccessDenied(state.offlineReason)) ...[
                 const SizedBox(height: 16),
                 Row(
                   children: [
                     Btn(label: 'Запустить службу', icon: Icons.play_arrow, kind: BtnKind.primary, loading: starting, onPressed: _start),
                     const SizedBox(width: 10),
                     Flexible(
-                      child: Text('Windows попросит права администратора', style: TextStyle(color: p.dim, fontSize: 12)),
+                      child: Text(
+                        platform.isLinux ? 'Система спросит пароль администратора' : 'Windows попросит права администратора',
+                        style: TextStyle(color: p.dim, fontSize: 12),
+                      ),
                     ),
                   ],
                 ),

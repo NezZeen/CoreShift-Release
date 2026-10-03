@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../api/models.dart';
+import '../../platform/platform.dart' as platform;
 import '../../state/app_state.dart';
 import '../../state/errors.dart';
 import '../theme.dart';
@@ -107,7 +108,8 @@ class _AppsPanelState extends State<AppsPanel> {
                   onSubmitted: (v) => _addNames([v]),
                   onChanged: (_) => setState(() => _error = null),
                   style: const TextStyle(fontSize: 13, fontFamily: monoFont, fontFamilyFallback: monoFallback),
-                  decoration: const InputDecoration(hintText: 'steam.exe'),
+                  // Linux executables have no extension.
+                  decoration: InputDecoration(hintText: platform.isLinux ? 'steam' : 'steam.exe'),
                 ),
               ),
               const SizedBox(width: 8),
@@ -241,7 +243,7 @@ class _AppPickerState extends State<_AppPicker> {
               Text('Запущенные программы', style: dialogTitle),
               const SizedBox(height: 4),
               Text(
-                'Запустите нужную программу, если её нет в списке. Системные программы Windows не показываются.',
+                'Запустите нужную программу, если её нет в списке. Системные программы ${platform.isLinux ? '' : 'Windows '}не показываются.',
                 style: TextStyle(fontSize: 12, color: p.muted),
               ),
               const SizedBox(height: 12),
