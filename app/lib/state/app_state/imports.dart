@@ -26,7 +26,7 @@ extension AppStateImports on AppState {
       if (!quiet) toast(link.error, ToastKind.err);
       return;
     }
-    if (link.url.isNotEmpty && subscriptions.any((s) => s.url == link.url)) {
+    if (link.url.isNotEmpty && subscriptions.any((s) => s.url == link.url || s.url == maskedUrl(link.url))) {
       if (!quiet) toast('Эта подписка уже добавлена');
       return;
     }

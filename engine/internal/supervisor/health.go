@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/netip"
 	"net/url"
 	"slices"
 	"strings"
@@ -39,7 +38,7 @@ func healthURLs(primary string) []string {
 // name is sent to the proxy unresolved, so this exercises the whole path to
 // the server, not just the local port. The latency is the first answer's;
 // when none answers, the error names every address and why it failed.
-func checkHealth(ctx context.Context, socks netip.AddrPort, h Health) (time.Duration, error) {
+func checkHealth(ctx context.Context, socks *url.URL, h Health) (time.Duration, error) {
 	ctx, cancel := context.WithTimeout(ctx, h.Timeout)
 	defer cancel()
 	urls := healthURLs(h.URL)
@@ -112,10 +111,10 @@ func shortProbeError(err error) string {
 // fresh connection would add several round trips of setup to each result,
 // reading as a much slower server than a ping shows. When the second
 // request fails, the first one's time is the result.
-func delayThrough(ctx context.Context, socks netip.AddrPort, u string, timeout time.Duration) (time.Duration, error) {
+func delayThrough(ctx context.Context, socks *url.URL, u string, timeout time.Duration) (time.Duration, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	tr := &http.Transport{Proxy: http.ProxyURL(&url.URL{Scheme: "socks5", Host: socks.String()})}
+	tr := &http.Transport{Proxy: http.ProxyURL(socks)}
 	defer tr.CloseIdleConnections()
 	client := &http.Client{
 		Transport:     tr,
@@ -149,10 +148,11 @@ func delayThrough(ctx context.Context, socks netip.AddrPort, u string, timeout t
 	return first, nil
 }
 
-// fetchThrough requests u through the SOCKS proxy at socks and times it.
-func fetchThrough(ctx context.Context, socks netip.AddrPort, u string) (time.Duration, error) {
+// fetchThrough requests u through the SOCKS proxy socks (a URL with the
+// inbound's credentials) and times it.
+func fetchThrough(ctx context.Context, socks *url.URL, u string) (time.Duration, error) {
 	tr := &http.Transport{
-		Proxy:             http.ProxyURL(&url.URL{Scheme: "socks5", Host: socks.String()}),
+		Proxy:             http.ProxyURL(socks),
 		DisableKeepAlives: true,
 	}
 	defer tr.CloseIdleConnections()

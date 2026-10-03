@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"slices"
 	"sync"
+
+	"coreshift/engine/internal/fsutil"
 )
 
 // Change is one reversible system modification. Data is kind-specific and
@@ -97,6 +99,18 @@ func (j *Journal) Undo(undo func(Change) error) error {
 	return errors.Join(append(errs, j.save())...)
 }
 
+// Reject drops every change without undoing any, moving the file aside as
+// <path>.rejected for whoever looks into it.
+func (j *Journal) Reject() error {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	j.changes = nil
+	if err := os.Rename(j.path, j.path+".rejected"); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return errors.Join(fmt.Errorf("dnsguard: move the refused journal aside: %w", err), j.save())
+	}
+	return nil
+}
+
 func (j *Journal) save() error {
 	if len(j.changes) == 0 {
 		if err := os.Remove(j.path); err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -114,23 +128,10 @@ func (j *Journal) save() error {
 	return nil
 }
 
-// writeFileAtomic replaces path with data via a synced temp file and rename,
-// so readers never observe a partially written file.
+// writeFileAtomic replaces path with data; see fsutil.WriteAtomic.
 func writeFileAtomic(path string, data []byte, perm fs.FileMode) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
-	if err != nil {
-		return err
-	}
-	_, werr := f.Write(data)
-	serr := f.Sync()
-	cerr := f.Close()
-	if err := errors.Join(werr, serr, cerr); err != nil {
-		os.Remove(tmp)
-		return err
-	}
-	return os.Rename(tmp, path)
+	return fsutil.WriteAtomic(path, data, perm)
 }

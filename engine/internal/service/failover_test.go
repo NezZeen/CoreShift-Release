@@ -16,6 +16,14 @@ func trojan(name, host string) node.Node {
 	return node.Node{Name: name, Protocol: node.Trojan, Server: host, Port: 443, Password: "pw"}
 }
 
+func fps(nodes []node.Node) []string {
+	out := make([]string, len(nodes))
+	for i := range nodes {
+		out[i] = nodes[i].Fingerprint()
+	}
+	return out
+}
+
 func TestPickNext(t *testing.T) {
 	nodes := []node.Node{trojan("a", "a.example"), trojan("b", "b.example"), trojan("c", "c.example"), trojan("d", "d.example")}
 	fp := func(i int) string { return nodes[i].Fingerprint() }
@@ -34,13 +42,13 @@ func TestPickNext(t *testing.T) {
 		"comes back to an earlier one": {from: 2, tried: map[string]bool{fp(3): true}, ok: any, want: "a"},
 		"nothing is left":              {from: 0, tried: map[string]bool{fp(1): true, fp(2): true, fp(3): true}, ok: any, want: ""},
 	} {
-		got, ok := pickNext(nodes, fp(tc.from), tc.tried, tc.ok)
+		got, ok := pickNext(nodes, fps(nodes), fp(tc.from), tc.tried, tc.ok)
 		if (tc.want == "") == ok || got.Name != tc.want {
 			t.Errorf("%s: got %q (%v), want %q", name, got.Name, ok, tc.want)
 		}
 	}
 	// The server is not in the list any more: begin at the first.
-	if got, ok := pickNext(nodes, "gone", nil, any); !ok || got.Name != "a" {
+	if got, ok := pickNext(nodes, fps(nodes), "gone", nil, any); !ok || got.Name != "a" {
 		t.Errorf("a server missing from the list: got %q, want the first", got.Name)
 	}
 }

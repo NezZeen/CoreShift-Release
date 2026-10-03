@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"coreshift/engine/internal/selfupdate"
 )
 
 func TestProcessPath(t *testing.T) {
@@ -23,6 +25,26 @@ func TestLaunchInstallerDetached(t *testing.T) {
 		t.Skip(err)
 	}
 	if err := launchInstaller(who, filepath.Join(t.TempDir(), "install.log")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The staged copy starts while it is held open against changes.
+func TestLaunchStagedInstaller(t *testing.T) {
+	who, err := exec.LookPath("whoami.exe")
+	if err != nil {
+		t.Skip(err)
+	}
+	sum, err := selfupdate.FileSHA256(who)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := stageInstaller(who, sum, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := launchInstaller(st.path, filepath.Join(t.TempDir(), "install.log")); err != nil {
 		t.Fatal(err)
 	}
 }

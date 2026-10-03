@@ -21,6 +21,9 @@ func TestSingBoxAcceptsConfig(t *testing.T) {
 	geoip := compileRuleSet(t, bin, `{"ip_cidr":["203.0.113.0/24"]}`)
 	variants := map[string]func(*Options){
 		"defaults": func(*Options) {},
+		"upstream credentials": func(o *Options) {
+			o.UpstreamUser, o.UpstreamPass = "0123456789abcdef", "0123456789abcdef0123456789abcdef"
+		},
 		"no fakeip": func(o *Options) {
 			o.DNS.FakeIP = false
 		},

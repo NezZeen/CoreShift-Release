@@ -10,8 +10,9 @@
 //	unhealthy-after:<dur>   healthy at first, 503 afterwards
 //	hang-after:<dur>        serve, then stop taking connections but keep running
 //
-// The SOCKS port is read from the config the supervisor generated, so the
-// real adapters and config files are exercised. With a Clash API address in
+// The SOCKS port, and the credentials it then requires, are read from the
+// config the supervisor generated, so the real adapters and config files
+// are exercised. With a Clash API address in
 // the config (sing-box, mihomo) it also answers /connections with traffic
 // that grows on every call. "version" and "-v" print a version.
 package main
@@ -43,7 +44,8 @@ func main() {
 		fmt.Println("fatal:", err)
 		os.Exit(1)
 	}
-	fmt.Printf("%s starting, socks port %s, mode %q\n", name, port, mode)
+	readCreds()
+	fmt.Printf("%s starting, socks port %s, mode %q, auth %v\n", name, port, mode, creds.user != "")
 
 	verb, arg, _ := strings.Cut(mode, ":")
 	healthyUntil := time.Time{} // zero: forever
@@ -98,6 +100,32 @@ func main() {
 var portRE = []*regexp.Regexp{
 	regexp.MustCompile(`"(?:port|listen_port)":\s*(\d+)`), // xray, sing-box: the inbound sorts first
 	regexp.MustCompile(`socks-port:\s*(\d+)`),             // mihomo
+	regexp.MustCompile(`(?m)^[\s-]*port:\s*(\d+)`),        // mihomo's listener sorts before the proxies
+}
+
+// credsRE find the inbound's username and password: xray's account, the
+// sing-box inbound's user (inbounds sort before outbounds) and mihomo's
+// listener user, keys in sorted order.
+var credsRE = []*regexp.Regexp{
+	regexp.MustCompile(`"pass":\s*"([^"]*)",\s*"user":\s*"([^"]*)"`),
+	regexp.MustCompile(`"password":\s*"([^"]*)",\s*"username":\s*"([^"]*)"`),
+	regexp.MustCompile(`password:\s*(\S+)\s*\n\s*username:\s*(\S+)`),
+}
+
+// creds are the user and password the inbound requires; empty for none.
+var creds struct{ user, pass string }
+
+func readCreds() {
+	b, err := os.ReadFile(configPath())
+	if err != nil {
+		return
+	}
+	for _, re := range credsRE {
+		if m := re.FindSubmatch(b); m != nil {
+			creds.pass, creds.user = string(m[1]), string(m[2])
+			return
+		}
+	}
 }
 
 var statsRE = regexp.MustCompile(`"?external[-_]controller"?\s*:\s*"?([0-9.]+:[0-9]+)`)
@@ -142,6 +170,44 @@ func configPort() (string, error) {
 	return "", fmt.Errorf("no socks port in %s", path)
 }
 
+// authenticate requires the username and password (RFC 1929), as the
+// real cores do once the config has credentials.
+func authenticate(c net.Conn, r *bufio.Reader, methods []byte) bool {
+	offered := false
+	for _, m := range methods {
+		offered = offered || m == 2
+	}
+	if !offered {
+		c.Write([]byte{5, 0xff})
+		return false
+	}
+	c.Write([]byte{5, 2})
+	ver, err := r.ReadByte()
+	if err != nil || ver != 1 {
+		return false
+	}
+	read := func() (string, bool) {
+		n, err := r.ReadByte()
+		if err != nil {
+			return "", false
+		}
+		b := make([]byte, n)
+		if _, err := io.ReadFull(r, b); err != nil {
+			return "", false
+		}
+		return string(b), true
+	}
+	user, ok1 := read()
+	pass, ok2 := read()
+	if !ok1 || !ok2 || user != creds.user || pass != creds.pass {
+		fmt.Println("socks: authentication failed")
+		c.Write([]byte{1, 1})
+		return false
+	}
+	c.Write([]byte{1, 0})
+	return true
+}
+
 // serve speaks just enough SOCKS5 for a CONNECT, then answers one HTTP request.
 func serve(c net.Conn, healthy bool) {
 	defer c.Close()
@@ -151,10 +217,15 @@ func serve(c net.Conn, healthy bool) {
 	if _, err := io.ReadFull(r, hdr); err != nil {
 		return
 	}
-	if _, err := io.ReadFull(r, make([]byte, hdr[1])); err != nil {
+	methods := make([]byte, hdr[1])
+	if _, err := io.ReadFull(r, methods); err != nil {
 		return
 	}
-	c.Write([]byte{5, 0})
+	if creds.user == "" {
+		c.Write([]byte{5, 0})
+	} else if !authenticate(c, r, methods) {
+		return
+	}
 	req := make([]byte, 4)
 	if _, err := io.ReadFull(r, req); err != nil {
 		return

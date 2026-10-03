@@ -7,6 +7,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"coreshift/engine/internal/fsutil"
 )
 
 // statsKeepDays is how many days of traffic are kept on disk.
@@ -116,8 +118,5 @@ func (t *trafficStats) flush(now time.Time) {
 	if err := os.MkdirAll(filepath.Dir(t.path), 0o700); err != nil {
 		return
 	}
-	tmp := t.path + ".tmp"
-	if os.WriteFile(tmp, b, 0o600) == nil && os.Rename(tmp, t.path) != nil {
-		os.Remove(tmp)
-	}
+	_ = fsutil.WriteAtomic(t.path, b, 0o600)
 }

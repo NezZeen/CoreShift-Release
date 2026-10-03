@@ -47,15 +47,23 @@ func (m mihomo) Render(n *node.Node, o Options) ([]byte, error) {
 		level = o.LogLevel
 	}
 	cfg := obj{
-		"socks-port":   o.Listen.Port(),
-		"bind-address": o.Listen.Addr().String(),
-		"allow-lan":    false,
-		"mode":         "rule",
-		"log-level":    level,
-		"ipv6":         true,
-		"profile":      obj{"store-selected": false, "store-fake-ip": false},
-		"proxies":      []any{p},
-		"rules":        []string{"MATCH,proxy"},
+		"allow-lan": false,
+		"mode":      "rule",
+		"log-level": level,
+		"ipv6":      true,
+		"profile":   obj{"store-selected": false, "store-fake-ip": false},
+		"proxies":   []any{p},
+		"rules":     []string{"MATCH,proxy"},
+	}
+	if o.Auth.Set() {
+		// A listener of its own: its users replace the global
+		// authentication, which loopback clients may skip.
+		cfg["listeners"] = []any{obj{
+			"name": "socks-in", "type": "socks", "listen": o.Listen.Addr().String(), "port": o.Listen.Port(), "udp": true,
+			"users": []any{obj{"username": o.Auth.User, "password": o.Auth.Pass}},
+		}}
+	} else {
+		cfg["socks-port"], cfg["bind-address"] = o.Listen.Port(), o.Listen.Addr().String()
 	}
 	if o.Stats.IsValid() {
 		cfg["external-controller"] = o.Stats.String()
@@ -239,8 +247,9 @@ func mihomoPlugin(pl *node.ShadowsocksOptions) (string, obj) {
 		}
 		return "v2ray-plugin", o
 	}
+	// No other plugin passes Supports; none gets options it does not know.
 	o := obj{}
-	for k, v := range opts {
+	for k, v := range sip003Opts(sip003Clean(pl.Plugin, pl.PluginOpts)) {
 		o[k] = v
 	}
 	return pl.Plugin, o

@@ -78,8 +78,11 @@ type Options struct {
 	// on Windows this is what stops DNS leaking to physical adapters (WFP).
 	StrictRoute bool
 
-	// Upstream is the SOCKS5 inbound of the active core.
-	Upstream netip.AddrPort
+	// Upstream is the SOCKS5 inbound of the active core, and UpstreamUser
+	// and UpstreamPass the credentials it requires, if any.
+	Upstream     netip.AddrPort
+	UpstreamUser string
+	UpstreamPass string
 	// BypassProcesses are core executables (full paths); their own traffic
 	// must go direct or it would loop back into the tunnel.
 	BypassProcesses []string
@@ -285,21 +288,22 @@ func build(o Options) (obj, error) {
 		tun["route_exclude_address"] = prefixStrings(o.BypassAddresses)
 	}
 
+	upstream := obj{
+		"type":        "socks",
+		"tag":         tagProxy,
+		"server":      o.Upstream.Addr().String(),
+		"server_port": o.Upstream.Port(),
+		"version":     "5",
+	}
+	if o.UpstreamUser != "" {
+		upstream["username"], upstream["password"] = o.UpstreamUser, o.UpstreamPass
+	}
 	cfg := obj{
-		"log":      obj{"level": o.LogLevel, "timestamp": true},
-		"dns":      dns,
-		"inbounds": []any{tun},
-		"outbounds": []any{
-			obj{
-				"type":        "socks",
-				"tag":         tagProxy,
-				"server":      o.Upstream.Addr().String(),
-				"server_port": o.Upstream.Port(),
-				"version":     "5",
-			},
-			obj{"type": "direct", "tag": tagDirect},
-		},
-		"route": buildRoute(o),
+		"log":       obj{"level": o.LogLevel, "timestamp": true},
+		"dns":       dns,
+		"inbounds":  []any{tun},
+		"outbounds": []any{upstream, obj{"type": "direct", "tag": tagDirect}},
+		"route":     buildRoute(o),
 	}
 	if o.CacheFile != "" {
 		cfg["experimental"] = obj{"cache_file": obj{
