@@ -11,18 +11,19 @@ class Panel extends StatelessWidget {
   final Color? borderColor;
   final VoidCallback? onTap;
   final bool dashed;
+  final Color? color;
 
-  const Panel({super.key, required this.child, this.padding, this.borderColor, this.onTap, this.dashed = false});
+  const Panel({super.key, required this.child, this.padding, this.borderColor, this.onTap, this.dashed = false, this.color});
 
   @override
   Widget build(BuildContext context) {
     final p = context.pal;
     final box = Container(
-      padding: padding ?? EdgeInsets.all(isCompact(context) ? 14 : 18),
+      padding: padding ?? EdgeInsets.all(isCompact(context) ? 14 : 20),
       decoration: BoxDecoration(
-        color: dashed ? Colors.transparent : p.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: borderColor ?? p.border),
+        color: dashed ? Colors.transparent : Color.alphaBlend(color ?? Colors.transparent, p.surface),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: borderColor ?? p.border, width: borderColor == null ? 1 : 1.5),
       ),
       child: child,
     );
@@ -43,7 +44,7 @@ class PageFrame extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scrollbar(
       child: SingleChildScrollView(
-        padding: isCompact(context) ? const EdgeInsets.fromLTRB(14, 14, 14, 28) : const EdgeInsets.fromLTRB(28, 24, 28, 40),
+        padding: isCompact(context) ? const EdgeInsets.fromLTRB(16, 16, 16, 28) : const EdgeInsets.fromLTRB(32, 28, 32, 40),
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 1180),
@@ -92,11 +93,7 @@ class PanelTitle extends StatelessWidget {
             child: Row(
               children: [
                 Flexible(
-                  child: Text(
-                    title,
-                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  child: Text(title, style: display(16), overflow: TextOverflow.ellipsis),
                 ),
                 if (compact && info != null) InfoIcon(title: title, text: info!),
                 if (sub != null && !compact) ...[
@@ -125,38 +122,59 @@ class PageHeader extends StatelessWidget {
   final String title;
   final String? subtitle;
   final List<Widget> actions;
-  const PageHeader(this.title, {super.key, this.subtitle, this.actions = const []});
+
+  /// A page opened from another one: the way back, named.
+  final (String, VoidCallback)? back;
+  const PageHeader(this.title, {super.key, this.subtitle, this.actions = const [], this.back});
 
   @override
   Widget build(BuildContext context) {
     final compact = isCompact(context);
-    return Padding(
-      padding: EdgeInsets.only(bottom: compact ? 14 : 18),
-      child: Wrap(
-        crossAxisAlignment: WrapCrossAlignment.end,
-        alignment: WrapAlignment.spaceBetween,
-        runSpacing: 12,
-        spacing: 16,
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                title,
-                style: TextStyle(fontSize: compact ? 20 : 22, fontWeight: FontWeight.w600, letterSpacing: -.2),
+    final p = context.pal;
+    // Wraps rather than overflows when the window is narrow.
+    final tools = Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: actions);
+    final heading = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (back != null)
+          InkWell(
+            borderRadius: BorderRadius.circular(6),
+            onTap: back!.$2,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 6, top: 2, bottom: 6),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.arrow_back, size: 16, color: p.muted),
+                  const SizedBox(width: 6),
+                  Text(
+                    back!.$1,
+                    style: TextStyle(fontSize: 13, color: p.muted, fontWeight: FontWeight.w500),
+                  ),
+                ],
               ),
-              if (subtitle != null && !compact)
-                Padding(
-                  padding: const EdgeInsets.only(top: 3),
-                  child: Text(subtitle!, style: TextStyle(color: context.pal.muted)),
-                ),
-            ],
+            ),
           ),
-          // Wraps rather than overflows when the window is narrow.
-          Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: actions),
-        ],
-      ),
+        Text(title, style: display(compact ? 24 : 30, spacing: -.3)),
+        if (subtitle != null && !compact)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(subtitle!, style: TextStyle(color: context.pal.muted, fontSize: 13)),
+          ),
+      ],
+    );
+    // A page opened from another one on a phone: its tools under the title,
+    // where they do not crowd the way back.
+    if (compact && back != null && actions.isNotEmpty) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [heading, const SizedBox(height: 12), tools]),
+      );
+    }
+    return Padding(
+      padding: EdgeInsets.only(bottom: compact ? 16 : 22),
+      child: Wrap(crossAxisAlignment: WrapCrossAlignment.end, alignment: WrapAlignment.spaceBetween, runSpacing: 12, spacing: 16, children: [heading, tools]),
     );
   }
 }
@@ -179,9 +197,9 @@ class Btn extends StatelessWidget {
     final p = context.pal;
     final enabled = onPressed != null && !loading;
     final (bg, fg, border) = switch (kind) {
-      BtnKind.primary => (accent, Colors.white, accent),
+      BtnKind.primary => (accent, onAccent, accent),
       BtnKind.ghost => (Colors.transparent, p.text, p.border2),
-      BtnKind.danger => (Colors.transparent, errColor, errColor.withValues(alpha: .5)),
+      BtnKind.danger => (Colors.transparent, errColor, errColor.withValues(alpha: .55)),
       BtnKind.normal => (p.surface2, p.text, p.border2),
     };
     final iconSize = small ? 14.0 : 16.0;
@@ -201,7 +219,7 @@ class Btn extends StatelessWidget {
           Flexible(
             child: Text(
               label!,
-              style: TextStyle(color: fg, fontWeight: FontWeight.w500, fontSize: small ? 12 : 13),
+              style: TextStyle(color: fg, fontWeight: kind == BtnKind.primary ? FontWeight.w600 : FontWeight.w500, fontSize: small ? 12 : 13),
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -212,13 +230,13 @@ class Btn extends StatelessWidget {
       child: Material(
         color: bg,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(small ? 8 : 10),
+          borderRadius: BorderRadius.circular(small ? 6 : 8),
           side: BorderSide(color: border),
         ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: enabled ? onPressed : null,
-          hoverColor: kind == BtnKind.primary ? Colors.white.withValues(alpha: .08) : p.surface3,
+          hoverColor: kind == BtnKind.primary ? Colors.white.withValues(alpha: .18) : p.surface3,
           child: Padding(
             padding: label == null ? EdgeInsets.all(small ? 6 : 8) : EdgeInsets.symmetric(horizontal: small ? 10 : 14, vertical: small ? 6 : 8),
             child: content,
@@ -247,7 +265,7 @@ class Seg<T> extends StatelessWidget {
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
         color: p.bg2,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(99),
         border: Border.all(color: p.border),
       ),
       child: Row(
@@ -265,11 +283,16 @@ class Seg<T> extends StatelessWidget {
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 150),
                       margin: const EdgeInsets.symmetric(horizontal: 1),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(color: on ? p.surface3 : Colors.transparent, borderRadius: BorderRadius.circular(7)),
+                      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
+                      // The chosen option is lit: the panel's ink as its fill.
+                      decoration: BoxDecoration(color: on ? p.text : Colors.transparent, borderRadius: BorderRadius.circular(99)),
                       child: Text(
                         label,
-                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: on ? p.text : (disabled.contains(v) ? p.dim : p.muted)),
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: on ? FontWeight.w600 : FontWeight.w500,
+                          color: on ? p.bg : (disabled.contains(v) ? p.dim : p.muted),
+                        ),
                       ),
                     ),
                   ),
@@ -297,11 +320,15 @@ class Pill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(color: color.withValues(alpha: .15), borderRadius: BorderRadius.circular(6)),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: .13),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: color.withValues(alpha: .28)),
+      ),
       child: Text(
         text,
-        style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600, letterSpacing: .2, fontFamily: mono ? monoFont : null),
+        style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600, fontFamily: mono ? monoFont : null),
       ),
     );
   }
@@ -354,8 +381,8 @@ class SectionLabel extends StatelessWidget {
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.only(bottom: 8),
     child: Text(
-      text.toUpperCase(),
-      style: TextStyle(fontSize: 11, letterSpacing: .7, color: context.pal.dim, fontWeight: FontWeight.w600),
+      text,
+      style: TextStyle(fontSize: 12, color: context.pal.dim, fontWeight: FontWeight.w600),
     ),
   );
 }
@@ -402,7 +429,7 @@ class SettingRow extends StatelessWidget {
     final narrow = t is Switch || t is Text || (t is SavingField && t.width <= 100);
     final below = t != null && !narrow && compact;
     return Container(
-      padding: EdgeInsets.only(top: first ? 0 : 12, bottom: 12),
+      padding: EdgeInsets.only(top: first ? 0 : 13, bottom: 13),
       decoration: BoxDecoration(
         border: first ? null : Border(top: BorderSide(color: p.border)),
       ),
@@ -442,15 +469,15 @@ class InfoIcon extends StatelessWidget {
       radius: 18,
       onTap: () => showModalBottomSheet<void>(
         context: context,
-        backgroundColor: p.bg2,
+        backgroundColor: p.surface,
         builder: (context) => SafeArea(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+            padding: const EdgeInsets.fromLTRB(20, 22, 20, 24),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                Text(title, style: dialogTitle),
                 const SizedBox(height: 8),
                 Text(text, style: TextStyle(color: p.muted, height: 1.45)),
               ],
@@ -596,6 +623,130 @@ class CountryBadge extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A panel that shows only its heading until it is opened: for what few
+/// people need.
+class Fold extends StatefulWidget {
+  final String title;
+  final String? sub;
+  final Widget child;
+  const Fold({super.key, required this.title, this.sub, required this.child});
+
+  @override
+  State<Fold> createState() => _FoldState();
+}
+
+class _FoldState extends State<Fold> {
+  bool open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    return Panel(
+      padding: EdgeInsets.zero,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () => setState(() => open = !open),
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: isCompact(context) ? 14 : 20, vertical: 14),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Flexible(
+                          child: Text(widget.title, style: display(16), overflow: TextOverflow.ellipsis),
+                        ),
+                        if (widget.sub != null && !isCompact(context)) ...[
+                          const SizedBox(width: 10),
+                          Flexible(
+                            child: Text(
+                              widget.sub!,
+                              style: TextStyle(color: p.muted, fontSize: 12),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    open ? 'Скрыть' : 'Показать',
+                    style: TextStyle(fontSize: 12, color: p.accentInk, fontWeight: FontWeight.w600),
+                  ),
+                  Icon(open ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, size: 18, color: p.accentInk),
+                ],
+              ),
+            ),
+          ),
+          if (open) Padding(padding: EdgeInsets.fromLTRB(isCompact(context) ? 14 : 20, 0, isCompact(context) ? 14 : 20, 16), child: widget.child),
+        ],
+      ),
+    );
+  }
+}
+
+/// CoreShift's mark: a railway switch, the straight track and the one it
+/// shifts to, on the amber of the lamps.
+class CoreShiftMark extends StatelessWidget {
+  final double size;
+  const CoreShiftMark({super.key, this.size = 24});
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    width: size,
+    height: size,
+    child: CustomPaint(painter: _MarkPainter()),
+  );
+}
+
+class _MarkPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final s = size.width / 24;
+    canvas.drawRRect(RRect.fromRectAndRadius(Offset.zero & size, Radius.circular(6 * s)), Paint()..color = accent);
+    final line = Paint()
+      ..color = onAccent
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.4 * s
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    canvas.drawLine(Offset(5 * s, 8.5 * s), Offset(19 * s, 8.5 * s), line);
+    canvas.drawPath(
+      Path()
+        ..moveTo(7.5 * s, 8.5 * s)
+        ..cubicTo(11 * s, 8.5 * s, 11.5 * s, 15.5 * s, 15 * s, 15.5 * s)
+        ..lineTo(19 * s, 15.5 * s),
+      line,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_MarkPainter old) => false;
+}
+
+/// A signal lamp: a dot in its colour, glowing while [lit].
+class Lamp extends StatelessWidget {
+  final Color color;
+  final bool lit;
+  final double size;
+  const Lamp({super.key, required this.color, this.lit = false, this.size = 8});
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: size,
+    height: size,
+    decoration: BoxDecoration(
+      color: color,
+      shape: BoxShape.circle,
+      boxShadow: lit ? [BoxShadow(color: color.withValues(alpha: .55), blurRadius: size * 1.2, spreadRadius: size * .1)] : null,
+    ),
+  );
 }
 
 /// Megabits per second, the unit internet plans are sold in.

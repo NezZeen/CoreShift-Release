@@ -23,9 +23,17 @@ class _ElapsedState extends State<_Elapsed> {
   Widget build(BuildContext context) {
     final d = DateTime.now().difference(widget.since);
     final mode = widget.short ? (widget.tun ? '' : ' · только прокси') : ' · ${widget.tun ? 'все приложения через VPN' : 'прокси SOCKS5 127.0.0.1:17890'}';
-    return Text(
-      '${formatDuration(d.isNegative ? Duration.zero : d)}$mode',
-      style: TextStyle(color: context.pal.muted, fontSize: 13, fontFeatures: const [FontFeature.tabularFigures()]),
+    return Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(
+            text: formatDuration(d.isNegative ? Duration.zero : d),
+            style: figures(15, color: context.pal.text),
+          ),
+          TextSpan(text: mode),
+        ],
+      ),
+      style: TextStyle(color: context.pal.muted, fontSize: 13.5),
     );
   }
 }
@@ -56,6 +64,10 @@ class _ConnectButtonState extends State<_ConnectButton> with SingleTickerProvide
     final p = context.pal;
     final on = widget.state == ConnState.connected;
     final busy = widget.state == ConnState.connecting || widget.state == ConnState.disconnecting;
+    final failed = widget.state == ConnState.failed;
+    // The lamp's colour: amber stands by, green is through, red failed.
+    final lamp = on ? okColor : (failed ? errColor : (widget.enabled || busy ? accent : p.border2));
+    final glyph = on ? const Color(0xFF052A1D) : (failed ? errColor : (widget.enabled || busy ? p.accentInk : p.dim));
     return MouseRegion(
       cursor: widget.enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
       onEnter: (_) => setState(() => hover = true),
@@ -65,31 +77,34 @@ class _ConnectButtonState extends State<_ConnectButton> with SingleTickerProvide
         child: AnimatedBuilder(
           animation: _anim,
           builder: (context, _) => CustomPaint(
-            painter: _RingPainter(t: _anim.value, busy: busy, on: on),
-            child: AnimatedScale(
-              scale: hover && widget.enabled ? 1.02 : 1,
-              duration: const Duration(milliseconds: 200),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 350),
-                width: widget.size,
-                height: widget.size,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: on ? const Color(0xFF2E8566) : p.border2),
-                  gradient: RadialGradient(
-                    center: const Alignment(0, -.4),
-                    radius: .9,
-                    colors: on ? const [Color(0xFF1D6B52), Color(0xFF0F3A2D)] : [p.surface3, p.surface2],
+            painter: _RingPainter(t: _anim.value, busy: busy, on: on, lamp: lamp, track: p.border),
+            child: Padding(
+              // Room for the rings around the button.
+              padding: EdgeInsets.all(widget.size * .16),
+              child: AnimatedScale(
+                scale: hover && widget.enabled ? 1.03 : 1,
+                duration: const Duration(milliseconds: 200),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 350),
+                  width: widget.size,
+                  height: widget.size,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: on ? okColor : lamp.withValues(alpha: widget.enabled || busy || failed ? .9 : .6),
+                      width: on ? 0 : 2.5,
+                    ),
+                    gradient: RadialGradient(
+                      center: const Alignment(0, -.35),
+                      radius: .95,
+                      colors: on ? const [Color(0xFF5FE0B2), Color(0xFF2DB585)] : [p.surface2, p.surface],
+                    ),
+                    boxShadow: [
+                      if (on) BoxShadow(color: okColor.withValues(alpha: .5), blurRadius: 60, spreadRadius: -8),
+                      if (!on && widget.enabled && hover) BoxShadow(color: accent.withValues(alpha: .28), blurRadius: 40, spreadRadius: -6),
+                    ],
                   ),
-                  boxShadow: [
-                    BoxShadow(color: (on ? okColor : p.text).withValues(alpha: on ? .07 : .03), spreadRadius: 12),
-                    if (on) BoxShadow(color: okColor.withValues(alpha: .45), blurRadius: 70, spreadRadius: -12),
-                  ],
-                ),
-                child: Icon(
-                  Icons.power_settings_new,
-                  size: widget.size * .32,
-                  color: on ? const Color(0xFFB8F5DC) : (busy ? accent : p.muted.withValues(alpha: widget.enabled ? 1 : .5)),
+                  child: Icon(Icons.power_settings_new, size: widget.size * .34, color: glyph),
                 ),
               ),
             ),
@@ -100,109 +115,43 @@ class _ConnectButtonState extends State<_ConnectButton> with SingleTickerProvide
   }
 }
 
+/// The rings around the button: a resting track, a turning amber arc
+/// while it connects, and a ripple going out while connected.
 class _RingPainter extends CustomPainter {
   final double t;
   final bool busy;
   final bool on;
-  _RingPainter({required this.t, required this.busy, required this.on});
+  final Color lamp;
+  final Color track;
+  _RingPainter({required this.t, required this.busy, required this.on, required this.lamp, required this.track});
 
   @override
   void paint(Canvas canvas, Size size) {
     final c = size.center(Offset.zero);
-    final r = size.width / 2;
+    final outer = size.width / 2 - 2;
+    final inner = size.width / 2 / 1.32 + size.width * .04;
+    final rest = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    canvas.drawCircle(c, outer, rest..color = on ? okColor.withValues(alpha: .35) : track);
+    canvas.drawCircle(c, inner + (outer - inner) * .45, rest..color = on ? okColor.withValues(alpha: .2) : track.withValues(alpha: .6));
     if (busy) {
       final paint = Paint()
         ..color = accent
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 2
+        ..strokeWidth = 3
         ..strokeCap = StrokeCap.round;
-      canvas.drawArc(Rect.fromCircle(center: c, radius: r + 13), t * 2 * pi * 2.6, pi / 2, false, paint);
+      canvas.drawArc(Rect.fromCircle(center: c, radius: outer), t * 2 * pi * 2.6, pi / 2.2, false, paint);
     }
     if (on) {
-      final k = t;
       final paint = Paint()
-        ..color = okColor.withValues(alpha: .5 * (1 - k))
+        ..color = okColor.withValues(alpha: .55 * (1 - t))
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2;
-      canvas.drawCircle(c, r * (1 + .35 * k), paint);
+      canvas.drawCircle(c, inner + (outer - inner) * t, paint);
     }
   }
 
   @override
-  bool shouldRepaint(_RingPainter old) => old.t != t || old.busy != busy || old.on != on;
-}
-
-class _NodePick extends StatelessWidget {
-  final AppState state;
-  const _NodePick({required this.state});
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.pal;
-    final sel = state.selection;
-    final n = sel.node;
-    final sub = state.subscriptionById(sel.subscription);
-    return Material(
-      color: p.surface2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: p.border),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => showQuickPick(context, state, onAll: () => Nav.to(context, PageId.servers)),
-        hoverColor: p.surface3,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          child: Row(
-            children: [
-              CountryBadge(n == null ? null : countryOf(n.name, n.server), width: 38),
-              const SizedBox(width: 12),
-              Expanded(
-                child: n == null
-                    ? Text(
-                        sel.isEmpty ? 'Выбрать сервер' : sel.name,
-                        style: TextStyle(fontWeight: FontWeight.w600, color: p.muted),
-                      )
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            cleanNodeName(n.name),
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 3),
-                          Row(
-                            children: [
-                              ProtoBadge(n.protocol),
-                              if (sub != null) ...[
-                                const SizedBox(width: 6),
-                                Flexible(
-                                  child: Text(
-                                    sub.displayName,
-                                    style: TextStyle(color: p.muted, fontSize: 12),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ],
-                      ),
-              ),
-              if (n != null && state.latencyOf(sel.subscription, n.fingerprint)?.ok == true) ...[
-                Text(
-                  '${state.latencyOf(sel.subscription, n.fingerprint)!.ms} мс',
-                  style: TextStyle(fontFamily: monoFont, fontFamilyFallback: monoFallback, fontSize: 12, color: p.muted),
-                ),
-                const SizedBox(width: 6),
-              ],
-              Icon(Icons.unfold_more, size: 20, color: p.dim),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  bool shouldRepaint(_RingPainter old) => old.t != t || old.busy != busy || old.on != on || old.lamp != lamp || old.track != track;
 }

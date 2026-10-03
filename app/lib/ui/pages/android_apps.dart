@@ -132,7 +132,7 @@ class _AppPickerState extends State<_AppPicker> {
         .toList();
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.only ? 'Через VPN' : 'Без VPN', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+        title: Text(widget.only ? 'Через VPN' : 'Без VPN', style: dialogTitle),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 12),

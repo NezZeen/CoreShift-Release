@@ -28,7 +28,7 @@ class LeakCheck extends StatelessWidget {
           description: ready
               ? 'Узнать, какие DNS-серверы видят ваши запросы: через VPN или провайдера. Использует сервис bash.ws'
               : 'Подключитесь в режиме «Все приложения», чтобы проверить',
-          trailing: Btn(label: 'Проверить', icon: Icons.policy_outlined, loading: state.leakTesting, onPressed: ready ? state.runLeakTest : null),
+          trailing: Btn(label: 'Проверить DNS', icon: Icons.policy_outlined, loading: state.leakTesting, onPressed: ready ? state.runLeakTest : null),
         ),
         if (state.leakError.isNotEmpty)
           _Box(

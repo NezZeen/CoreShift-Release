@@ -4,6 +4,7 @@ import '../../api/models.dart';
 import '../../platform/platform.dart' as platform;
 import '../../state/app_state.dart';
 import '../../state/errors.dart';
+import '../shell.dart';
 import '../theme.dart';
 import '../widgets.dart';
 
@@ -14,50 +15,59 @@ class CoresPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final mode = state.setting('cores.mode', 'auto');
+    final header = PageHeader(
+      'Ядра',
+      subtitle: 'Установленные ядра, их приоритет и правила автоматического переключения.',
+      back: ('Настройки', () => Nav.to(context, PageId.settings)),
+      actions: [
+        // Android runs programs only from the APK: cores update with it.
+        if (!platform.isAndroid)
+          Btn(
+            label: 'Проверить обновления',
+            icon: Icons.system_update_alt,
+            loading: state.checkingUpdates,
+            onPressed: state.updatingCore.isNotEmpty || !state.online ? null : state.checkCoreUpdates,
+          ),
+        Seg<String>(
+          value: mode,
+          options: const [('auto', 'Автосвап'), ('manual', 'Вручную')],
+          onChanged: (v) => state.updateSettings((s) {
+            s['cores']['mode'] = v;
+            if (v == 'manual' && (s['cores']['manual'] ?? '') == '') {
+              s['cores']['manual'] = (s['cores']['priority'] as List).cast<String>().firstWhere(state.info.installed, orElse: () => 'xray');
+            }
+          }),
+        ),
+      ],
+    );
     return PageFrame(
       children: [
-        PageHeader(
-          'Ядра',
-          subtitle: 'Установленные ядра, их приоритет и правила автоматического переключения.',
-          actions: [
-            // Android runs programs only from the APK: cores update with it.
-            if (!platform.isAndroid)
-              Btn(
-                label: 'Проверить обновления',
-                icon: Icons.system_update_alt,
-                loading: state.checkingUpdates,
-                onPressed: state.updatingCore.isNotEmpty || !state.online ? null : state.checkCoreUpdates,
-              ),
-            Seg<String>(
-              value: mode,
-              options: const [('auto', 'Автосвап'), ('manual', 'Вручную')],
-              onChanged: (v) => state.updateSettings((s) {
-                s['cores']['mode'] = v;
-                if (v == 'manual' && (s['cores']['manual'] ?? '') == '') {
-                  s['cores']['manual'] = (s['cores']['priority'] as List).cast<String>().firstWhere(state.info.installed, orElse: () => 'xray');
-                }
-              }),
-            ),
-          ],
-        ),
-        _Backup(state: state),
-        LayoutBuilder(
-          builder: (context, c) {
-            final list = _CoreList(state: state);
-            final rules = _RulesCard(state: state);
-            if (c.maxWidth < 900) return Column(children: [list, const SizedBox(height: 18), rules]);
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+        // The list is what matters; how the switching decides is folded away.
+        Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 780),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(flex: 10, child: list),
-                const SizedBox(width: 18),
-                Expanded(flex: 12, child: rules),
+                header,
+                _Backup(state: state),
+                _CoreList(state: state),
+                const SizedBox(height: 16),
+                Fold(
+                  title: 'Правила переключения',
+                  sub: 'когда сменить ядро и когда вернуться',
+                  child: _RulesCard(state: state),
+                ),
+                const SizedBox(height: 16),
+                Fold(
+                  title: 'Совместимость',
+                  sub: 'что умеет каждое ядро в CoreShift',
+                  child: _Matrix(info: state.info),
+                ),
               ],
-            );
-          },
+            ),
+          ),
         ),
-        const SizedBox(height: 18),
-        _Matrix(info: state.info),
       ],
     );
   }
@@ -104,7 +114,7 @@ class _UpdateRow extends StatelessWidget {
     }
     return Row(
       children: [
-        const Icon(Icons.new_releases_outlined, size: 15, color: accent),
+        Icon(Icons.new_releases_outlined, size: 15, color: p.accentInk),
         const SizedBox(width: 6),
         Expanded(
           child: Text(
@@ -159,10 +169,7 @@ class _CoreList extends StatelessWidget {
             width: 22,
             child: manual
                 ? Icon(on ? Icons.radio_button_checked : Icons.radio_button_off, size: 17, color: on ? accent : p.dim)
-                : Text(
-                    on ? '${index! + 1}' : '–',
-                    style: TextStyle(fontFamily: monoFont, color: p.dim),
-                  ),
+                : Text(on ? '${index! + 1}' : '–', style: figures(15, color: p.dim)),
           ),
           const SizedBox(width: 6),
           CoreLogo(k, size: 30, off: !on || !installed),
@@ -375,11 +382,11 @@ class _RulesCard extends StatelessWidget {
       trailing: Text('всегда', style: TextStyle(fontSize: 12, color: p.dim)),
     );
 
-    return Panel(
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const PanelTitle('Правила переключения'),
           const SectionLabel('Триггеры'),
           always('Процесс ядра упал', 'Ненулевой код выхода или зависание процесса', first: true),
           always('Ядро отвергло конфиг', 'Проверка конфига не прошла — сразу берётся следующее ядро'),
@@ -470,52 +477,49 @@ class _Matrix extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.pal;
-    final head = TextStyle(fontSize: 11, color: p.dim, letterSpacing: .6, fontWeight: FontWeight.w600);
+    final head = TextStyle(fontSize: 12, color: p.dim, fontWeight: FontWeight.w600);
     final cores = [for (final k in allCores) info.cores.where((c) => c.kind == k).firstOrNull ?? CoreInfo(kind: k, installed: false, features: const [])];
-    return Panel(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const PanelTitle('Совместимость', sub: 'что умеет каждое ядро в CoreShift'),
-          Table(
-            columnWidths: const {0: FlexColumnWidth(1.6)},
-            defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-            children: [
-              TableRow(
-                children: [
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Table(
+          columnWidths: const {0: FlexColumnWidth(1.6)},
+          defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+          children: [
+            TableRow(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(9),
+                  child: Text('Протокол или транспорт', style: head),
+                ),
+                for (final c in cores)
                   Padding(
                     padding: const EdgeInsets.all(9),
-                    child: Text('ПРОТОКОЛ / ТРАНСПОРТ', style: head),
+                    child: Center(
+                      child: Text(coreStyle(c.kind).name, style: head.copyWith(color: coreStyle(c.kind).color)),
+                    ),
+                  ),
+              ],
+            ),
+            for (final (label, f) in rows)
+              TableRow(
+                decoration: BoxDecoration(
+                  border: Border(top: BorderSide(color: p.border)),
+                ),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 8),
+                    child: Text(label, style: const TextStyle(fontSize: 13)),
                   ),
                   for (final c in cores)
-                    Padding(
-                      padding: const EdgeInsets.all(9),
-                      child: Center(
-                        child: Text(coreStyle(c.kind).name.toUpperCase(), style: head.copyWith(color: coreStyle(c.kind).color)),
-                      ),
+                    Center(
+                      child: c.features.contains(f) ? const Pill('да', color: okColor) : Text('—', style: TextStyle(color: p.dim, fontSize: 12)),
                     ),
                 ],
               ),
-              for (final (label, f) in rows)
-                TableRow(
-                  decoration: BoxDecoration(
-                    border: Border(top: BorderSide(color: p.border)),
-                  ),
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 8),
-                      child: Text(label, style: const TextStyle(fontSize: 13)),
-                    ),
-                    for (final c in cores)
-                      Center(
-                        child: c.features.contains(f) ? const Pill('да', color: okColor) : Text('—', style: TextStyle(color: p.dim, fontSize: 12)),
-                      ),
-                  ],
-                ),
-            ],
-          ),
-        ],
-      ),
+          ],
+        ),
+      ],
     );
   }
 }
