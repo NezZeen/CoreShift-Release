@@ -1,8 +1,14 @@
 # Publishes a release made by release.ps1 to the private releases
 # repository, where installed copies of CoreShift look for updates: from
 # dist\release\<version>, latest.json, latest.json.sig and the installer for
-# Windows, latest-android.json, its .sig and the APK for Android, or the
-# files of one of them.
+# Windows, latest-android.json, its .sig and the APK for Android,
+# latest-linux.json, its .sig and the Linux packages under their fixed names
+# (CoreShift-amd64.deb, -x86_64.rpm, -x86_64.pkg.tar.zst,
+# -linux-amd64.tar.gz), or the files of some of them.
+#
+# Linux copies read latest-linux.json from the public NezZeen/CoreShift-Release
+# (they carry no token): the Linux files and the manifest go there too, by
+# hand or with -Repo NezZeen/CoreShift-Release; see packaging\README.md.
 #
 #   powershell -ExecutionPolicy Bypass -File packaging\publish.ps1 -Version 0.3.0
 #
@@ -24,7 +30,7 @@ $dir = Join-Path $root "dist\release\$Version"
 
 $files = @()
 $manifest = $null
-foreach ($name in 'latest.json', 'latest-android.json') {
+foreach ($name in 'latest.json', 'latest-android.json', 'latest-linux.json') {
     $path = Join-Path $dir $name
     if (-not (Test-Path $path)) { continue }
     $m = Get-Content $path -Raw | ConvertFrom-Json
@@ -34,8 +40,16 @@ foreach ($name in 'latest.json', 'latest-android.json') {
         $files += (Get-Item $f)
     }
     $manifest = $m
+    if ($name -eq 'latest-linux.json') {
+        # The other Linux packages, beside the .deb the manifest names.
+        foreach ($n in 'CoreShift-x86_64.rpm', 'CoreShift-x86_64.pkg.tar.zst', 'CoreShift-linux-amd64.tar.gz') {
+            $f = Join-Path $dir $n
+            if (-not (Test-Path $f)) { throw "$f is missing (run release.ps1 again)" }
+            $files += (Get-Item $f)
+        }
+    }
 }
-if (-not $manifest) { throw "no latest.json or latest-android.json in $dir (run release.ps1 first)" }
+if (-not $manifest) { throw "no latest.json, latest-android.json or latest-linux.json in $dir (run release.ps1 first)" }
 
 # The release is just the version; gh needs some notes, a space is none.
 if (-not $Notes) { $Notes = ' ' }
