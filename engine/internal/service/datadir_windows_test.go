@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -108,9 +109,17 @@ func TestSecureDataDirTakesBackWhatUsersMade(t *testing.T) {
 	if b, err := os.ReadFile(filepath.Join(outside, "victim.txt")); err != nil || string(b) != "keep me" {
 		t.Errorf("the target of a link was touched: %q, %v", b, err)
 	}
-	want := []string{filepath.Join(root, "state"), filepath.Join(root, "state", "store.json")}
-	if strings.Join(sec.reclaimed, "|") != strings.Join(want, "|") {
-		t.Errorf("reclaimed %v, want %v (the directory before its content)", sec.reclaimed, want)
+	// Kept folders are taken back, each before its content; removed ones are
+	// taken back first too, so that they can be listed and deleted.
+	for _, pair := range [][2]string{{"state", `state\store.json`}, {"updates", `updates\installers`}} {
+		a := slices.Index(sec.reclaimed, filepath.Join(root, pair[0]))
+		b := slices.Index(sec.reclaimed, filepath.Join(root, pair[1]))
+		if a < 0 || b < 0 || a > b {
+			t.Errorf("reclaimed %v: want %s, then %s", sec.reclaimed, pair[0], pair[1])
+		}
+	}
+	if slices.Contains(sec.reclaimed, filepath.Join(root, "work")) || slices.Contains(sec.reclaimed, filepath.Join(root, "dnsguard.json")) {
+		t.Errorf("took back what the service owns: %v", sec.reclaimed)
 	}
 
 	// Again: nothing left to do.
@@ -118,6 +127,32 @@ func TestSecureDataDirTakesBackWhatUsersMade(t *testing.T) {
 	if notes, err := secureDataDir(root, sec); err != nil || len(notes) != 0 {
 		t.Errorf("second run: %v %v", notes, err)
 	}
+}
+
+// A folder whose owner cannot even be read, closed to SYSTEM by its owner,
+// is taken back as well.
+func TestSecureDataDirTakesBackWhatItCannotRead(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "CoreShift")
+	write(t, filepath.Join(root, "state", "store.json"), "{}")
+	sec := &closedSecurity{fakeSecurity: fakeSecurity{foreign: map[string]bool{}}, closed: filepath.Join(root, "state")}
+	if _, err := secureDataDir(root, sec); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(sec.reclaimed, filepath.Join(root, "state")) {
+		t.Errorf("reclaimed %v", sec.reclaimed)
+	}
+}
+
+type closedSecurity struct {
+	fakeSecurity
+	closed string
+}
+
+func (c *closedSecurity) trusted(path string) (bool, error) {
+	if path == c.closed && !slices.Contains(c.reclaimed, path) {
+		return false, os.ErrPermission
+	}
+	return c.fakeSecurity.trusted(path)
 }
 
 func TestSecureDataDirReplacesALinkedRoot(t *testing.T) {
