@@ -25,7 +25,11 @@ class RuleListPanel extends StatefulWidget {
   final String removeTip;
   final Color? chipColor;
 
+  /// Without its own panel and title: inside a [Fold] that has them.
+  final bool bare;
+
   const RuleListPanel({
+    this.bare = false,
     super.key,
     required this.state,
     required this.title,
@@ -88,55 +92,54 @@ class _RuleListPanelState extends State<RuleListPanel> {
   Widget build(BuildContext context) {
     final p = context.pal;
     final domains = _list(widget.domainsKey), ips = _list(_ipsKey);
-    return Panel(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          PanelTitle(widget.title, sub: widget.sub, info: widget.description),
-          if (widget.description != null && !isCompact(context)) ...[
-            Text(widget.description!, style: TextStyle(fontSize: 12, color: p.muted, height: 1.45)),
-            const SizedBox(height: 12),
-          ],
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _add,
-                  onSubmitted: (_) => _addEntries(),
-                  onChanged: (_) => setState(() => _error = null),
-                  style: const TextStyle(fontSize: 13, fontFamily: monoFont, fontFamilyFallback: monoFallback),
-                  decoration: InputDecoration(hintText: widget.hint),
-                ),
+    final body = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (!widget.bare) PanelTitle(widget.title, sub: widget.sub, info: widget.description),
+        if (widget.description != null && (!isCompact(context) || widget.bare)) ...[
+          Text(widget.description!, style: TextStyle(fontSize: 12, color: p.muted, height: 1.45)),
+          const SizedBox(height: 12),
+        ],
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _add,
+                onSubmitted: (_) => _addEntries(),
+                onChanged: (_) => setState(() => _error = null),
+                style: const TextStyle(fontSize: 13, fontFamily: monoFont, fontFamilyFallback: monoFallback),
+                decoration: InputDecoration(hintText: widget.hint),
               ),
-              const SizedBox(width: 8),
-              Btn(label: 'Добавить', icon: Icons.add, onPressed: _addEntries),
+            ),
+            const SizedBox(width: 8),
+            Btn(label: 'Добавить', icon: Icons.add, onPressed: _addEntries),
+          ],
+        ),
+        if (_error != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(_error!, style: const TextStyle(color: errColor, fontSize: 12)),
+          ),
+        const SizedBox(height: 12),
+        if (domains.isEmpty && ips.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            child: Center(
+              child: Text(widget.empty, style: TextStyle(color: p.dim, fontSize: 12)),
+            ),
+          )
+        else
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final d in domains) _chip(context, d, () => _save(domains.where((x) => x != d).toList(), ips)),
+              for (final a in ips) _chip(context, a, () => _save(domains, ips.where((x) => x != a).toList()), ip: true),
             ],
           ),
-          if (_error != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(_error!, style: const TextStyle(color: errColor, fontSize: 12)),
-            ),
-          const SizedBox(height: 12),
-          if (domains.isEmpty && ips.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              child: Center(
-                child: Text(widget.empty, style: TextStyle(color: p.dim, fontSize: 12)),
-              ),
-            )
-          else
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                for (final d in domains) _chip(context, d, () => _save(domains.where((x) => x != d).toList(), ips)),
-                for (final a in ips) _chip(context, a, () => _save(domains, ips.where((x) => x != a).toList()), ip: true),
-              ],
-            ),
-        ],
-      ),
+      ],
     );
+    return widget.bare ? body : Panel(child: body);
   }
 
   Widget _chip(BuildContext context, String text, VoidCallback onRemove, {bool ip = false}) {
@@ -302,14 +305,14 @@ class ServicePresetsPanel extends StatelessWidget {
                           duration: const Duration(milliseconds: 150),
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                           decoration: BoxDecoration(
-                            color: on ? accent.withValues(alpha: .14) : p.surface2,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: on ? accent.withValues(alpha: .6) : p.border),
+                            color: on ? accent.withValues(alpha: .16) : p.surface2,
+                            borderRadius: BorderRadius.circular(99),
+                            border: Border.all(color: on ? accent : p.border),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(on ? Icons.check_circle : sp.icon, size: 16, color: on ? accent : p.muted),
+                              Icon(on ? Icons.check_circle : sp.icon, size: 16, color: on ? p.accentInk : p.muted),
                               const SizedBox(width: 7),
                               Text(
                                 sp.name,

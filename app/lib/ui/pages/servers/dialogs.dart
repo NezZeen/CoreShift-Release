@@ -107,7 +107,7 @@ class _AddDialogState extends State<_AddDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Добавить подписку', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+              Text('Добавить подписку', style: dialogTitle),
               const SizedBox(height: 4),
               Text(
                 platform.canScanQr
@@ -200,11 +200,7 @@ Future<void> showSubscriptionQr(BuildContext context, Subscription sub) {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  sub.displayName,
-                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
-                  textAlign: TextAlign.center,
-                ),
+                Text(sub.displayName, style: dialogTitle, textAlign: TextAlign.center),
                 const SizedBox(height: 4),
                 Text(
                   platform.isAndroid
@@ -256,7 +252,7 @@ Future<String?> _askText(BuildContext context, String title, String initial) {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+              Text(title, style: dialogTitle),
               const SizedBox(height: 14),
               TextField(controller: c, autofocus: true, onSubmitted: (v) => Navigator.pop(context, v.trim())),
               const SizedBox(height: 8),
@@ -290,7 +286,7 @@ Future<bool> _confirm(BuildContext context, String title, String text) async {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+              Text(title, style: dialogTitle),
               const SizedBox(height: 10),
               Text(text, style: TextStyle(color: context.pal.muted)),
               const SizedBox(height: 20),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../state/app_state.dart';
+import '../shell.dart';
 import '../theme.dart';
 import '../widgets.dart';
 
@@ -64,13 +65,14 @@ class _LogsPageState extends State<LogsPage> {
     }
     final compact = isCompact(context);
     return Padding(
-      padding: compact ? const EdgeInsets.fromLTRB(14, 14, 14, 12) : const EdgeInsets.fromLTRB(28, 24, 28, 24),
+      padding: compact ? const EdgeInsets.fromLTRB(16, 16, 16, 12) : const EdgeInsets.fromLTRB(32, 28, 32, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           PageHeader(
             'Журнал',
             subtitle: 'События службы, ядер и автосвапа. Построчный вывод ядер — в фильтре «Ядра».',
+            back: ('Настройки', () => Nav.to(context, PageId.settings)),
             actions: [
               SizedBox(
                 width: compact ? 140 : 220,
@@ -116,12 +118,28 @@ class _LogsPageState extends State<LogsPage> {
             child: Container(
               decoration: BoxDecoration(
                 color: p.bg2,
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: p.border),
               ),
               child: lines.isEmpty
                   ? Center(
-                      child: Text('Пусто', style: TextStyle(color: p.dim)),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.receipt_long_outlined, size: 32, color: p.dim),
+                          const SizedBox(height: 10),
+                          Text(
+                            'Пусто',
+                            style: TextStyle(color: p.muted, fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Здесь появятся подключения, смены ядер и ошибки',
+                            style: TextStyle(color: p.dim, fontSize: 12),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
                     )
                   : Scrollbar(
                       controller: _scroll,

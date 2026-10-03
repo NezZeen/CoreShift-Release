@@ -63,23 +63,31 @@ class RoutingPage extends StatelessWidget {
           empty: 'Пока пусто — всё идёт через VPN',
           removeTip: 'Снова через VPN',
         ),
-        if (full)
-          RuleListPanel(
-            key: const ValueKey('all-proxy'),
-            state: s,
-            title: 'Всегда через VPN',
-            sub: 'важнее исключений',
-            description: 'Для сайтов, которые попали под исключения, но без VPN не открываются: например, заблокированный сайт в зоне .ru.',
-            domainsKey: 'routing.proxy_domains',
-            ipsKey: 'routing.proxy_ips',
-            hint: 'blocked.ru',
-            empty: 'Пока пусто',
-            removeTip: 'Убрать из списка',
-            chipColor: accent,
-          ),
       ];
       // Programs are matched by their .exe; Android has no such thing.
-      right = [if (s.hasSetting('routing.direct_apps') && !platform.isAndroid) AppsPanel.direct(state: s), if (full) _blockPanel()];
+      // The lists few people need, folded away.
+      right = [
+        if (s.hasSetting('routing.direct_apps') && !platform.isAndroid) AppsPanel.direct(state: s),
+        if (full)
+          Fold(
+            title: 'Всегда через VPN',
+            sub: 'важнее исключений',
+            child: RuleListPanel(
+              key: const ValueKey('all-proxy'),
+              bare: true,
+              state: s,
+              title: 'Всегда через VPN',
+              description: 'Для сайтов, которые попали под исключения, но без VPN не открываются: например, заблокированный сайт в зоне .ru.',
+              domainsKey: 'routing.proxy_domains',
+              ipsKey: 'routing.proxy_ips',
+              hint: 'blocked.ru',
+              empty: 'Пока пусто',
+              removeTip: 'Убрать из списка',
+              chipColor: accent,
+            ),
+          ),
+        if (full) _blockPanel(),
+      ];
     }
 
     // Android picks the apps in the VPN before any rule: first.
@@ -166,28 +174,26 @@ class RoutingPage extends StatelessWidget {
             onTap: on ? null : () => s.updateSettings((x) => x['routing']['mode'] = mode),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 150),
-              padding: const EdgeInsets.all(14),
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: on ? accent.withValues(alpha: .1) : p.surface,
+                color: on ? Color.alphaBlend(accent.withValues(alpha: .1), p.surface) : p.surface,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: on ? accent.withValues(alpha: .7) : p.border, width: on ? 1.5 : 1),
+                border: Border.all(color: on ? accent : p.border, width: on ? 1.5 : 1),
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(on ? Icons.radio_button_checked : Icons.radio_button_off, size: 18, color: on ? accent : p.dim),
-                  const SizedBox(width: 10),
+                  Icon(icon, size: 22, color: on ? p.accentInk : p.dim),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
                           children: [
-                            Icon(icon, size: 15, color: on ? p.text : p.muted),
-                            const SizedBox(width: 6),
-                            Flexible(
-                              child: Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                            ),
+                            Flexible(child: Text(title, style: display(17))),
+                            const SizedBox(width: 8),
+                            if (on) Lamp(color: accent, lit: true, size: 7),
                           ],
                         ),
                         const SizedBox(height: 4),
@@ -279,16 +285,20 @@ class RoutingPage extends StatelessWidget {
     child: Text('Локальная сеть и российские сайты в этом режиме и так работают напрямую.', style: TextStyle(fontSize: 11.5, color: context.pal.dim)),
   );
 
-  Widget _blockPanel() => RuleListPanel(
-    key: const ValueKey('block'),
-    state: s,
+  Widget _blockPanel() => Fold(
     title: 'Блокировать',
     sub: 'не открывать совсем',
-    description: 'Сайты из этого списка не откроются ни через VPN, ни напрямую: реклама, трекеры, отвлекающие сайты.',
-    domainsKey: 'routing.block_domains',
-    hint: 'ads.example',
-    empty: 'Пока пусто',
-    removeTip: 'Разблокировать',
-    chipColor: errColor,
+    child: RuleListPanel(
+      key: const ValueKey('block'),
+      bare: true,
+      state: s,
+      title: 'Блокировать',
+      description: 'Сайты из этого списка не откроются ни через VPN, ни напрямую: реклама, трекеры, отвлекающие сайты.',
+      domainsKey: 'routing.block_domains',
+      hint: 'ads.example',
+      empty: 'Пока пусто',
+      removeTip: 'Разблокировать',
+      chipColor: errColor,
+    ),
   );
 }

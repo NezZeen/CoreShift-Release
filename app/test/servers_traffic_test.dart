@@ -187,7 +187,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 500));
       expect(find.text('Выбор сервера'), findsOneWidget);
       expect(find.text('Найти самый быстрый'), findsOneWidget);
-      expect(find.text('Недавние'.toUpperCase()), findsOneWidget);
+      expect(find.text('Недавние'), findsOneWidget);
       expect(find.text('Все серверы · ${state.nodeCount}'), findsOneWidget);
       expect(tester.takeException(), isNull);
 
@@ -210,18 +210,15 @@ void main() {
       await tester.pump(const Duration(seconds: 30));
     });
 
-    testWidgets('the home page shows the traffic${isPhone ? ' on a phone' : ''}', (tester) async {
+    testWidgets('«Проверка» shows the traffic${isPhone ? ' on a phone' : ''}', (tester) async {
       final state = await pumpApp(tester, size: isPhone ? phone : const Size(1400, 900));
+      await tester.tap(navTo('Проверка', phone: isPhone));
       await settle(tester);
       expect(state.statsLoaded, isTrue);
       expect(state.stats.length, 30);
-      if (isPhone) {
-        expect(find.text('Сегодня'), findsOneWidget);
-        await tester.tap(find.text('Сегодня'));
-      } else {
-        expect(find.text('Трафик'), findsOneWidget);
-        await tester.tap(find.text('Подробнее'));
-      }
+      expect(find.text('Трафик'), findsOneWidget);
+      await tester.ensureVisible(find.text('Подробнее'));
+      await tester.tap(find.text('Подробнее'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
       expect(find.text('Трафик через VPN'), findsOneWidget);
@@ -235,7 +232,7 @@ void main() {
       await tester.tapAt(tester.getTopLeft(caption) + const Offset(6, -50));
       await tester.pump();
       // The picked day is named; the card's own chart still says "Сегодня".
-      expect(find.textContaining('Сегодня:'), isPhone ? findsNothing : findsOneWidget);
+      expect(find.textContaining('Сегодня:'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pump(const Duration(seconds: 6));
     });

@@ -18,7 +18,23 @@ import 'theme.dart';
 import 'update_offer.dart';
 import 'widgets.dart';
 
-enum PageId { home, servers, cores, routing, logs, settings }
+/// The pages. Five are stations on the main line: connecting, the
+/// servers, what goes through the VPN, checking that it works, and the
+/// settings. The cores and the journal are for the curious and hang off
+/// the settings.
+enum PageId { home, servers, routing, checks, settings, cores, logs }
+
+/// The main pages in the order the navigation shows them.
+const mainPages = [
+  (PageId.home, Icons.power_settings_new, 'Главная'),
+  (PageId.servers, Icons.public, 'Серверы'),
+  (PageId.routing, Icons.alt_route, 'Правила'),
+  (PageId.checks, Icons.speed, 'Проверка'),
+  (PageId.settings, Icons.tune, 'Настройки'),
+];
+
+/// The advanced pages, reached from the settings.
+const advancedPages = [(PageId.cores, Icons.memory, 'Ядра'), (PageId.logs, Icons.receipt_long_outlined, 'Журнал')];
 
 /// Lets pages switch to another page, e.g. the home page's node picker.
 class Nav extends InheritedWidget {
@@ -147,6 +163,7 @@ class _ShellState extends State<Shell> {
             ? _Offline(state: s)
             : switch (page) {
                 PageId.home => HomePage(state: s),
+                PageId.checks => ChecksPage(state: s),
                 PageId.servers => ServersPage(state: s, searchFocus: _serverSearch),
                 PageId.cores => CoresPage(state: s),
                 PageId.routing => RoutingPage(state: s),
@@ -211,52 +228,23 @@ class _ShellState extends State<Shell> {
   }
 }
 
-/// The phone's navigation: the four main pages, and the pages for advanced
-/// users behind "Ещё".
+/// The phone's navigation: the five main pages. The cores and the journal
+/// open from the settings, so the settings stay lit on them.
 class _BottomNav extends StatelessWidget {
   final AppState state;
   final PageId page;
   final ValueChanged<PageId> onPage;
   const _BottomNav({required this.state, required this.page, required this.onPage});
 
-  static const _main = [PageId.home, PageId.servers, PageId.routing, PageId.settings];
-
   @override
   Widget build(BuildContext context) {
-    final p = context.pal;
-    final index = _main.indexOf(page);
+    final index = mainPages.indexWhere((m) => m.$1 == page);
     return NavigationBar(
-      height: 64,
-      backgroundColor: p.bg2,
-      indicatorColor: accent.withValues(alpha: .18),
+      height: 68,
       labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-      selectedIndex: index < 0 ? _main.length : index,
-      onDestinationSelected: (i) async {
-        if (i < _main.length) return onPage(_main[i]);
-        final more = await showModalBottomSheet<PageId>(
-          context: context,
-          backgroundColor: p.bg2,
-          builder: (context) => SafeArea(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Padding(padding: EdgeInsets.fromLTRB(20, 16, 20, 4), child: SectionLabel('Для опытных')),
-                ListTile(leading: const Icon(Icons.memory), title: const Text('Ядра'), onTap: () => Navigator.pop(context, PageId.cores)),
-                ListTile(leading: const Icon(Icons.notes), title: const Text('Журнал'), onTap: () => Navigator.pop(context, PageId.logs)),
-                const SizedBox(height: 8),
-              ],
-            ),
-          ),
-        );
-        if (more != null) onPage(more);
-      },
-      destinations: [
-        const NavigationDestination(icon: Icon(Icons.home_outlined), label: 'Главная'),
-        const NavigationDestination(icon: Icon(Icons.public), label: 'Серверы'),
-        const NavigationDestination(icon: Icon(Icons.alt_route), label: 'Правила'),
-        const NavigationDestination(icon: Icon(Icons.settings_outlined), label: 'Настройки'),
-        const NavigationDestination(icon: Icon(Icons.more_horiz), label: 'Ещё'),
-      ],
+      selectedIndex: index < 0 ? mainPages.length - 1 : index,
+      onDestinationSelected: (i) => onPage(mainPages[i].$1),
+      destinations: [for (final (_, icon, label) in mainPages) NavigationDestination(icon: Icon(icon), label: label)],
     );
   }
 }
@@ -270,37 +258,27 @@ class _Sidebar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.pal;
-    final main = [
-      (PageId.home, Icons.home_outlined, 'Главная'),
-      (PageId.servers, Icons.public, 'Серверы'),
-      (PageId.routing, Icons.alt_route, 'Правила'),
-      (PageId.settings, Icons.settings_outlined, 'Настройки'),
-    ];
-    final advanced = [(PageId.cores, Icons.memory, 'Ядра'), (PageId.logs, Icons.notes, 'Журнал')];
     return Container(
-      width: 216,
+      width: 228,
       decoration: BoxDecoration(
         color: p.bg2,
         border: Border(right: BorderSide(color: p.border)),
       ),
-      padding: const EdgeInsets.fromLTRB(10, 16, 10, 14),
+      padding: const EdgeInsets.fromLTRB(12, 18, 12, 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
+            padding: const EdgeInsets.fromLTRB(6, 0, 6, 18),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                const FlutterLogo(size: 22),
-                const SizedBox(width: 9),
-                const Flexible(
-                  child: Text(
-                    'CoreShift',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, letterSpacing: .2),
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                const CoreShiftMark(size: 26),
+                const SizedBox(width: 10),
+                Flexible(
+                  child: Text('CoreShift', style: display(19, spacing: -.2), overflow: TextOverflow.ellipsis),
                 ),
-                const SizedBox(width: 5),
+                const SizedBox(width: 6),
                 Tooltip(
                   message: state.versionMismatch
                       ? 'Приложение ${state.version.label}, служба ${state.info.buildVersion.label}: версии различаются, переустановите CoreShift'
@@ -314,11 +292,15 @@ class _Sidebar extends StatelessWidget {
             ),
           ),
           _StatusPill(state: state),
-          const SizedBox(height: 14),
-          for (final (id, icon, label) in main) _NavItem(icon: icon, label: label, active: page == id, onTap: () => onPage(id)),
-          const Padding(padding: EdgeInsets.fromLTRB(12, 16, 12, 0), child: SectionLabel('Для опытных')),
-          for (final (id, icon, label) in advanced) _NavItem(icon: icon, label: label, active: page == id, onTap: () => onPage(id)),
+          const SizedBox(height: 18),
+          // The pages as stations on one line.
+          for (final (i, (id, icon, label)) in mainPages.indexed)
+            _NavItem(icon: icon, label: label, active: page == id, first: i == 0, last: i == mainPages.length - 1, onTap: () => onPage(id)),
           const Spacer(),
+          // The advanced pages, quiet at the bottom: they also open from
+          // the settings.
+          const Padding(padding: EdgeInsets.fromLTRB(8, 0, 8, 2), child: SectionLabel('Для опытных')),
+          for (final (id, icon, label) in advancedPages) _ToolLink(icon: icon, label: label, active: page == id, onTap: () => onPage(id)),
         ],
       ),
     );
@@ -345,39 +327,31 @@ class _StatusPill extends StatelessWidget {
     final active = state.status.active;
     final canToggle = state.online && (active || (state.selection.available && !state.busy));
     final server = cleanNodeName(active ? state.status.node : state.selection.name);
+    final on = st == ConnState.connected && state.online;
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 2),
-      padding: const EdgeInsets.fromLTRB(11, 6, 4, 6),
+      padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
       decoration: BoxDecoration(
         color: p.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: p.border),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: on ? okColor.withValues(alpha: .45) : p.border),
       ),
       child: Row(
         children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-              boxShadow: st == ConnState.connected && state.online ? [BoxShadow(color: okColor.withValues(alpha: .3), spreadRadius: 3)] : null,
-            ),
-          ),
-          const SizedBox(width: 8),
+          Lamp(color: color, lit: on || st == ConnState.connecting, size: 9),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   text,
-                  style: TextStyle(fontSize: 12, color: p.muted),
+                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: on ? okColor : p.text),
                   overflow: TextOverflow.ellipsis,
                 ),
                 if (state.online && server.isNotEmpty)
                   Text(
                     server,
-                    style: TextStyle(fontSize: 11, color: p.dim),
+                    style: TextStyle(fontSize: 11.5, color: p.muted),
                     overflow: TextOverflow.ellipsis,
                   ),
               ],
@@ -386,7 +360,7 @@ class _StatusPill extends StatelessWidget {
           IconButton(
             tooltip: active ? 'Отключить (Ctrl+Enter)' : 'Подключить (Ctrl+Enter)',
             onPressed: canToggle ? state.toggleConnect : null,
-            icon: Icon(Icons.power_settings_new, size: 18, color: active ? okColor : p.muted),
+            icon: Icon(Icons.power_settings_new, size: 18, color: active ? okColor : p.accentInk),
             visualDensity: VisualDensity.compact,
           ),
         ],
@@ -399,8 +373,10 @@ class _NavItem extends StatefulWidget {
   final IconData icon;
   final String label;
   final bool active;
+  final bool first;
+  final bool last;
   final VoidCallback onTap;
-  const _NavItem({required this.icon, required this.label, required this.active, required this.onTap});
+  const _NavItem({required this.icon, required this.label, required this.active, required this.onTap, this.first = false, this.last = false});
 
   @override
   State<_NavItem> createState() => _NavItemState();
@@ -419,39 +395,104 @@ class _NavItemState extends State<_NavItem> {
       onExit: (_) => setState(() => hover = false),
       child: GestureDetector(
         onTap: widget.onTap,
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Container(
-              margin: const EdgeInsets.only(bottom: 2),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-              decoration: BoxDecoration(color: widget.active ? p.surface2 : (hover ? p.surface : Colors.transparent), borderRadius: BorderRadius.circular(10)),
+        behavior: HitTestBehavior.opaque,
+        child: CustomPaint(
+          painter: _StationPainter(active: widget.active, first: widget.first, last: widget.last, line: p.border2, hollow: p.bg2, hover: hover),
+          child: Padding(
+            padding: const EdgeInsets.only(left: 30),
+            child: Container(
+              margin: const EdgeInsets.symmetric(vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: widget.active ? p.surface : (hover ? p.surface.withValues(alpha: .6) : Colors.transparent),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: widget.active ? p.border : Colors.transparent),
+              ),
               child: Row(
                 children: [
-                  Icon(widget.icon, size: 18, color: fg),
-                  const SizedBox(width: 12),
+                  Icon(widget.icon, size: 17, color: widget.active ? p.accentInk : fg),
+                  const SizedBox(width: 11),
                   Expanded(
                     child: Text(
                       widget.label,
-                      style: TextStyle(color: fg, fontWeight: FontWeight.w500),
+                      style: TextStyle(color: fg, fontWeight: widget.active ? FontWeight.w600 : FontWeight.w500),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ],
               ),
             ),
-            if (widget.active)
-              Positioned(
-                left: -10,
-                top: 9,
-                bottom: 11,
-                child: Container(
-                  width: 3,
-                  decoration: const BoxDecoration(
-                    color: accent,
-                    borderRadius: BorderRadius.horizontal(right: Radius.circular(3)),
-                  ),
-                ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A page's station on the sidebar's line: a hollow ring, the current page
+/// a lit amber one.
+class _StationPainter extends CustomPainter {
+  final bool active, first, last, hover;
+  final Color line, hollow;
+  _StationPainter({required this.active, required this.first, required this.last, required this.line, required this.hollow, required this.hover});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const x = 12.0;
+    final y = size.height / 2;
+    final track = Paint()
+      ..color = line
+      ..strokeWidth = 2;
+    canvas.drawLine(Offset(x, first ? y : 0), Offset(x, last ? y : size.height), track);
+    if (active) {
+      canvas.drawCircle(Offset(x, y), 10, Paint()..color = accent.withValues(alpha: .18));
+      canvas.drawCircle(Offset(x, y), 6, Paint()..color = accent);
+      return;
+    }
+    canvas.drawCircle(Offset(x, y), 5, Paint()..color = hollow);
+    canvas.drawCircle(
+      Offset(x, y),
+      5,
+      Paint()
+        ..color = hover ? accent : line
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_StationPainter old) => old.active != active || old.hover != hover || old.line != line || old.hollow != hollow;
+}
+
+/// An advanced page in the sidebar's footer: a small line of text.
+class _ToolLink extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+  const _ToolLink({required this.icon, required this.label, required this.active, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    final fg = active ? p.text : p.muted;
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+        decoration: BoxDecoration(color: active ? p.surface : Colors.transparent, borderRadius: BorderRadius.circular(8)),
+        child: Row(
+          children: [
+            Icon(icon, size: 16, color: active ? p.accentInk : p.dim),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(fontSize: 13, color: fg, fontWeight: active ? FontWeight.w600 : FontWeight.w500),
+                overflow: TextOverflow.ellipsis,
               ),
+            ),
           ],
         ),
       ),
@@ -509,7 +550,7 @@ class _OfflineState extends State<_Offline> {
                           : state.daemonStarting
                           ? 'Запуск службы…'
                           : 'Подключение к службе…',
-                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+                      style: dialogTitle,
                     ),
                   ),
                 ],
@@ -631,7 +672,7 @@ class _Toasts extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
                   decoration: BoxDecoration(
                     color: p.surface2,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(10),
                     border: Border.all(
                       color: switch (t.kind) {
                         ToastKind.swap => swapColor.withValues(alpha: .5),

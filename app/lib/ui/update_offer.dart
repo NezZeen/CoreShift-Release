@@ -30,9 +30,7 @@ Future<void> showUpdateOffer(BuildContext context, AppState state) {
                 children: [
                   const Icon(Icons.system_update_alt, color: okColor),
                   const SizedBox(width: 10),
-                  const Expanded(
-                    child: Text('Доступно обновление', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
-                  ),
+                  Expanded(child: Text('Доступно обновление', style: dialogTitle)),
                 ],
               ),
               const SizedBox(height: 12),
