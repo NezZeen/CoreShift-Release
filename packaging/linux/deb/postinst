@@ -1,0 +1,9 @@
+#!/bin/sh
+# The coreshift package: the group, the data directory and the service.
+set -e
+case "$1" in
+configure)
+	/opt/coreshift/coreshift-setup.sh configure
+	;;
+esac
+exit 0

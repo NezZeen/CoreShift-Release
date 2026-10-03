@@ -12,7 +12,9 @@
 //	coreshiftd vpn [flags] <file|->           full VPN (TUN + DNS guard) in the foreground
 //	coreshiftd serve [flags]                  the daemon with its UI API, in the foreground;
 //	                                          settings and subscriptions live in its store
-//	coreshiftd service {install|uninstall|start|stop|run}   the Windows service
+//	coreshiftd service {install|uninstall|start|stop|run}   the Windows service;
+//	                                          on Linux {run|start|stop|status}, under systemd
+//	coreshiftd cores fetch -dir DIR           download the latest cores for this platform (builds)
 //	coreshiftd update check [-source github:OWNER/REPO|DIR] [-download DIR]
 //	                                          find and verify the latest release of
 //	                                          CoreShift, without installing it
@@ -66,6 +68,8 @@ func main() {
 		err = runService(ctx, os.Args[2:])
 	case "update":
 		err = runUpdate(ctx, os.Args[2:])
+	case "cores":
+		err = runCores(ctx, os.Args[2:])
 	case "version", "-v", "--version":
 		fmt.Println("coreshiftd", service.VersionString())
 	default:
@@ -86,6 +90,7 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "       coreshiftd vpn [flags] <file|->")
 	fmt.Fprintln(os.Stderr, "       coreshiftd serve [flags]")
 	fmt.Fprintln(os.Stderr, "       coreshiftd service {install|uninstall|start|stop|run}")
+	fmt.Fprintln(os.Stderr, "       coreshiftd cores fetch -dir DIR [-only xray,sing-box,mihomo]")
 	fmt.Fprintln(os.Stderr, "       coreshiftd version")
 	os.Exit(2)
 }
