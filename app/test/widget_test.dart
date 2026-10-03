@@ -1372,7 +1372,7 @@ void main() {
     }
     // The demo's earlier session: a switch of cores and an error.
     expect(find.textContaining('Xray-core → sing-box'), findsOneWidget);
-    // The cores' own output is in the copy, not on the page.
+    // The cores' own output is kept for a search, not shown on the page.
     expect(find.text('Xray 26.3.27 started'), findsNothing);
     expect(state.logs.any((l) => l.message == 'Xray 26.3.27 started'), isTrue);
     await tester.tap(find.text('Ошибки'));
