@@ -112,3 +112,21 @@ func (s *Service) WaitAppGone(ctx context.Context, first, grace time.Duration) b
 		}
 	}
 }
+
+// WaitAppAttached returns true once an app is attached, at once if one is;
+// false when ctx ends first. The Linux daemon runs from boot and follows
+// the app with it: it connects when the app comes and disconnects when it
+// goes, rather than starting and stopping with it as on Windows.
+func (s *Service) WaitAppAttached(ctx context.Context) bool {
+	for {
+		n, _, changed := s.apps.state()
+		if n > 0 {
+			return true
+		}
+		select {
+		case <-changed:
+		case <-ctx.Done():
+			return false
+		}
+	}
+}

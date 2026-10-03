@@ -68,3 +68,33 @@ func TestAppWatchEndsWithContext(t *testing.T) {
 		t.Fatal("WaitAppGone = true after cancel")
 	}
 }
+
+func TestWaitAppAttached(t *testing.T) {
+	s := &Service{}
+	ch := make(chan bool, 1)
+	go func() { ch <- s.WaitAppAttached(context.Background()) }()
+	select {
+	case <-ch:
+		t.Fatal("attached before any app came")
+	case <-time.After(100 * time.Millisecond):
+	}
+	detach := s.AttachApp()
+	select {
+	case ok := <-ch:
+		if !ok {
+			t.Fatal("WaitAppAttached = false")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the app attached, yet still waiting")
+	}
+	// Already attached: at once.
+	if !s.WaitAppAttached(context.Background()) {
+		t.Fatal("WaitAppAttached = false while attached")
+	}
+	detach()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if s.WaitAppAttached(ctx) {
+		t.Fatal("WaitAppAttached = true after cancel with no app")
+	}
+}

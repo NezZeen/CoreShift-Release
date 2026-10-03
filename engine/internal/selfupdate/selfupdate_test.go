@@ -161,8 +161,16 @@ func TestPlatformManifests(t *testing.T) {
 	if _, err := Check(context.Background(), http.DefaultClient, Source{Dir: dir}, ManifestFor("windows"), []string{k.pub}); err == nil {
 		t.Error("windows accepted an APK")
 	}
-	if ManifestFor("windows") != ManifestName || ManifestFor("linux") != ManifestName {
-		t.Error("desktop manifest name changed: installed copies would stop seeing releases")
+	if ManifestFor("windows") != ManifestName {
+		t.Error("Windows manifest name changed: installed copies would stop seeing releases")
+	}
+	// Linux updates with its package: it must never take the Windows
+	// installer, nor the APK.
+	if ManifestFor("linux") == ManifestName || installerExt(ManifestFor("linux")) == ".exe" {
+		t.Error("Linux reads the Windows manifest")
+	}
+	if _, err := Check(context.Background(), http.DefaultClient, Source{Dir: dir}, ManifestFor("linux"), []string{k.pub}); err == nil {
+		t.Error("linux accepted a release without its manifest")
 	}
 }
 
