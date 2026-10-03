@@ -134,6 +134,7 @@ type Config struct {
 	lookup       func(ctx context.Context, host string, server netip.AddrPort) (netip.Addr, error)
 	fetchRuleSet func(ctx context.Context, url string, proxy *url.URL) ([]byte, error)
 	hostIPv6     func() bool
+	ipv6Off      func() bool // the system refuses IPv6 on new interfaces
 	physical     func() (ping.Bind, error)
 	icmpPing     func(ctx context.Context, ip netip.Addr, b ping.Bind) (time.Duration, error)
 	tcpPing      func(ctx context.Context, ap netip.AddrPort, b ping.Bind) (time.Duration, error)

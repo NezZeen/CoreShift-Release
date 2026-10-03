@@ -122,6 +122,9 @@ type serveOptions struct {
 	// so that "Автозапуск" connects at sign-in as on Windows). The VPN
 	// stays up when the app is closed, until the user turns it off.
 	connectWithApp bool
+	// resumeFile, when set, carries a connection across a restart of the
+	// service (resume.go).
+	resumeFile string
 }
 
 func serveWith(ctx context.Context, cfg service.Config, apiAddr string, log io.Writer, o serveOptions) error {
@@ -192,6 +195,14 @@ func serveWith(ctx context.Context, cfg service.Config, apiAddr string, log io.W
 	}
 	go st.RunUpdater(ctx, time.Minute)
 	go svc.RunAppUpdates(ctx)
+	if o.resumeFile != "" && takeResume(o.resumeFile, bootID(), time.Now()) {
+		fmt.Fprintln(log, "the VPN was on when the service stopped: connecting again")
+		go func() {
+			if err := svc.Resume(ctx); err != nil && ctx.Err() == nil {
+				fmt.Fprintln(log, "resume:", err)
+			}
+		}()
+	}
 	if o.connectWithApp {
 		go autoConnectWithApp(ctx, svc, log)
 	} else {
@@ -204,6 +215,11 @@ func serveWith(ctx context.Context, cfg service.Config, apiAddr string, log io.W
 
 	<-ctx.Done()
 	fmt.Fprintln(log, "shutting down")
+	if o.resumeFile != "" && svc.Status().State == service.Connected {
+		if err := writeResume(o.resumeFile, bootID()); err != nil {
+			fmt.Fprintln(log, "warning: remember the connection for the restart:", err)
+		}
+	}
 	svc.Disconnect()
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()

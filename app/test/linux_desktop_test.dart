@@ -25,6 +25,9 @@ void main() {
     expect(e, startsWith('[Desktop Entry]\n'));
     expect(e, contains('\nExec=/opt/coreshift/coreshift --tray\n'));
     expect(e, contains('\nType=Application\n'));
+    // Skipped by the session once the package is removed.
+    expect(e, contains('\nTryExec=/opt/coreshift/coreshift\n'));
+    expect(autostartEntry('/home/me/My Apps/coreshift'), contains('\nTryExec=/home/me/My Apps/coreshift\n'));
   });
 
   test('an AppImage starts from its own file', () {
