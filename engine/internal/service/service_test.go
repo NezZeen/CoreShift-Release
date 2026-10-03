@@ -579,6 +579,24 @@ func TestIPv6Tunnel(t *testing.T) {
 	}
 }
 
+// With IPv6 switched off in the system (Linux: disable_ipv6), the TUN
+// interface cannot take an IPv6 address, so the tunnel is IPv4-only even
+// with the setting on.
+func TestIPv6TunnelSystemOff(t *testing.T) {
+	h := newHarness(t, func(c *Config) {
+		c.IPv6 = true
+		c.ipv6Off = func() bool { return true }
+	})
+	if err := h.connect(t, trojanLink); err != nil {
+		t.Fatal(err)
+	}
+	h.tun.mu.Lock()
+	defer h.tun.mu.Unlock()
+	if h.tun.opts.Address6.IsValid() {
+		t.Errorf("IPv6 off in the system, yet the tunnel got %v", h.tun.opts.Address6)
+	}
+}
+
 func TestTrafficEvents(t *testing.T) {
 	h := newHarness(t, nil)
 	// Xray cannot run hy2Link, sing-box can; the fake core answers its Clash API.
