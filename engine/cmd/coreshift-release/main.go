@@ -129,8 +129,13 @@ func manifest(args []string) error {
 		return err
 	}
 	name := selfupdate.ManifestFor("windows")
-	if filepath.Ext(*installer) == ".apk" {
+	switch filepath.Ext(*installer) {
+	case ".apk":
 		name = selfupdate.ManifestFor("android")
+	case ".deb":
+		// Linux: announced, not installed; the .deb is the package the
+		// other formats are built with.
+		name = selfupdate.ManifestFor("linux")
 	}
 	if err := os.WriteFile(filepath.Join(*out, name), body, 0o644); err != nil {
 		return err

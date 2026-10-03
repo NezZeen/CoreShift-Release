@@ -12,6 +12,8 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"regexp"
+	"runtime"
 	"strings"
 	"time"
 
@@ -156,17 +158,34 @@ func isURL(s string) bool {
 }
 
 // findCores looks for core executables under dir, as unpacked from releases.
-func findCores(dir string) (map[core.Kind]string, error) {
+func findCores(dir string) (map[core.Kind]string, error) { return findCoresFor(dir, runtime.GOOS) }
+
+// platformDir matches the folders that hold another platform's cores
+// beside these, as engine/testdata/bin does: android-arm64, linux-amd64.
+var platformDir = regexp.MustCompile(`^(android|linux|windows|darwin)-[a-z0-9_]+$`)
+
+// findCoresFor is findCores for the executables of goos: .exe files on
+// Windows, files without an extension elsewhere.
+func findCoresFor(dir, goos string) (map[core.Kind]string, error) {
 	bins := map[core.Kind]string{}
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
+		if err != nil {
 			return err
+		}
+		if d.IsDir() {
+			if path != dir && platformDir.MatchString(strings.ToLower(d.Name())) {
+				return filepath.SkipDir
+			}
+			return nil
 		}
 		lower := strings.ToLower(d.Name())
 		if strings.HasSuffix(lower, ".old") || strings.HasSuffix(lower, ".failed") || strings.HasPrefix(lower, ".") {
 			return nil // left over from a core update
 		}
-		name := strings.TrimSuffix(lower, ".exe")
+		name, exe := strings.CutSuffix(lower, ".exe")
+		if exe != (goos == "windows") {
+			return nil // another platform's
+		}
 		switch {
 		case name == "xray":
 			bins[core.Xray] = path

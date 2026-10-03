@@ -83,7 +83,26 @@ powershell -ExecutionPolicy Bypass -File packaging\publish.ps1 -Version 0.3.0
 
 `release.ps1` собирает установщик для Windows и APK для Android и кладёт в `dist\release\0.3.0\` по три файла на систему: установщик, `latest.json` и `latest.json.sig`, а для Android — APK, `latest-android.json` и `latest-android.json.sig`. `publish.ps1` создаёт из них релиз `v0.3.0` в `coreshift-releases`.
 
-Выпустить версию только для одной системы: `release.ps1 -Version 0.3.0 -Platform windows` (или `android`). Каждая система берёт самый свежий релиз, в котором есть её файл, поэтому релиз только для ПК не мешает телефонам обновляться до своей последней версии, и наоборот.
+Выпустить версию только для одной системы: `release.ps1 -Version 0.3.0 -Platform windows` (или `android`, или `linux`). Каждая система берёт самый свежий релиз, в котором есть её файл, поэтому релиз только для ПК не мешает телефонам обновляться до своей последней версии, и наоборот.
+
+### Linux в релизе
+
+`release.ps1` собирает и Linux-пакеты (amd64). Это делает `packaging\linux\build-wsl.ps1` в WSL-дистрибутиве `Ubuntu-24.04`: он клонирует помеченный тегом коммит в файловую систему Linux и запускает там `packaging/linux/build.sh`. Если WSL или дистрибутива нет, `release.ps1` останавливается ещё до коммита и тега; выпустить версию без Linux можно с `-NoLinux`. Ядра берутся из `engine\testdata\bin\linux-amd64`, а если их там нет — из `/root/coreshift-cores/linux-amd64` внутри WSL. При первом запуске туда скачиваются последние релизы; чтобы взять более новые, удалите эту папку.
+
+В `dist\release\<версия>\` пакеты кладутся под постоянными именами, на них ссылается README публичного репозитория:
+
+| Файл сборки (`dist\linux\<версия>\`) | Имя в релизе | Для чего |
+| --- | --- | --- |
+| `coreshift_<версия>_amd64.deb` | `CoreShift-amd64.deb` | Debian, Ubuntu, Mint, Pop!_OS |
+| `coreshift-<версия>-1.x86_64.rpm` | `CoreShift-x86_64.rpm` | Fedora, RHEL/Alma/Rocky, openSUSE |
+| `coreshift-<версия>-1-x86_64.pkg.tar.zst` | `CoreShift-x86_64.pkg.tar.zst` | Arch, Manjaro, EndeavourOS |
+| `coreshift-<версия>-linux-amd64.tar.gz` | `CoreShift-linux-amd64.tar.gz` | остальные, OpenRC и runit (`install.sh`) |
+
+Рядом лежат `latest-linux.json` и `latest-linux.json.sig`: манифест подписан тем же ключом, что Windows и Android, и называет `CoreShift-amd64.deb`. `publish.ps1` выкладывает всё это вместе с файлами Windows и Android в `coreshift-releases`.
+
+Linux сам ничего не устанавливает: он только сообщает о новой версии. Токена в Linux-сборке нет, поэтому манифест служба читает из **публичного** `NezZeen/CoreShift-Release` (`github-public:NezZeen/CoreShift-Release`, источник меняется настройкой `app_update.source`). Значит, в релиз `v<версия>` публичного репозитория нужно положить шесть файлов: четыре пакета под постоянными именами, `latest-linux.json` и `latest-linux.json.sig`. Это можно сделать вручную или командой `publish.ps1 -Version <версия> -Repo NezZeen/CoreShift-Release`. Служба проверяет подпись манифеста и размер `.deb` в том же релизе. Страница, которая открывается по кнопке «Скачать», — страница этого релиза.
+
+Что увидит Linux (ничего не устанавливает): `coreshiftd update check -platform linux`.
 
 Проверить, что увидят установленные копии (ничего не устанавливает):
 

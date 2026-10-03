@@ -13,6 +13,8 @@ Future<void> savePrefs(Map<String, dynamic> prefs) async {}
 
 bool get canStartService => false;
 
+bool daemonAccessDenied(String reason) => false;
+
 bool Function()? get daemonStarter => null;
 
 bool Function(bool on)? get autostartSetter => null;
@@ -25,6 +27,10 @@ Future<List<Map<String, dynamic>>> dnsLeakTest() async => throw UnsupportedError
 String get osDescription => 'браузер (демо)';
 
 bool get isAndroid => false;
+
+bool get isLinux => false;
+
+bool get isWindows => false;
 
 Future<void> initPlatform() async {}
 

@@ -1,0 +1,18 @@
+[Desktop Entry]
+Type=Application
+Name=CoreShift
+GenericName=VPN Client
+GenericName[ru]=VPN-клиент
+Comment=VPN client for subscriptions that switches proxy cores by itself
+Comment[ru]=VPN-клиент для подписок с автоматическим переключением ядер
+Exec=@BINDIR@/coreshift %u
+Icon=coreshift
+Terminal=false
+Categories=Network;
+Keywords=VPN;Proxy;VLESS;Xray;sing-box;mihomo;
+# A panel's "add to app" button opens coreshift://… links; a second start
+# hands them to the running CoreShift.
+MimeType=x-scheme-handler/coreshift;
+StartupWMClass=dev.coreshift.coreshift
+StartupNotify=true
+SingleMainWindow=true

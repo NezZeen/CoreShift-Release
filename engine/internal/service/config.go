@@ -92,6 +92,14 @@ type Config struct {
 	// SelfUpdate lets the service update CoreShift: only the installed
 	// service of a release build may run an installer over itself.
 	SelfUpdate bool
+	// SelfUpdateOff, with SelfUpdate false, says why, for the UI: Linux
+	// leaves updates to its package manager. Empty means a development
+	// build.
+	SelfUpdateOff string
+	// AnnounceUpdates, with SelfUpdate false, still looks for new releases
+	// and reports them (UpdateAvailable) without downloading anything:
+	// Linux, where the package manager installs them.
+	AnnounceUpdates bool
 	// InstallUpdate, if set, hands a verified update to the system's
 	// installer, which asks the user (Android): nothing installs by
 	// itself, and an update the user declined is offered again.
@@ -126,6 +134,7 @@ type Config struct {
 	lookup       func(ctx context.Context, host string, server netip.AddrPort) (netip.Addr, error)
 	fetchRuleSet func(ctx context.Context, url string, proxy *url.URL) ([]byte, error)
 	hostIPv6     func() bool
+	ipv6Off      func() bool // the system refuses IPv6 on new interfaces
 	physical     func() (ping.Bind, error)
 	icmpPing     func(ctx context.Context, ip netip.Addr, b ping.Bind) (time.Duration, error)
 	tcpPing      func(ctx context.Context, ap netip.AddrPort, b ping.Bind) (time.Duration, error)
