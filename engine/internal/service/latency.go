@@ -19,6 +19,10 @@ import (
 // through a subscription quickly, few enough not to look like a flood.
 const latencyConcurrency = 6
 
+// lookupConcurrency bounds the name lookups, and the goroutines, of one
+// latency test: a subscription may list thousands of servers.
+const lookupConcurrency = 32
+
 // ErrTestRunning means a latency test is already in progress.
 var ErrTestRunning = errors.New("a latency test is already running")
 
@@ -68,9 +72,10 @@ func (s *Service) TestLatency(ctx context.Context, subID string) ([]NodeLatency,
 		if subID != "" && sub.ID != subID {
 			continue
 		}
-		for _, n := range sub.Nodes {
+		fps := sub.Fingerprints()
+		for i, n := range sub.Nodes {
 			nodes = append(nodes, n)
-			refs = append(refs, ref{sub.ID, n.Fingerprint()})
+			refs = append(refs, ref{sub.ID, fps[i]})
 		}
 	}
 	if subID != "" && len(refs) == 0 {
@@ -244,10 +249,19 @@ func (s *Service) pingLatency(ctx context.Context, nodes []node.Node, report fun
 	var failed []int
 	errs := map[int]error{}
 	var wg sync.WaitGroup
+	workers := make(chan struct{}, lookupConcurrency)
 	for i := range nodes {
+		select {
+		case workers <- struct{}{}:
+		case <-ctx.Done():
+			// Not started: reported as cancelled, like the rest.
+			report(i, NodeLatency{Error: ctx.Err().Error()})
+			continue
+		}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			defer func() { <-workers }()
 			n := &nodes[i]
 			retry := func(err error) {
 				mu.Lock()
@@ -317,18 +331,29 @@ func checkPing(ip netip.Addr) func(time.Duration, error) (time.Duration, error) 
 // left to the core.
 func (s *Service) resolveServers(ctx context.Context, nodes []node.Node) []string {
 	var names []string
+	seen := map[string]bool{}
 	for _, n := range nodes {
-		if !slices.Contains(names, n.Server) {
+		if !seen[n.Server] {
+			seen[n.Server] = true
 			names = append(names, n.Server)
 		}
 	}
 	hosts := map[string]string{}
 	var mu sync.Mutex
 	var wg sync.WaitGroup
+	workers := make(chan struct{}, lookupConcurrency)
 	for _, host := range names {
+		select {
+		case workers <- struct{}{}:
+		case <-ctx.Done():
+		}
+		if ctx.Err() != nil {
+			break // left to the cores, which are cancelled too
+		}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			defer func() { <-workers }()
 			ip, err := s.serverAddr(ctx, host)
 			if err != nil || ip.String() == host {
 				return
