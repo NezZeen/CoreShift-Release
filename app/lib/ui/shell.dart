@@ -18,10 +18,11 @@ import 'theme.dart';
 import 'update_offer.dart';
 import 'widgets.dart';
 
-/// The pages. Six are stations on the main line: connecting, the
-/// servers, what goes through the VPN, checking that it works, the journal
-/// and the settings. The cores hang off the settings.
-enum PageId { home, servers, routing, checks, logs, settings, cores }
+/// The pages. Five are stations on the main line: connecting (with the
+/// speed test and the traffic), the servers, what goes through the VPN,
+/// the journal and the settings (with the DNS leak test). The cores hang
+/// off the settings.
+enum PageId { home, servers, routing, logs, settings, cores }
 
 /// The main page a page belongs to: the one lit in the navigation.
 PageId stationOf(PageId p) => switch (p) {
@@ -34,7 +35,6 @@ const mainPages = [
   (PageId.home, Icons.power_settings_new, 'Главная'),
   (PageId.servers, Icons.public, 'Серверы'),
   (PageId.routing, Icons.alt_route, 'Правила'),
-  (PageId.checks, Icons.speed, 'Проверка'),
   (PageId.logs, Icons.receipt_long_outlined, 'Журнал'),
   (PageId.settings, Icons.tune, 'Настройки'),
 ];
@@ -166,7 +166,6 @@ class _ShellState extends State<Shell> {
             ? _Offline(state: s)
             : switch (page) {
                 PageId.home => HomePage(state: s),
-                PageId.checks => ChecksPage(state: s),
                 PageId.servers => ServersPage(state: s, searchFocus: _serverSearch),
                 PageId.cores => CoresPage(state: s),
                 PageId.routing => RoutingPage(state: s),
@@ -231,7 +230,7 @@ class _ShellState extends State<Shell> {
   }
 }
 
-/// The phone's navigation: the six main pages. On the cores the settings
+/// The phone's navigation: the five main pages. On the cores the settings
 /// stay lit.
 class _BottomNav extends StatelessWidget {
   final AppState state;

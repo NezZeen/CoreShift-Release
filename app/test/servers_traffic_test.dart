@@ -210,12 +210,12 @@ void main() {
       await tester.pump(const Duration(seconds: 30));
     });
 
-    testWidgets('«Проверка» shows the traffic${isPhone ? ' on a phone' : ''}', (tester) async {
+    testWidgets('the home page shows the traffic${isPhone ? ' on a phone' : ''}', (tester) async {
       final state = await pumpApp(tester, size: isPhone ? phone : const Size(1400, 900));
-      await tester.tap(navTo('Проверка', phone: isPhone));
       await settle(tester);
       expect(state.statsLoaded, isTrue);
       expect(state.stats.length, 30);
+      // One line on the home page; the week's bars behind «Подробнее».
       expect(find.text('Трафик'), findsOneWidget);
       await tester.ensureVisible(find.text('Подробнее'));
       await tester.tap(find.text('Подробнее'));
@@ -232,8 +232,8 @@ void main() {
       final caption = find.descendant(of: find.byType(isPhone ? BottomSheet : Dialog), matching: find.textContaining('Сегодня:'));
       await tester.tapAt(tester.getTopLeft(caption) + const Offset(6, -50));
       await tester.pump();
-      // The picked day is named; the card's own chart still says "Сегодня".
-      expect(find.textContaining('Сегодня:'), findsOneWidget);
+      // The picked day is named instead of «Сегодня».
+      expect(find.textContaining('Сегодня:'), findsNothing);
       expect(tester.takeException(), isNull);
       await tester.pump(const Duration(seconds: 6));
     });

@@ -1,7 +1,7 @@
 part of '../home_page.dart';
 
-/// The home page on a phone: the button, the way the traffic takes, and
-/// while connected the speed. Tests and statistics are on «Проверка».
+/// The home page on a phone: the button, the way the traffic takes, while
+/// connected the speed, and the speed test and traffic a line each.
 class _CompactHome extends StatelessWidget {
   final AppState state;
   const _CompactHome({required this.state});
@@ -20,6 +20,8 @@ class _CompactHome extends StatelessWidget {
         _BackupBanner(state: state, below: true),
         _Route(state: state),
         if (st.state == ConnState.connected) ...[const SizedBox(height: 10), _CompactSpeed(state: state)],
+        const SizedBox(height: 10),
+        _HomeTools(state: state),
       ],
     );
   }
