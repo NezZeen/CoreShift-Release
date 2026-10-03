@@ -223,24 +223,25 @@ extension AppStateActions on AppState {
   }
 
   /// Asks the daemon for the latest release of each core. Nothing is told:
-  /// what is found is installed by [installCoreUpdates], and a check that
-  /// fails, often only for want of a network, goes to the journal.
-  Future<void> checkCoreUpdates() async {
+  /// what is found is installed by [installCoreUpdates]. Returns the
+  /// service's error for each core whose check failed, often only for want
+  /// of a network, or for '' when the service could not be asked; the
+  /// automatic check decides whether the journal hears of it.
+  Future<Map<String, String>> checkCoreUpdates() async {
     checkingUpdates = true;
     _notify();
     try {
       final found = [for (final u in await backend.call('GET', '/v1/cores/updates') as List) CoreUpdate.fromJson((u as Map).cast())];
       // A core updated meanwhile keeps what its update said.
       if (updatingCore.isEmpty) coreUpdates = found;
-      for (final u in found.where((u) => u.error.isNotEmpty)) {
-        _log(DateTime.now(), u.kind, 'не удалось узнать о новой версии: ${humanError(u.error)}', LogLevel.warn);
-      }
+      return {for (final u in found.where((u) => u.error.isNotEmpty)) u.kind: u.error};
     } catch (e) {
-      _log(DateTime.now(), 'ядра', 'не удалось узнать о новых версиях: ${humanError('$e')}', LogLevel.warn);
       if (e is DaemonOffline) _lost(e);
+      return {'': '$e'};
+    } finally {
+      checkingUpdates = false;
+      _notify();
     }
-    checkingUpdates = false;
-    _notify();
   }
 
   CoreUpdate? updateOf(String kind) => coreUpdates.where((u) => u.kind == kind).firstOrNull;
