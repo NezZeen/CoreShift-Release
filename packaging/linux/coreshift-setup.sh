@@ -167,6 +167,9 @@ stop() {
 		[ -n "$d" ] && rm -f "$d/coreshift"
 		;;
 	esac
+	# Stopping while connected leaves a note to connect again after a
+	# restart (an upgrade); a removed package must not.
+	rm -f "$DATA/resume"
 }
 
 purge() {
