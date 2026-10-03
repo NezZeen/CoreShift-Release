@@ -1058,6 +1058,24 @@ void main() {
     }
   });
 
+  testWidgets('a plain http subscription is added with a warning on the desktop and the phone', (tester) async {
+    for (final size in [const Size(1400, 900), const Size(390, 844)]) {
+      final state = await pumpApp(tester, size: size);
+      final added = state.addSubscription(source: 'http://panel.example.org/sub/AbCdEf1234567890');
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 200));
+      }
+      expect(await added, isNull, reason: '$size');
+      expect(state.toasts.map((t) => t.message), contains(insecureLinkWarning), reason: '$size');
+      expect(find.text(insecureLinkWarning), findsOneWidget, reason: '$size');
+      expect(tester.takeException(), isNull, reason: '$size');
+      // The same link again, as the daemon lists it without the token.
+      state.offerImport('http://panel.example.org/sub/AbCdEf1234567890', ImportFrom.link);
+      expect(state.pendingImport, isNull);
+      await tester.pump(const Duration(seconds: 30));
+    }
+  });
+
   testWidgets('subscriptions fold away in the server list and stay folded', (tester) async {
     for (final size in [const Size(1400, 900), const Size(390, 844)]) {
       final state = await pumpApp(tester, size: size);
