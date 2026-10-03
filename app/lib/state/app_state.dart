@@ -51,8 +51,15 @@ class AppState extends ChangeNotifier {
 
   /// The connection is up, but the server does not answer: the check through
   /// the core in use keeps failing (when others did no better, the engine
-  /// leaves the connection as it is, see the "no-better" event).
-  bool get serverUnresponsive => status.state == ConnState.connected && (_healthStreak[status.core] ?? 0) >= 2;
+  /// leaves the connection as it is, see the "no-better" event), or the
+  /// engine found the server or the network at fault ([serverProblem]).
+  bool get serverUnresponsive => status.state == ConnState.connected && ((_healthStreak[status.core] ?? 0) >= 2 || serverProblem.isNotEmpty);
+
+  /// Who is at fault while nothing gets through, as the engine found it
+  /// (see [Status.problem]); from its "server" event, or from the status
+  /// when the app opens later. Empty otherwise.
+  String get serverProblem => status.state == ConnState.connected ? (_serverProblem ?? status.problem) : '';
+  String? _serverProblem;
 
   /// Feeds an event as if the service had sent it, for tests.
   @visibleForTesting
@@ -484,6 +491,7 @@ class AppState extends ChangeNotifier {
           _healthFailing.clear();
           _healthStreak.clear();
         }
+        if (e.state != 'connected') _serverProblem = null;
         _log(
           e.time,
           'служба',
@@ -521,15 +529,15 @@ class AppState extends ChangeNotifier {
         }
         _statusSoon();
       case 'no-better':
-        _log(e.time, e.core, 'ни одно ядро не проходит проверку связи, подключение остаётся на ${coreName(e.core)}', LogLevel.warn);
-        // In an automatic selection the next server is tried, and its event speaks.
-        if (live && !autoSwitching) {
-          toast('Проверка связи не проходит ни через одно ядро. VPN остаётся включённым: возможно, дело в сети', ToastKind.info);
-        }
+        // The engine now looks whether the server or the network is at
+        // fault, and its "server" event says which.
+        _log(e.time, e.core, 'ни одно ядро не проходит проверку связи, проверяю сервер и сеть напрямую', LogLevel.warn);
+      case 'server':
+        _onServerEvent(e, live);
       case 'failover':
         if (e.error.isNotEmpty) {
           _log(e.time, 'автопереход', 'ни один другой сервер подписки не отвечает', LogLevel.err);
-          if (live) toast('Ни один сервер подписки не отвечает: возможно, дело в сети', ToastKind.err);
+          if (live) toast('Ни один другой сервер подписки не отвечает', ToastKind.err);
         } else {
           _log(e.time, 'автопереход', 'сервер «${e.from}» не отвечает, подключаюсь к «${e.line}»', LogLevel.swap);
           if (live) {
@@ -563,6 +571,10 @@ class AppState extends ChangeNotifier {
         _log(e.time, e.source, e.line, LogLevel.info, output: true);
       case 'app-update':
         _onAppUpdate(e, live);
+      case 'tun' when e.reason == 'retry':
+        // The failed attempt's own FATAL line is in the journal just above:
+        // this one says the next attempt follows.
+        _log(e.time, 'TUN', 'интерфейс не поднялся: Windows ещё убирает прежний адаптер; повтор через ${e.line}. Причина: ${e.error}', LogLevel.warn);
       case 'tun':
       case 'dns':
         _log(e.time, e.kind.toUpperCase(), e.error.isNotEmpty ? e.error : _layerText(e.kind, e.reason), e.error.isNotEmpty ? LogLevel.warn : LogLevel.info);
@@ -607,6 +619,42 @@ class AppState extends ChangeNotifier {
           _log(e.time, 'правила', '${e.reason}: ${e.line == 'updated' ? 'обновлена' : 'загружена'}', LogLevel.info);
         }
     }
+  }
+
+  /// What the engine found when nothing got through: who is at fault
+  /// (reason, see [Status.problem]), or that the server answers again.
+  void _onServerEvent(Event e, bool live) {
+    if (e.reason == 'ok') {
+      _serverProblem = null;
+      _log(e.time, 'сервер', 'сервер «${e.from}» снова отвечает', LogLevel.ok);
+      _notify();
+      return;
+    }
+    _serverProblem = e.reason;
+    final (title, body) = serverProblemText(e.reason, e.from);
+    _log(e.time, 'сервер', '$title${e.line.isEmpty ? '' : ' (${e.line})'}', LogLevel.err);
+    if (live) {
+      toast(title, ToastKind.err);
+      // Out of the window's sight: the desktop's tray, the phone's
+      // notification, which opens the app where the banner offers the way out.
+      _alerts.add(Alert(title, body));
+      platform.notify(title, body);
+    }
+    _notify();
+  }
+
+  /// The heading and the advice for a [Status.problem] of server [name].
+  static (String, String) serverProblemText(String problem, String name) {
+    final server = name.isEmpty ? 'Сервер' : 'Сервер «$name»';
+    return switch (problem) {
+      'server-down' => ('$server не отвечает', 'Интернет работает, а сервер нет: он выключен или заблокирован. Выберите другой сервер.'),
+      'offline' => ('Нет связи с интернетом', 'Не отвечают ни сервер, ни известные сайты: дело в сети, а не в VPN. Проверьте Wi-Fi или мобильный интернет.'),
+      'server-up' => (
+        name.isEmpty ? 'VPN через сервер не работает' : 'VPN через «$name» не работает',
+        'Сервер на связи, но соединение через него не проходит: его блокируют или изменились его настройки. Обновите подписку или выберите другой сервер.',
+      ),
+      _ => ('$server не отвечает', 'Связь через него не проходит: он недоступен или заблокирован. Выберите другой сервер или переподключитесь.'),
+    };
   }
 
   /// Adds a line to the journal. The output of cores and of the TUN layer

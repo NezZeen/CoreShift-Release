@@ -838,7 +838,7 @@ void main() {
         await Future.delayed(const Duration(milliseconds: 2300));
       });
       await tester.pump();
-      const warning = 'Сервер не отвечает';
+      const warning = 'не отвечает';
       Event check(String error) => Event(time: DateTime.now(), kind: 'health', core: state.status.core, error: error);
       expect(state.status.core, isNotEmpty);
       expect(find.textContaining(warning), findsNothing, reason: 'working at $size');
@@ -868,6 +868,64 @@ void main() {
       expect(state.serverUnresponsive, isFalse);
       expect(find.textContaining(warning), findsNothing, reason: 'disconnected at $size');
     }
+    await tester.pump(const Duration(seconds: 6));
+  });
+
+  testWidgets('says whether the server or the network is at fault, and offers another server', (tester) async {
+    for (final size in [const Size(390, 844), const Size(1400, 900)]) {
+      final state = await pumpApp(tester, size: size);
+      await tester.runAsync(() async {
+        await state.connect();
+        await Future.delayed(const Duration(milliseconds: 2300));
+      });
+      await tester.pump();
+      final name = state.status.node;
+      Event server(String reason) => Event(time: DateTime.now(), kind: 'server', reason: reason, from: name, line: 'detail');
+
+      // The engine found the server down while the internet works.
+      state.injectEvent(server('server-down'));
+      await tester.pump();
+      expect(state.serverUnresponsive, isTrue);
+      expect(find.text('Сервер «${cleanNodeName(name)}» не отвечает'), findsWidgets, reason: 'banner at $size');
+      expect(find.text('Другой сервер'), findsOneWidget);
+      expect(state.logs.last.message, startsWith('Сервер «$name» не отвечает'));
+      expect(tester.takeException(), isNull);
+      // Another server is a tap away.
+      await tester.tap(find.text('Другой сервер'));
+      await tester.pump(const Duration(milliseconds: 500));
+      final all = find.textContaining('Все серверы');
+      expect(all, findsOneWidget, reason: 'the quick pick at $size');
+      Navigator.of(tester.element(all)).pop();
+      await tester.pump(const Duration(seconds: 1));
+
+      // Without internet another server would not help: not offered.
+      state.injectEvent(server('offline'));
+      await tester.pump();
+      expect(find.text('Нет связи с интернетом'), findsWidgets);
+      expect(find.text('Другой сервер'), findsNothing);
+
+      // It answers again.
+      state.injectEvent(server('ok'));
+      await tester.pump();
+      expect(state.serverUnresponsive, isFalse);
+      expect(find.text('Переподключить'), findsNothing);
+      await tester.runAsync(() => state.disconnect());
+      await tester.pump(const Duration(seconds: 1));
+    }
+    await tester.pump(const Duration(seconds: 6));
+  });
+
+  testWidgets('a TUN start tried again is in the copied journal, after the failed attempt', (tester) async {
+    final state = await pumpApp(tester);
+    final t = DateTime.now();
+    const fatal =
+        'FATAL[0015] start service: start inbound/tun[tun-in]: configure tun interface: (create adapter: Cannot create a file when that file already exists.)';
+    state.injectEvent(Event(time: t, kind: 'log', source: 'tun', line: fatal));
+    state.injectEvent(Event(time: t, kind: 'tun', reason: 'retry', line: '1s', error: 'tun exited (exit status 1): $fatal'));
+    state.injectEvent(Event(time: t, kind: 'tun', reason: 'up'));
+    final copy = state.journalForSupport().join('\n');
+    expect(copy, contains('повтор через 1s'));
+    expect(copy.indexOf('повтор через'), lessThan(copy.lastIndexOf('интерфейс поднят')));
     await tester.pump(const Duration(seconds: 6));
   });
 
