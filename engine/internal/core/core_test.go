@@ -34,7 +34,10 @@ func TestCompatibility(t *testing.T) {
 		"ss-2022":              all,
 		"ss-obfs":              {SingBox, Mihomo},
 		"ss-v2ray":             {SingBox, Mihomo},
-		"hy2":                  {SingBox, Mihomo},
+		"trojan-insecure":      {SingBox, Mihomo}, // Xray no longer skips the certificate check
+		"hy2":                  all,
+		"hy2-pin":              {Xray, Mihomo}, // sing-box pins public keys, not certificates
+		"hy2-insecure":         {SingBox, Mihomo},
 		"tuic":                 {SingBox, Mihomo},
 		"anytls":               {SingBox, Mihomo},
 		"wireguard":            all,
@@ -208,6 +211,97 @@ func TestFragment(t *testing.T) {
 	// Hysteria2's TLS runs inside QUIC.
 	if hy2 := decodeJSON(t, render(t, singBox{}, fx["hy2"], on)); dig(hy2, "outbounds", 0, "tls", "fragment") != nil {
 		t.Errorf("sing-box hysteria2 tls = %v", dig(hy2, "outbounds", 0, "tls"))
+	}
+	if hy2 := decodeJSON(t, render(t, xray{}, fx["hy2"], on)); len(dig(hy2, "outbounds").([]any)) != 2 ||
+		dig(hy2, "outbounds", 0, "streamSettings", "sockopt") != nil {
+		t.Errorf("xray hysteria2 outbounds = %v", dig(hy2, "outbounds"))
+	}
+}
+
+// hy2Node is a Hysteria2 server with every option a subscription can set.
+func hy2Node() node.Node {
+	return node.Node{
+		Name: "hy2", Protocol: node.Hysteria2, Server: "hy.example.com", Port: 443, Password: "secret-auth",
+		TLS: &node.TLS{ServerName: "sni.example.com", ALPN: []string{"h3"}},
+		Hysteria2: &node.Hysteria2Options{Obfs: "salamander", ObfsPassword: "ob-pw", UpMbps: 50, DownMbps: 200,
+			Ports: "20000-30000,40000"},
+	}
+}
+
+func TestHysteria2Render(t *testing.T) {
+	n := hy2Node()
+	o := Options{ServerAddr: "198.51.100.7"}
+
+	x := dig(decodeJSON(t, render(t, xray{}, n, o)), "outbounds", 0)
+	want := map[string]any{
+		"tag": "proxy", "protocol": "hysteria",
+		"settings": map[string]any{"version": 2.0, "address": "198.51.100.7", "port": 443.0},
+		"streamSettings": map[string]any{
+			"network": "hysteria", "security": "tls",
+			"tlsSettings":      map[string]any{"serverName": "sni.example.com", "alpn": []any{"h3"}},
+			"hysteriaSettings": map[string]any{"version": 2.0, "auth": "secret-auth"},
+			"finalmask": map[string]any{
+				"udp": []any{map[string]any{"type": "salamander", "settings": map[string]any{"password": "ob-pw"}}},
+				"quicParams": map[string]any{"brutalUp": "50 mbps", "brutalDown": "200 mbps",
+					"udpHop": map[string]any{"ports": "20000-30000,40000", "interval": 30.0}},
+			},
+		},
+	}
+	if !reflect.DeepEqual(x, want) {
+		t.Errorf("xray outbound:\n got %v\nwant %v", x, want)
+	}
+
+	s := dig(decodeJSON(t, render(t, singBox{}, n, o)), "outbounds", 0)
+	if dig(s, "type") != "hysteria2" || dig(s, "server") != "198.51.100.7" || dig(s, "password") != "secret-auth" ||
+		dig(s, "up_mbps") != 50.0 || dig(s, "down_mbps") != 200.0 ||
+		!reflect.DeepEqual(dig(s, "server_ports"), []any{"20000:30000", "40000:40000"}) ||
+		dig(s, "obfs", "type") != "salamander" || dig(s, "obfs", "password") != "ob-pw" ||
+		dig(s, "tls", "server_name") != "sni.example.com" || !reflect.DeepEqual(dig(s, "tls", "alpn"), []any{"h3"}) {
+		t.Errorf("sing-box outbound = %v", s)
+	}
+
+	var m map[string]any
+	if err := yaml.Unmarshal(render(t, mihomo{}, n, o), &m); err != nil {
+		t.Fatal(err)
+	}
+	p := dig(m, "proxies", 0)
+	if dig(p, "type") != "hysteria2" || dig(p, "server") != "198.51.100.7" || dig(p, "password") != "secret-auth" ||
+		dig(p, "up") != 50 || dig(p, "down") != 200 || dig(p, "ports") != "20000-30000,40000" ||
+		dig(p, "obfs") != "salamander" || dig(p, "obfs-password") != "ob-pw" || dig(p, "sni") != "sni.example.com" {
+		t.Errorf("mihomo proxy = %v", p)
+	}
+
+	// A pinned certificate: Xray and mihomo check it, sing-box cannot.
+	pinned := hy2Node()
+	pinned.TLS.PinSHA256 = "21140e7cd89135e97d3f9c4b89a154063351b277e03fd696469fdfed12fd43d0"
+	pinned.TLS.Insecure = true // moot with a pin
+	xp := decodeJSON(t, render(t, xray{}, pinned, o))
+	if ts := dig(xp, "outbounds", 0, "streamSettings", "tlsSettings"); dig(ts, "pinnedPeerCertSha256") != pinned.TLS.PinSHA256 || dig(ts, "allowInsecure") != nil {
+		t.Errorf("xray pinned tls = %v", ts)
+	}
+	if err := yaml.Unmarshal(render(t, mihomo{}, pinned, o), &m); err != nil {
+		t.Fatal(err)
+	}
+	if p := dig(m, "proxies", 0); dig(p, "fingerprint") != pinned.TLS.PinSHA256 || dig(p, "skip-cert-verify") != nil {
+		t.Errorf("mihomo pinned proxy = %v", p)
+	}
+	var ue *UnsupportedError
+	if err := (singBox{}).Supports(&pinned); !errors.As(err, &ue) || ue.Feature != FeatTLSPin {
+		t.Errorf("sing-box with a pin: %v", err)
+	}
+
+	// Insecure: Xray refuses to start with allowInsecure.
+	insecure := hy2Node()
+	insecure.TLS.Insecure = true
+	if err := (xray{}).Supports(&insecure); !errors.As(err, &ue) || ue.Feature != FeatTLSInsecure {
+		t.Errorf("xray with insecure TLS: %v", err)
+	}
+
+	// No options at all: plain TLS with the server name as SNI.
+	bare := node.Node{Protocol: node.Hysteria2, Server: "hy.example.com", Port: 8443, Password: "pw"}
+	b := dig(decodeJSON(t, render(t, xray{}, bare, Options{})), "outbounds", 0, "streamSettings")
+	if dig(b, "finalmask") != nil || dig(b, "tlsSettings", "serverName") != "hy.example.com" || dig(b, "security") != "tls" {
+		t.Errorf("xray bare hysteria2 stream = %v", b)
 	}
 }
 

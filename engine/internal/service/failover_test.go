@@ -215,6 +215,41 @@ func TestFailoverRoundRestartsWhenAServerAnswers(t *testing.T) {
 	waitNode(t, h, "proxy")
 }
 
+// hysteriaPanelJSON is a Remnawave group with Hysteria2 servers in it: one
+// with a pinned certificate, which xray runs, and one whose certificate is
+// not checked, which xray cannot run (Xray dropped allowInsecure), so it
+// goes to sing-box.
+const hysteriaPanelJSON = `{
+  "routing": {"balancers": [{"tag": "auto", "selector": ["proxy"], "strategy": {"type": "leastPing"}}]},
+  "outbounds": [
+    {"tag": "proxy", "protocol": "trojan", "settings": {"servers": [{"address": "203.0.113.1", "port": 443, "password": "pw"}]}, "streamSettings": {"security": "tls"}},
+    {"tag": "proxy-2", "protocol": "hysteria", "settings": {"version": 2, "address": "203.0.113.2", "port": 443},
+     "streamSettings": {"network": "hysteria", "security": "tls", "hysteriaSettings": {"version": 2, "auth": "pw"},
+       "tlsSettings": {"serverName": "hy.example", "pinnedPeerCertSha256": "21140e7cd89135e97d3f9c4b89a154063351b277e03fd696469fdfed12fd43d0"}}},
+    {"tag": "proxy-3", "protocol": "hysteria", "settings": {"version": 2, "address": "203.0.113.3", "port": 443},
+     "streamSettings": {"network": "hysteria", "security": "tls", "hysteriaSettings": {"version": 2, "auth": "pw"},
+       "tlsSettings": {"serverName": "hy.example", "allowInsecure": true}}},
+    {"tag": "direct", "protocol": "freedom"}
+  ]
+}`
+
+func TestFailoverReachesHysteria2ServersOfTheGroup(t *testing.T) {
+	h, _, sub := switchHarness(t, hysteriaPanelJSON, "proxy")
+	if len(sub.Auto) != 3 {
+		t.Fatalf("the group has %d servers, want all three: %v", len(sub.Auto), sub.Auto)
+	}
+	serverNotAnswering(h)
+	waitNode(t, h, "proxy-2")
+	if st := h.svc.Status(); st.Protocol != "hysteria2" || st.Core != "xray" {
+		t.Errorf("status = %+v, want hysteria2 on xray", st)
+	}
+	serverNotAnswering(h)
+	waitNode(t, h, "proxy-3")
+	if st := h.svc.Status(); st.Protocol != "hysteria2" || st.Core != "sing-box" {
+		t.Errorf("status = %+v, want hysteria2 on sing-box", st)
+	}
+}
+
 // Without a group from the panel nothing moves by itself.
 func TestNoFailoverWithoutAnAutomaticSelection(t *testing.T) {
 	h, _, sub := switchHarness(t, plainLinks, "proxy")

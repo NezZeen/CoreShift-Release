@@ -3,6 +3,7 @@ package core
 import (
 	"encoding/json"
 	"fmt"
+	"net/netip"
 	"slices"
 	"strings"
 
@@ -13,13 +14,24 @@ type xray struct{}
 
 // xrayFeatures, checked against Xray 26.3.27:
 //   - HTTP/2 transport was removed (Xray says it "migrated to XHTTP stream-one").
-//   - Hysteria2 exists as protocol "hysteria" + transport "hysteria", but
-//     `xray run -test` ignores unknown fields, so the schema is not verified yet.
+//   - "allowInsecure" was removed: since 2026-06-01 Xray refuses to start
+//     with it. "pinnedPeerCertSha256" (a certificate's SHA-256) replaces it.
+//   - Hysteria2 is protocol "hysteria" with settings {version: 2, address,
+//     port} over transport "hysteria" with hysteriaSettings {version: 2,
+//     auth} and TLS; Salamander is a finalmask UDP mask and Brutal rates and
+//     port hopping are finalmask.quicParams (brutalUp, brutalDown, udpHop).
+//     Read from Xray's infra/conf (hysteria.go, transport_internet.go) at
+//     v26.3.27, as `xray run -test` ignores unknown fields; it is also what
+//     Remnawave's Xray JSON generator writes. Run on 127.0.0.1
+//     (TestHysteria2Loopback): an Xray client gets through to both an Xray
+//     and a sing-box Hysteria2 server, plain and with Salamander, with a
+//     pinned self-signed certificate and with udpHop; a wrong auth or pin is
+//     refused. udpHop without an interval makes Xray panic.
 var xrayFeatures = features(
-	[]node.Protocol{node.VLESS, node.VMess, node.Trojan, node.Shadowsocks, node.WireGuard},
+	[]node.Protocol{node.VLESS, node.VMess, node.Trojan, node.Shadowsocks, node.Hysteria2, node.WireGuard},
 	[]node.Network{node.NetWS, node.NetGRPC, node.NetHTTPUpgrade, node.NetXHTTP},
 	"flow:xtls-rprx-vision", "flow:xtls-rprx-vision-udp443",
-	FeatVLESSEncryption, FeatTCPHTTPHeader, FeatReality,
+	FeatVLESSEncryption, FeatTCPHTTPHeader, FeatReality, FeatHysteria2PortHop, FeatTLSPin,
 )
 
 func (xray) Kind() Kind                  { return Xray }
@@ -131,6 +143,17 @@ func xrayOutbound(n *node.Node, o Options) (obj, error) {
 			settings["mtu"] = w.MTU
 		}
 		return obj{"tag": "proxy", "protocol": "wireguard", "settings": settings}, nil
+	case node.Hysteria2:
+		stream, err := xrayHysteriaStream(n, sni)
+		if err != nil {
+			return nil, err
+		}
+		return obj{
+			"tag":            "proxy",
+			"protocol":       "hysteria",
+			"settings":       obj{"version": 2, "address": addr, "port": n.Port},
+			"streamSettings": stream,
+		}, nil
 	default:
 		return nil, fmt.Errorf("xray: unexpected protocol %q", n.Protocol)
 	}
@@ -220,13 +243,7 @@ func xrayStream(n *node.Node, sni string) (obj, error) {
 		s["realitySettings"] = r
 	default:
 		s["security"] = "tls"
-		ts := obj{"serverName": sni}
-		if len(tls.ALPN) > 0 {
-			ts["alpn"] = tls.ALPN
-		}
-		if tls.Insecure {
-			ts["allowInsecure"] = true
-		}
+		ts := xrayTLSSettings(tls, sni)
 		if tls.Fingerprint != "" {
 			ts["fingerprint"] = tls.Fingerprint
 		}
@@ -235,10 +252,78 @@ func xrayStream(n *node.Node, sni string) (obj, error) {
 	return s, nil
 }
 
+// xrayTLSSettings are the tlsSettings every TLS client shares. Insecure
+// nodes never get here (FeatTLSInsecure): Xray no longer has allowInsecure.
+func xrayTLSSettings(tls *node.TLS, sni string) obj {
+	ts := obj{"serverName": sni}
+	if len(tls.ALPN) > 0 {
+		ts["alpn"] = tls.ALPN
+	}
+	if tls.PinSHA256 != "" {
+		ts["pinnedPeerCertSha256"] = tls.PinSHA256
+	}
+	return ts
+}
+
+// xrayHysteriaStream is the "hysteria" transport of a Hysteria2 node: QUIC,
+// always TLS (without uTLS, which has no QUIC form), with Salamander, the
+// Brutal rates and port hopping in finalmask.
+func xrayHysteriaStream(n *node.Node, sni string) (obj, error) {
+	tls := n.TLS
+	if tls == nil {
+		tls = &node.TLS{}
+		if _, err := netip.ParseAddr(n.Server); err != nil {
+			sni = n.Server
+		}
+	}
+	s := obj{
+		"network":          "hysteria",
+		"security":         "tls",
+		"tlsSettings":      xrayTLSSettings(tls, sni),
+		"hysteriaSettings": obj{"version": 2, "auth": n.Password},
+	}
+	h := n.Hysteria2
+	if h == nil {
+		return s, nil
+	}
+	mask := obj{}
+	switch h.Obfs {
+	case "":
+	case "salamander":
+		mask["udp"] = []any{obj{"type": "salamander", "settings": obj{"password": h.ObfsPassword}}}
+	default:
+		return nil, fmt.Errorf("xray: hysteria2 obfuscation %q is not supported", h.Obfs)
+	}
+	quic := obj{}
+	if h.UpMbps > 0 {
+		quic["brutalUp"] = fmt.Sprintf("%d mbps", h.UpMbps)
+	}
+	if h.DownMbps > 0 {
+		quic["brutalDown"] = fmt.Sprintf("%d mbps", h.DownMbps)
+	}
+	if h.Ports != "" {
+		ports, err := node.NormalizePorts(h.Ports)
+		if err != nil {
+			return nil, fmt.Errorf("xray: hysteria2 %w", err)
+		}
+		// Without an interval Xray 26.3.27 panics (a zero ticker); 30 s is
+		// what sing-box and mihomo hop at by default.
+		quic["udpHop"] = obj{"ports": ports, "interval": 30}
+	}
+	if len(quic) > 0 {
+		mask["quicParams"] = quic
+	}
+	if len(mask) > 0 {
+		s["finalmask"] = mask
+	}
+	return s, nil
+}
+
 // xrayFragments reports whether n has a TLS ClientHello over TCP to split:
-// not WireGuard, nor plain connections, nor XHTTP over HTTP/3 (QUIC).
+// not WireGuard nor Hysteria2 (QUIC), nor plain connections, nor XHTTP over
+// HTTP/3 (QUIC).
 func xrayFragments(n *node.Node) bool {
-	if n.Protocol == node.WireGuard || n.TLS == nil {
+	if n.Protocol == node.WireGuard || n.Protocol == node.Hysteria2 || n.TLS == nil {
 		return false
 	}
 	return n.Transport.Network != node.NetXHTTP || !slices.Contains(n.TLS.ALPN, "h3")
