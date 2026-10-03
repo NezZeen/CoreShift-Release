@@ -1,6 +1,7 @@
 package dnsguard
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/json"
@@ -9,6 +10,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -111,8 +113,67 @@ func (g *windowsGuard) Revert(ctx context.Context) error {
 	if len(changes) == 0 {
 		return nil
 	}
+	if err := screenJournal(changes); err != nil {
+		// Not what this guard writes: someone else's file, made to have
+		// SYSTEM change the registry. Nothing of it is undone; the sweep
+		// still removes our own rules.
+		return errors.Join(fmt.Errorf("dnsguard: journal refused, nothing in it was undone: %w", err), g.journal.Reject())
+	}
 	err := g.journal.Undo(g.undo)
 	return errors.Join(err, g.notify(touchesPolicy(changes)))
+}
+
+// guidRE is a rule id as newGUID makes it, {8-4-4-4-12} hex digits.
+var guidRE = regexp.MustCompile(`^\{[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\}$`)
+
+// guardDWORDs are the only values setDWORD changes.
+var guardDWORDs = [][2]string{
+	{dnsClientPolicy, "DisableSmartNameResolution"},
+	{dnscacheParams, "DisableParallelAandAAAA"},
+}
+
+// screenJournal checks every change against what this guard records
+// itself: NRPT rules directly under the two NRPT keys, named by a GUID,
+// and the two values it sets. The journal lives in a file, and undoing it
+// deletes registry keys and sets values as SYSTEM: a journal with anything
+// else is refused as a whole.
+func screenJournal(changes []Change) error {
+	for i, c := range changes {
+		if err := screenChange(c); err != nil {
+			return fmt.Errorf("change %d (%s): %w", i+1, c.Kind, err)
+		}
+	}
+	return nil
+}
+
+func screenChange(c Change) error {
+	dec := json.NewDecoder(bytes.NewReader(c.Data))
+	dec.DisallowUnknownFields()
+	switch c.Kind {
+	case kindNRPTRule:
+		var ch nrptRuleChange
+		if err := dec.Decode(&ch); err != nil {
+			return err
+		}
+		for _, base := range []string{nrptLocalBase, nrptPolicyBase} {
+			if id, ok := strings.CutPrefix(ch.Key, base+`\`); ok && guidRE.MatchString(id) {
+				return nil
+			}
+		}
+		return errors.New("not an NRPT rule of this guard")
+	case kindRegDWORD:
+		var ch regDWORDChange
+		if err := dec.Decode(&ch); err != nil {
+			return err
+		}
+		for _, v := range guardDWORDs {
+			if ch.Path == v[0] && ch.Name == v[1] {
+				return nil
+			}
+		}
+		return errors.New("not a value this guard sets")
+	}
+	return errors.New("unknown kind")
 }
 
 func (g *windowsGuard) Recover(ctx context.Context) error {
@@ -206,7 +267,7 @@ func (g *windowsGuard) undo(c Change) error {
 		}
 		return g.reg.DeleteValue(ch.Path, ch.Name)
 	}
-	// Unknown kinds come from a newer build; this one cannot undo them.
+	// screenJournal lets no other kind through.
 	return nil
 }
 
