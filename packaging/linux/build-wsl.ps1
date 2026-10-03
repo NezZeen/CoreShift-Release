@@ -57,7 +57,7 @@ rm -rf "`$work"
 # it; git refuses to read it unless told it is safe.
 git config --global --get-all safe.directory | grep -qx '$(WslPath $gitDir)' ||
 	git config --global --add safe.directory '$(WslPath $gitDir)'
-git clone -q --branch '$Ref' '$(WslPath $gitDir)' "`$work"
+git -c advice.detachedHead=false clone -q --branch '$Ref' '$(WslPath $gitDir)' "`$work"
 cd "`$work"
 cores='$coresDir'
 if [ ! -x "`$cores/xray" ] || [ ! -x "`$cores/sing-box" ] || [ ! -x "`$cores/mihomo" ]; then
@@ -70,7 +70,13 @@ rm -rf "`$work"
 $tmp = Join-Path $env:TEMP "coreshift-build-linux-$PID.sh"
 [IO.File]::WriteAllText($tmp, $script.Replace("`r`n", "`n"), (New-Object Text.UTF8Encoding $false))
 try {
-    wsl.exe -d $Distro -u root -- bash -l (WslPath $tmp)
-    if ($LASTEXITCODE -ne 0) { throw "the Linux build in WSL $Distro failed (exit code $LASTEXITCODE)" }
+    # Tools in WSL write progress and notes to stderr; under "Stop" Windows
+    # PowerShell turns the first such line into a terminating error (it did
+    # with git's "switching to <tag>" note). The exit code decides instead.
+    $ErrorActionPreference = 'Continue'
+    wsl.exe -d $Distro -u root -- bash -l (WslPath $tmp) 2>&1 | ForEach-Object { "$_" }
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = 'Stop'
+    if ($code -ne 0) { throw "the Linux build in WSL $Distro failed (exit code $code)" }
 } finally { Remove-Item $tmp -ErrorAction SilentlyContinue }
 Get-ChildItem $OutDir -Filter 'coreshift*' | ForEach-Object { Write-Host "  $($_.FullName)" }
