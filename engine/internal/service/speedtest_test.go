@@ -109,3 +109,33 @@ func TestSpeedTestUnreachable(t *testing.T) {
 		t.Fatal("no error from an unreachable server")
 	}
 }
+
+// Cloudflare answers a large download with 429; the test goes on in
+// smaller pieces.
+func TestSpeedTestTakesSmallerPiecesWhenLimited(t *testing.T) {
+	shortSpeedTest(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/__down":
+			n, _ := strconv.Atoi(r.URL.Query().Get("bytes"))
+			if n > 2<<20 {
+				http.Error(w, "", http.StatusTooManyRequests)
+				return
+			}
+			w.Header().Set("Content-Length", strconv.Itoa(n))
+			w.Write(make([]byte, n))
+		case "/__up":
+			io.Copy(io.Discard, r.Body)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	h := newHarness(t, func(c *Config) { c.speedURL = srv.URL })
+
+	res, err := h.svc.SpeedTest(context.Background())
+	if err != nil {
+		t.Fatalf("SpeedTest: %v", err)
+	}
+	if res.DownloadBps <= 0 {
+		t.Errorf("download = %d, want a rate", res.DownloadBps)
+	}
+}

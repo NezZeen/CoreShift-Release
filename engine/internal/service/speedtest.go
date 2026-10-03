@@ -33,10 +33,13 @@ const speedServer = "https://speed.cloudflare.com"
 
 const (
 	speedDownStreams = 4
-	speedDownChunk   = 25 << 20
-	speedUpStreams   = 2
-	speedUpChunk     = 8 << 20
-	speedTick        = 250 * time.Millisecond
+	// Cloudflare turns away a download of more than about 10 MB with
+	// "429 Too Many Requests" for half an hour; smaller ones still go.
+	speedDownChunk    = 8 << 20
+	speedDownChunkMin = 1 << 20
+	speedUpStreams    = 2
+	speedUpChunk      = 8 << 20
+	speedTick         = 250 * time.Millisecond
 )
 
 // How long each phase lasts; tests shorten them.
@@ -188,14 +191,20 @@ func (s *Service) speedPhase(ctx context.Context, phase string, streams int, d t
 }
 
 func speedDownload(ctx context.Context, client *http.Client, base string, moved *atomic.Int64) error {
+	chunk := speedDownChunk
 	for ctx.Err() == nil {
-		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s/__down?bytes=%d", base, speedDownChunk), nil)
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s/__down?bytes=%d", base, chunk), nil)
 		resp, err := client.Do(req)
 		if err != nil {
 			return err
 		}
 		if resp.StatusCode != http.StatusOK {
 			resp.Body.Close()
+			// A server that limits the size takes smaller pieces.
+			if (resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusForbidden) && chunk > speedDownChunkMin {
+				chunk /= 2
+				continue
+			}
 			return errors.New(resp.Status)
 		}
 		_, err = io.Copy(io.Discard, &countingReader{r: resp.Body, n: moved})
