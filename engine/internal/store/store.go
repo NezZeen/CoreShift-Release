@@ -24,6 +24,7 @@ import (
 	"sync"
 	"time"
 
+	"coreshift/engine/internal/fsutil"
 	"coreshift/engine/internal/node"
 	"coreshift/engine/internal/subscription"
 )
@@ -53,6 +54,11 @@ type Subscription struct {
 	URL string `json:"url,omitempty"`
 	// UserAgent overrides the one in the settings.
 	UserAgent string `json:"user_agent,omitempty"`
+	// HWIDScope is HWIDPanel for subscriptions that send the panel an id
+	// of its own (subscription.Device.ForPanel). Those added by earlier
+	// versions have none and keep sending the machine-wide id they were
+	// counted under, so that their panels' device limits are not hit.
+	HWIDScope string `json:"hwid_scope,omitempty"`
 
 	Info    Info        `json:"info"`
 	Format  string      `json:"format"`
@@ -68,6 +74,39 @@ type Subscription struct {
 	UpdatedAt time.Time `json:"updated_at,omitzero"`
 	CheckedAt time.Time `json:"checked_at,omitzero"`
 	LastError string    `json:"last_error,omitempty"`
+
+	// fps caches the fingerprints of Nodes, which are never changed in
+	// place, only replaced: fpOf is the node list they were computed for.
+	fps  []string
+	fpOf *node.Node
+}
+
+// HWIDPanel marks a subscription that sends its panel an id of its own.
+const HWIDPanel = "panel"
+
+// Fingerprints returns the fingerprints of sub's nodes, in their order.
+// They are computed once per node list: computing one encodes the node.
+func (sub *Subscription) Fingerprints() []string {
+	if len(sub.Nodes) == 0 {
+		return nil
+	}
+	if sub.fpOf != &sub.Nodes[0] || len(sub.fps) != len(sub.Nodes) {
+		fps := make([]string, len(sub.Nodes))
+		for i := range sub.Nodes {
+			fps[i] = sub.Nodes[i].Fingerprint()
+		}
+		sub.fps, sub.fpOf = fps, &sub.Nodes[0]
+	}
+	return sub.fps
+}
+
+// Insecure reports a subscription fetched over plain HTTP: its link, with
+// the access token, crosses the network unencrypted.
+func (sub *Subscription) Insecure() bool { return InsecureURL(sub.URL) }
+
+// InsecureURL reports a plain HTTP subscription URL.
+func InsecureURL(u string) bool {
+	return len(u) >= 7 && strings.EqualFold(u[:7], "http://")
 }
 
 // Info is what the panel reported about the subscription.
@@ -120,8 +159,10 @@ type Options struct {
 	// Client fetches subscriptions; nil means a client with a 30 s timeout.
 	Client *http.Client
 
-	now   func() time.Time
-	fetch func(ctx context.Context, url, userAgent string) (subscription.Fetched, error)
+	now func() time.Time
+	// fetch downloads a subscription; legacyHWID sends the machine-wide
+	// HWID (Subscription.HWIDScope).
+	fetch func(ctx context.Context, url, userAgent string, legacyHWID bool) (subscription.Fetched, error)
 }
 
 type Store struct {
@@ -132,9 +173,15 @@ type Store struct {
 
 	mu   sync.Mutex
 	data fileData
-	// raw is the file as last read or written, for keepUnknown.
+	// raw is the file as last read or encoded, for keepUnknown.
 	raw      []byte
 	watchers []func(Change)
+	seq      uint64 // counts the states encoded by modify
+
+	// writeMu serialises writing the file, which happens outside mu so
+	// that readers do not wait for the disk; written is the seq on disk.
+	writeMu sync.Mutex
+	written uint64
 }
 
 type fileData struct {
@@ -157,8 +204,8 @@ func Open(path string, opts Options) (*Store, error) {
 		opts.now = time.Now
 	}
 	if opts.fetch == nil {
-		opts.fetch = func(ctx context.Context, url, ua string) (subscription.Fetched, error) {
-			return subscription.Fetch(ctx, opts.Client, url, ua)
+		opts.fetch = func(ctx context.Context, url, ua string, legacyHWID bool) (subscription.Fetched, error) {
+			return subscription.FetchAs(ctx, opts.Client, url, ua, legacyHWID)
 		}
 	}
 	s := &Store{path: path, opts: opts, data: fileData{Version: fileVersion, Settings: Defaults()}}
@@ -200,6 +247,9 @@ func Open(path string, opts Options) (*Store, error) {
 		loaded.Settings = set
 	}
 	loaded.Version = fileVersion
+	for i := range loaded.Subscriptions {
+		loaded.Subscriptions[i].Fingerprints()
+	}
 	s.data = loaded
 	s.raw = b
 	return s, warn
@@ -269,6 +319,9 @@ func (s *Store) Add(ctx context.Context, req AddRequest) (Subscription, error) {
 		}
 	}
 	sub := Subscription{ID: newID(), Name: req.Name, URL: req.URL, UserAgent: req.UserAgent, AddedAt: s.opts.now()}
+	if sub.URL != "" {
+		sub.HWIDScope = HWIDPanel
+	}
 	if err := s.load(ctx, &sub, req.Content); err != nil {
 		return Subscription{}, err
 	}
@@ -357,6 +410,10 @@ func (s *Store) Edit(ctx context.Context, id string, e Edit) (Subscription, erro
 			return Subscription{}, err
 		}
 		refetch = refetch || u != sub.URL
+		if subscription.PanelHost(u) != subscription.PanelHost(sub.URL) {
+			// Another panel: it has never seen the machine-wide id.
+			sub.HWIDScope = HWIDPanel
+		}
 		sub.URL = u
 	}
 	if e.Content != nil {
@@ -466,7 +523,7 @@ func (s *Store) load(ctx context.Context, sub *Subscription, content string) err
 		if ua == "" {
 			ua = s.Settings().Updates.UserAgent
 		}
-		f, err = s.opts.fetch(ctx, sub.URL, ua)
+		f, err = s.opts.fetch(ctx, sub.URL, ua, sub.HWIDScope != HWIDPanel)
 		s.fetchMu.Unlock()
 		if err != nil && len(f.Nodes) == 0 {
 			// A panel that sent a message instead of servers (subscription
@@ -509,7 +566,7 @@ func (s *Store) Select(subID, fingerprint, name string) (Selection, error) {
 		if i < 0 {
 			return ErrNotFound
 		}
-		n, ok := findNode(d.Subscriptions[i].Nodes, fingerprint, name)
+		n, ok := findNode(&d.Subscriptions[i], fingerprint, name)
 		if !ok || n.Fingerprint() != fingerprint {
 			return fmt.Errorf("subscription has no node %s", fingerprint)
 		}
@@ -531,7 +588,7 @@ func (s *Store) Selected() (sel Selection, n node.Node, ok bool) {
 	}
 	sel = *s.data.Selection
 	if i := s.index(sel.Subscription); i >= 0 {
-		n, ok = findNode(s.data.Subscriptions[i].Nodes, sel.Fingerprint, sel.Name)
+		n, ok = findNode(&s.data.Subscriptions[i], sel.Fingerprint, sel.Name)
 	}
 	return sel, n, ok
 }
@@ -543,17 +600,18 @@ func repointSelection(d *fileData, sub *Subscription) {
 	if sel == nil || sel.Subscription != sub.ID {
 		return
 	}
-	if n, ok := findNode(sub.Nodes, sel.Fingerprint, sel.Name); ok {
+	if n, ok := findNode(sub, sel.Fingerprint, sel.Name); ok {
 		sel.Fingerprint, sel.Name = n.Fingerprint(), n.Name
 	}
 }
 
 // findNode finds a node by fingerprint, preferring the one named name when
 // several share it, else by name alone if that is unambiguous.
-func findNode(nodes []node.Node, fingerprint, name string) (node.Node, bool) {
+func findNode(sub *Subscription, fingerprint, name string) (node.Node, bool) {
+	nodes, fps := sub.Nodes, sub.Fingerprints()
 	var byFP *node.Node
 	for i := range nodes {
-		if nodes[i].Fingerprint() != fingerprint {
+		if fps[i] != fingerprint {
 			continue
 		}
 		if nodes[i].Name == name {
@@ -584,27 +642,48 @@ func findNode(nodes []node.Node, fingerprint, name string) (node.Node, bool) {
 	return *match, true
 }
 
-// modify applies f and saves. On any error nothing changes.
+// modify applies f and saves. When f fails nothing changes; when saving
+// fails the change is undone too, unless a later one was made meanwhile,
+// which then carries it to the file.
+//
+// The new state is encoded under mu, in the order of the changes, and
+// written outside it, so that readers never wait for the disk; a write
+// never replaces a later state on disk with an earlier one.
 func (s *Store) modify(c Change, f func(*fileData) error) error {
 	s.mu.Lock()
-	next := cloneData(s.data)
-	orig := s.data
-	s.data = next
+	orig, origRaw := s.data, s.raw
+	s.data = cloneData(s.data)
 	err := f(&s.data)
+	var b []byte
 	if err == nil {
-		err = s.save()
+		for i := range s.data.Subscriptions {
+			s.data.Subscriptions[i].Fingerprints()
+		}
+		b, err = s.encode()
 	}
 	if err != nil {
 		s.data = orig
+		s.mu.Unlock()
+		return err
 	}
+	s.raw = b
+	s.seq++
+	seq := s.seq
 	watchers := s.watchers
 	s.mu.Unlock()
-	if err == nil {
-		for _, w := range watchers {
-			w(c)
+
+	if err := s.write(seq, b); err != nil {
+		s.mu.Lock()
+		if s.seq == seq {
+			s.data, s.raw = orig, origRaw
 		}
+		s.mu.Unlock()
+		return err
 	}
-	return err
+	for _, w := range watchers {
+		w(c)
+	}
+	return nil
 }
 
 // Watch registers f to be called after every modification, outside the
@@ -619,42 +698,31 @@ func (s *Store) index(id string) int {
 	return slices.IndexFunc(s.data.Subscriptions, func(sub Subscription) bool { return sub.ID == id })
 }
 
-// save writes the file atomically: a crash leaves the old or the new one.
-func (s *Store) save() error {
+// encode returns the file for the current state, with the fields of later
+// versions carried over. Call it with mu held.
+func (s *Store) encode() ([]byte, error) {
 	b, err := json.MarshalIndent(s.data, "", "  ")
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if b, err = keepUnknown(b, s.raw, reflect.TypeOf(s.data)); err != nil {
-		return err
+	return keepUnknown(b, s.raw, reflect.TypeOf(s.data))
+}
+
+// write saves state seq atomically: a crash leaves the old or the new
+// file. A state older than the one on disk is not written.
+func (s *Store) write(seq uint64, b []byte) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	if seq <= s.written {
+		return nil
 	}
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
 		return fmt.Errorf("store: %w", err)
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(s.path), filepath.Base(s.path)+".tmp*")
-	if err != nil {
+	if err := fsutil.WriteAtomic(s.path, b, 0o600); err != nil {
 		return fmt.Errorf("store: %w", err)
 	}
-	defer os.Remove(tmp.Name())
-	if err := tmp.Chmod(0o600); err != nil && !errors.Is(err, errors.ErrUnsupported) {
-		tmp.Close()
-		return fmt.Errorf("store: %w", err)
-	}
-	if _, err := tmp.Write(b); err != nil {
-		tmp.Close()
-		return fmt.Errorf("store: %w", err)
-	}
-	if err := tmp.Sync(); err != nil {
-		tmp.Close()
-		return fmt.Errorf("store: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("store: %w", err)
-	}
-	if err := os.Rename(tmp.Name(), s.path); err != nil {
-		return fmt.Errorf("store: %w", err)
-	}
-	s.raw = b
+	s.written = seq
 	return nil
 }
 
@@ -670,16 +738,54 @@ func cloneData(d fileData) fileData {
 	return d
 }
 
+// cloneSettings copies every slice and map of s, so that the copy can be
+// changed, decoded into among others, without touching s.
 func cloneSettings(s Settings) Settings {
-	s.Cores.Priority = slices.Clone(s.Cores.Priority)
-	s.Routing.DirectDomains = slices.Clone(s.Routing.DirectDomains)
-	s.Routing.DirectApps = slices.Clone(s.Routing.DirectApps)
-	s.Routing.DirectIPs = slices.Clone(s.Routing.DirectIPs)
-	s.Routing.ProxyDomains = slices.Clone(s.Routing.ProxyDomains)
-	s.Routing.ProxyIPs = slices.Clone(s.Routing.ProxyIPs)
-	s.Routing.ProxyApps = slices.Clone(s.Routing.ProxyApps)
-	s.Routing.BlockDomains = slices.Clone(s.Routing.BlockDomains)
+	cloneDeep(reflect.ValueOf(&s).Elem())
 	return s
+}
+
+// cloneDeep replaces the slices, maps and pointers reachable from v with
+// copies. Nil stays nil and empty stays empty, as JSON tells them apart.
+func cloneDeep(v reflect.Value) {
+	switch v.Kind() {
+	case reflect.Struct:
+		for i := range v.NumField() {
+			if f := v.Field(i); f.CanSet() {
+				cloneDeep(f)
+			}
+		}
+	case reflect.Slice:
+		if v.IsNil() {
+			return
+		}
+		c := reflect.MakeSlice(v.Type(), v.Len(), v.Len())
+		reflect.Copy(c, v)
+		for i := range c.Len() {
+			cloneDeep(c.Index(i))
+		}
+		v.Set(c)
+	case reflect.Map:
+		if v.IsNil() {
+			return
+		}
+		c := reflect.MakeMapWithSize(v.Type(), v.Len())
+		for it := v.MapRange(); it.Next(); {
+			e := reflect.New(v.Type().Elem()).Elem()
+			e.Set(it.Value())
+			cloneDeep(e)
+			c.SetMapIndex(it.Key(), e)
+		}
+		v.Set(c)
+	case reflect.Pointer:
+		if v.IsNil() {
+			return
+		}
+		c := reflect.New(v.Type().Elem())
+		c.Elem().Set(v.Elem())
+		cloneDeep(c.Elem())
+		v.Set(c)
+	}
 }
 
 func checkURL(u string) error {

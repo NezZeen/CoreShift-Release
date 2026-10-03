@@ -27,12 +27,14 @@ type panel struct {
 	// expired"); it still sends its headers, unlike a failure.
 	message string
 	calls   []string // user agents, in order
+	legacy  []bool   // whether each call sent the machine-wide HWID
 }
 
-func (p *panel) fetch(_ context.Context, url, ua string) (subscription.Fetched, error) {
+func (p *panel) fetch(_ context.Context, url, ua string, legacyHWID bool) (subscription.Fetched, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.calls = append(p.calls, ua)
+	p.legacy = append(p.legacy, legacyHWID)
 	if p.fail != nil {
 		return subscription.Fetched{}, p.fail
 	}

@@ -107,6 +107,7 @@ extension AppStateActions on AppState {
       final old = subscriptions.where((s) => s.id == sub.id).firstOrNull;
       subscriptions = old == null ? [...subscriptions, sub] : [for (final s in subscriptions) s.id == sub.id ? sub : s];
       toast('Добавлено в «${sub.displayName}»: серверов: ${sub.nodes.length - (old?.nodes.length ?? 0)}', ToastKind.ok);
+      if (sub.insecure) toast(insecureLinkWarning, ToastKind.err);
       _notify();
       // Nothing chosen yet: the first server that some core can run, so
       // the home page's button works straight away.
@@ -151,6 +152,18 @@ extension AppStateActions on AppState {
     await _act(() => backend.call('POST', '/v1/latency', {'subscription': ?subscription}));
     testingLatency = false;
     _notify();
+  }
+
+  /// The whole link of subscription [id], which lists show without its
+  /// token; null when the daemon cannot say.
+  Future<String?> subscriptionUrl(String id) async {
+    try {
+      final url = ((await backend.call('GET', '/v1/subscriptions/$id/url')) as Json)['url'] as String?;
+      return url == null || url.isEmpty ? null : url;
+    } catch (e) {
+      toast(humanError('$e'), ToastKind.err);
+      return null;
+    }
   }
 
   Future<void> renameSubscription(String id, String name) => _act(() async {

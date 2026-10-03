@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"go.yaml.in/yaml/v3"
@@ -53,6 +54,28 @@ func (s Skipped) String() string {
 
 var ErrNoNodes = errors.New("subscription contains no usable nodes")
 
+// MaxNodes is how many servers of one subscription are kept. Real ones list
+// tens, rarely hundreds; a list of many thousands would only make every
+// screen, latency test and lookup slow.
+const MaxNodes = 5000
+
+// limitNodes keeps the first max nodes and says so in Skipped, so the user
+// learns why the rest are missing.
+func limitNodes(res *Result, max int) {
+	if len(res.Nodes) <= max {
+		return
+	}
+	extra := len(res.Nodes) - max
+	res.Nodes = slices.Clip(res.Nodes[:max])
+	kept := make(map[string]bool, max)
+	for i := range res.Nodes {
+		kept[res.Nodes[i].Fingerprint()] = true
+	}
+	res.Auto = slices.DeleteFunc(res.Auto, func(fp string) bool { return !kept[fp] })
+	res.Skipped = append(res.Skipped, Skipped{Index: max + 1, Kind: "limit",
+		Reason: fmt.Sprintf("the subscription lists %d servers; only the first %d are kept, %d left out", max+extra, max, extra)})
+}
+
 // Parse detects the format of a subscription body and parses it.
 func Parse(body []byte) (Result, error) {
 	body = bytes.TrimSpace(bytes.TrimPrefix(body, []byte("\xef\xbb\xbf")))
@@ -79,6 +102,7 @@ func Parse(body []byte) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	limitNodes(&res, MaxNodes)
 	if len(res.Nodes) == 0 {
 		if len(res.Skipped) > 0 {
 			return res, fmt.Errorf("%w (%d entries skipped, first: %s)", ErrNoNodes, len(res.Skipped), res.Skipped[0])

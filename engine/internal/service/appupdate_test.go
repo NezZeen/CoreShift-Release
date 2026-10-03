@@ -117,6 +117,18 @@ func TestAppUpdateInstallsWhileDisconnected(t *testing.T) {
 	if p.To != "9.0.0+5" || p.Reconnect || !slices.Equal(p.Sessions, []uint32{3}) {
 		t.Errorf("pending = %+v", p)
 	}
+	// It runs from a copy in a folder of its own, not from the download.
+	f.mu.Lock()
+	launched := f.launched[0]
+	f.mu.Unlock()
+	if dir := filepath.Dir(launched); filepath.Dir(dir) != h.svc.updatesDir() || !strings.HasPrefix(filepath.Base(dir), stagePrefix) {
+		t.Errorf("launched %s", launched)
+	}
+	// The next start removes it.
+	h.svc.finishAppUpdate()
+	if _, err := os.Stat(filepath.Dir(launched)); err == nil {
+		t.Error("the installer's folder stays after the update")
+	}
 }
 
 func TestAppUpdateWaitsForTheVPN(t *testing.T) {

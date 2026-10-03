@@ -255,8 +255,8 @@ func xrayTransport(ss fields) (node.Transport, error) {
 			if err != nil {
 				return t, fmt.Errorf("xhttp: invalid extra: %w", err)
 			}
-			if string(b) != "{}" {
-				t.Extra = string(b)
+			if t.Extra, err = node.SanitizeXHTTPExtra(string(b)); err != nil {
+				return t, err
 			}
 		}
 		return t, nil

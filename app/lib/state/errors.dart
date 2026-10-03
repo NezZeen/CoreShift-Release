@@ -1,5 +1,8 @@
 import '../platform/platform.dart' as platform;
 
+/// Said when a subscription with a plain http:// link is added.
+const insecureLinkWarning = 'Ссылка без шифрования, токен виден в сети. Попросите у поставщика ссылку https://';
+
 /// A failed speed test. The service names the phase first, "download: …",
 /// which [humanError] would take for a core update that could not download.
 String speedTestError(String raw) {

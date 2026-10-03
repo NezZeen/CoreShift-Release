@@ -84,9 +84,9 @@ func runLinuxService(ctx context.Context, args []string) error {
 	cfg.SelfUpdate = false
 	cfg.SelfUpdateOff = selfUpdateOff
 	cfg.AnnounceUpdates = service.Version != "dev"
-	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
-		return err
-	}
+	// Before anything in it is read or written: the directory and all in it
+	// become root's, and what others planted there goes.
+	notes, secErr := service.SecureDataDir(cfg.DataDir)
 	// The init system keeps stdout too (journalctl -u coreshift, OpenRC's
 	// output_log, runit's svlogd), but the file outlives a reboot on
 	// systems with a volatile log.
@@ -99,6 +99,12 @@ func runLinuxService(ctx context.Context, args []string) error {
 	defer f.Close()
 	log := io.MultiWriter(f, os.Stdout)
 	fmt.Fprintf(log, "coreshiftd %s as uid %d, %s\n", service.VersionString(), os.Geteuid(), strings.Join(os.Args[1:], " "))
+	for _, n := range notes {
+		fmt.Fprintln(log, "data directory:", n)
+	}
+	if secErr != nil {
+		fmt.Fprintln(log, "warning: securing the data directory:", secErr)
+	}
 	err = serveWith(ctx, cfg, *apiAddr, log, serveOptions{connectWithApp: true})
 	if err != nil {
 		fmt.Fprintln(log, "error:", err)

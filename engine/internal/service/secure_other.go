@@ -13,3 +13,9 @@ func WriteShared(path string, data []byte) error {
 	}
 	return os.Chmod(path, 0o644)
 }
+
+// SecureDataDir only creates root here (Android, where the directory is
+// the app's own); Linux has its own in secure_linux.go.
+func SecureDataDir(root string) ([]string, error) { return nil, os.MkdirAll(root, 0o700) }
+
+func elevated() bool { return os.Geteuid() == 0 }

@@ -12,6 +12,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"coreshift/engine/internal/core"
 )
 
 // slowSOCKS is a SOCKS5 proxy that takes setup to set each connection up,
@@ -86,7 +88,7 @@ func TestDelayLeavesOutConnectionSetup(t *testing.T) {
 	defer srv.Close()
 	socks, conns := slowSOCKS(t, 300*time.Millisecond)
 
-	lat, err := delayThrough(context.Background(), socks, srv.URL+"/generate_204", 5*time.Second)
+	lat, err := delayThrough(context.Background(), core.SOCKSAuth{}.ProxyURL(socks), srv.URL+"/generate_204", 5*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +102,7 @@ func TestDelayLeavesOutConnectionSetup(t *testing.T) {
 
 	// A fresh connection per request, as the health check makes, pays the
 	// setup each time.
-	full, err := fetchThrough(context.Background(), socks, srv.URL+"/generate_204")
+	full, err := fetchThrough(context.Background(), core.SOCKSAuth{}.ProxyURL(socks), srv.URL+"/generate_204")
 	if err != nil || full < 300*time.Millisecond {
 		t.Errorf("health check: %v, %v", full, err)
 	}
