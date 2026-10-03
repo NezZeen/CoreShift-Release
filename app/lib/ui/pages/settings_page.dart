@@ -4,6 +4,7 @@ import '../../platform/desktop.dart' as desktop;
 import '../../platform/platform.dart' as platform;
 import '../../state/app_state.dart';
 import '../../state/errors.dart';
+import '../shell.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'leak_check.dart';
@@ -55,13 +56,12 @@ class SettingsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.pal;
     final info = state.info;
-    final interval = state.setting('updates.interval_hours', 12);
 
     final general = Panel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const PanelTitle('Общие'),
+          const PanelTitle('Приложение'),
           SettingRow(
             first: true,
             title: 'Автозапуск',
@@ -95,12 +95,13 @@ class SettingsPage extends StatelessWidget {
 
     // On Android with every app through the VPN the panel may have nothing
     // to offer: then it is left out.
-    final hasNetwork = !platform.isAndroid || !state.setting('tun', true) || state.hasSetting('ipv6') || state.hasSetting('cores.fragment');
+    final rowsBefore = !platform.isAndroid || !state.setting('tun', true) || state.hasSetting('ipv6') || state.hasSetting('cores.fragment');
+    final hasNetwork = rowsBefore || state.hasSetting('dns.block_dot') || state.hasSetting('dns.block_browser_doh');
     final network = Panel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const PanelTitle('Сеть'),
+          const PanelTitle('Подключение'),
           // On Android every app goes through the VPN: the switch shows
           // only to undo a proxy-only mode chosen somehow.
           if (!platform.isAndroid || !state.setting('tun', true))
@@ -128,91 +129,68 @@ class SettingsPage extends StatelessWidget {
                   'Включите, если VPN то работает, то нет. Работает в Xray и sing-box, mihomo подключается без этого',
               trailing: _switch('cores.fragment'),
             ),
-        ],
-      ),
-    );
-
-    final dns = Panel(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const PanelTitle('DNS', sub: 'можно не трогать'),
-          SettingRow(
-            first: true,
-            title: 'DNS через VPN',
-            description: 'DoH, DoT, DoQ или обычный адрес: https://1.1.1.1/dns-query, tls://dns.google, 8.8.8.8',
-            trailing: SavingField(
-              value: state.setting('dns.remote', ''),
-              width: 230,
-              mono: true,
-              onSave: (v) => state.updateSettings((s) => s['dns']['remote'] = v.trim()),
-            ),
-          ),
-          SettingRow(
-            title: 'DNS для сайтов без VPN',
-            description: 'Пусто — DNS, который был в системе до подключения',
-            trailing: SavingField(
-              value: state.setting('dns.direct', ''),
-              width: 230,
-              mono: true,
-              hint: 'системный',
-              onSave: (v) => state.updateSettings((s) => s['dns']['direct'] = v.trim()),
-            ),
-          ),
-          SettingRow(title: 'Fake-IP', description: 'Имена резолвятся на стороне сервера — быстрее и без утечек DNS', trailing: _switch('dns.fake_ip')),
-          _LeakGuard(state: state),
+          _LeakGuard(state: state, first: !rowsBefore),
+          // The test of what the switch guards against, beside it.
           LeakCheck(state: state),
         ],
       ),
     );
 
-    final subs = Panel(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const PanelTitle('Подписки'),
-          SettingRow(
-            first: true,
-            title: 'Автообновление',
-            description: 'С интервалом, который задаёт панель, иначе — каждые $interval ч',
-            trailing: _switch('updates.auto'),
+    // Settings few people touch, folded away under «Дополнительно».
+    final expert = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SectionLabel('Подписки'),
+        SettingRow(
+          first: true,
+          title: 'Обновлять подписки сами',
+          description: 'С интервалом, который задаёт панель провайдера',
+          trailing: _switch('updates.auto'),
+        ),
+        SettingRow(
+          title: 'User-Agent',
+          description: 'Меняйте, только если провайдер просит указать конкретное приложение',
+          trailing: SavingField(
+            value: state.setting('updates.user_agent', ''),
+            width: 170,
+            mono: true,
+            hint: info.version.isEmpty || info.version == 'dev' ? 'CoreShift' : 'CoreShift/${info.version}',
+            onSave: (v) => state.updateSettings((s) => s['updates']['user_agent'] = v.trim()),
           ),
-          SettingRow(
-            title: 'Обновлять каждые, ч',
-            description: 'Если провайдер не указал свой интервал',
-            trailing: SavingField(
-              value: '$interval',
-              width: 64,
-              numeric: true,
-              align: TextAlign.center,
-              enabled: state.setting('updates.auto', false),
-              onSave: (v) async {
-                final h = int.tryParse(v) ?? 0;
-                if (h < 1) return 'Укажите число часов';
-                return state.updateSettings((s) => s['updates']['interval_hours'] = h);
-              },
-            ),
+        ),
+        const SizedBox(height: 14),
+        const SectionLabel('DNS'),
+        SettingRow(
+          first: true,
+          title: 'DNS через VPN',
+          description: 'DoH, DoT, DoQ или обычный адрес: https://1.1.1.1/dns-query, tls://dns.google, 8.8.8.8',
+          trailing: SavingField(
+            value: state.setting('dns.remote', ''),
+            width: 230,
+            mono: true,
+            onSave: (v) => state.updateSettings((s) => s['dns']['remote'] = v.trim()),
           ),
-          SettingRow(
-            title: 'User-Agent',
-            description: 'Меняйте, только если провайдер просит указать конкретное приложение',
-            trailing: SavingField(
-              value: state.setting('updates.user_agent', ''),
-              width: 170,
-              mono: true,
-              hint: info.version.isEmpty || info.version == 'dev' ? 'CoreShift' : 'CoreShift/${info.version}',
-              onSave: (v) => state.updateSettings((s) => s['updates']['user_agent'] = v.trim()),
-            ),
+        ),
+        SettingRow(
+          title: 'DNS для сайтов без VPN',
+          description: 'Пусто — DNS, который был в системе до подключения',
+          trailing: SavingField(
+            value: state.setting('dns.direct', ''),
+            width: 230,
+            mono: true,
+            hint: 'системный',
+            onSave: (v) => state.updateSettings((s) => s['dns']['direct'] = v.trim()),
           ),
-        ],
-      ),
+        ),
+        SettingRow(title: 'Fake-IP', description: 'Имена резолвятся на стороне сервера — быстрее и без утечек DNS', trailing: _switch('dns.fake_ip')),
+      ],
     );
 
     final about = Panel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const PanelTitle('О программе'),
+          const PanelTitle('CoreShift'),
           SettingRow(
             first: true,
             title: 'Версия',
@@ -229,7 +207,7 @@ class SettingsPage extends StatelessWidget {
               description: 'Отличается от приложения: одно из них обновилось без другого. Переустановите CoreShift целиком.',
               trailing: SelectableText(
                 info.buildVersion.label,
-                style: TextStyle(color: warnColor, fontFamily: monoFont),
+                style: TextStyle(color: p.warnInk, fontFamily: monoFont),
               ),
             ),
           SettingRow(
@@ -270,190 +248,104 @@ class SettingsPage extends StatelessWidget {
       ),
     );
 
-    return PageFrame(
-      children: [
-        const PageHeader('Настройки'),
-        LayoutBuilder(
-          builder: (context, c) {
-            if (isCompact(context)) {
-              return Column(
-                children: [
-                  for (final w in [general, if (hasNetwork) network, about]) Padding(padding: const EdgeInsets.only(bottom: 18), child: w),
-                  _More(children: [subs, const SizedBox(height: 18), dns]),
-                ],
-              );
-            }
-            if (c.maxWidth < 900) {
-              return Column(
-                children: [
-                  for (final w in [general, if (hasNetwork) network, subs, dns, about]) Padding(padding: const EdgeInsets.only(bottom: 18), child: w),
-                ],
-              );
-            }
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    // The cores: what is used, in what order, and whether a newer version
+    // waits. The whole list is a page of its own, opened from here only.
+    final prio = state.setting('cores.mode', 'auto') == 'manual'
+        ? [state.setting('cores.manual', '')]
+        : state.setting<List>('cores.priority', const []).cast<String>();
+    final cores = Panel(
+      onTap: () => Nav.to(context, PageId.cores),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(child: Column(children: [general, const SizedBox(height: 18), subs, const SizedBox(height: 18), about])),
-                const SizedBox(width: 18),
-                Expanded(
-                  child: Column(
-                    children: [
-                      if (hasNetwork) ...[network, const SizedBox(height: 18)],
-                      dns,
+                Text('Ядра', style: display(16)),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    for (final (i, k) in prio.indexed) ...[
+                      if (i > 0) Icon(Icons.chevron_right, size: 16, color: p.dim),
+                      CoreLogo(k, size: 22),
+                      Text(coreStyle(k).name, style: const TextStyle(fontWeight: FontWeight.w500)),
                     ],
-                  ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  prio.length == 1 ? 'Работает одно ядро, без переключения при сбое' : 'Если ядро перестанет работать, CoreShift переключится на следующее',
+                  style: TextStyle(fontSize: 12, color: p.muted),
                 ),
               ],
-            );
-          },
+            ),
+          ),
+          const SizedBox(width: 10),
+          Icon(Icons.chevron_right, color: p.dim),
+        ],
+      ),
+    );
+
+    // One column of sections, the most used first: a settings page is
+    // read from the top, not scanned across.
+    return PageFrame(
+      children: [
+        Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 780),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const PageHeader('Настройки'),
+                for (final w in [general, if (hasNetwork) network, cores, about]) Padding(padding: const EdgeInsets.only(bottom: 16), child: w),
+                Fold(title: 'Дополнительно', sub: 'обновление подписок, User-Agent, DNS-серверы', child: expert),
+              ],
+            ),
+          ),
         ),
       ],
     );
   }
 }
 
-/// One switch for the guards against DNS going round the tunnel; each can
-/// still be set on its own under "Подробнее".
-class _LeakGuard extends StatefulWidget {
+/// One switch for the guards against DNS going round the tunnel: browsers'
+/// own DNS, DNS-over-TLS and, on Windows, the other adapters' DNS. On sets
+/// every guard, so none is weakened by the single control.
+class _LeakGuard extends StatelessWidget {
   final AppState state;
-  const _LeakGuard({required this.state});
+  final bool first;
+  const _LeakGuard({required this.state, this.first = false});
 
-  @override
-  State<_LeakGuard> createState() => _LeakGuardState();
-}
-
-class _LeakGuardState extends State<_LeakGuard> {
-  bool open = false;
-
-  AppState get s => widget.state;
-
-  List<(String, String, String?)> get _guards => [
-    (
-      'dns.block_browser_doh',
-      'DNS браузеров только через VPN',
-      'Firefox не включает свой DNS-over-HTTPS сам, а если он включён вручную, его запросы идут через туннель',
-    ),
-    (
-      'dns.block_dot',
-      'Блокировать DNS-over-TLS (порт 853)',
-      platform.isAndroid
-          ? 'Android в режиме «Частный DNS: автоматически» перейдёт на обычный DNS. Если «Частный DNS» задан вручную, сайты перестанут открываться'
-          : null,
-    ),
-    if (!platform.isAndroid) ('dns.strict', 'Строгий DNS в Windows', 'Запретить Windows опрашивать DNS других сетевых адаптеров в обход туннеля'),
-  ].where((g) => s.hasSetting(g.$1)).toList();
-
-  Future<String?> _set(Iterable<String> paths, bool v) => s.updateSettings((x) {
-    for (final path in paths) {
-      final keys = path.split('.');
-      Map m = x;
-      for (final k in keys.take(keys.length - 1)) {
-        m = m[k] as Map;
-      }
-      m[keys.last] = v;
-    }
-  });
+  List<String> get _guards => ['dns.block_browser_doh', 'dns.block_dot', if (!platform.isAndroid) 'dns.strict'].where(state.hasSetting).toList();
 
   @override
   Widget build(BuildContext context) {
     final p = context.pal;
     final guards = _guards;
     if (guards.isEmpty) return const SizedBox();
-    final on = guards.where((g) => s.setting(g.$1, false)).length;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SettingRow(
-          title: 'Защита от утечек DNS',
-          descriptionWidget: Wrap(
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: 6,
-            children: [
-              Text(
-                on == 0
-                    ? 'Выключена'
-                    : on == guards.length
-                    ? 'DNS-запросы браузеров и системы не уходят мимо туннеля'
-                    : 'Включено не всё: $on из ${guards.length}',
-                style: TextStyle(fontSize: 12, color: on > 0 && on < guards.length ? warnColor : p.muted),
-              ),
-              InkWell(
-                onTap: () => setState(() => open = !open),
-                child: Text(open ? 'Свернуть' : 'Подробнее', style: const TextStyle(fontSize: 12, color: accent)),
-              ),
-            ],
-          ),
-          trailing: Switch(value: on == guards.length, onChanged: (v) => _set(guards.map((g) => g.$1), v)),
-        ),
-        if (open)
-          Padding(
-            padding: const EdgeInsets.only(left: 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (final (path, title, text) in guards)
-                  SettingRow(
-                    title: title,
-                    description: text,
-                    trailing: Switch(value: s.setting(path, false), onChanged: (v) => _set([path], v)),
-                  ),
-              ],
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-/// A phone's "Дополнительно": settings few people touch, folded away.
-class _More extends StatefulWidget {
-  final List<Widget> children;
-  const _More({required this.children});
-
-  @override
-  State<_More> createState() => _MoreState();
-}
-
-class _MoreState extends State<_More> {
-  bool open = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.pal;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: () => setState(() => open = !open),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text.rich(
-                    TextSpan(
-                      children: [
-                        TextSpan(
-                          text: 'Дополнительно  ',
-                          style: TextStyle(fontWeight: FontWeight.w600, color: p.muted),
-                        ),
-                        TextSpan(
-                          text: 'подписки, DNS',
-                          style: TextStyle(fontSize: 12, color: p.dim),
-                        ),
-                      ],
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                Icon(open ? Icons.expand_less : Icons.expand_more, color: p.muted),
-              ],
-            ),
-          ),
-        ),
-        if (open) ...[const SizedBox(height: 8), ...widget.children],
-      ],
+    final on = guards.where((g) => state.setting(g, false)).length;
+    final partly = on > 0 && on < guards.length;
+    return SettingRow(
+      first: first,
+      title: 'Защита от утечек DNS',
+      description: platform.isAndroid
+          ? 'DNS браузеров и DNS-over-TLS только через VPN. Если в Android «Частный DNS» задан вручную, с защитой сайты перестанут открываться'
+          : 'DNS браузеров, DNS-over-TLS и DNS других сетевых адаптеров Windows не уходят мимо туннеля',
+      descriptionWidget: partly
+          ? Text('Включено не всё: $on из ${guards.length}. Включите, чтобы защитить всё', style: TextStyle(fontSize: 12, color: p.warnInk))
+          : null,
+      trailing: Switch(
+        value: on == guards.length,
+        onChanged: (v) => state.updateSettings((x) {
+          for (final path in guards) {
+            final keys = path.split('.');
+            (x[keys.first] as Map)[keys.last] = v;
+          }
+        }),
+      ),
     );
   }
 }

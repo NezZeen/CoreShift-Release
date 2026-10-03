@@ -12,7 +12,6 @@ import 'servers_page.dart' show showAddSubscription;
 import '../countries.dart';
 import '../theme.dart';
 import '../widgets.dart';
-
 part 'home/hero.dart';
 part 'home/compact.dart';
 part 'home/connect.dart';
@@ -37,60 +36,64 @@ class HomePage extends StatelessWidget {
       return LayoutBuilder(
         builder: (context, c) => PageFrame(
           children: [
-            SizedBox(height: max(0, (c.maxHeight - 560) / 2)),
+            SizedBox(height: max(0, (c.maxHeight - 720) / 2)),
             _CompactHome(state: state),
           ],
         ),
       );
     }
-    // The desktop: the connection, the address sites see, while connected
-    // its speed, and the traffic of the last days. The cores are on their
-    // page, the subscription on its card. A wide window puts the connection
-    // beside the rest instead of above it.
+    // The desktop: the button and its state on the left; on the right the
+    // way the traffic takes (this device, the server, the address sites
+    // see), while connected the speed, and quietly under it the speed test
+    // and the traffic. The DNS leak test is in the settings, by its switch.
     return LayoutBuilder(
       builder: (context, c) {
         final wide = c.maxWidth >= 900;
-        final cards = [
-          if (!state.ipUnsupported) _IpCard(state: state),
-          // Without a connection it has nothing to show.
-          if (state.status.active) _SpeedCard(state: state),
-          if (!state.speedUnsupported) _SpeedTestCard(state: state),
-          if (!state.statsUnsupported && state.statsLoaded) _TrafficCard(state: state),
-        ];
+        final st = state.status;
         final warning = state.subscriptionWarnings.isNotEmpty;
-        final column = Column(
+        final left = Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (final (i, card) in cards.indexed) ...[if (i > 0) const SizedBox(height: 14), card],
+            _Hero(state: state),
+            if (state.serverUnresponsive) ...[const SizedBox(height: 16), _UnresponsiveBanner(state: state)],
+            if (st.settingsPending) ...[const SizedBox(height: 16), _PendingBanner(state: state)],
+            _BackupBanner(state: state),
+          ],
+        );
+        final right = Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _Route(state: state),
+            // Without a connection it has nothing to show.
+            if (st.active) ...[const SizedBox(height: 14), _SpeedCard(state: state)],
+            // The speed test and the traffic, quiet, under the rest.
+            const SizedBox(height: 14),
+            _HomeTools(state: state),
           ],
         );
         return PageFrame(
           children: [
-            SizedBox(height: max(0, (c.maxHeight - (wide ? 720 : 900) - (warning ? 70 : 0)) / 2)),
+            SizedBox(height: max(0, (c.maxHeight - (wide ? 640 : 940) - (warning ? 70 : 0)) / 2)),
             Center(
               child: ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: wide ? 1060 : 600),
+                constraints: BoxConstraints(maxWidth: wide ? 1040 : 600),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    if (warning) ...[_SubWarningBanner(state: state), const SizedBox(height: 14)],
+                    if (warning) ...[_SubWarningBanner(state: state), const SizedBox(height: 22)],
                     wide
                         ? Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Expanded(flex: 5, child: _Hero(state: state)),
-                              const SizedBox(width: 16),
-                              Expanded(flex: 6, child: column),
+                              Expanded(
+                                flex: 5,
+                                child: Padding(padding: const EdgeInsets.only(top: 8), child: left),
+                              ),
+                              const SizedBox(width: 40),
+                              Expanded(flex: 6, child: right),
                             ],
                           )
-                        : Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              _Hero(state: state),
-                              if (cards.isNotEmpty) const SizedBox(height: 14),
-                              column,
-                            ],
-                          ),
+                        : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [left, const SizedBox(height: 24), right]),
                   ],
                 ),
               ),

@@ -5,119 +5,47 @@ const _weekdaysLong = ['понедельник', 'вторник', 'среда',
 
 String _dayLabel(DateTime d) => '${_weekdaysLong[d.weekday - 1]}, ${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}';
 
-/// Today, the week and the way into the details: the traffic through the VPN.
-/// On the desktop it is a card with the week's bars; on a phone one line.
-class _TrafficCard extends StatelessWidget {
+/// The traffic through the VPN in one line: today's, and the week's in
+/// bars behind «Подробнее».
+class _TrafficRow extends StatelessWidget {
   final AppState state;
-  const _TrafficCard({required this.state});
+  const _TrafficRow({required this.state});
 
   @override
   Widget build(BuildContext context) {
-    WidgetsBinding.instance.addPostFrameCallback((_) => state.watchStats());
-    if (state.statsUnsupported || !state.statsLoaded) return const SizedBox();
     final p = context.pal;
     final week = state.statsDays(7);
     final today = week.isEmpty ? TrafficDay(DateTime.now(), 0, 0) : week.last;
-    void open() => showTrafficStats(context, state);
-
-    if (isCompact(context)) {
-      return Padding(
-        padding: const EdgeInsets.only(top: 10),
-        child: Panel(
-          padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
-          onTap: open,
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Сегодня', style: TextStyle(fontSize: 11, color: p.muted)),
-                    const SizedBox(height: 2),
-                    Wrap(
-                      spacing: 12,
-                      children: [
-                        _Amount(icon: Icons.south, color: okColor, bytes: today.down),
-                        _Amount(icon: Icons.north, color: accent, bytes: today.up),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              SizedBox(width: 74, height: 30, child: _TrafficChart(days: week, mini: true)),
-              Icon(Icons.chevron_right, color: p.dim),
-            ],
-          ),
-        ),
-      );
-    }
-    return Panel(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          PanelTitle(
-            'Трафик',
-            sub: 'через VPN, за 7 дней',
-            trailing: Btn(label: 'Подробнее', small: true, onPressed: open),
-          ),
-          Wrap(
-            spacing: 32,
-            runSpacing: 10,
-            children: [
-              _Total(label: 'Сегодня', down: today.down, up: today.up),
-              _Total(label: 'За 7 дней', down: week.fold(0, (n, d) => n + d.down), up: week.fold(0, (n, d) => n + d.up)),
-            ],
-          ),
-          const SizedBox(height: 14),
-          SizedBox(height: 96, child: _TrafficChart(days: week)),
-        ],
-      ),
-    );
-  }
-}
-
-class _Amount extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final int bytes;
-  const _Amount({required this.icon, required this.color, required this.bytes});
-
-  @override
-  Widget build(BuildContext context) => Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      Icon(icon, size: 14, color: color),
-      const SizedBox(width: 4),
-      Text(
-        formatBytes(bytes),
-        style: const TextStyle(fontFamily: monoFont, fontFamilyFallback: monoFallback, fontSize: 15, fontWeight: FontWeight.w500),
-      ),
-    ],
-  );
-}
-
-class _Total extends StatelessWidget {
-  final String label;
-  final int down;
-  final int up;
-  const _Total({required this.label, required this.down, required this.up});
-
-  @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(label, style: TextStyle(fontSize: 11, color: context.pal.muted)),
-      const SizedBox(height: 2),
-      Row(
+    final total = week.fold<int>(0, (n, d) => n + d.total);
+    return _ToolRow(
+      icon: Icons.bar_chart,
+      title: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _Amount(icon: Icons.south, color: okColor, bytes: down),
-          const SizedBox(width: 14),
-          _Amount(icon: Icons.north, color: accent, bytes: up),
+          const Text('Трафик', style: TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(width: 10),
+          Flexible(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.south, size: 13, color: okColor),
+                  Text(' ${formatBytes(today.down)}  ', style: figures(15)),
+                  const Icon(Icons.north, size: 13, color: accent),
+                  Text(' ${formatBytes(today.up)}', style: figures(15)),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
-    ],
-  );
+      note: 'сегодня; за неделю ${formatBytes(total)}',
+      noteColor: p.dim,
+      action: Btn(label: 'Подробнее', small: true, onPressed: () => showTrafficStats(context, state)),
+    );
+  }
 }
 
 /// Bars per day: the download below in green, the upload above in blue.
@@ -125,9 +53,10 @@ class _Total extends StatelessWidget {
 class _TrafficChart extends StatefulWidget {
   final List<TrafficDay> days;
 
-  /// A sparkline: no labels, no picking.
-  final bool mini;
-  const _TrafficChart({super.key, required this.days, this.mini = false});
+  /// A sparkline: no labels, no picking. Not used since the phone shows
+  /// the full card too.
+  final bool mini = false;
+  const _TrafficChart({required this.days});
 
   @override
   State<_TrafficChart> createState() => _TrafficChartState();
@@ -247,14 +176,14 @@ class _ChartPainter extends CustomPainter {
   bool shouldRepaint(_ChartPainter old) => true;
 }
 
-/// The traffic in detail: a week or a month, the totals and the busiest day.
+/// The week's traffic in detail: the totals, the average and the busiest day.
 /// A window on the desktop, a sheet on a phone.
 Future<void> showTrafficStats(BuildContext context, AppState state) {
   final p = context.pal;
   if (isCompact(context)) {
     return showModalBottomSheet<void>(
       context: context,
-      backgroundColor: p.bg2,
+      backgroundColor: p.surface,
       isScrollControlled: true,
       showDragHandle: true,
       builder: (c) => SafeArea(child: _TrafficDetails(state: state)),
@@ -271,25 +200,19 @@ Future<void> showTrafficStats(BuildContext context, AppState state) {
   );
 }
 
-class _TrafficDetails extends StatefulWidget {
+/// The last week only: what is useful to know about one's traffic.
+class _TrafficDetails extends StatelessWidget {
   final AppState state;
   const _TrafficDetails({required this.state});
-
-  @override
-  State<_TrafficDetails> createState() => _TrafficDetailsState();
-}
-
-class _TrafficDetailsState extends State<_TrafficDetails> {
-  int span = 7;
 
   @override
   Widget build(BuildContext context) {
     final compact = isCompact(context);
     return ListenableBuilder(
-      listenable: widget.state,
+      listenable: state,
       builder: (context, _) {
         final p = context.pal;
-        final days = widget.state.statsDays(span);
+        final days = state.statsDays(7);
         final down = days.fold<int>(0, (n, d) => n + d.down);
         final up = days.fold<int>(0, (n, d) => n + d.up);
         final busiest = days.isEmpty ? null : days.reduce((a, b) => a.total >= b.total ? a : b);
@@ -300,7 +223,7 @@ class _TrafficDetailsState extends State<_TrafficDetails> {
             children: [
               Text(label, style: TextStyle(fontSize: 11, color: p.muted)),
               const SizedBox(height: 2),
-              Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+              Text(value, style: figures(19, weight: FontWeight.w600)),
               if (note.isNotEmpty) Text(note, style: TextStyle(fontSize: 11.5, color: p.dim)),
             ],
           ),
@@ -311,14 +234,9 @@ class _TrafficDetailsState extends State<_TrafficDetails> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  const Expanded(
-                    child: Text('Трафик через VPN', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
-                  ),
-                  Seg<int>(value: span, options: const [(7, '7 дней'), (30, '30 дней')], onChanged: (v) => setState(() => span = v)),
-                ],
-              ),
+              Text('Трафик через VPN', style: dialogTitle),
+              const SizedBox(height: 2),
+              Text('за 7 дней', style: TextStyle(fontSize: 12.5, color: p.muted)),
               const SizedBox(height: 16),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -329,10 +247,7 @@ class _TrafficDetailsState extends State<_TrafficDetails> {
                 ],
               ),
               const SizedBox(height: 16),
-              SizedBox(
-                height: 150,
-                child: _TrafficChart(key: ValueKey(span), days: days),
-              ),
+              SizedBox(height: 150, child: _TrafficChart(days: days)),
               if (busiest != null && busiest.total > 0) ...[
                 const SizedBox(height: 12),
                 Text('Больше всего: ${_dayLabel(busiest.date)}, ${formatBytes(busiest.total)}', style: TextStyle(fontSize: 12.5, color: p.muted)),

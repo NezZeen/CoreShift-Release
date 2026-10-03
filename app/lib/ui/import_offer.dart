@@ -68,14 +68,9 @@ class _ImportOfferState extends State<_ImportOffer> {
             children: [
               Row(
                 children: [
-                  Icon(s.importFrom == ImportFrom.clipboard ? Icons.content_paste : Icons.add_link, color: accent),
+                  Icon(s.importFrom == ImportFrom.clipboard ? Icons.content_paste : Icons.add_link, color: context.pal.accentInk),
                   const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      link.url.isNotEmpty ? 'Добавить подписку?' : 'Добавить серверы?',
-                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
-                    ),
-                  ),
+                  Expanded(child: Text(link.url.isNotEmpty ? 'Добавить подписку?' : 'Добавить серверы?', style: dialogTitle)),
                 ],
               ),
               const SizedBox(height: 10),

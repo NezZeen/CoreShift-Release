@@ -113,6 +113,7 @@ class DemoBackend implements Backend {
 
   DemoBackend() {
     _history.addAll(_makeHistory());
+    _seedJournal();
     _subs.add(
       _makeSub(
         'a1b2c3',
@@ -206,6 +207,39 @@ class DemoBackend implements Backend {
       'checked_at': now.subtract(const Duration(minutes: 12)).toUtc().toIso8601String(),
       'next_update': now.add(const Duration(hours: 11, minutes: 48)).toUtc().toIso8601String(),
     };
+  }
+
+  /// An earlier session for the journal to show: a connection, a core that
+  /// crashed and the switch to the next, an error, and the end. Replayed,
+  /// so it fills the journal without toasts.
+  void _seedJournal() {
+    final start = DateTime.now().subtract(const Duration(hours: 3));
+    var t = start;
+    void at(int seconds, Json j) {
+      t = t.add(Duration(seconds: seconds));
+      _recent.add(Event.fromJson({'time': t.toUtc().toIso8601String(), ...j}));
+    }
+
+    at(0, {'kind': 'state', 'state': 'connecting'});
+    at(1, {'kind': 'core-state', 'core': 'xray', 'reason': 'starting'});
+    at(0, {'kind': 'log', 'source': 'xray', 'line': 'Xray 26.3.27 started'});
+    at(1, {'kind': 'tun', 'reason': 'up'});
+    at(0, {'kind': 'dns', 'reason': 'applied'});
+    at(0, {'kind': 'core-state', 'core': 'xray', 'reason': 'connected'});
+    at(0, {'kind': 'state', 'state': 'connected', 'core': 'xray'});
+    at(1500, {'kind': 'health', 'core': 'xray', 'error': 'context deadline exceeded'});
+    at(15, {'kind': 'health', 'core': 'xray', 'error': 'context deadline exceeded'});
+    at(2, {'kind': 'core-failed', 'core': 'xray', 'reason': 'health-check', 'error': 'проверка связи не прошла 3 раза подряд'});
+    at(1, {'kind': 'swap', 'core': 'sing-box', 'from': 'xray', 'reason': 'health-check'});
+    at(0, {'kind': 'core-state', 'core': 'sing-box', 'reason': 'connected'});
+    at(0, {'kind': 'health', 'core': 'sing-box', 'latency_ms': 212});
+    at(600, {'kind': 'swap', 'core': 'xray', 'from': 'sing-box', 'reason': 'return-to-primary'});
+    at(1, {'kind': 'health', 'core': 'xray', 'latency_ms': 168});
+    at(1800, {'kind': 'error', 'error': 'subscription panel.backup.example: server returned 502 Bad Gateway'});
+    at(900, {'kind': 'state', 'state': 'disconnecting'});
+    at(1, {'kind': 'dns', 'reason': 'reverted'});
+    at(0, {'kind': 'tun', 'reason': 'down'});
+    at(0, {'kind': 'state', 'state': 'idle'});
   }
 
   void _emit(Json j) {

@@ -58,7 +58,7 @@ class AndroidAppsPanel extends StatelessWidget {
                 Expanded(
                   child: Text(
                     apps.isEmpty ? (mode == 'only' ? 'Ничего не выбрано: пока через VPN идут все' : 'Ничего не выбрано') : 'Выбрано: ${apps.length}',
-                    style: TextStyle(fontSize: 13, color: apps.isEmpty && mode == 'only' ? warnColor : p.text),
+                    style: TextStyle(fontSize: 13, color: apps.isEmpty && mode == 'only' ? p.warnInk : p.text),
                   ),
                 ),
                 Btn(
@@ -132,7 +132,7 @@ class _AppPickerState extends State<_AppPicker> {
         .toList();
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.only ? 'Через VPN' : 'Без VPN', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+        title: Text(widget.only ? 'Через VPN' : 'Без VPN', style: dialogTitle),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 12),
