@@ -140,7 +140,11 @@ step 'system files'
 install -m 755 "$here/coreshift-setup.sh" "$app/coreshift-setup.sh"
 install -D -m 644 "$here/coreshift.service" "$stage/usr/lib/systemd/system/coreshift.service"
 install -D -m 644 "$here/dev.coreshift.coreshift.desktop" "$stage/usr/share/applications/dev.coreshift.coreshift.desktop"
-install -D -m 644 "$root/app/web/icons/Icon-512.png" "$stage/usr/share/icons/hicolor/512x512/apps/coreshift.png"
+# Every size app/tool/make_icons.py draws, and the SVG.
+icons="$root/app/linux/icons/hicolor"
+mkdir -p "$stage/usr/share/icons"
+cp -r "$icons" "$stage/usr/share/icons/"
+find "$stage/usr/share/icons" -type d -exec chmod 755 {} + -o -type f -exec chmod 644 {} +
 mkdir -p "$stage/usr/bin"
 ln -s /opt/coreshift/coreshift "$stage/usr/bin/coreshift"
 ln -s /opt/coreshift/coreshiftd "$stage/usr/bin/coreshiftd"
@@ -184,7 +188,7 @@ if [ "$make_tar" = 1 ]; then
 	mkdir -p "$tdir/opt"
 	cp -a "$app" "$tdir/opt/coreshift"
 	cp "$here/coreshift.service" "$here/dev.coreshift.coreshift.desktop" "$tdir/"
-	cp "$root/app/web/icons/Icon-512.png" "$tdir/coreshift.png"
+	cp -r "$stage/usr/share/icons/hicolor" "$tdir/icons"
 	install -m 755 "$here/install.sh" "$here/uninstall.sh" "$tdir/"
 	tar -C "$out/linux-tar" --owner=0 --group=0 -czf "$out/$name.tar.gz" "$name"
 	rm -rf "$out/linux-tar"

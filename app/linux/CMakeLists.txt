@@ -94,6 +94,11 @@ set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}/lib")
 install(TARGETS ${BINARY_NAME} RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}"
   COMPONENT Runtime)
 
+# The window's icon where none is installed in the icon theme (a bundle run
+# in place); packages install the hicolor sizes (packaging/linux).
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/icons/hicolor/256x256/apps/coreshift.png"
+  DESTINATION "${INSTALL_BUNDLE_DATA_DIR}" COMPONENT Runtime)
+
 install(FILES "${FLUTTER_ICU_DATA_FILE}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   COMPONENT Runtime)
 

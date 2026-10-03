@@ -38,7 +38,10 @@ rm -rf /opt/coreshift.old
 
 install -D -m 644 "$here/coreshift.service" /etc/systemd/system/coreshift.service
 install -D -m 644 "$here/dev.coreshift.coreshift.desktop" /usr/local/share/applications/dev.coreshift.coreshift.desktop
-install -D -m 644 "$here/coreshift.png" /usr/local/share/icons/hicolor/512x512/apps/coreshift.png
+for f in "$here"/icons/*/apps/coreshift.*; do
+	size=$(basename "$(dirname "$(dirname "$f")")")
+	install -D -m 644 "$f" "/usr/local/share/icons/hicolor/$size/apps/$(basename "$f")"
+done
 mkdir -p /usr/local/bin
 ln -sf /opt/coreshift/coreshift /usr/local/bin/coreshift
 ln -sf /opt/coreshift/coreshiftd /usr/local/bin/coreshiftd
