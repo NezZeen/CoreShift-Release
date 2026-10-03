@@ -105,7 +105,7 @@ func runLinuxService(ctx context.Context, args []string) error {
 	if secErr != nil {
 		fmt.Fprintln(log, "warning: securing the data directory:", secErr)
 	}
-	err = serveWith(ctx, cfg, *apiAddr, log, serveOptions{connectWithApp: true})
+	err = serveWith(ctx, cfg, *apiAddr, log, serveOptions{connectWithApp: true, resumeFile: filepath.Join(cfg.DataDir, "resume")})
 	if err != nil {
 		fmt.Fprintln(log, "error:", err)
 	}

@@ -25,6 +25,12 @@ func (s *Service) AutoConnect(ctx context.Context) error {
 	return s.connectAtStart(ctx)
 }
 
+// Resume connects the selected node again after a restart of the service
+// interrupted a connection (Linux: a package upgrade restarts it), whatever
+// the auto-connect setting says. Like AutoConnect it leaves alone a VPN the
+// user connected or turned off meanwhile.
+func (s *Service) Resume(ctx context.Context) error { return s.connectAtStart(ctx) }
+
 // connectAtStart connects the selected node when nothing is connected yet,
 // retrying while the network comes up. Two things ask for it at the same
 // start, each on its own goroutine: AutoConnect, and a self-update that
