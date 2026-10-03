@@ -205,9 +205,11 @@ func (w *winService) Execute(_ []string, requests <-chan svc.ChangeRequest, stat
 	if err != nil {
 		return true, 2
 	}
-	os.MkdirAll(cfg.DataDir, 0o755)
+	// Before anything in it is read or written: the directory and all in it
+	// become SYSTEM's, and what users planted there goes.
+	notes, secErr := service.SecureDataDir(cfg.DataDir)
 	// The service restarts with the app; the log of a crashed run must outlive
-	// the restarts that follow.
+	// the restarts that follow. It is the service's alone: it names sites.
 	logPath := filepath.Join(cfg.DataDir, "coreshiftd.log")
 	rotateLog(logPath, 3)
 	log, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
@@ -215,6 +217,12 @@ func (w *winService) Execute(_ []string, requests <-chan svc.ChangeRequest, stat
 		return true, 3
 	}
 	defer log.Close()
+	for _, n := range notes {
+		fmt.Fprintln(log, "data directory:", n)
+	}
+	if secErr != nil {
+		fmt.Fprintln(log, "warning: securing the data directory:", secErr)
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
