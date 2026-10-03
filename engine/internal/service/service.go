@@ -350,6 +350,7 @@ func (s *Service) tunLayer() (TUNLayer, error) {
 // Recover undoes system changes left by a daemon that did not shut down
 // cleanly. Call it once at start.
 func (s *Service) Recover(ctx context.Context) error {
+	removeStaleResolverRules()
 	return s.cfg.guard.Recover(ctx)
 }
 
