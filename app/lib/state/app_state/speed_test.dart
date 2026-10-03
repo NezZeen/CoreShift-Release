@@ -64,9 +64,10 @@ extension AppStateSpeedTest on AppState {
       _log(DateTime.now(), 'скорость', 'загрузка ${_mbit(r.downloadBps)}, отдача ${_mbit(r.uploadBps)}, задержка ${r.latencyMs} мс', LogLevel.ok);
     } on ApiError catch (e) {
       if (e.status == 404 || e.status == 405) speedUnsupported = true;
-      speedTest = SpeedTestState(phase: SpeedPhase.failed, vpn: vpn, error: e.status == 409 ? 'Тест скорости уже идёт' : humanError(e.message));
+      speedTest = SpeedTestState(phase: SpeedPhase.failed, vpn: vpn, error: e.status == 409 ? 'Тест скорости уже идёт' : speedTestError(e.message));
+      _log(DateTime.now(), 'скорость', 'тест не удался: ${e.message}', LogLevel.err);
     } catch (e) {
-      speedTest = SpeedTestState(phase: SpeedPhase.failed, vpn: vpn, error: humanError('$e'));
+      speedTest = SpeedTestState(phase: SpeedPhase.failed, vpn: vpn, error: speedTestError('$e'));
       if (e is DaemonOffline) _lost(e);
     }
     _notify();
