@@ -2,22 +2,29 @@ package service
 
 import (
 	"context"
+	"net/netip"
 	"slices"
 	"sync"
 
 	"coreshift/engine/internal/node"
+	"coreshift/engine/internal/ping"
 	"coreshift/engine/internal/store"
 )
 
 // Moving to the next server. A core can be swapped for another when it
 // fails, but when the server itself is down, or blocked, every core fails
 // alike: the supervisor reports it (EventNoBetter) and leaves the connection
-// as it is. When the subscription says its servers are for automatic
-// selection (an Xray balancer in a JSON subscription, Subscription.Auto) and
-// the connected server is one of them, the service connects the next of them,
-// in the order the subscription lists them, until one answers. Servers that
-// did not answer in this round are not tried again; the round ends when a
-// server answers or the user connects.
+// as it is, and the service looks whether the server or the network is at
+// fault (checkReach). Unless the network is down, it then connects the next
+// server, in the order the subscription lists them, until one answers:
+//   - when the subscription says its servers are for automatic selection (an
+//     Xray balancer in a JSON subscription, Subscription.Auto) and the
+//     connected server is one of them, among those;
+//   - otherwise, when the user allows it (store.CoreSettings.SwitchServer)
+//     and the server itself does not answer, among the subscription's
+//     servers that answer a handshake from here.
+// Servers that did not answer in this round are not tried again; the round
+// ends when a server answers or the user connects.
 
 // failover is the state of one round.
 type failover struct {
@@ -102,11 +109,12 @@ func subscriptionOf(subs []store.Subscription, selected, fingerprint string) (st
 	return store.Subscription{}, false
 }
 
-// failoverSoon switches servers in the background, if the connection is up.
-// Whether its subscription asks for it is seen when it is about to switch.
-func (s *Service) failoverSoon() {
-	if s.cfg.Store == nil {
-		return
+// failoverSoon switches servers in the background, if the connection is up,
+// after checkReach found r. Whether its subscription asks for it, or the
+// user allows it, is seen when it is about to switch.
+func (s *Service) failoverSoon(r Reach) {
+	if s.cfg.Store == nil || r == ReachOffline {
+		return // without internet another server would not answer either
 	}
 	s.mu.Lock()
 	gen, connected := s.gen, s.status.State == Connected
@@ -116,14 +124,14 @@ func (s *Service) failoverSoon() {
 	}
 	go func() {
 		defer s.fo.end()
-		s.switchServer(gen)
+		s.switchServer(gen, r)
 	}()
 }
 
 // switchServer connects the next server that works, for the connection gen
 // that stopped answering. It gives up when none is left; the connection then
 // stays on the last one tried.
-func (s *Service) switchServer(gen int) {
+func (s *Service) switchServer(gen int, r Reach) {
 	ctx, end := s.beginOp(context.Background())
 	defer end()
 	st := s.cfg.Store
@@ -142,8 +150,22 @@ func (s *Service) switchServer(gen int) {
 	for _, fp := range sub.Auto {
 		group[fp] = true
 	}
+	// answers: the panel's group is taken as it is; any other server of
+	// the subscription must answer a handshake, so the switch does not
+	// land on one as dead as this one.
+	answers := func(node.Node) bool { return true }
 	if !group[from.Fingerprint()] {
-		return // the panel set up no automatic selection, or this server is not in it
+		// The panel set up no automatic selection, or this server is not
+		// in it: the user's own pick, left only when the server itself is
+		// down and the user allows moving on.
+		if r != ReachServerDown || !s.Options().SwitchServer {
+			return
+		}
+		clear(group)
+		for _, fp := range sub.Fingerprints() {
+			group[fp] = true
+		}
+		answers = func(n node.Node) bool { return s.serverAnswers(ctx, n) }
 	}
 	cur := from
 	for {
@@ -152,10 +174,10 @@ func (s *Service) switchServer(gen int) {
 		}
 		s.fo.markTried(cur.Fingerprint())
 		next, ok := pickNext(sub.Nodes, sub.Fingerprints(), cur.Fingerprint(), s.fo.triedSet(), func(n node.Node) bool {
-			return group[n.Fingerprint()] && len(s.Compatible(&n)) > 0
+			return group[n.Fingerprint()] && len(s.Compatible(&n)) > 0 && answers(n)
 		})
 		if !ok {
-			s.hub.publish(Event{Kind: "failover", From: from.Name, Error: "no other server of the automatic selection answers"})
+			s.hub.publish(Event{Kind: "failover", From: from.Name, Error: "no other server of the subscription answers"})
 			return
 		}
 		if _, err := st.Select(sub.ID, next.Fingerprint(), next.Name); err != nil {
@@ -168,4 +190,23 @@ func (s *Service) switchServer(gen int) {
 		// It would not even start: on to the one after it.
 		cur = next
 	}
+}
+
+// serverAnswers reports whether n's server takes a TCP handshake from here,
+// around the tunnel. A server over UDP has no port to try and counts as
+// answering: connecting it tells.
+func (s *Service) serverAnswers(ctx context.Context, n node.Node) bool {
+	if overUDP(&n) {
+		return true
+	}
+	ip, err := s.serverAddr(ctx, n.Server)
+	if err != nil {
+		return false
+	}
+	bind, err := s.cfg.physical()
+	if err != nil {
+		bind = ping.Bind{}
+	}
+	_, err = s.cfg.tcpPing(ctx, netip.AddrPortFrom(ip, n.Port), bindFor(bind, ip))
+	return err == nil
 }

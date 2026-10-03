@@ -8,7 +8,6 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"time"
 
@@ -83,7 +82,11 @@ func (s *Service) connectOp(ctx context.Context, n node.Node) error {
 	s.sup.SetPolicy(opts.policy())
 	s.setStatus(Status{State: Connecting, Node: n.Name, Protocol: string(n.Protocol), TUN: opts.TUN, Since: time.Now()})
 
-	_, err := s.connectLocked(ctx, n, gen, opts)
+	serverIP, err := s.connectLocked(ctx, n, gen, opts)
+	s.mu.Lock()
+	s.serverIP = serverIP
+	s.mu.Unlock()
+	s.healthFails.Store(0)
 	if err == nil && disconnected(ctx) {
 		err = ErrDisconnected // during the last step
 	}
@@ -256,11 +259,9 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 	var resolvers []netip.Addr
 	if o.TUN {
 		direct = o.DNS.Direct
+		// They also stay routed into the TUN (LANResolvers).
 		var err error
-		if direct == "" || runtime.GOOS == "linux" {
-			// Linux also keeps them routed into the TUN (LANResolvers).
-			resolvers, err = s.systemResolvers(ctx)
-		}
+		resolvers, err = s.systemResolvers(ctx)
 		if direct == "" {
 			addrs := resolvers
 			if err != nil || len(addrs) == 0 {
@@ -290,10 +291,9 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 		return serverIP, nil
 	}
 
-	suffixes := mergeSuffixes(alwaysDirect, o.DNS.DirectSuffixes)
+	suffixes, proxied, directFirst := routeSuffixes(o)
 	var domainSets, ipSets, proxySets []tunlayer.RuleSet
 	if o.DNS.RussiaDirect && !o.Selective {
-		suffixes = mergeSuffixes(suffixes, russiaSuffixes)
 		// The core is up, so a blocked source can be reached through it.
 		domainSets, ipSets, proxySets = s.rules.get(ctx, russiaSets, s.proxyURL())
 	}
@@ -315,7 +315,8 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 			Direct:           direct,
 			FakeIP:           o.DNS.FakeIP,
 			DirectSuffixes:   suffixes,
-			ProxySuffixes:    o.ProxyDomains,
+			ProxySuffixes:    proxied,
+			DirectFirst:      directFirst,
 			BlockSuffixes:    o.BlockDomains,
 			DirectRuleSets:   domainSets,
 			DirectIPRuleSets: ipSets,
@@ -340,9 +341,10 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 	if serverIP.IsValid() {
 		opts.BypassAddresses = []netip.Prefix{netip.PrefixFrom(serverIP, serverIP.BitLen())}
 	}
-	// Linux: connections to this machine from the local network keep
-	// working while connected (see tunlayer.Options.ExcludeLAN).
-	opts.ExcludeLAN = runtime.GOOS == "linux"
+	// The local network (a Hyper-V or WSL switch, Docker, a printer) keeps
+	// the system's own routes on every platform, rather than leaving by the
+	// default interface from the TUN layer (see tunlayer.Options.ExcludeLAN).
+	opts.ExcludeLAN = true
 	opts.LANResolvers = resolvers
 	inst, err := tun.Start(ctx, opts)
 	if err != nil {
@@ -361,12 +363,36 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 		return netip.Addr{}, fmt.Errorf("redirect system DNS: %w", err)
 	}
 	s.hub.publish(Event{Kind: "dns", Reason: "applied"})
+	select {
+	case <-inst.Exited():
+		// It came up and died at once: not connected, whatever came before.
+		// The caller's stopLocked gives the system its DNS back.
+		return netip.Addr{}, fmt.Errorf("TUN layer stopped: %w", inst.ExitError())
+	default:
+	}
 	if !s.cfg.AppOutsideVPN {
 		s.mu.Lock()
 		s.tunDNS = netip.AddrPortFrom(tunlayer.DNSAddress(tunlayer.DefaultAddress), 53)
 		s.mu.Unlock()
 	}
 	return serverIP, nil
+}
+
+// routeSuffixes returns the names that go direct and those that go through
+// the tunnel whatever else matches them: the user's lists, plus with the
+// Russian preset its domains direct and Google's in the tunnel
+// (googleSuffixes, geosite-google), unless the user sends them direct:
+// directFirst are those of the user's direct names that must win over
+// geosite-google.
+func routeSuffixes(o Options) (direct, proxied, directFirst []string) {
+	direct = mergeSuffixes(alwaysDirect, o.DNS.DirectSuffixes)
+	proxied = o.ProxyDomains
+	if o.DNS.RussiaDirect && !o.Selective {
+		direct = mergeSuffixes(direct, russiaSuffixes)
+		proxied = mergeSuffixes(proxied, googleSuffixes)
+		directFirst = googleDirect(o.DNS.DirectSuffixes)
+	}
+	return direct, proxied, directFirst
 }
 
 // Disconnect stops everything and restores the system. Safe when idle. A
@@ -453,10 +479,18 @@ func (s *Service) onSupervisorEvent(e supervisor.Event) {
 	}
 	switch {
 	case e.Kind == supervisor.EventNoBetter:
-		s.failoverSoon()
+		// No core gets through: the server or the network is at fault.
+		s.mu.Lock()
+		gen := s.gen
+		s.mu.Unlock()
+		s.diagnose(gen)
 	case e.Kind == supervisor.EventHealth && e.Err == nil && !e.Probe:
 		// The server answers: a later failure starts a fresh round.
+		s.healthFails.Store(0)
 		s.fo.reset()
+		s.clearProblem()
+	case e.Kind == supervisor.EventHealth && !e.Probe:
+		s.healthFails.Add(1)
 	}
 }
 
