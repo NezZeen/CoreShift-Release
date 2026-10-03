@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 )
 
 func baseOptions() Options {
@@ -103,6 +104,21 @@ func TestBuildDefaults(t *testing.T) {
 	socks := find(list(cfg, "outbounds"), map[string]any{"tag": "proxy"})
 	if socks["type"] != "socks" || socks["server"] != "127.0.0.1" || socks["server_port"] != float64(17890) {
 		t.Errorf("proxy outbound = %v", socks)
+	}
+}
+
+// A remote connection that died silently is replaced only when a lookup on
+// it times out: the timeout must be short enough that the system resolvers'
+// retry (after 5 s) finds a fresh one, and set in every mode.
+func TestDNSTimeout(t *testing.T) {
+	selective := baseOptions()
+	selective.Selective = true
+	for name, o := range map[string]Options{"default": baseOptions(), "selective": selective} {
+		raw, _ := sub(render(t, o), "dns")["timeout"].(string)
+		d, err := time.ParseDuration(raw)
+		if err != nil || d <= 0 || d >= 5*time.Second {
+			t.Errorf("%s: dns.timeout = %q, want a duration under 5s", name, raw)
+		}
 	}
 }
 
