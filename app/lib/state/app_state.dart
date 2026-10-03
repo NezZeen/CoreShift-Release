@@ -560,7 +560,7 @@ class AppState extends ChangeNotifier {
           _notify();
         }
       case 'log':
-        _log(e.time, e.source, e.line, LogLevel.info, quiet: true);
+        _log(e.time, e.source, e.line, LogLevel.info, output: true);
       case 'app-update':
         _onAppUpdate(e, live);
       case 'tun':
@@ -609,10 +609,12 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  void _log(DateTime t, String source, String msg, LogLevel level, {bool quiet = false}) {
-    logs.add(LogLine(t, source, msg, level));
+  /// Adds a line to the journal. The output of cores and of the TUN layer
+  /// comes in bursts, so it redraws only now and then.
+  void _log(DateTime t, String source, String msg, LogLevel level, {bool output = false}) {
+    logs.add(LogLine(t, source, msg, level, output: output));
     if (logs.length > 2000) logs.removeRange(0, logs.length - 2000);
-    if (!quiet || logs.length % 20 == 0) _notify();
+    if (!output || logs.length % 20 == 0) _notify();
   }
 
   static String _stateText(String s) => switch (s) {

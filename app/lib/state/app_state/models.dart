@@ -7,7 +7,11 @@ class LogLine {
   final String source;
   final String message;
   final LogLevel level;
-  const LogLine(this.time, this.source, this.message, this.level);
+
+  /// A line a core or the TUN layer printed itself, as opposed to an event
+  /// the app put into words.
+  final bool output;
+  const LogLine(this.time, this.source, this.message, this.level, {this.output = false});
 }
 
 enum ToastKind { info, ok, err, swap }
