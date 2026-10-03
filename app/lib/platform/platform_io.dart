@@ -347,4 +347,10 @@ Future<List<Map<String, dynamic>>> dnsLeakTest() async {
 }
 
 /// The system, for the journal's header: "Windows 10 Pro 10.0 (Build 19045)".
-String get osDescription => '${Platform.operatingSystem} ${Platform.operatingSystemVersion}';
+/// Windows 11 still calls itself "Windows 10" there; its build number tells.
+String get osDescription {
+  var v = Platform.operatingSystemVersion;
+  final build = int.tryParse(RegExp(r'Build (\d+)').firstMatch(v)?.group(1) ?? '');
+  if (Platform.isWindows && build != null && build >= 22000) v = v.replaceFirst('Windows 10', 'Windows 11');
+  return '${Platform.operatingSystem} $v';
+}

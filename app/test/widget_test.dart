@@ -110,6 +110,14 @@ void main() {
     await tester.pump(const Duration(seconds: 6));
   });
 
+  test('a failed speed test is not read as a core update', () {
+    expect(speedTestError('download: Get "https://speed.cloudflare.com/__down?bytes=25000000": context deadline exceeded'), contains('загрузку'));
+    expect(speedTestError('download: 429 Too Many Requests'), contains('ограничил'));
+    expect(speedTestError('upload: nothing went through'), contains('отдачу'));
+    expect(speedTestError('download: EOF'), isNot(contains('ядра')));
+    expect(humanError('xray: download: EOF'), contains('ядра'));
+  });
+
   test('daemon errors read as Russian', () {
     expect(humanError('the panel sent a message instead of servers: Приложение не поддерживается'), contains('«Приложение не поддерживается»'));
     expect(humanError('fetch subscription: server returned 404 Not Found'), contains('не найдена'));

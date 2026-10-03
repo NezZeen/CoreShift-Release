@@ -1,5 +1,24 @@
 import '../platform/platform.dart' as platform;
 
+/// A failed speed test. The service names the phase first, "download: …",
+/// which [humanError] would take for a core update that could not download.
+String speedTestError(String raw) {
+  final e = raw.trim();
+  final m = RegExp(r'^(download|upload): (.*)$', dotAll: true).firstMatch(e);
+  if (m == null) {
+    if (e.toLowerCase().contains('speed test server unreachable')) return 'Не удалось замерить скорость: нет связи с сервером теста (Cloudflare).';
+    return humanError(e);
+  }
+  final what = m[1] == 'download' ? 'загрузку' : 'отдачу';
+  final why = m[2]!.toLowerCase();
+  final reason = why.contains('403') || why.contains('429')
+      ? 'сервер теста (Cloudflare) ограничил запросы, попробуйте через несколько минут'
+      : why.contains('timeout') || why.contains('deadline') || why.contains('nothing went through')
+      ? 'сервер теста (Cloudflare) не ответил вовремя'
+      : 'связь с сервером теста (Cloudflare) оборвалась';
+  return 'Не удалось замерить $what: $reason.';
+}
+
 /// Turns the daemon's English errors into Russian a user can act on. The
 /// journal keeps the original text; this is for toasts, dialogs and status.
 String humanError(String raw) {

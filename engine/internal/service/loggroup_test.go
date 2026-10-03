@@ -139,3 +139,19 @@ func TestDurationText(t *testing.T) {
 		}
 	}
 }
+
+func TestGrouperDropsTheLayersOwnClock(t *testing.T) {
+	var c collected
+	g := newLogGrouper(40*time.Millisecond, c.emit)
+	g.add("tun", "+0400 2026-10-03 10:26:50 ERROR [1365276019 5.4s] connection: open connection to 198.51.100.134:443 using outbound/direct[direct]: dial tcp 198.51.100.134:443: i/o timeout")
+	g.add("tun", "+0400 2026-10-03 10:26:55 ERROR [3883584643 5.0s] connection: open connection to 198.51.100.135:443 using outbound/direct[direct]: dial tcp 198.51.100.135:443: i/o timeout")
+	got := c.get()
+	if len(got) != 1 || !strings.HasPrefix(got[0], "tun: ERROR ") {
+		t.Fatalf("right away: %q, want one line without the layer's clock", got)
+	}
+	time.Sleep(120 * time.Millisecond)
+	got = c.get()
+	if len(got) != 2 || !strings.HasPrefix(got[1], "tun: ERROR connection: open connection to <адрес>") || !strings.Contains(got[1], "ещё 1 раз") {
+		t.Fatalf("after a period: %q, want the two timeouts as one group", got)
+	}
+}
