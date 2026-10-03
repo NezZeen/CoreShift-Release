@@ -294,6 +294,42 @@ func TestUpdateTheUserInstalls(t *testing.T) {
 	}
 }
 
+// Linux: a newer release is announced with its page, and nothing is
+// downloaded or installed.
+func TestAppUpdateAnnouncedOnly(t *testing.T) {
+	f := newUpdateFake("9.0.0", 5)
+	var downloads int
+	h := newHarness(t, func(c *Config) {
+		f.install(c)
+		c.SelfUpdate, c.AnnounceUpdates = false, true
+		c.checkRelease = func(context.Context, *http.Client, selfupdate.Source) (selfupdate.Release, error) {
+			return selfupdate.Release{Manifest: f.rel, Page: "https://github.com/o/r/releases/tag/v9.0.0"}, nil
+		}
+		c.downloadRelease = func(context.Context, *http.Client, selfupdate.Release, string) (string, error) {
+			downloads++
+			return "", nil
+		}
+	})
+	if st := h.svc.AppUpdateState(); st.State != UpdateIdle || !st.Manual {
+		t.Fatalf("before a check: %+v", st)
+	}
+	runUpdates(t, h)
+	st := waitUpdate(t, h, "announce", func(u AppUpdate) bool { return u.State == UpdateAvailable })
+	if st.Version != "9.0.0" || st.URL != "https://github.com/o/r/releases/tag/v9.0.0" || !st.Manual {
+		t.Errorf("state = %+v", st)
+	}
+	if err := h.svc.CheckAppUpdate(); err != nil {
+		t.Errorf("check now: %v", err)
+	}
+	if err := h.svc.InstallAppUpdate(); err == nil {
+		t.Error("installed an announced update")
+	}
+	time.Sleep(50 * time.Millisecond)
+	if downloads != 0 || f.launches() != 0 {
+		t.Errorf("%d downloads, %d launches", downloads, f.launches())
+	}
+}
+
 // After an update that interrupted a connection, with "Автозапуск" on, the
 // new service has two reasons to connect at start: the update's reconnect
 // and AutoConnect. It must connect once, not connect, tear the connection

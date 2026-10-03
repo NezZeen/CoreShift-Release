@@ -8,6 +8,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"time"
 
@@ -109,7 +110,38 @@ func (s *Service) connectOp(ctx context.Context, n node.Node) error {
 	if autoDNS.IsValid() {
 		go s.watchNetwork(pingCtx, gen, autoDNS)
 	}
+	if k, ok := s.cfg.guard.(dnsguard.Keeper); ok && opts.TUN {
+		go s.keepDNS(pingCtx, k)
+	}
 	return nil
+}
+
+// keepDNSInterval is how often a guard the system may undo (Linux without
+// systemd-resolved, see dnsguard.Keeper) is checked.
+const keepDNSInterval = 5 * time.Second
+
+// keepDNS puts the DNS redirect back whenever the system undid it, until
+// ctx ends with the connection.
+func (s *Service) keepDNS(ctx context.Context, k dnsguard.Keeper) {
+	t := time.NewTicker(keepDNSInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+		// Under s.op, so it never races a disconnect's Revert.
+		if !s.op.TryLock() {
+			continue
+		}
+		if ctx.Err() == nil {
+			if err := k.Keep(ctx); err != nil {
+				s.hub.publish(Event{Kind: "dns", Error: "keep system DNS redirected: " + err.Error()})
+			}
+		}
+		s.op.Unlock()
+	}
 }
 
 // networkCheckInterval is how often a connection that took the system's
@@ -221,10 +253,16 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 	// Both lookups must happen before the DNS guard redirects the system
 	// resolver into the tunnel.
 	var direct string
+	var resolvers []netip.Addr
 	if o.TUN {
 		direct = o.DNS.Direct
+		var err error
+		if direct == "" || runtime.GOOS == "linux" {
+			// Linux also keeps them routed into the TUN (LANResolvers).
+			resolvers, err = s.systemResolvers(ctx)
+		}
 		if direct == "" {
-			addrs, err := s.systemResolvers(ctx)
+			addrs := resolvers
 			if err != nil || len(addrs) == 0 {
 				direct = "1.1.1.1"
 				s.hub.publish(Event{Kind: "dns", Error: fmt.Sprintf("no system resolver found (%v); using %s for direct names", err, direct)})
@@ -291,7 +329,10 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 		// The daemon resolves proxy servers, e.g. for latency tests.
 		opts.DirectDNSProcesses = []string{self}
 	}
-	if o.IPv6 {
+	// Where the system has IPv6 switched off, an IPv6 address would stop
+	// the TUN interface from starting: the tunnel is IPv4-only then, as
+	// the system is.
+	if o.IPv6 && !s.cfg.ipv6Off() {
 		opts.Address6 = tunlayer.DefaultAddress6
 		// Checked before the TUN exists, so its own address cannot count.
 		opts.DNS.DirectIPv4Only = !s.cfg.hostIPv6()
@@ -299,6 +340,10 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 	if serverIP.IsValid() {
 		opts.BypassAddresses = []netip.Prefix{netip.PrefixFrom(serverIP, serverIP.BitLen())}
 	}
+	// Linux: connections to this machine from the local network keep
+	// working while connected (see tunlayer.Options.ExcludeLAN).
+	opts.ExcludeLAN = runtime.GOOS == "linux"
+	opts.LANResolvers = resolvers
 	inst, err := tun.Start(ctx, opts)
 	if err != nil {
 		return netip.Addr{}, fmt.Errorf("start TUN layer: %w", err)

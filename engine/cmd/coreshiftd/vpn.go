@@ -14,6 +14,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"coreshift/engine/internal/service"
@@ -107,12 +108,36 @@ const (
 // serve runs the daemon until ctx ends or, with withApp, until the app has
 // been closed for appGrace.
 func serve(ctx context.Context, cfg service.Config, apiAddr string, log io.Writer, verbose, withApp bool) error {
+	return serveWith(ctx, cfg, apiAddr, log, serveOptions{verbose: verbose, exitWithoutApp: withApp})
+}
+
+type serveOptions struct {
+	// verbose prints core output and every health check.
+	verbose bool
+	// exitWithoutApp stops the daemon once the app has been closed for
+	// appGrace (the Windows service, which the app starts).
+	exitWithoutApp bool
+	// connectWithApp runs auto-connect each time the app starts rather
+	// than when the daemon does (the Linux service, which runs from boot,
+	// so that "Автозапуск" connects at sign-in as on Windows). The VPN
+	// stays up when the app is closed, until the user turns it off.
+	connectWithApp bool
+	// resumeFile, when set, carries a connection across a restart of the
+	// service (resume.go).
+	resumeFile string
+}
+
+func serveWith(ctx context.Context, cfg service.Config, apiAddr string, log io.Writer, o serveOptions) error {
+	verbose, withApp := o.verbose, o.exitWithoutApp
 	addr, err := parseAddrPort(apiAddr)
 	if err != nil || !addr.Addr().IsLoopback() {
 		return fmt.Errorf("-api must be a loopback address, got %q", apiAddr)
 	}
 	if !isElevated() {
 		cfg.TUNUnavailable = "TUN mode needs administrator rights, which the daemon does not have; turn TUN off in the settings or run the daemon elevated"
+		if runtime.GOOS == "linux" {
+			cfg.TUNUnavailable = "TUN mode needs root or CAP_NET_ADMIN, which the daemon does not have; run it as the coreshift systemd service"
+		}
 	}
 	st, err := service.OpenStore(cfg.DataDir, store.Options{})
 	if errors.Is(err, store.ErrReset) {
@@ -170,14 +195,31 @@ func serve(ctx context.Context, cfg service.Config, apiAddr string, log io.Write
 	}
 	go st.RunUpdater(ctx, time.Minute)
 	go svc.RunAppUpdates(ctx)
-	go func() {
-		if err := svc.AutoConnect(ctx); err != nil && ctx.Err() == nil {
-			fmt.Fprintln(log, "auto-connect:", err)
-		}
-	}()
+	if o.resumeFile != "" && takeResume(o.resumeFile, bootID(), time.Now()) {
+		fmt.Fprintln(log, "the VPN was on when the service stopped: connecting again")
+		go func() {
+			if err := svc.Resume(ctx); err != nil && ctx.Err() == nil {
+				fmt.Fprintln(log, "resume:", err)
+			}
+		}()
+	}
+	if o.connectWithApp {
+		go autoConnectWithApp(ctx, svc, log)
+	} else {
+		go func() {
+			if err := svc.AutoConnect(ctx); err != nil && ctx.Err() == nil {
+				fmt.Fprintln(log, "auto-connect:", err)
+			}
+		}()
+	}
 
 	<-ctx.Done()
 	fmt.Fprintln(log, "shutting down")
+	if o.resumeFile != "" && svc.Status().State == service.Connected {
+		if err := writeResume(o.resumeFile, bootID()); err != nil {
+			fmt.Fprintln(log, "warning: remember the connection for the restart:", err)
+		}
+	}
 	svc.Disconnect()
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()

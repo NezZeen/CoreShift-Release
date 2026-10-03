@@ -10,9 +10,13 @@ import '../state/app_state.dart';
 import '../ui/countries.dart' show cleanNodeName;
 import '../ui/theme.dart';
 import '../ui/widgets.dart' show formatRate;
+import 'linux_desktop.dart' as linux;
 import 'tray_balloon.dart';
 
 bool _enabled = false;
+
+/// The session shows no tray icons (Linux): closing the window minimizes it.
+bool _noTray = false;
 
 /// Whether the system can show CoreShift's notifications.
 bool get canNotify => Platform.isWindows || Platform.isLinux;
@@ -23,6 +27,10 @@ bool get canNotify => Platform.isWindows || Platform.isLinux;
 /// [DesktopFrame] adds nothing.
 Future<bool> initWindow({bool hidden = false}) async {
   if (!Platform.isWindows && !Platform.isLinux) return false;
+  // A Linux session may have no tray (plain GNOME, WSLg): then the window
+  // never hides, or nothing could bring it back.
+  if (Platform.isLinux) _noTray = !await linux.trayAvailable();
+  if (_noTray) hidden = false;
   await windowManager.ensureInitialized();
   await windowManager.waitUntilReadyToShow(const WindowOptions(title: 'CoreShift', titleBarStyle: TitleBarStyle.hidden, minimumSize: Size(960, 640)), () async {
     if (hidden) return;
@@ -113,13 +121,26 @@ class _DesktopFrameState extends State<DesktopFrame> with WindowListener {
 
   @override
   void onWindowClose() {
+    if (_noTray) {
+      // No tray to come back from: the window stays on the taskbar, and
+      // the VPN runs on regardless.
+      windowManager.minimize();
+      return;
+    }
     windowManager.hide();
     // Once: a window that just vanishes reads as CoreShift having quit,
     // while it runs on in the tray, the VPN with it.
     final state = widget.state;
     if (state.prefs['tray_hint_shown'] == true) return;
     state.setPref('tray_hint_shown', true);
-    if (Platform.isWindows) {
+    if (Platform.isLinux) {
+      Process.run('notify-send', [
+        '-a',
+        'CoreShift',
+        'CoreShift работает в трее',
+        'Окно свёрнуто, VPN работает как прежде. Чтобы выйти совсем, откройте меню значка CoreShift в трее → «Выход».',
+      ]).ignore();
+    } else if (Platform.isWindows) {
       final id = _tray?.icon.getId();
       if (id != null) {
         showTrayBalloon(
@@ -213,7 +234,12 @@ class _CaptionButtonState extends State<_CaptionButton> {
       onEnter: (_) => setState(() => hover = true),
       onExit: (_) => setState(() => hover = false),
       child: GestureDetector(
-        onTap: widget.onTap,
+        onTap: () {
+          // The window may hide under the pointer (close to the tray), and
+          // then no exit comes: it would show again with the button lit.
+          setState(() => hover = false);
+          widget.onTap();
+        },
         child: Container(
           width: 46,
           height: _TitleBar.height,
@@ -317,7 +343,18 @@ class _Tray {
     t = _Tray._(state, icon, menu, toggle, servers, onOpen);
 
     icon.setContextMenu(menu);
-    icon.setContextMenuTrigger(tray.ContextMenuTrigger.rightClicked);
+    if (Platform.isLinux) {
+      // A StatusNotifierItem: the panel draws the menu itself, and nativeapi
+      // exports it only for the "clicked" trigger; without this neither
+      // click did anything. A right click now opens the menu, whose first
+      // item opens the window. A left click still does nothing in Plasma
+      // 5.27: it calls Activate, which nativeapi accepts and ignores.
+      icon.setContextMenuTrigger(tray.ContextMenuTrigger.clicked);
+      // The name in the panel's list of tray entries.
+      icon.setTitle('CoreShift');
+    } else {
+      icon.setContextMenuTrigger(tray.ContextMenuTrigger.rightClicked);
+    }
     icon.addListener((e) {
       if (e is tray.TrayIconClickedEvent || e is tray.TrayIconDoubleClickedEvent) Timer.run(onOpen);
     });
@@ -354,14 +391,22 @@ class _Tray {
     _shown = key;
     icon.icon = tray.ImageAsset.fromAsset('assets/tray/$image.png');
     icon.setTooltip(tip);
-    toggle.label = st.active ? 'Отключить' : 'Подключить';
-    toggle.isEnabled = state.online && !state.busy;
-    _updateServers();
+    final label = st.active ? 'Отключить' : 'Подключить';
+    final enabled = state.online && !state.busy;
+    final menuChanged = toggle.label != label || toggle.isEnabled != enabled;
+    toggle.label = label;
+    toggle.isEnabled = enabled;
+    if ((_updateServers() || menuChanged) && Platform.isLinux) {
+      // The panel keeps its copy of the menu until told the layout changed,
+      // which nativeapi does only when the menu is set again.
+      icon.setContextMenu(menu);
+    }
   }
 
   /// The servers to switch to, the chosen one ticked. Picking one connects
-  /// to it, or moves the running connection there.
-  void _updateServers() {
+  /// to it, or moves the running connection there. Returns whether the list
+  /// changed.
+  bool _updateServers() {
     final sel = state.selection;
     final all = [
       for (final sub in state.subscriptions)
@@ -375,7 +420,7 @@ class _Tray {
 
     final list = all.where((r) => r.$1.id == sel.subscription || sel.isEmpty).take(_maxServers).toList();
     final key = [state.online && !state.busy, for (final (sub, n) in list) '${sub.id}/${n.fingerprint}/${state.isSelected(sub, n)}/${ms((sub, n))}'].join('|');
-    if (key == _serversShown) return;
+    if (key == _serversShown) return false;
     _serversShown = key;
     servers.clear();
     for (final i in _serverItems) {
@@ -407,6 +452,7 @@ class _Tray {
         _serverItems.add(i);
       }
     }
+    return true;
   }
 
   /// The current speed on a second line of the tooltip.

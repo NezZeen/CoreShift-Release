@@ -9,6 +9,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -423,7 +424,10 @@ func TestAPICoresAndApps(t *testing.T) {
 		}
 	}
 	var apps []map[string]string
-	if code := callJSON(t, srv, "GET", "/v1/apps", nil, &apps); code != http.StatusOK || len(apps) == 0 {
+	// As root on Linux the list holds only people's programs, and a test
+	// machine may have none.
+	rootOnLinux := runtime.GOOS == "linux" && os.Geteuid() == 0
+	if code := callJSON(t, srv, "GET", "/v1/apps", nil, &apps); code != http.StatusOK || (len(apps) == 0 && !rootOnLinux) {
 		t.Errorf("apps: %d, %v", code, apps)
 	}
 	var e map[string]any

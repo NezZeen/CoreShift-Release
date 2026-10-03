@@ -1,0 +1,4 @@
+#!/bin/sh
+# Pause before runit starts the daemon again, so a daemon that keeps
+# failing does not spin.
+sleep 2

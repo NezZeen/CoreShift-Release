@@ -69,7 +69,15 @@ func TestTrafficIsCountedPerDay(t *testing.T) {
 	if today.Date != time.Now().Format(dayLayout) || today.Down <= 0 || today.Up <= 0 {
 		t.Errorf("today = %+v", today)
 	}
-	if _, err := os.Stat(filepath.Join(h.svc.cfg.DataDir, "traffic.json")); err != nil {
+	// The traffic watcher writes them as it ends, just after Disconnect
+	// returns: on Linux that often comes after the check.
+	var err error
+	for deadline := time.Now().Add(3 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		if _, err = os.Stat(filepath.Join(h.svc.cfg.DataDir, "traffic.json")); err == nil {
+			break
+		}
+	}
+	if err != nil {
 		t.Errorf("totals not saved: %v", err)
 	}
 }

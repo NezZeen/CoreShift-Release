@@ -86,6 +86,10 @@ String humanError(String raw) {
     if (platform.isAndroid) {
       return 'Порт $port на телефоне занят другим приложением, скорее всего другим VPN-клиентом. Закройте его и подключитесь снова.';
     }
+    if (platform.isLinux) {
+      return 'Порт $port на этом компьютере занят другой программой, например другим VPN-клиентом. '
+          'Закройте её и подключитесь снова; кто занял порт, покажет «ss -ltnp».';
+    }
     return 'Порт $port на этом компьютере занят другой программой (например, другим VPN-клиентом) или зарезервирован Windows '
         'для Hyper-V, WSL или Docker. Закройте другой VPN-клиент; если не поможет — перезагрузите компьютер.';
   }
@@ -98,7 +102,7 @@ String humanError(String raw) {
   if (has('tun mode needs the sing-box')) return 'Для режима «Все приложения» нужно ядро sing-box.';
   if (has('tun layer stopped')) return 'Сетевой адаптер VPN неожиданно остановился.';
   if (has('start tun layer')) return 'Не удалось создать сетевой адаптер VPN. Подробности в журнале.';
-  if (has('redirect system dns')) return 'Не удалось перенастроить DNS Windows. Подробности в журнале.';
+  if (has('redirect system dns')) return 'Не удалось перенастроить DNS ${platform.isLinux ? 'системы' : 'Windows'}. Подробности в журнале.';
   if (has('resolve server')) return 'Не удалось узнать адрес сервера VPN: DNS не отвечает.';
 
   // Cores: returning to the primary, updates.

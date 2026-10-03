@@ -25,6 +25,12 @@ func (s *Service) AutoConnect(ctx context.Context) error {
 	return s.connectAtStart(ctx)
 }
 
+// Resume connects the selected node again after a restart of the service
+// interrupted a connection (Linux: a package upgrade restarts it), whatever
+// the auto-connect setting says. Like AutoConnect it leaves alone a VPN the
+// user connected or turned off meanwhile.
+func (s *Service) Resume(ctx context.Context) error { return s.connectAtStart(ctx) }
+
 // connectAtStart connects the selected node when nothing is connected yet,
 // retrying while the network comes up. Two things ask for it at the same
 // start, each on its own goroutine: AutoConnect, and a self-update that
@@ -123,6 +129,24 @@ func (s *Service) WaitAppGone(ctx context.Context, first, grace time.Duration) b
 			return true
 		case <-ctx.Done():
 			t.Stop()
+			return false
+		}
+	}
+}
+
+// WaitAppAttached returns true once an app is attached, at once if one is;
+// false when ctx ends first. The Linux daemon runs from boot and follows
+// the app with it: it connects when the app comes and disconnects when it
+// goes, rather than starting and stopping with it as on Windows.
+func (s *Service) WaitAppAttached(ctx context.Context) bool {
+	for {
+		n, _, changed := s.apps.state()
+		if n > 0 {
+			return true
+		}
+		select {
+		case <-changed:
+		case <-ctx.Done():
 			return false
 		}
 	}

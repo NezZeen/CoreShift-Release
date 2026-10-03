@@ -1,0 +1,53 @@
+# An example GitHub Actions workflow that builds the Linux packages for
+# amd64 and arm64 (Flutter builds Linux apps only on the processor they
+# are for, so each architecture has a runner of its own). Not active: copy
+# it to .github/workflows/ in a repository that holds the sources.
+name: linux-packages
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the build number is the number of commits
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: engine/go.mod
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.5
+
+      - name: Build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev \
+            libstdc++-12-dev libx11-dev libxi-dev dpkg-dev rpm zstd
+
+      - name: Checks
+        run: |
+          (cd engine && go vet ./... && go test ./...)
+          (cd app && flutter analyze && flutter test)
+
+      - name: Packages
+        run: packaging/linux/build.sh --fetch-cores
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coreshift-linux-${{ matrix.arch }}
+          path: dist/coreshift*

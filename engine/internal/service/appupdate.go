@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"time"
 
@@ -39,6 +40,7 @@ const (
 	UpdateChecking    = "checking"    //
 	UpdateDownloading = "downloading" //
 	UpdateReady       = "ready"       // downloaded and verified
+	UpdateAvailable   = "available"   // a newer release, for the user to install (Linux)
 	UpdateInstalling  = "installing"  // the installer is starting
 	UpdateError       = "error"       //
 )
@@ -58,6 +60,10 @@ type AppUpdate struct {
 	// Waiting: ready, and automatic installation waits for the VPN to be
 	// turned off.
 	Waiting bool `json:"waiting,omitempty"`
+	// Manual: new versions are only announced, the user installs them
+	// with the system's packages (Linux); URL is the release's page.
+	Manual bool   `json:"manual,omitempty"`
+	URL    string `json:"url,omitempty"`
 }
 
 type appUpdater struct {
@@ -89,11 +95,15 @@ func (s *Service) AppUpdateState() AppUpdate {
 	s.upd.mu.Lock()
 	defer s.upd.mu.Unlock()
 	st := s.upd.state
+	st.Manual = s.announcesOnly()
 	if st.State == UpdateReady && !s.userInstalls() {
 		st.Waiting = s.appUpdateSettings().Auto && s.connected() && s.upd.failed != releaseKey(st.Version, st.Build)
 	}
 	return st
 }
+
+// announcesOnly reports that new versions are announced, not installed.
+func (s *Service) announcesOnly() bool { return !s.cfg.SelfUpdate && s.cfg.AnnounceUpdates }
 
 // userInstalls reports that the system's installer asks the user.
 func (s *Service) userInstalls() bool { return s.cfg.InstallUpdate != nil }
@@ -122,7 +132,7 @@ func (s *Service) connected() bool {
 // CheckAppUpdate asks the updater to check now. It answers at once; the
 // result arrives as app-update events.
 func (s *Service) CheckAppUpdate() error {
-	if !s.cfg.SelfUpdate {
+	if !s.cfg.SelfUpdate && !s.announcesOnly() {
 		return errors.New("self-update is off: " + s.AppUpdateState().Reason)
 	}
 	select {
@@ -134,11 +144,13 @@ func (s *Service) CheckAppUpdate() error {
 
 // RunAppUpdates checks for new releases and installs them until ctx ends.
 func (s *Service) RunAppUpdates(ctx context.Context) {
-	if !s.cfg.SelfUpdate {
+	if !s.cfg.SelfUpdate && !s.announcesOnly() {
 		return
 	}
-	s.loadFailedUpdate()
-	s.finishAppUpdate(ctx)
+	if s.cfg.SelfUpdate {
+		s.loadFailedUpdate()
+		s.finishAppUpdate(ctx)
+	}
 	next := time.Now().Add(s.cfg.updateFirstCheck)
 	first := time.NewTimer(s.cfg.updateFirstCheck) // sooner than the next tick
 	defer first.Stop()
@@ -164,7 +176,7 @@ func (s *Service) RunAppUpdates(ctx context.Context) {
 func (s *Service) checkAppUpdate(ctx context.Context) {
 	source := s.appUpdateSettings().Source
 	if source == "" {
-		source = selfupdate.DefaultSource
+		source = selfupdate.DefaultSourceFor(runtime.GOOS)
 	}
 	src, err := selfupdate.ParseSource(source)
 	if err != nil {
@@ -187,6 +199,14 @@ func (s *Service) checkAppUpdate(ctx context.Context) {
 		os.RemoveAll(filepath.Join(s.updatesDir(), "installers"))
 		s.setAppUpdate(func(u *AppUpdate) {
 			*u = AppUpdate{State: UpdateIdle, CheckedAt: now}
+		})
+		return
+	}
+	if s.announcesOnly() {
+		// Nothing is downloaded: the user takes the package from its page.
+		s.setAppUpdate(func(u *AppUpdate) {
+			*u = AppUpdate{State: UpdateAvailable, Version: rel.Version, Build: rel.Build, Notes: rel.Notes,
+				Published: rel.Published, CheckedAt: now, URL: rel.Page}
 		})
 		return
 	}

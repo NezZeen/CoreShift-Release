@@ -17,13 +17,16 @@ import (
 // or when installed copies do not update.
 func runUpdate(ctx context.Context, args []string) error {
 	if len(args) == 0 || args[0] != "check" {
-		return errors.New("usage: coreshiftd update check [-source github:OWNER/REPO|DIR] [-download DIR]")
+		return errors.New("usage: coreshiftd update check [-platform windows|android|linux] [-source github:OWNER/REPO|github-public:OWNER/REPO|DIR] [-download DIR]")
 	}
 	fs := flag.NewFlagSet("update check", flag.ExitOnError)
-	source := fs.String("source", selfupdate.DefaultSource, "where releases are published")
+	source := fs.String("source", "", "where releases are published (default: the platform's, github-public:... for linux)")
 	download := fs.String("download", "", "also download and verify the installer into this folder")
-	platform := fs.String("platform", runtime.GOOS, "whose release to look for: windows or android")
+	platform := fs.String("platform", runtime.GOOS, "whose release to look for: windows, android or linux")
 	fs.Parse(args[1:])
+	if *source == "" {
+		*source = selfupdate.DefaultSourceFor(*platform)
+	}
 	src, err := selfupdate.ParseSource(*source)
 	if err != nil {
 		return err

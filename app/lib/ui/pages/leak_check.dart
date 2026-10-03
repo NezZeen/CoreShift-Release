@@ -86,7 +86,11 @@ class _Result extends StatelessWidget {
         Text(
           report.leaks
               ? 'Часть запросов обрабатывают DNS-серверы не из страны VPN-сервера — возможно, это DNS вашего провайдера. '
-                    '${platform.isAndroid ? 'Проверьте, не задан ли в Android «Частный DNS» вручную, и включите' : 'Включите «Строгий DNS в Windows» и'} '
+                    '${platform.isAndroid
+                        ? 'Проверьте, не задан ли в Android «Частный DNS» вручную, и включите'
+                        : platform.isLinux
+                        ? 'Включите «Защиту от утечек DNS» и'
+                        : 'Включите «Строгий DNS в Windows» и'} '
                     'блокировку DNS-over-HTTPS браузеров в разделе DNS, переподключитесь и проверьте снова.'
               : report.dns.isEmpty
               ? 'Ни один DNS-сервер не увидел проверочных запросов в обход VPN.'

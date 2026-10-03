@@ -1,0 +1,9 @@
+#!/bin/sh
+# The CoreShift daemon under runit (Void, Artix-runit): /etc/sv/coreshift/run.
+# A template: install.sh fills in @BINDIR@ and @LIBDIR@. runit runs this
+# again whenever the daemon exits, so DNS left by a crash is undone first
+# every time, at boot too.
+exec 2>&1
+umask 077
+@BINDIR@/coreshiftd dns recover -journal /var/lib/coreshift/dnsguard.json || true
+exec @BINDIR@/coreshiftd service run -data-dir /var/lib/coreshift -cores-dir @LIBDIR@/cores
