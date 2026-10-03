@@ -11,9 +11,28 @@ const logGroupEvery = 30 * time.Second
 // Log adds a line of output to the event stream, as the TUN layer reports
 // it (a separate process on the desktop, part of the app on Android).
 func (s *Service) Log(source, line string) {
-	if !noiseLine(line) {
+	switch {
+	case noiseLine(line):
+	case s.healthFails.Load() >= upstreamDeadChecks && lookupTimeout(line):
+		// Every app's lookups through the tunnel time out while the
+		// server does not answer: one line says it, not one per name.
+		s.logs.addAs(source, upstreamDNSDead)
+	default:
 		s.logs.add(source, line)
 	}
+}
+
+// upstreamDeadChecks failed checks in a row of the active core mean the
+// tunnel's own DNS cannot answer either.
+const upstreamDeadChecks = 2
+
+const upstreamDNSDead = "DNS через VPN не отвечает: сервер недоступен"
+
+// lookupTimeout recognises the TUN layer's lookup that timed out, as every
+// lookup through a tunnel whose server is gone does.
+func lookupTimeout(l string) bool {
+	return strings.Contains(l, "lookup failed") &&
+		(strings.Contains(l, "context deadline exceeded") || strings.Contains(l, "i/o timeout"))
 }
 
 // noiseLine recognises TUN layer errors that are no fault of the tunnel,

@@ -108,12 +108,16 @@ func (l *callLog) before(from int, a, b string) bool {
 type fakeGuard struct {
 	log      *callLog
 	applyErr error
+	onApply  func() // runs as the guard applies
 	mu       sync.Mutex
 	applied  *dnsguard.Config
 }
 
 func (g *fakeGuard) Apply(_ context.Context, cfg dnsguard.Config) error {
 	g.log.add("dns.apply")
+	if g.onApply != nil {
+		g.onApply()
+	}
 	if g.applyErr != nil {
 		return g.applyErr
 	}
@@ -358,6 +362,34 @@ func TestTUNCrashRestoresDNS(t *testing.T) {
 	}
 	if proc.PortOpen(h.listen) {
 		t.Error("core left running")
+	}
+}
+
+// A TUN layer that dies while connecting, here as DNS is redirected into
+// it, fails the connection: never "connected", and the DNS is given back.
+func TestTUNDyingWhileConnectingIsNoSuccess(t *testing.T) {
+	h := newHarness(t, nil)
+	h.guard.onApply = func() { h.tun.instance().crash() }
+	err := h.connect(t, trojanLink)
+	if err == nil || !strings.Contains(err.Error(), "TUN layer stopped") {
+		t.Fatalf("err = %v", err)
+	}
+	for {
+		select {
+		case e := <-h.events:
+			if e.Kind == "state" && e.State == Connected {
+				t.Fatal("reported connected")
+			}
+			continue
+		default:
+		}
+		break
+	}
+	if st := h.svc.Status(); st.State != Failed {
+		t.Errorf("status = %+v", st)
+	}
+	if h.guard.active() != nil || proc.PortOpen(h.listen) {
+		t.Errorf("DNS or core left behind: %v", h.log.get())
 	}
 }
 
