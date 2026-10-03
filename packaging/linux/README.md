@@ -63,7 +63,8 @@
 ### Межсетевой экран, SELinux, AppArmor
 
 - **firewalld (Fedora, RHEL, openSUSE).** Пока VPN включён, интерфейс `coreshift` переводится в зону `trusted` (только в runtime, `--change-interface`), а при отключении возвращается обратно. Без этого зона по умолчанию отклоняет соединения, которые TUN-слой отвечает системе. Перезагрузка firewalld или ПК сбрасывает это и так.
-- **nftables/iptables со своими правилами** (политика DROP на input): нужно разрешить вход с интерфейса `coreshift`, например `nft add rule inet filter input iifname "coreshift" accept`. Маршруты sing-box (`auto_route`, `strict_route`) так устроены, что весь трафик, кроме локальных сетей, идёт в TUN, а DNS перехватывается всегда.
+- **nftables/iptables со своими правилами** (политика DROP на input): нужно разрешить вход с интерфейса `coreshift`, например `nft add rule inet filter input iifname "coreshift" accept`.
+- **Локальная сеть.** Маршруты sing-box (`auto_route`, `strict_route`) отправляют в TUN весь трафик, и на Linux это касалось бы и ответов на входящие соединения: SSH, общие папки, хост виртуальной машины. Поэтому диапазоны локальных сетей (`10/8`, `172.16/12`, `192.168/16`, `169.254/16`, `fd00::/8`, `fe80::/10`, мультикаст) исключены из маршрутов TUN (`route_exclude_address`). Они и так шли напрямую. Цена: DNS-запросы к серверу в локальной сети (например, к роутеру) идут мимо туннеля, если программа обращается к нему сама. Системный резолвер при этом перенаправлен DNS-защитой, а DNS к любым внешним адресам перехватывается.
 - **SELinux (Fedora, RHEL) в режиме enforcing.** Программы лежат в `/usr/bin` и `/usr/lib/coreshift` и получают обычные метки `bin_t` и `lib_t`. Служба запускается из `/usr/bin/coreshiftd` (`bin_t`), поэтому systemd запускает её в домене `unconfined_service_t`. В `/var/lib` нет ничего исполняемого. `rpm` ставит метки сам. После `install.sh` (`/usr/local`) setup-скрипт сам выполняет `restorecon`. Если служба не стартует, проверьте `ausearch -m avc -ts recent` и при необходимости выполните `sudo restorecon -Rv /usr/local/lib/coreshift /usr/local/bin/coreshiftd /etc/systemd/system/coreshift.service`.
 - **AppArmor (Ubuntu, Debian, openSUSE).** Профиля у CoreShift нет, обе программы работают без ограничений (unconfined). Ограничение user namespaces в Ubuntu 24.04 Flutter-приложение не затрагивает.
 
@@ -125,7 +126,7 @@ amd64 и arm64. Служба и ядра собираются для обеих 
 | Fedora 44 | .rpm | systemd | файл + firewalld | ок, интерфейс переходит в зону `trusted` и обратно |
 | Arch | .pkg.tar.zst | systemd | файл / openresolv | ок, у openresolv эксклюзивная запись |
 | openSUSE Tumbleweed | .rpm | systemd | файл / netconfig | ок; у netconfig сервер туннеля стоит вторым, DNS всё равно идёт в туннель |
-| Ubuntu 24.04 KDE (ВМ) | .deb | systemd | NetworkManager + resolved | см. отчёт: после подключения ВМ перестала отвечать по сети |
+| Ubuntu 24.04 KDE (ВМ) | .deb | systemd | NetworkManager + resolved | установка и служба ок; после подключения ВМ перестала отвечать по сети: ответы на входящие соединения уходили в TUN. Исправлено исключением локальных сетей из маршрутов TUN (повторено в WSL: входящее HTTP-соединение при включённом VPN — ок); на ВМ нужна повторная проверка |
 | Alpine | .tar.gz `--daemon-only` | OpenRC | openresolv | не проверено: нет системы |
 | Void | .tar.gz | runit | openresolv | не проверено: нет системы |
 
@@ -137,7 +138,8 @@ amd64 и arm64. Служба и ядра собираются для обеих 
    - `ip link show coreshift`;
    - DNS: `resolvectl status coreshift` (resolved), `cat /etc/resolv.conf` (файл, resolvconf, netconfig);
    - `curl https://www.cloudflare.com/cdn-cgi/trace` показывает IP сервера;
-   - проверка утечек DNS в настройках.
+   - проверка утечек DNS в настройках;
+   - входящие соединения из локальной сети работают (например, `ssh` на эту машину с другой).
 4. Отключение: DNS как до подключения, интерфейса нет.
 5. Сбой: `sudo kill -9 $(pgrep -f 'coreshiftd service run')`. Служба перезапускается, DNS восстановлен, сайты открываются. После жёсткого выключения ПК сеть работает сразу после загрузки.
 6. NetworkManager без resolved: `nmcli connection up <подключение>`, через 5 с снова файл CoreShift; при отключении остаётся новый файл NetworkManager.
