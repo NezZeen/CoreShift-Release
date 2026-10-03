@@ -569,9 +569,35 @@ class _OfflineState extends State<_Offline> {
   }
 }
 
-class _OfflineBanner extends StatelessWidget {
+class _OfflineBanner extends StatefulWidget {
   final String reason;
   const _OfflineBanner({required this.reason});
+
+  @override
+  State<_OfflineBanner> createState() => _OfflineBannerState();
+}
+
+class _OfflineBannerState extends State<_OfflineBanner> {
+  bool starting = false;
+  String? error;
+
+  /// Linux: the service stopped while the window was open. Nothing starts
+  /// it again by itself (on Windows the app does), so offer what the
+  /// start screen offers.
+  bool get _canStart => platform.isLinux && platform.canStartService && !platform.daemonAccessDenied(widget.reason);
+
+  Future<void> _start() async {
+    setState(() {
+      starting = true;
+      error = null;
+    });
+    final err = await platform.startService();
+    if (!mounted) return;
+    setState(() {
+      starting = false;
+      error = err;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -583,7 +609,11 @@ class _OfflineBanner extends StatelessWidget {
         children: [
           const Icon(Icons.link_off, size: 16, color: errColor),
           const SizedBox(width: 10),
-          Expanded(child: Text('$reason. Переподключаемся…', style: const TextStyle(fontSize: 13))),
+          Expanded(child: Text(error == null ? '${widget.reason}. Переподключаемся…' : '${widget.reason}. $error', style: const TextStyle(fontSize: 13))),
+          if (_canStart) ...[
+            const SizedBox(width: 10),
+            Btn(label: 'Запустить службу', icon: Icons.play_arrow, small: true, loading: starting, onPressed: _start),
+          ],
         ],
       ),
     );
