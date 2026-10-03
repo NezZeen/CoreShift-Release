@@ -194,6 +194,8 @@ func Start(dataDir, libDir, deviceID, osVersion, model string, p Platform) error
 		InstallUpdate: p.InstallUpdate,
 		// The app is often open for a moment only.
 		FirstUpdateCheck: 20 * time.Second,
+		// The DNS leak test asks the tunnel the way apps do.
+		TUNLookup: tunLookup,
 	})
 	if err != nil {
 		return err

@@ -16,6 +16,7 @@ import (
 	"coreshift/engine/internal/core"
 	"coreshift/engine/internal/node"
 	"coreshift/engine/internal/subscription"
+	"coreshift/engine/internal/supervisor"
 )
 
 // NewAPI serves the desktop UI over HTTP on a loopback address:
@@ -33,6 +34,8 @@ import (
 //	GET  /v1/stats?days=30       traffic per day through the VPN (Stats)
 //	POST /v1/speedtest           measure the connection (SpeedResult); progress
 //	                             arrives as "speedtest" events
+//	POST /v1/leaktest            the DNS leak test, through the connection
+//	                             (LeakResult)
 //
 // plus the store endpoints in api_store.go.
 //
@@ -51,6 +54,7 @@ func NewAPI(svc *Service, token string, listen netip.AddrPort) http.Handler {
 	mux.HandleFunc("GET /v1/ip", a.publicIP)
 	mux.HandleFunc("GET /v1/stats", a.stats)
 	mux.HandleFunc("POST /v1/speedtest", a.speedTest)
+	mux.HandleFunc("POST /v1/leaktest", a.leakTest)
 	a.routeStore(mux)
 	return a.guard(mux)
 }
@@ -173,6 +177,18 @@ func (a *api) speedTest(w http.ResponseWriter, r *http.Request) {
 	res, err := a.svc.SpeedTest(r.Context())
 	switch {
 	case errors.Is(err, ErrSpeedTestRunning):
+		writeError(w, http.StatusConflict, err)
+	case err != nil:
+		writeError(w, http.StatusBadGateway, err)
+	default:
+		writeJSON(w, http.StatusOK, res)
+	}
+}
+
+func (a *api) leakTest(w http.ResponseWriter, r *http.Request) {
+	res, err := a.svc.LeakTest(r.Context())
+	switch {
+	case errors.Is(err, supervisor.ErrNotConnected):
 		writeError(w, http.StatusConflict, err)
 	case err != nil:
 		writeError(w, http.StatusBadGateway, err)

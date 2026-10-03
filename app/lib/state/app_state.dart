@@ -35,9 +35,9 @@ class AppState extends ChangeNotifier {
   final Json prefs;
   final Future<void> Function(Json prefs)? savePrefs;
 
-  /// Runs the DNS leak test; by default the real one, or a sample on demo
-  /// data.
-  final Future<List<Json>> Function()? leakTestRunner;
+  /// Runs the DNS leak test and returns the engine's result; by default
+  /// the engine's (POST /v1/leaktest).
+  final Future<Json> Function()? leakTestRunner;
 
   /// Opens links; by default in the browser, not at all on demo data.
   final Future<bool> Function(String url)? linkOpener;
