@@ -112,3 +112,9 @@ func TestFollowApp(t *testing.T) {
 		t.Fatalf("disconnected %d times on shutdown, want no extra", d)
 	}
 }
+
+func TestCoreFile(t *testing.T) {
+	if coreFile("sing-box", "windows") != "sing-box.exe" || coreFile("sing-box", "linux") != "sing-box" {
+		t.Error("core file names do not match what findCores looks for")
+	}
+}
