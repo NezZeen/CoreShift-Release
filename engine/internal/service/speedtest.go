@@ -22,14 +22,24 @@ type SpeedResult struct {
 	VPN         bool  `json:"vpn"`
 	// Server is the node tested, while connected.
 	Server string `json:"server,omitempty"`
+	// TestServer is who measured: the sponsor of a speedtest.net server,
+	// or "Cloudflare" when speedtest.net could not be used.
+	TestServer string `json:"test_server,omitempty"`
+	// TestCity and TestCountry are where the speedtest.net server is.
+	TestCity    string `json:"test_city,omitempty"`
+	TestCountry string `json:"test_country,omitempty"`
 }
 
 // ErrSpeedTestRunning means another speed test has not finished yet.
 var ErrSpeedTestRunning = errors.New("a speed test is already running")
 
 // speedServer answers /__down?bytes=N with N bytes and takes any body on
-// /__up, from servers close to the user.
+// /__up, from servers close to the user. It measures when speedtest.net
+// cannot.
 const speedServer = "https://speed.cloudflare.com"
+
+// cloudflareName is TestServer of a test that Cloudflare measured.
+const cloudflareName = "Cloudflare"
 
 const (
 	speedDownStreams = 4
@@ -49,9 +59,11 @@ var (
 )
 
 // SpeedTest measures the delay, then the download and upload speed, each
-// over several connections at once, as speed test sites do. Progress
-// arrives as "speedtest" events: Reason "latency", "download" and
-// "upload" with the current rate, then "done" with the result or "error".
+// over several connections at once, as speed test sites do: against the
+// nearest speedtest.net (Ookla) server, as Throne does, or Cloudflare's
+// when speedtest.net cannot be used. Progress arrives as "speedtest"
+// events: Reason "latency", "download" and "upload" with the current
+// rate, then "done" with the result or "error".
 func (s *Service) SpeedTest(ctx context.Context) (SpeedResult, error) {
 	if !s.speedMu.TryLock() {
 		return SpeedResult{}, ErrSpeedTestRunning
@@ -71,11 +83,109 @@ func (s *Service) speedTest(ctx context.Context) (SpeedResult, error) {
 	defer cancel()
 	st := s.Status()
 	res := SpeedResult{VPN: st.State == Connected}
+	// The core's SOCKS inbound, credentials included: never print it.
 	var proxy *url.URL
 	if res.VPN {
 		res.Server = st.Node
 		proxy = s.proxyURL()
 	}
+
+	out, err := s.ooklaSpeedTest(ctx, proxy, res)
+	if err == nil || !errors.Is(err, errOoklaUnusable) || ctx.Err() != nil {
+		return out, err
+	}
+	// speedtest.net failed before it measured anything: Cloudflare
+	// measures instead, which the result names.
+	return s.cloudflareSpeedTest(ctx, proxy, res)
+}
+
+// errOoklaUnusable means speedtest.net failed before it measured anything,
+// so the test can still go to Cloudflare.
+var errOoklaUnusable = errors.New("speedtest.net unusable")
+
+// ooklaSpeedTest measures against the nearest speedtest.net server.
+func (s *Service) ooklaSpeedTest(ctx context.Context, proxy *url.URL, res SpeedResult) (SpeedResult, error) {
+	newTest := s.cfg.ookla
+	if newTest == nil {
+		newTest = newOoklaTest
+	}
+	t := newTest(proxy)
+	defer t.Close()
+
+	srv, err := t.Pick(ctx)
+	if err != nil {
+		return res, fmt.Errorf("%w: %w", errOoklaUnusable, err)
+	}
+	res.TestServer, res.TestCity, res.TestCountry = srv.Sponsor, srv.Name, srv.Country
+	if res.TestServer == "" {
+		res.TestServer = srv.Name
+	}
+	res.LatencyMS = max(srv.Latency.Milliseconds(), 1)
+	s.hub.publish(Event{Kind: "speedtest", Reason: "latency", LatencyMS: res.LatencyMS})
+
+	res.DownloadBps, err = s.ooklaPhase(ctx, t, "download", speedDownFor, t.Download)
+	if err != nil {
+		if ctx.Err() == nil && t.Moved() == 0 {
+			return res, fmt.Errorf("%w: %w", errOoklaUnusable, err)
+		}
+		return res, err
+	}
+	res.UploadBps, err = s.ooklaPhase(ctx, t, "upload", speedUpFor, t.Upload)
+	return res, err
+}
+
+// ooklaPhase runs a phase of t for up to d, publishing its rate as it
+// goes. A phase that moved nothing failed, whatever the library said.
+func (s *Service) ooklaPhase(ctx context.Context, t ooklaTest, phase string, d time.Duration, run func(context.Context, time.Duration) (int64, error)) (int64, error) {
+	type result struct {
+		rate int64
+		err  error
+	}
+	pctx, cancel := context.WithTimeout(ctx, d+2*time.Second)
+	defer cancel()
+	done := make(chan result, 1)
+	start := time.Now()
+	go func() {
+		rate, err := run(pctx, d)
+		done <- result{rate, err}
+	}()
+	tick := time.NewTicker(speedTick)
+	defer tick.Stop()
+	for {
+		select {
+		case r := <-done:
+			if err := ctx.Err(); err != nil {
+				return 0, fmt.Errorf("%s: %w", phase, err)
+			}
+			moved := t.Moved()
+			if r.err != nil && !errors.Is(r.err, context.DeadlineExceeded) {
+				return 0, fmt.Errorf("%s: %w", phase, r.err)
+			}
+			if moved == 0 {
+				return 0, fmt.Errorf("%s: nothing went through", phase)
+			}
+			if r.rate <= 0 {
+				r.rate = int64(float64(moved) / max(time.Since(start), time.Millisecond).Seconds())
+			}
+			return r.rate, nil
+		case <-ctx.Done():
+			// The library's workers wind down once t is closed.
+			return 0, fmt.Errorf("%s: %w", phase, ctx.Err())
+		case <-tick.C:
+			e := Event{Kind: "speedtest", Reason: phase}
+			if phase == "download" {
+				e.DownRate = t.Rate()
+			} else {
+				e.UpRate = t.Rate()
+			}
+			s.hub.publish(e)
+		}
+	}
+}
+
+// cloudflareSpeedTest measures against speed.cloudflare.com.
+func (s *Service) cloudflareSpeedTest(ctx context.Context, proxy *url.URL, res SpeedResult) (SpeedResult, error) {
+	res.TestServer, res.TestCity, res.TestCountry = cloudflareName, "", ""
 	tr := newTransport(proxy)
 	tr.MaxIdleConnsPerHost, tr.ForceAttemptHTTP2 = speedDownStreams, false
 	defer tr.CloseIdleConnections()
