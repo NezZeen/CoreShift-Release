@@ -6,6 +6,7 @@ require (
 	github.com/sagernet/sing v0.9.6-0.20260922013354-87c33f17688f
 	github.com/sagernet/sing-box v1.14.2
 	github.com/sagernet/sing-tun v0.9.6-0.20260924001923-ddaa4ca25e3b
+	github.com/showwin/speedtest-go v1.8.3
 	go.yaml.in/yaml/v3 v3.0.5
 	golang.org/x/mobile v0.0.0-20260908204917-8b95e45f8d3e
 	golang.org/x/sys v0.48.0

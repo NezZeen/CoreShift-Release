@@ -228,6 +228,8 @@ func newHarness(t *testing.T, mutate func(*Config)) *harness {
 		tcpPing: func(context.Context, netip.AddrPort, ping.Bind) (time.Duration, error) {
 			return 0, errors.New("unreachable")
 		},
+		// No speedtest.net from tests: the speed test goes to speedURL.
+		ookla: noOokla,
 	}
 	if mutate != nil {
 		mutate(&cfg)
