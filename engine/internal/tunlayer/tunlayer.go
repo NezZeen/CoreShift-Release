@@ -93,11 +93,15 @@ type Options struct {
 	// BypassAddresses are proxy server IPs, excluded from TUN routes for the
 	// same reason. Needed where process matching is unavailable.
 	BypassAddresses []netip.Prefix
-	// ExcludeLAN keeps the local network ranges out of the TUN routes
-	// (Linux): sing-box's routing table there would otherwise take the
-	// replies to connections made to this machine from the local network
-	// (SSH, file sharing, a VM's host) into the TUN, where they die. Those
-	// ranges go direct anyway. LANResolvers are carved out of them.
+	// ExcludeLAN keeps the local network ranges out of the TUN routes, so
+	// they take the system's own routes: on Windows a Hyper-V or WSL
+	// switch, Docker or a second adapter is reached by its own interface,
+	// where the layer's direct outbound would leave by the default one; on
+	// Linux the replies to connections made to this machine from the local
+	// network (SSH, file sharing, a VM's host) no longer die in the TUN.
+	// Those ranges go direct anyway. LANResolvers are carved out of them.
+	// On Linux only DNS to them goes into the TUN (service resolver rules).
+	// On Android the VpnService gets the same list (see mobile).
 	ExcludeLAN bool
 	// LANResolvers are the system's resolvers (a home router, WSL's host):
 	// with ExcludeLAN they stay routed into the TUN, so DNS sent to them
@@ -153,6 +157,10 @@ type DNSOptions struct {
 	FakeIPRange6 netip.Prefix
 
 	DirectSuffixes []string
+	// DirectFirst are direct names that win over the proxy lists and rule
+	// sets: those the user sends direct although a preset's proxy rule set
+	// has them (a Google service with the Russian preset's geosite-google).
+	DirectFirst []string
 	// ProxySuffixes are resolved through the tunnel and routed through the
 	// proxy even when a direct suffix or rule set also matches them.
 	ProxySuffixes []string
@@ -417,6 +425,9 @@ func buildDNS(o Options) (obj, error) {
 			rules = append(rules, to)
 		}
 	}
+	if len(o.DNS.DirectFirst) > 0 {
+		direct("domain_suffix", o.DNS.DirectFirst)
+	}
 	if len(o.DNS.ProxySuffixes) > 0 {
 		proxied("domain_suffix", o.DNS.ProxySuffixes)
 	}
@@ -481,6 +492,9 @@ func buildRoute(o Options) obj {
 	}
 	if o.DNS.BlockBrowserDoH {
 		rules = append(rules, obj{"domain_suffix": browserDoHDomains, "outbound": tagProxy})
+	}
+	if len(o.DNS.DirectFirst) > 0 {
+		rules = append(rules, obj{"domain_suffix": o.DNS.DirectFirst, "outbound": tagDirect})
 	}
 	if len(o.DNS.ProxySuffixes) > 0 {
 		rules = append(rules, obj{"domain_suffix": o.DNS.ProxySuffixes, "outbound": tagProxy})

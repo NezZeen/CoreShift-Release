@@ -108,12 +108,16 @@ func (l *callLog) before(from int, a, b string) bool {
 type fakeGuard struct {
 	log      *callLog
 	applyErr error
+	onApply  func() // runs as the guard applies
 	mu       sync.Mutex
 	applied  *dnsguard.Config
 }
 
 func (g *fakeGuard) Apply(_ context.Context, cfg dnsguard.Config) error {
 	g.log.add("dns.apply")
+	if g.onApply != nil {
+		g.onApply()
+	}
 	if g.applyErr != nil {
 		return g.applyErr
 	}
@@ -363,6 +367,34 @@ func TestTUNCrashRestoresDNS(t *testing.T) {
 	}
 }
 
+// A TUN layer that dies while connecting, here as DNS is redirected into
+// it, fails the connection: never "connected", and the DNS is given back.
+func TestTUNDyingWhileConnectingIsNoSuccess(t *testing.T) {
+	h := newHarness(t, nil)
+	h.guard.onApply = func() { h.tun.instance().crash() }
+	err := h.connect(t, trojanLink)
+	if err == nil || !strings.Contains(err.Error(), "TUN layer stopped") {
+		t.Fatalf("err = %v", err)
+	}
+	for {
+		select {
+		case e := <-h.events:
+			if e.Kind == "state" && e.State == Connected {
+				t.Fatal("reported connected")
+			}
+			continue
+		default:
+		}
+		break
+	}
+	if st := h.svc.Status(); st.State != Failed {
+		t.Errorf("status = %+v", st)
+	}
+	if h.guard.active() != nil || proc.PortOpen(h.listen) {
+		t.Errorf("DNS or core left behind: %v", h.log.get())
+	}
+}
+
 func TestAllCoresFailingRestoresDNS(t *testing.T) {
 	t.Setenv("FAKECORE_XRAY", "crash-after:700ms")
 	t.Setenv("FAKECORE_SING_BOX", "crash-start")
@@ -504,7 +536,7 @@ func TestRussiaDirectDownloadsRuleSets(t *testing.T) {
 	o := h.tun.opts
 	h.tun.mu.Unlock()
 	if !slices.Contains(o.DNS.DirectSuffixes, "xn--p1ai") || !slices.Contains(o.DNS.DirectSuffixes, "2ip.io") || len(o.DNS.DirectRuleSets) != 1 || len(o.DNS.DirectIPRuleSets) != 1 ||
-		len(o.DNS.ProxyRuleSets) != 1 || o.DNS.ProxyRuleSets[0].Tag != "geosite-category-media-ru-blocked" {
+		len(o.DNS.ProxyRuleSets) != 2 || o.DNS.ProxyRuleSets[0].Tag != "geosite-category-media-ru-blocked" || o.DNS.ProxyRuleSets[1].Tag != "geosite-google" {
 		t.Fatalf("dns options = %+v", o.DNS)
 	}
 	if _, err := os.Stat(o.DNS.DirectIPRuleSets[0].Path); err != nil {

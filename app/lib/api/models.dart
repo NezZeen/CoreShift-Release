@@ -36,6 +36,13 @@ class Status {
   final String error;
   final bool settingsPending;
 
+  /// While connected and nothing gets through: who is at fault, as the
+  /// service found looking past the tunnel: "server-down" (the internet
+  /// answers, the server does not), "offline" (nothing answers),
+  /// "server-up" (the server answers, the tunnel through it does not) or
+  /// "unknown". Empty while the server answers.
+  final String problem;
+
   const Status({
     this.state = ConnState.idle,
     this.node = '',
@@ -47,6 +54,7 @@ class Status {
     this.since,
     this.error = '',
     this.settingsPending = false,
+    this.problem = '',
   });
 
   factory Status.fromJson(Json j) => Status(
@@ -60,6 +68,7 @@ class Status {
     since: _time(j['since']),
     error: j['error'] ?? '',
     settingsPending: j['settings_pending'] == true,
+    problem: j['problem'] ?? '',
   );
 
   bool get active => state == ConnState.connected || state == ConnState.connecting;

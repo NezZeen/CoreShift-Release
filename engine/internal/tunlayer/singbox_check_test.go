@@ -72,7 +72,9 @@ func TestSingBoxAcceptsConfig(t *testing.T) {
 			o.DNS.DirectSuffixes = []string{"ru"}
 			o.DNS.DirectRuleSets = []RuleSet{{Tag: "geosite-ru", Path: geosite}}
 			o.DNS.DirectIPRuleSets = []RuleSet{{Tag: "geoip-ru", Path: geoip}}
-			o.DNS.ProxyRuleSets = []RuleSet{{Tag: "geosite-media-ru-blocked", Path: geosite}}
+			o.DNS.ProxyRuleSets = []RuleSet{{Tag: "geosite-media-ru-blocked", Path: geosite}, {Tag: "geosite-google", Path: geosite}}
+			o.DNS.ProxySuffixes = []string{"google.com", "googlevideo.com"}
+			o.DNS.DirectFirst = []string{"maps.google.com"}
 		},
 		"proxy rule set in selective mode": func(o *Options) {
 			o.Selective = true
@@ -90,6 +92,12 @@ func TestSingBoxAcceptsConfig(t *testing.T) {
 		},
 		"remote hostname": func(o *Options) {
 			o.DNS.Remote = "tls://dns.example:853"
+		},
+		"local network kept out": func(o *Options) {
+			o.Address6 = DefaultAddress6
+			o.ExcludeLAN = true
+			o.LANResolvers = []netip.Addr{netip.MustParseAddr("192.168.1.1"), netip.MustParseAddr("172.25.192.1")}
+			o.BypassAddresses = []netip.Prefix{netip.MustParsePrefix("203.0.113.10/32")}
 		},
 		"cache file": func(o *Options) {
 			o.CacheFile = filepath.Join(t.TempDir(), "cache.db")

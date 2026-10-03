@@ -28,6 +28,13 @@ var (
 	listRE = regexp.MustCompile(`\[[0-9a-fA-F:.,\s]{3,}\]`)
 	addrRE = regexp.MustCompile(`\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b`)
 	spaces = regexp.MustCompile(`\s+`)
+	// The name or address a failure was about: a dead tunnel fails every
+	// app's lookups and connections alike, and grouping them by name made
+	// a line for each.
+	lookupRE = regexp.MustCompile(`(lookup failed for) [^\s:]+`)
+	targetRE = regexp.MustCompile(`(open connection to) \S+ (using)`)
+	// The two lookups of one name, A and AAAA, fail in either order.
+	exchangeRE = regexp.MustCompile(`\((exchange6: [^|)]*?) \| (exchange4: [^)]*)\)`)
 )
 
 // stripANSI removes the colour codes the TUN layer writes around ERROR.
@@ -44,6 +51,9 @@ func logShape(line string) string {
 	}
 	s := connRE.ReplaceAllString(line, "")
 	s = uptimeRE.ReplaceAllString(s, "")
+	s = lookupRE.ReplaceAllString(s, "$1 <имя>")
+	s = targetRE.ReplaceAllString(s, "$1 <адрес> $2")
+	s = exchangeRE.ReplaceAllString(s, "($2 | $1)")
 	s = listRE.ReplaceAllString(s, "<адрес>")
 	s = addrRE.ReplaceAllString(s, "<адрес>")
 	return strings.TrimSpace(spaces.ReplaceAllString(s, " "))
@@ -79,6 +89,14 @@ func (g *logGrouper) add(source, line string) {
 		g.emit(source, line)
 		return
 	}
+	g.addShape(source, line, shape)
+}
+
+// addAs passes text on, or counts it as a repeat: for lines that say the
+// same in other words, whatever their own text.
+func (g *logGrouper) addAs(source, text string) { g.addShape(source, text, text) }
+
+func (g *logGrouper) addShape(source, line, shape string) {
 	key := source + "\x00" + shape
 	g.mu.Lock()
 	if grp, ok := g.groups[key]; ok {

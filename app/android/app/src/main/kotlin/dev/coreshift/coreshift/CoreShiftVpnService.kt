@@ -7,11 +7,13 @@ import android.app.PendingIntent
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.net.IpPrefix
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import dev.coreshift.mobile.Mobile
 import dev.coreshift.mobile.TunConfig
+import java.net.InetAddress
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -56,6 +58,7 @@ class CoreShiftVpnService : VpnService() {
             val (addr6, len6) = splitPrefix(cfg.address6)
             b.addAddress(addr6, len6).addRoute("::", 0)
         }
+        excludeLocalNetwork(b, cfg)
         b.addDnsServer(cfg.dns)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) b.setMetered(false)
         b.setConfigureIntent(openAppIntent())
@@ -95,6 +98,23 @@ class CoreShiftVpnService : VpnService() {
             try {
                 b.addDisallowedApplication(app)
             } catch (_: PackageManager.NameNotFoundException) {
+            }
+        }
+    }
+
+    /**
+     * Keeps the local network out of the VPN (Android 13 and later can), so
+     * a printer, a NAS or the router's page is reached by the device's own
+     * routes. Earlier versions route it into the TUN, which sends it direct.
+     * A range Android does not take is skipped on its own.
+     */
+    private fun excludeLocalNetwork(b: Builder, cfg: TunConfig) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        for (line in cfg.excludeRoutes.split('\n').map { it.trim() }.filter { it.isNotEmpty() }) {
+            try {
+                val (addr, len) = splitPrefix(line)
+                b.excludeRoute(IpPrefix(InetAddress.getByName(addr), len))
+            } catch (_: Exception) {
             }
         }
     }
