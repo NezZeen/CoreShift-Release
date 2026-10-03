@@ -344,10 +344,12 @@ class DemoBackend implements Backend {
   }
 
   /// A speed test that ramps up as a real one does, a little slower
-  /// through the "VPN".
+  /// through the "VPN", against the speedtest.net server nearest to the
+  /// address sites see.
   Future<Json> _speedTest() async {
     final vpn = _status['state'] == 'connected';
     final scale = vpn ? .7 : 1.0;
+    final (city, sponsor, country) = vpn ? ('Amsterdam', 'Leaseweb', 'Netherlands') : ('Moscow', 'Rostelecom', 'Russia');
     _emit({'kind': 'speedtest', 'reason': 'latency', 'latency_ms': vpn ? 48 : 12});
     var down = 0, up = 0;
     for (var i = 1; i <= 8; i++) {
@@ -360,7 +362,16 @@ class DemoBackend implements Backend {
       up = (5.2e6 * scale * (1 - 1 / (i + 1))).round();
       _emit({'kind': 'speedtest', 'reason': 'upload', 'up_rate': up});
     }
-    final res = {'download_bps': down, 'upload_bps': up, 'latency_ms': vpn ? 48 : 12, 'vpn': vpn, if (vpn) 'server': _status['node']};
+    final res = {
+      'download_bps': down,
+      'upload_bps': up,
+      'latency_ms': vpn ? 48 : 12,
+      'vpn': vpn,
+      if (vpn) 'server': _status['node'],
+      'test_server': sponsor,
+      'test_city': city,
+      'test_country': country,
+    };
     _emit({'kind': 'speedtest', 'reason': 'done', 'down_rate': down, 'up_rate': up});
     return res;
   }

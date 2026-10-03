@@ -43,8 +43,11 @@ class _ToolRow extends StatelessWidget {
   final Widget title;
   final String note;
   final Color? noteColor;
+
+  /// A quieter line under the note, when there is one.
+  final String detail;
   final Widget action;
-  const _ToolRow({required this.icon, this.iconColor, required this.title, required this.note, this.noteColor, required this.action});
+  const _ToolRow({required this.icon, this.iconColor, required this.title, required this.note, this.noteColor, this.detail = '', required this.action});
 
   @override
   Widget build(BuildContext context) {
@@ -67,6 +70,15 @@ class _ToolRow extends StatelessWidget {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
+                if (detail.isNotEmpty) ...[
+                  const SizedBox(height: 1),
+                  Text(
+                    detail,
+                    style: TextStyle(fontSize: 11.5, color: p.dim),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
               ],
             ),
           ),
@@ -121,6 +133,7 @@ class _SpeedTestRow extends StatelessWidget {
       title: title,
       note: _speedNote(state),
       noteColor: t.phase == SpeedPhase.failed ? p.errInk : null,
+      detail: t.phase == SpeedPhase.done && t.testServerName.isNotEmpty ? 'Сервер теста: ${t.testServerName}' : '',
       action: Btn(
         label: t.phase == SpeedPhase.done ? 'Ещё раз' : 'Проверить',
         small: true,
