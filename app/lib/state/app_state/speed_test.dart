@@ -15,6 +15,12 @@ class SpeedTestState {
   final String server;
   final String error;
 
+  /// Who measured: a speedtest.net server's sponsor, or "Cloudflare", and
+  /// the speedtest.net server's city and country.
+  final String testServer;
+  final String testCity;
+  final String testCountry;
+
   /// When the result came.
   final DateTime? at;
 
@@ -26,10 +32,17 @@ class SpeedTestState {
     this.vpn = false,
     this.server = '',
     this.error = '',
+    this.testServer = '',
+    this.testCity = '',
+    this.testCountry = '',
     this.at,
   });
 
   bool get running => phase == SpeedPhase.latency || phase == SpeedPhase.download || phase == SpeedPhase.upload;
+
+  /// The server that measured, as the result names it: "Helsinki, Elisa",
+  /// or "Cloudflare"; empty from an older service.
+  String get testServerName => [testCity, testServer].where((s) => s.isNotEmpty).join(', ');
 
   SpeedTestState copyWith({SpeedPhase? phase, int? latencyMs, int? downBps, int? upBps}) => SpeedTestState(
     phase: phase ?? this.phase,
@@ -59,9 +72,13 @@ extension AppStateSpeedTest on AppState {
         upBps: r.uploadBps,
         vpn: r.vpn,
         server: r.server,
+        testServer: r.testServer,
+        testCity: r.testCity,
+        testCountry: r.testCountry,
         at: DateTime.now(),
       );
-      _log(DateTime.now(), 'скорость', 'загрузка ${_mbit(r.downloadBps)}, отдача ${_mbit(r.uploadBps)}, задержка ${r.latencyMs} мс', LogLevel.ok);
+      final where = speedTest.testServerName.isEmpty ? '' : ', сервер теста ${[speedTest.testServerName, r.testCountry].where((s) => s.isNotEmpty).join(', ')}';
+      _log(DateTime.now(), 'скорость', 'загрузка ${_mbit(r.downloadBps)}, отдача ${_mbit(r.uploadBps)}, задержка ${r.latencyMs} мс$where', LogLevel.ok);
     } on ApiError catch (e) {
       if (e.status == 404 || e.status == 405) speedUnsupported = true;
       speedTest = SpeedTestState(phase: SpeedPhase.failed, vpn: vpn, error: e.status == 409 ? 'Тест скорости уже идёт' : speedTestError(e.message));
