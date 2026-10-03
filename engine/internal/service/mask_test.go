@@ -5,7 +5,35 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"coreshift/engine/internal/store"
 )
+
+// A PUT that is refused leaves the stored lists as they were: the request
+// is decoded into a copy of the settings, and a list the copy shared with
+// the store would be overwritten in place.
+func TestAPIRejectedSettingsLeaveTheStoreAlone(t *testing.T) {
+	_, srv := newStoreAPI(t, nil)
+	var set store.Settings
+	callJSON(t, srv, "GET", "/v1/settings", nil, &set)
+	set.Routing.AppFilter, set.Routing.FilterApps = store.AppsExclude, []string{"org.example.one", "org.example.two"}
+	set.Routing.DirectApps = []string{"one.exe", "two.exe"}
+	if code := callJSON(t, srv, "PUT", "/v1/settings", set, nil); code != http.StatusOK {
+		t.Fatalf("put: %d", code)
+	}
+	bad := map[string]any{
+		"routing": map[string]any{"app_filter": "nonsense", "filter_apps": []string{"evil.one", "evil.two"}, "direct_apps": []string{"evil.exe", "x.exe"}},
+	}
+	if code := callJSON(t, srv, "PUT", "/v1/settings", bad, nil); code != http.StatusBadRequest {
+		t.Fatalf("invalid settings accepted: %d", code)
+	}
+	var now store.Settings
+	callJSON(t, srv, "GET", "/v1/settings", nil, &now)
+	if strings.Join(now.Routing.FilterApps, ",") != "org.example.one,org.example.two" ||
+		strings.Join(now.Routing.DirectApps, ",") != "one.exe,two.exe" || now.Routing.AppFilter != store.AppsExclude {
+		t.Errorf("a refused PUT changed the settings: %+v", now.Routing)
+	}
+}
 
 func TestMaskURL(t *testing.T) {
 	for in, want := range map[string]string{
