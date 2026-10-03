@@ -135,9 +135,12 @@ func writeFileAtomic(path string, data []byte, perm fs.FileMode) error {
 		return err
 	}
 	_, werr := f.Write(data)
+	// Explicitly, as the umask may have taken bits away: the Linux daemon
+	// runs with 077, and resolv.conf must stay readable by everyone.
+	merr := f.Chmod(perm)
 	serr := f.Sync()
 	cerr := f.Close()
-	if err := errors.Join(werr, serr, cerr); err != nil {
+	if err := errors.Join(werr, merr, serr, cerr); err != nil {
 		os.Remove(tmp)
 		return err
 	}
