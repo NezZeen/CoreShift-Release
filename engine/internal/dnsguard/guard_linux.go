@@ -30,11 +30,23 @@ func New(journalPath string) (Guard, error) {
 		run:            execCommand,
 		resolvConfPath: resolvConf,
 		useResolved:    resolvedInUse,
+		networkManager: networkManagerRuns,
 		linkExists: func(name string) bool {
 			_, err := net.InterfaceByName(name)
 			return err == nil
 		},
+		linkDirs: trustedLinkDirs,
 	}, nil
+}
+
+// networkManagerRuns reports whether NetworkManager is up and nmcli can
+// talk to it.
+func networkManagerRuns() bool {
+	if _, err := exec.LookPath("nmcli"); err != nil {
+		return false
+	}
+	_, err := os.Stat("/run/NetworkManager")
+	return err == nil
 }
 
 func execCommand(ctx context.Context, name string, args ...string) error {
