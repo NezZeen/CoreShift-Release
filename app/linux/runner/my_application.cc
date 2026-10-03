@@ -66,8 +66,12 @@ static void create_window(MyApplication* self) {
   GtkWindow* window =
       GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(self)));
   self->window = window;
-  // CoreShift draws its own title bar (window_manager hides the system's),
-  // so there is no GTK header bar here.
+  // CoreShift draws its own title bar, so there is no GTK header bar here
+  // and no system one either. window_manager hides the latter only once the
+  // window exists, which is enough on X11 but not on Wayland: GTK tells the
+  // compositor whether to decorate when the window is realized, and not
+  // again, so KWin kept drawing its title bar above CoreShift's.
+  gtk_window_set_decorated(window, FALSE);
   gtk_window_set_title(window, "CoreShift");
   gtk_window_set_default_size(window, 1320, 860);
   set_window_icon(window);
