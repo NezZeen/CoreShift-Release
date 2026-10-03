@@ -70,7 +70,7 @@
 
 ### Окружения рабочего стола
 
-- **Трей** — StatusNotifierItem. Он сразу есть в KDE, XFCE, Cinnamon, MATE, Budgie и в GNOME у Ubuntu (расширение AppIndicator включено). В «чистом» GNOME (Fedora, Debian, Arch) нужно расширение [AppIndicator](https://extensions.gnome.org/extension/615/appindicator-support/).
+- **Трей** — StatusNotifierItem. Он сразу есть в KDE, XFCE, Cinnamon, MATE, Budgie и в GNOME у Ubuntu (расширение AppIndicator включено). В «чистом» GNOME (Fedora, Debian, Arch) нужно расширение [AppIndicator](https://extensions.gnome.org/extension/615/appindicator-support/). Меню значка открывается правой кнопкой, первый пункт — «Открыть CoreShift».
 - **Без трея** (служба `org.kde.StatusNotifierWatcher` на шине сеанса не найдена) крестик сворачивает окно, а не прячет его, и `--tray` при автозапуске открывает окно. Иначе CoreShift пропал бы из виду насовсем.
 - **Wayland и X11.** Работает в обоих: GTK сам выбирает бэкенд. Своё оформление окна рисует приложение, системный заголовок скрыт.
 - **Ярлык и ссылки `coreshift://`**: `dev.coreshift.coreshift.desktop` с `MimeType=x-scheme-handler/coreshift`. Пакеты обновляют базу (`update-desktop-database`). Если браузер всё равно не открывает CoreShift, выполните `xdg-mime default dev.coreshift.coreshift.desktop x-scheme-handler/coreshift`. Повторный запуск передаёт ссылку уже открытому окну (GApplication, D-Bus сеанса) и закрывается.
@@ -126,7 +126,7 @@ amd64 и arm64. Служба и ядра собираются для обеих 
 | Fedora 44 | .rpm | systemd | файл + firewalld | ок, интерфейс переходит в зону `trusted` и обратно |
 | Arch | .pkg.tar.zst | systemd | файл / openresolv | ок, у openresolv эксклюзивная запись |
 | openSUSE Tumbleweed | .rpm | systemd | файл / netconfig | ок; у netconfig сервер туннеля стоит вторым, DNS всё равно идёт в туннель |
-| Ubuntu 24.04 KDE (ВМ) | .deb | systemd | NetworkManager + resolved | установка и служба ок; после подключения ВМ перестала отвечать по сети: ответы на входящие соединения уходили в TUN. Исправлено исключением локальных сетей из маршрутов TUN (повторено в WSL: входящее HTTP-соединение при включённом VPN — ок); на ВМ нужна повторная проверка |
+| Ubuntu 24.04 KDE Plasma 5.27 (ВМ Hyper-V) | .deb | systemd | NetworkManager + resolved | ок на `0.6.8+b148`, X11 и Wayland: группа после входа, меню Plasma, трей (меню по правой кнопке), закрытие в трей, второй запуск, `coreshift://`, автозапуск с подключением, `pkexec`, DNS туннеля после `nmcli connection up`, SSH с хоста при включённом VPN. Левая кнопка по значку трея ничего не делает (nativeapi) |
 | Alpine | .tar.gz `--daemon-only` | OpenRC | openresolv | не проверено: нет системы |
 | Void | .tar.gz | runit | openresolv | не проверено: нет системы |
 
