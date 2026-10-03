@@ -126,6 +126,10 @@ type TunConfig struct {
 	// DisallowedApps stay out of it. Package names, one per line.
 	AllowedApps    string
 	DisallowedApps string
+	// ExcludeRoutes are subnets kept out of the VPN, one per line
+	// ("192.168.0.0/16"): the local network, which then takes the
+	// device's own routes. Android 13 and later apply them.
+	ExcludeRoutes string
 }
 
 // coreFiles are the cores as the APK ships them: Android lets apps run
