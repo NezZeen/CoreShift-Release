@@ -10,7 +10,8 @@
 //     (Strict) disabling smart multi-homed name resolution. Blocking port 53
 //     outside the tunnel is done by the TUN layer's strict_route (WFP).
 //   - Linux: systemd-resolved routing domain "~." on the TUN link, or a
-//     temporary /etc/resolv.conf when resolved is not in use.
+//     temporary /etc/resolv.conf when resolved is not in use (kept in place
+//     against NetworkManager and DHCP clients, see Keeper).
 //   - Android: nothing to do; VpnService owns DNS for routed apps.
 package dnsguard
 
@@ -64,6 +65,13 @@ type Guard interface {
 	// Recover undoes changes left behind by a previous process that did not
 	// shut down cleanly. Call it once on daemon start, before Apply.
 	Recover(ctx context.Context) error
+}
+
+// Keeper is a Guard whose changes the system may undo behind its back, as
+// NetworkManager rewrites /etc/resolv.conf on a DHCP renewal. Keep, called
+// now and then while the tunnel is up, puts them back.
+type Keeper interface {
+	Keep(ctx context.Context) error
 }
 
 type noopGuard struct{}

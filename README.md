@@ -14,8 +14,8 @@ VPN-клиент для подписок (VLESS и другие протокол
 Главные решения:
 
 - Постоянный слой TUN + DNS (sing-box как TUN-фронтенд, fake-ip) отделён от сменяемого ядра. Ядра запускаются отдельными процессами с SOCKS-входом, поэтому при автосвапе TUN и DNS не пересоздаются.
-- Права: на Windows служба работает от SYSTEM, а интерфейс без прав; на Linux — systemd-служба; на Android — `VpnService`.
-- Подмена DNS всегда с журналом отката: на Windows NRPT + `strict_route`, на Linux systemd-resolved или `resolv.conf`.
+- Права: на Windows служба работает от SYSTEM, а интерфейс без прав; на Linux служба (systemd, OpenRC или runit) работает от root, а токен API читает только группа `coreshift`; на Android — `VpnService`.
+- Подмена DNS всегда с журналом отката: на Windows NRPT + `strict_route`, на Linux systemd-resolved, resolvconf, netconfig или `resolv.conf`.
 - Приложение само обновляется из приватного репозитория релизов. Манифест подписан Ed25519, установщик проверяется по SHA-256.
 
 ## Быстрый старт для разработки
@@ -49,6 +49,9 @@ flutter run -d windows --dart-define=DEMO=true   # с демо-бэкендом,
 powershell -ExecutionPolicy Bypass -File packaging\windows\build.ps1        # установщик Windows
 powershell -ExecutionPolicy Bypass -File packaging\android\build.ps1        # APK для телефона (arm64)
 powershell -ExecutionPolicy Bypass -File packaging\android\build.ps1 -Abi x86_64   # APK для эмулятора
+powershell -ExecutionPolicy Bypass -File packaging\linux\build-wsl.ps1 -Ref main   # .deb, .rpm, Arch, .tar.gz (в WSL)
 ```
+
+Сборка, установка и проверка на Linux описаны в [packaging/linux/README.md](packaging/linux/README.md).
 
 Порядок выпуска (работа идёт в ветке `main`, релиз делается из `main`), подпись, токен и самообновление описаны в [packaging/README.md](packaging/README.md).

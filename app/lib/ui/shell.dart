@@ -527,6 +527,9 @@ class _OfflineState extends State<_Offline> {
                 platform.isAndroid
                     ? 'Движок VPN работает внутри приложения и обычно запускается за секунду. '
                           'Если этот экран не пропадает, закройте CoreShift в списке недавних приложений и откройте снова.'
+                    : platform.isLinux
+                    ? 'VPN работает через системную службу CoreShift. Она запускается вместе с компьютером и держит VPN, '
+                          'пока его не выключат кнопкой, даже если окно закрыто.'
                     : state.daemonStartRefused
                     ? 'VPN работает через фоновую службу CoreShift. Windows не дал запустить её без прав администратора: '
                           'так бывает со службой, установленной версией до 0.4. Запустите её кнопкой ниже или переустановите CoreShift.'
@@ -534,14 +537,18 @@ class _OfflineState extends State<_Offline> {
                           'и останавливается, когда его закрывают. Обычно это занимает пару секунд.',
                 style: TextStyle(color: p.muted, fontSize: 13, height: 1.5),
               ),
-              if (platform.canStartService && !state.daemonStarting) ...[
+              // Without access to the service, starting it would not help.
+              if (platform.canStartService && !state.daemonStarting && !platform.daemonAccessDenied(state.offlineReason)) ...[
                 const SizedBox(height: 16),
                 Row(
                   children: [
                     Btn(label: 'Запустить службу', icon: Icons.play_arrow, kind: BtnKind.primary, loading: starting, onPressed: _start),
                     const SizedBox(width: 10),
                     Flexible(
-                      child: Text('Windows попросит права администратора', style: TextStyle(color: p.dim, fontSize: 12)),
+                      child: Text(
+                        platform.isLinux ? 'Система спросит пароль администратора' : 'Windows попросит права администратора',
+                        style: TextStyle(color: p.dim, fontSize: 12),
+                      ),
                     ),
                   ],
                 ),
@@ -562,9 +569,35 @@ class _OfflineState extends State<_Offline> {
   }
 }
 
-class _OfflineBanner extends StatelessWidget {
+class _OfflineBanner extends StatefulWidget {
   final String reason;
   const _OfflineBanner({required this.reason});
+
+  @override
+  State<_OfflineBanner> createState() => _OfflineBannerState();
+}
+
+class _OfflineBannerState extends State<_OfflineBanner> {
+  bool starting = false;
+  String? error;
+
+  /// Linux: the service stopped while the window was open. Nothing starts
+  /// it again by itself (on Windows the app does), so offer what the
+  /// start screen offers.
+  bool get _canStart => platform.isLinux && platform.canStartService && !platform.daemonAccessDenied(widget.reason);
+
+  Future<void> _start() async {
+    setState(() {
+      starting = true;
+      error = null;
+    });
+    final err = await platform.startService();
+    if (!mounted) return;
+    setState(() {
+      starting = false;
+      error = err;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -576,7 +609,11 @@ class _OfflineBanner extends StatelessWidget {
         children: [
           const Icon(Icons.link_off, size: 16, color: errColor),
           const SizedBox(width: 10),
-          Expanded(child: Text('$reason. Переподключаемся…', style: const TextStyle(fontSize: 13))),
+          Expanded(child: Text(error == null ? '${widget.reason}. Переподключаемся…' : '${widget.reason}. $error', style: const TextStyle(fontSize: 13))),
+          if (_canStart) ...[
+            const SizedBox(width: 10),
+            Btn(label: 'Запустить службу', icon: Icons.play_arrow, small: true, loading: starting, onPressed: _start),
+          ],
         ],
       ),
     );

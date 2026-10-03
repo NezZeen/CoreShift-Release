@@ -17,6 +17,10 @@ String _appUpdateText(AppState state) {
       '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
   return switch (u.state) {
     'off' when platform.isAndroid => 'Эта сборка не обновляется сама: так бывает у сборки для разработки.',
+    // The Linux daemon never installs CoreShift: the package manager does;
+    // a release build still announces new versions ('available').
+    'off' when platform.isLinux => 'Эта сборка не ищет новые версии: так бывает у сборки для разработки. Обновляйте через пакет.',
+    'available' => 'Доступна новая версия ${u.label}. Скачайте пакет для своей системы и установите поверх этой.',
     'off' => 'Эта копия не обновляется сама: так бывает у сборки для разработки или у службы старше 0.3.0.',
     'checking' => 'Проверяю…',
     'downloading' => 'Скачиваю версию ${u.label}…',
@@ -25,6 +29,7 @@ String _appUpdateText(AppState state) {
     'ready' => 'Скачана версия ${u.label}.',
     'installing' => 'Устанавливаю ${u.label}. CoreShift перезапустится сам.',
     'error' => humanError(u.error),
+    _ when u.manual && u.checkedAt != null => 'Установлена последняя версия. Проверено ${when(u.checkedAt!)}. Новые версии ставятся пакетом.',
     _ => u.checkedAt == null ? 'Проверка ещё не проводилась.' : 'Установлена последняя версия. Проверено ${when(u.checkedAt!)}.',
   };
 }
@@ -67,7 +72,7 @@ class SettingsPage extends StatelessWidget {
             title: 'Автозапуск',
             description: platform.isAndroid
                 ? 'Подключать выбранный сервер при включении телефона и при открытии CoreShift'
-                : 'Запускать CoreShift в трее при входе в Windows и сразу подключать выбранный сервер',
+                : 'Запускать CoreShift в трее при входе в ${platform.isLinux ? 'систему' : 'Windows'} и сразу подключать выбранный сервер',
             trailing: _switch('auto_connect'),
           ),
           if (desktop.canNotify)
@@ -231,16 +236,23 @@ class SettingsPage extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                 ],
-                Btn(
-                  label: 'Проверить сейчас',
-                  small: true,
-                  loading: state.appUpdate.busy,
-                  onPressed: state.online && !state.appUpdate.off ? state.checkAppUpdate : null,
-                ),
+                // Linux: a new version is downloaded from its page by hand.
+                if (state.appUpdate.state == 'available') ...[
+                  Btn(label: 'Скачать', icon: Icons.open_in_new, kind: BtnKind.primary, small: true, onPressed: state.openUpdatePage),
+                  const SizedBox(width: 8),
+                ],
+                // A development build on Linux checks nothing.
+                if (!(platform.isLinux && state.appUpdate.off))
+                  Btn(
+                    label: 'Проверить сейчас',
+                    small: true,
+                    loading: state.appUpdate.busy,
+                    onPressed: state.online && !state.appUpdate.off ? state.checkAppUpdate : null,
+                  ),
               ],
             ),
           ),
-          if (state.hasSetting('app_update.auto') && !platform.isAndroid)
+          if (state.hasSetting('app_update.auto') && !platform.isAndroid && !platform.isLinux)
             SettingRow(
               title: 'Устанавливать обновления автоматически',
               description:
@@ -337,7 +349,8 @@ class _LeakGuard extends StatelessWidget {
           ? 'Android в режиме «Частный DNS: автоматически» перейдёт на обычный DNS. Если «Частный DNS» задан вручную, сайты перестанут открываться'
           : 'Программы с собственным DNS-over-TLS перейдут на DNS через туннель',
     ),
-    if (!platform.isAndroid) ('dns.strict', 'Строгий DNS в Windows', 'Запретить Windows опрашивать DNS других сетевых адаптеров в обход туннеля'),
+    // dns.strict is a Windows setting; the Linux daemon ignores it.
+    if (platform.isWindows) ('dns.strict', 'Строгий DNS в Windows', 'Запретить Windows опрашивать DNS других сетевых адаптеров в обход туннеля'),
   ];
 
   List<String> get _guards => [for (final (path, _, _) in parts) path].where(state.hasSetting).toList();
@@ -354,7 +367,9 @@ class _LeakGuard extends StatelessWidget {
       title: 'Защита от утечек DNS',
       description: platform.isAndroid
           ? 'DNS браузеров и DNS-over-TLS только через VPN. Если в Android «Частный DNS» задан вручную, с защитой сайты перестанут открываться'
-          : 'DNS браузеров, DNS-over-TLS и DNS других сетевых адаптеров Windows не уходят мимо туннеля',
+          : platform.isWindows
+          ? 'DNS браузеров, DNS-over-TLS и DNS других сетевых адаптеров Windows не уходят мимо туннеля'
+          : 'DNS браузеров и DNS-over-TLS не уходят мимо туннеля',
       descriptionWidget: partly
           ? Text('Включено не всё: $on из ${guards.length}. Включите, чтобы защитить всё', style: TextStyle(fontSize: 12, color: p.warnInk))
           : null,

@@ -1,0 +1,53 @@
+# The CoreShift daemon: proxy cores, the TUN interface and DNS protection.
+#
+# It runs as root from boot, so the app runs without privileges and talks
+# to it over 127.0.0.1 with the token in /var/lib/coreshift/api.json, which
+# only members of the coreshift group may read. The VPN stays up until the
+# user turns it off, also with the app closed.
+#
+# A template: @BINDIR@ and @LIBDIR@ are filled in by build.sh (/usr/bin,
+# /usr/lib/coreshift for the packages) or install.sh (/usr/local/...).
+# See packaging/linux/README.md.
+
+[Unit]
+Description=CoreShift VPN daemon
+Documentation=https://github.com/NezZeen/CoreShift-Release
+After=network.target firewalld.service
+Wants=network.target
+
+[Service]
+Type=simple
+# A crash, a power cut or a kill can leave the system's DNS pointing at a
+# tunnel that is gone. Undo that before anything else: at boot, and before
+# each restart. The daemon does it again itself, so a failure here is not
+# fatal ("-").
+ExecStartPre=-@BINDIR@/coreshiftd dns recover -journal /var/lib/coreshift/dnsguard.json
+ExecStart=@BINDIR@/coreshiftd service run -data-dir /var/lib/coreshift -cores-dir @LIBDIR@/cores
+Restart=on-failure
+RestartSec=2
+# SIGTERM disconnects and restores DNS; the cores and the TUN layer die
+# with the daemon (Pdeathsig), and anything left is killed after the
+# timeout.
+KillMode=mixed
+TimeoutStopSec=20
+UMask=0077
+
+# Hardening. The daemon needs root's network powers (TUN, routes, nftables,
+# systemd-resolved, firewalld), to see other users' processes for per-app
+# routing, to write /etc/resolv.conf where nothing manages it, and to
+# replace the cores when they update.
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_NET_BIND_SERVICE CAP_SYS_PTRACE CAP_DAC_READ_SEARCH CAP_DAC_OVERRIDE CAP_CHOWN CAP_FOWNER CAP_KILL
+NoNewPrivileges=yes
+# /usr and /boot read-only, but for the cores, which update themselves.
+ProtectSystem=true
+ReadWritePaths=@LIBDIR@/cores
+ProtectHome=read-only
+PrivateTmp=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

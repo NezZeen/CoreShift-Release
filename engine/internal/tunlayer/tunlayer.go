@@ -93,6 +93,18 @@ type Options struct {
 	// BypassAddresses are proxy server IPs, excluded from TUN routes for the
 	// same reason. Needed where process matching is unavailable.
 	BypassAddresses []netip.Prefix
+	// ExcludeLAN keeps the local network ranges out of the TUN routes
+	// (Linux): sing-box's routing table there would otherwise take the
+	// replies to connections made to this machine from the local network
+	// (SSH, file sharing, a VM's host) into the TUN, where they die. Those
+	// ranges go direct anyway. LANResolvers are carved out of them.
+	ExcludeLAN bool
+	// LANResolvers are the system's resolvers (a home router, WSL's host):
+	// with ExcludeLAN they stay routed into the TUN, so DNS sent to them
+	// straight, past the DNS guard, is still hijacked instead of leaking.
+	// Addresses outside the private ranges, loopback and link-local ones
+	// (which need a zone) are ignored.
+	LANResolvers []netip.Addr
 	// DirectApps are executable names ("qbittorrent.exe") whose traffic goes
 	// direct instead of through the proxy, wherever they are installed.
 	// Names match case-insensitively.
@@ -203,6 +215,7 @@ func (o Options) withDefaults() Options {
 	if o.Platform {
 		o.BypassProcesses, o.DirectDNSProcesses, o.DirectApps, o.ProxyApps = nil, nil, nil, nil
 		o.BypassAddresses = nil
+		o.ExcludeLAN, o.LANResolvers = false, nil
 		// The system stack answers TCP from a kernel socket of this process,
 		// which Android keeps outside its own VPN: the answers leave by the
 		// physical network and every TCP connection hangs. gVisor answers
@@ -283,9 +296,18 @@ func build(o Options) (obj, error) {
 		"auto_route":     true,
 		"strict_route":   o.StrictRoute,
 		"stack":          o.Stack,
+		// Linux policy routing: our own table and rule priorities rather
+		// than sing-box's defaults, so CleanupRoutes can tell the rules a
+		// killed TUN layer left from those of anything else.
+		"iproute2_table_index": RouteTable,
+		"iproute2_rule_index":  RuleIndex,
 	}
-	if len(o.BypassAddresses) > 0 {
-		tun["route_exclude_address"] = prefixStrings(o.BypassAddresses)
+	exclude := prefixStrings(o.BypassAddresses)
+	if o.ExcludeLAN {
+		exclude = append(exclude, prefixStrings(excludeLAN(o.LANResolvers))...)
+	}
+	if len(exclude) > 0 {
+		tun["route_exclude_address"] = exclude
 	}
 
 	upstream := obj{

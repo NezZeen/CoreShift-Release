@@ -80,8 +80,15 @@ func (j *Journal) Record(kind string, data any) error {
 	return nil
 }
 
+// ErrRejected marks a change the guard refuses to undo because it does not
+// look like one it made: a journal edited by someone else must not make the
+// daemon, which runs as root or SYSTEM, write where it was told. Such a
+// change is reported and dropped, not retried.
+var ErrRejected = errors.New("rejected journal entry")
+
 // Undo calls undo for every change, newest first. Changes whose undo fails
-// stay in the journal so a later Recover can retry them.
+// stay in the journal so a later Recover can retry them, except rejected
+// ones (ErrRejected), which are dropped.
 func (j *Journal) Undo(undo func(Change) error) error {
 	j.mu.Lock()
 	defer j.mu.Unlock()
@@ -91,7 +98,9 @@ func (j *Journal) Undo(undo func(Change) error) error {
 		c := j.changes[i]
 		if err := undo(c); err != nil {
 			errs = append(errs, fmt.Errorf("undo %s: %w", c.Kind, err))
-			failed = append(failed, c)
+			if !errors.Is(err, ErrRejected) {
+				failed = append(failed, c)
+			}
 		}
 	}
 	slices.Reverse(failed)

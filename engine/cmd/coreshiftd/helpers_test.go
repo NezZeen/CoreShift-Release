@@ -60,7 +60,7 @@ func TestFindCoresSkipsLeftovers(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	bins, err := findCores(dir)
+	bins, err := findCoresFor(dir, "windows")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,5 +82,44 @@ func TestFindCoresSkipsLeftovers(t *testing.T) {
 func TestFindCoresWithoutCores(t *testing.T) {
 	if _, err := findCores(t.TempDir()); err == nil {
 		t.Error("an empty folder is not a folder of cores")
+	}
+}
+
+// engine/testdata/bin holds the Windows cores with the other platforms'
+// in folders beside them; each platform takes only its own.
+func TestFindCoresPerPlatform(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{
+		"xray.exe", "sing-box.exe",
+		"xray", "sing-box", "mihomo-linux-amd64-v1",
+		"linux-arm64/xray", "android-arm64/libxray.so", "android-arm64/sing-box",
+	} {
+		path := filepath.Join(dir, filepath.FromSlash(name))
+		os.MkdirAll(filepath.Dir(path), 0o755)
+		if err := os.WriteFile(path, nil, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for goos, want := range map[string]map[core.Kind]string{
+		"windows": {core.Xray: "xray.exe", core.SingBox: "sing-box.exe"},
+		"linux":   {core.Xray: "xray", core.SingBox: "sing-box", core.Mihomo: "mihomo-linux-amd64-v1"},
+	} {
+		bins, err := findCoresFor(dir, goos)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(bins) != len(want) {
+			t.Errorf("%s: found %v, want %v", goos, bins, want)
+		}
+		for k, name := range want {
+			if bins[k] != filepath.Join(dir, name) {
+				t.Errorf("%s: %s = %q, want %q", goos, k, bins[k], name)
+			}
+		}
+	}
+	// A platform folder given as the cores directory itself is searched.
+	bins, err := findCoresFor(filepath.Join(dir, "linux-arm64"), "linux")
+	if err != nil || bins[core.Xray] != filepath.Join(dir, "linux-arm64", "xray") {
+		t.Errorf("linux-arm64 as the cores dir: %v, %v", bins, err)
 	}
 }
