@@ -18,6 +18,7 @@
         android:label="CoreShift"
         android:name=".CoreShiftApp"
         android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:extractNativeLibs="true">
         <activity
             android:name=".MainActivity"
