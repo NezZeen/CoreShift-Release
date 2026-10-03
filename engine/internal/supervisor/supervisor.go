@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -60,6 +61,9 @@ const (
 	ReasonExited      Reason = "exited"
 	ReasonHealth      Reason = "health-check"
 	ReasonReturn      Reason = "return-to-primary"
+	// ReasonHung: the process runs but its own local port no longer takes
+	// connections, so nothing gets through whatever the server does.
+	ReasonHung Reason = "hung"
 )
 
 var (
@@ -158,6 +162,8 @@ const (
 	// the connection stays on it.
 	EventNoBetter EventKind = "no-better"
 	EventLog      EventKind = "log" // a line of core output
+	// EventRestart: Core hung (Reason) and was started again.
+	EventRestart EventKind = "core-restart"
 )
 
 type Event struct {
@@ -381,6 +387,7 @@ func (s *Supervisor) run(ctx context.Context, n node.Node, serverAddr string, ch
 		}
 	}
 	failed := map[core.Kind]error{}
+	restarted := map[core.Kind]time.Time{} // the last restart of a hung core
 	var prev core.Kind
 	var prevReason Reason
 	// next is a core already seen working on the spare port.
@@ -444,11 +451,43 @@ func (s *Supervisor) run(ctx context.Context, n node.Node, serverAddr string, ch
 		case ReasonHealth:
 			s.drop(failed, k, reason, err)
 			next = alt
+		case ReasonHung:
+			// A hung process is restarted once; hanging again soon after
+			// means the core itself is the trouble, and it is dropped.
+			if time.Since(restarted[k]) > hungRestartWindow {
+				restarted[k] = time.Now()
+				s.emit(Event{Kind: EventRestart, Core: k, Reason: reason, Err: err})
+				next = k
+			} else {
+				s.drop(failed, k, reason, err)
+			}
 		default:
 			s.drop(failed, k, reason, err)
 		}
 		prev, prevReason = k, reason
 	}
+}
+
+// A core whose local port does not answer hungChecks failed checks in a
+// row is restarted; one that hangs again within hungRestartWindow is
+// dropped for the next core.
+const (
+	hungChecks        = 2
+	hungRestartWindow = 10 * time.Minute
+	portDialTimeout   = 2 * time.Second
+)
+
+// portAnswers reports whether something accepts connections at addr. A
+// check cancelled from outside counts as an answer: it proves nothing.
+func portAnswers(ctx context.Context, addr netip.AddrPort) bool {
+	dctx, cancel := context.WithTimeout(ctx, portDialTimeout)
+	defer cancel()
+	c, err := (&net.Dialer{}).DialContext(dctx, "tcp", addr.String())
+	if err != nil {
+		return ctx.Err() != nil
+	}
+	c.Close()
+	return true
 }
 
 // failRetry is how soon a failed health check is repeated: often enough to
@@ -472,7 +511,7 @@ func (s *Supervisor) monitor(ctx context.Context, p *process, n node.Node, serve
 	// none, the next waits a while.
 	searchEvery := 10 * s.cfg.Health.Interval
 	var searched time.Time
-	fails := 0
+	fails, deaf := 0, 0
 	for {
 		select {
 		case <-ctx.Done():
@@ -486,10 +525,17 @@ func (s *Supervisor) monitor(ctx context.Context, p *process, n node.Node, serve
 			}
 			delay := s.cfg.Health.Interval
 			if err == nil {
-				fails = 0
+				fails, deaf = 0, 0
 			} else {
 				fails++
 				delay = min(delay, failRetry)
+				// A core that no longer takes connections on its own port
+				// is hung: more checks, or another server, would not help.
+				if portAnswers(ctx, p.listen) {
+					deaf = 0
+				} else if deaf++; deaf >= hungChecks {
+					return ReasonHung, "", fmt.Errorf("the core stopped taking connections on %s; last check: %w", p.listen, err)
+				}
 				if fails >= s.cfg.Health.Failures && time.Since(searched) >= searchEvery {
 					searched = time.Now()
 					// With a core chosen by hand there is no other to try.

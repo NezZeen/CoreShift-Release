@@ -482,6 +482,9 @@ class AppState extends ChangeNotifier {
       case 'core-failed':
         _log(e.time, e.core, 'отключено (${_reasonText(e.reason)}): ${e.error}', LogLevel.err);
         _statusSoon();
+      case 'core-restart':
+        _log(e.time, e.core, 'завис и перезапущен: ${e.error}', LogLevel.swap);
+        _statusSoon();
       case 'health':
         if (e.probe) break;
         // While it fails the check repeats every few seconds: the log says
@@ -576,6 +579,7 @@ class AppState extends ChangeNotifier {
   static String _reasonText(String r) => switch (r) {
     'start-failed' => 'не запустилось',
     'exited' => 'процесс завершился',
+    'hung' => 'завис',
     'health-check' || 'health' => 'нет связи',
     'latency' => 'высокая задержка',
     'return-to-primary' || 'return' => 'возврат к основному',
