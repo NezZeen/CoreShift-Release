@@ -8,6 +8,7 @@
 //	crash-after:<duration>  serve, then exit with a panic message
 //	unhealthy               accept SOCKS but answer health checks with 503
 //	unhealthy-after:<dur>   healthy at first, 503 afterwards
+//	hang-after:<dur>        serve, then stop taking connections but keep running
 //
 // The SOCKS port is read from the config the supervisor generated, so the
 // real adapters and config files are exercised. With a Clash API address in
@@ -46,6 +47,7 @@ func main() {
 
 	verb, arg, _ := strings.Cut(mode, ":")
 	healthyUntil := time.Time{} // zero: forever
+	var hangAfter time.Duration
 	switch verb {
 	case "crash-start":
 		fmt.Println("fatal: config rejected by fake core")
@@ -63,6 +65,8 @@ func main() {
 			fmt.Println("panic: simulated crash")
 			os.Exit(2)
 		}()
+	case "hang-after":
+		hangAfter, _ = time.ParseDuration(arg)
 	case "unhealthy":
 		healthyUntil = time.Now()
 	case "unhealthy-after":
@@ -75,9 +79,15 @@ func main() {
 		fmt.Println("fatal:", err)
 		os.Exit(1)
 	}
+	if hangAfter > 0 {
+		time.AfterFunc(hangAfter, func() { ln.Close() })
+	}
 	for {
 		c, err := ln.Accept()
 		if err != nil {
+			if hangAfter > 0 {
+				time.Sleep(time.Hour) // hung: alive, but deaf
+			}
 			return
 		}
 		healthy := healthyUntil.IsZero() || time.Now().Before(healthyUntil)

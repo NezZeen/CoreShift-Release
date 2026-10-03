@@ -2,12 +2,14 @@ package supervisor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/netip"
 	"net/url"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -36,7 +38,7 @@ func healthURLs(primary string) []string {
 // inbound, all at once, and succeeds as soon as one answers. The target host
 // name is sent to the proxy unresolved, so this exercises the whole path to
 // the server, not just the local port. The latency is the first answer's;
-// when none answers, the error is Health.URL's.
+// when none answers, the error names every address and why it failed.
 func checkHealth(ctx context.Context, socks netip.AddrPort, h Health) (time.Duration, error) {
 	ctx, cancel := context.WithTimeout(ctx, h.Timeout)
 	defer cancel()
@@ -65,7 +67,43 @@ func checkHealth(ctx context.Context, socks netip.AddrPort, h Health) (time.Dura
 		}
 		return r.lat, nil
 	}
-	return 0, errs[0]
+	return 0, probesFailed(urls, errs)
+}
+
+// probesFailed is one error for all the addresses checked, in order:
+// "cp.cloudflare.com: timeout; www.gstatic.com: EOF; …". It unwraps to the
+// first, Health.URL's.
+func probesFailed(urls []string, errs []error) error {
+	parts := make([]string, len(urls))
+	for i, u := range urls {
+		host := u
+		if pu, err := url.Parse(u); err == nil && pu.Host != "" {
+			host = pu.Host
+		}
+		parts[i] = host + ": " + shortProbeError(errs[i])
+	}
+	return &probeError{text: strings.Join(parts, "; "), first: errs[0]}
+}
+
+type probeError struct {
+	text  string
+	first error
+}
+
+func (e *probeError) Error() string { return e.text }
+func (e *probeError) Unwrap() error { return e.first }
+
+// shortProbeError drops what Go's HTTP client repeats on every error: the
+// method and the address, already named before it.
+func shortProbeError(err error) string {
+	if err == nil {
+		return "no answer"
+	}
+	var ue *url.Error
+	if errors.As(err, &ue) {
+		err = ue.Err
+	}
+	return err.Error()
 }
 
 // delayThrough measures the delay through the proxy as Happ and v2rayNG
