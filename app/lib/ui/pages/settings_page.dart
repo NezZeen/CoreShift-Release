@@ -4,9 +4,9 @@ import '../../platform/desktop.dart' as desktop;
 import '../../platform/platform.dart' as platform;
 import '../../state/app_state.dart';
 import '../../state/errors.dart';
+import '../shell.dart';
 import '../theme.dart';
 import '../widgets.dart';
-import 'leak_check.dart';
 
 /// What the self-update is doing, in words.
 String _appUpdateText(AppState state) {
@@ -61,7 +61,7 @@ class SettingsPage extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const PanelTitle('Общие'),
+          const PanelTitle('Приложение'),
           SettingRow(
             first: true,
             title: 'Автозапуск',
@@ -100,7 +100,7 @@ class SettingsPage extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const PanelTitle('Сеть'),
+          const PanelTitle('Подключение'),
           // On Android every app goes through the VPN: the switch shows
           // only to undo a proxy-only mode chosen somehow.
           if (!platform.isAndroid || !state.setting('tun', true))
@@ -161,7 +161,6 @@ class SettingsPage extends StatelessWidget {
           ),
           SettingRow(title: 'Fake-IP', description: 'Имена резолвятся на стороне сервера — быстрее и без утечек DNS', trailing: _switch('dns.fake_ip')),
           _LeakGuard(state: state),
-          LeakCheck(state: state),
         ],
       ),
     );
@@ -170,7 +169,7 @@ class SettingsPage extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const PanelTitle('Подписки'),
+          const PanelTitle('Обновление подписок'),
           SettingRow(
             first: true,
             title: 'Автообновление',
@@ -212,7 +211,7 @@ class SettingsPage extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const PanelTitle('О программе'),
+          const PanelTitle('CoreShift'),
           SettingRow(
             first: true,
             title: 'Версия',
@@ -270,44 +269,88 @@ class SettingsPage extends StatelessWidget {
       ),
     );
 
+    // For the curious: the cores and the journal as pages of their own, the
+    // subscription and DNS details folded away.
+    final advanced = Panel(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _LinkRow(
+            icon: Icons.memory,
+            title: 'Ядра',
+            text: 'Xray, sing-box и mihomo: порядок и переключение при сбоях',
+            onTap: () => Nav.to(context, PageId.cores),
+          ),
+          Divider(height: 1, color: p.border),
+          _LinkRow(icon: Icons.receipt_long_outlined, title: 'Журнал', text: 'События службы и ядер для поддержки', onTap: () => Nav.to(context, PageId.logs)),
+        ],
+      ),
+    );
+
+    // One column of sections, the most used first: a settings page is
+    // read from the top, not scanned across.
     return PageFrame(
       children: [
-        const PageHeader('Настройки'),
-        LayoutBuilder(
-          builder: (context, c) {
-            if (isCompact(context)) {
-              return Column(
-                children: [
-                  for (final w in [general, if (hasNetwork) network, about]) Padding(padding: const EdgeInsets.only(bottom: 18), child: w),
-                  _More(children: [subs, const SizedBox(height: 18), dns]),
-                ],
-              );
-            }
-            if (c.maxWidth < 900) {
-              return Column(
-                children: [
-                  for (final w in [general, if (hasNetwork) network, subs, dns, about]) Padding(padding: const EdgeInsets.only(bottom: 18), child: w),
-                ],
-              );
-            }
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+        Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 780),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(child: Column(children: [general, const SizedBox(height: 18), subs, const SizedBox(height: 18), about])),
-                const SizedBox(width: 18),
-                Expanded(
-                  child: Column(
-                    children: [
-                      if (hasNetwork) ...[network, const SizedBox(height: 18)],
-                      dns,
-                    ],
-                  ),
-                ),
+                const PageHeader('Настройки'),
+                for (final w in [general, if (hasNetwork) network, about]) Padding(padding: const EdgeInsets.only(bottom: 16), child: w),
+                const Padding(padding: EdgeInsets.fromLTRB(4, 10, 4, 4), child: SectionLabel('Для опытных')),
+                advanced,
+                const SizedBox(height: 8),
+                _More(children: [subs, const SizedBox(height: 16), dns]),
               ],
-            );
-          },
+            ),
+          ),
         ),
       ],
+    );
+  }
+}
+
+/// A line that opens another page.
+class _LinkRow extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String text;
+  final VoidCallback onTap;
+  const _LinkRow({required this.icon, required this.title, required this.text, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    return InkWell(
+      onTap: onTap,
+      hoverColor: p.surface2,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+        child: Row(
+          children: [
+            Icon(icon, size: 20, color: p.muted),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                  Text(
+                    text,
+                    style: TextStyle(fontSize: 12, color: p.muted),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 2,
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, color: p.dim),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -379,7 +422,10 @@ class _LeakGuardState extends State<_LeakGuard> {
               ),
               InkWell(
                 onTap: () => setState(() => open = !open),
-                child: Text(open ? 'Свернуть' : 'Подробнее', style: const TextStyle(fontSize: 12, color: accent)),
+                child: Text(
+                  open ? 'Свернуть' : 'Подробнее',
+                  style: TextStyle(fontSize: 12, color: p.accentInk, fontWeight: FontWeight.w600),
+                ),
               ),
             ],
           ),
@@ -405,7 +451,7 @@ class _LeakGuardState extends State<_LeakGuard> {
   }
 }
 
-/// A phone's "Дополнительно": settings few people touch, folded away.
+/// Settings few people touch, folded away.
 class _More extends StatefulWidget {
   final List<Widget> children;
   const _More({required this.children});
@@ -426,25 +472,28 @@ class _MoreState extends State<_More> {
         InkWell(
           borderRadius: BorderRadius.circular(12),
           onTap: () => setState(() => open = !open),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 18),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: p.border),
+            ),
             child: Row(
               children: [
+                Icon(Icons.dns_outlined, size: 20, color: p.muted),
+                const SizedBox(width: 14),
                 Expanded(
-                  child: Text.rich(
-                    TextSpan(
-                      children: [
-                        TextSpan(
-                          text: 'Дополнительно  ',
-                          style: TextStyle(fontWeight: FontWeight.w600, color: p.muted),
-                        ),
-                        TextSpan(
-                          text: 'подписки, DNS',
-                          style: TextStyle(fontSize: 12, color: p.dim),
-                        ),
-                      ],
-                    ),
-                    overflow: TextOverflow.ellipsis,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Подписки и DNS', style: TextStyle(fontWeight: FontWeight.w600)),
+                      Text(
+                        'Частота обновления, User-Agent, DNS-серверы и защита от утечек',
+                        style: TextStyle(fontSize: 12, color: p.muted),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 2,
+                      ),
+                    ],
                   ),
                 ),
                 Icon(open ? Icons.expand_less : Icons.expand_more, color: p.muted),

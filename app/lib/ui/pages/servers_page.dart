@@ -232,83 +232,163 @@ class _ServersPageState extends State<ServersPage> {
         ),
         if (subs.isEmpty)
           _EmptySubs(onAdd: () => showAddSubscription(context, s))
-        else ...[
+        else
           LayoutBuilder(
             builder: (context, c) {
-              final cols = (c.maxWidth / 272).floor().clamp(1, 4);
-              final w = (c.maxWidth - 12 * (cols - 1)) / cols;
-              return Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  for (final sub in subs)
+              Widget card(Subscription sub) =>
+                  _SubCard(state: s, sub: sub, selected: subFilter == sub.id, onTap: () => setState(() => subFilter = subFilter == sub.id ? null : sub.id));
+              final list = _serverList(
+                context,
+                compact: compact,
+                search: search,
+                chips: chips,
+                pingHow: pingHow,
+                ping: ping,
+                best: best,
+                rows: rows,
+                sections: sections,
+              );
+              // A wide window: the subscriptions as a column beside the
+              // servers, like folders beside their files.
+              if (!compact && c.maxWidth >= 940) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     SizedBox(
-                      width: w,
-                      child: _SubCard(
-                        state: s,
-                        sub: sub,
-                        selected: subFilter == sub.id,
-                        onTap: () => setState(() => subFilter = subFilter == sub.id ? null : sub.id),
+                      width: 330,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          for (final (i, sub) in subs.indexed) ...[if (i > 0) const SizedBox(height: 12), card(sub)],
+                          if (subs.length > 1) ...[
+                            const SizedBox(height: 10),
+                            Text(
+                              subFilter == null ? 'Нажмите на подписку, чтобы показать только её серверы' : 'Нажмите ещё раз, чтобы показать все',
+                              style: TextStyle(fontSize: 11.5, color: context.pal.dim),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
+                    const SizedBox(width: 20),
+                    Expanded(child: list),
+                  ],
+                );
+              }
+              // A phone: the subscriptions side by side, swiped through,
+              // so the servers start high on the screen.
+              if (compact) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (subs.length == 1)
+                      card(subs.single)
+                    else
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        clipBehavior: Clip.none,
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            for (final (i, sub) in subs.indexed) ...[
+                              if (i > 0) const SizedBox(width: 10),
+                              SizedBox(width: min(300, c.maxWidth - 44), child: card(sub)),
+                            ],
+                          ],
+                        ),
+                      ),
+                    const SizedBox(height: 14),
+                    list,
+                  ],
+                );
+              }
+              final cols = (c.maxWidth / 272).floor().clamp(1, 4);
+              final w = (c.maxWidth - 12 * (cols - 1)) / cols;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [for (final sub in subs) SizedBox(width: w, child: card(sub))],
+                  ),
+                  const SizedBox(height: 18),
+                  list,
                 ],
               );
             },
           ),
-          SizedBox(height: compact ? 14 : 18),
-          if (compact) ...[
-            // A phone: the search with the buttons as icons, then one
-            // sideways row of filters.
-            Row(
+      ],
+    );
+  }
+
+  /// The search, the filters and the servers.
+  Widget _serverList(
+    BuildContext context, {
+    required bool compact,
+    required Widget search,
+    required List<Widget> chips,
+    required Widget? pingHow,
+    required Btn ping,
+    required Btn best,
+    required List<(Subscription, NodeView)> rows,
+    required List<_Section> sections,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (compact) ...[
+          // A phone: the search with the buttons as icons, then one
+          // sideways row of filters.
+          Row(
+            children: [
+              Expanded(child: search),
+              const SizedBox(width: 8),
+              Btn(icon: ping.icon, tooltip: ping.tooltip, loading: ping.loading, onPressed: ping.onPressed),
+              const SizedBox(width: 6),
+              Btn(icon: best.icon, tooltip: best.tooltip, onPressed: best.onPressed),
+            ],
+          ),
+          const SizedBox(height: 10),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
               children: [
-                Expanded(child: search),
-                const SizedBox(width: 8),
-                Btn(icon: ping.icon, tooltip: ping.tooltip, loading: ping.loading, onPressed: ping.onPressed),
-                const SizedBox(width: 6),
-                Btn(icon: best.icon, tooltip: best.tooltip, onPressed: best.onPressed),
+                for (final (i, c) in chips.indexed) ...[if (i > 0) const SizedBox(width: 6), c],
+                if (pingHow != null) ...[const SizedBox(width: 6), pingHow],
               ],
-            ),
-            const SizedBox(height: 10),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  for (final (i, c) in chips.indexed) ...[if (i > 0) const SizedBox(width: 6), c],
-                  if (pingHow != null) ...[const SizedBox(width: 6), pingHow],
-                ],
-              ),
-            ),
-          ] else
-            Wrap(
-              spacing: 12,
-              runSpacing: 10,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                SizedBox(width: 320, child: search),
-                ...chips,
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    ping,
-                    if (pingHow != null) ...[const SizedBox(width: 4), pingHow],
-                  ],
-                ),
-                best,
-              ],
-            ),
-          if (compact && rows.isNotEmpty && s.prefs['swipe_hint'] != true) _SwipeHint(onClose: () => s.setPref('swipe_hint', true)),
-          const SizedBox(height: 12),
-          Panel(
-            padding: const EdgeInsets.all(6),
-            child: _NodeTable(
-              state: s,
-              sections: sections,
-              // A search shows what it found, folded or not.
-              collapsed: query.isEmpty ? collapsed : const {},
-              onToggle: _toggle,
             ),
           ),
-        ],
+        ] else
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              SizedBox(width: 300, child: search),
+              ...chips,
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ping,
+                  if (pingHow != null) ...[const SizedBox(width: 4), pingHow],
+                ],
+              ),
+              best,
+            ],
+          ),
+        if (compact && rows.isNotEmpty && s.prefs['swipe_hint'] != true) _SwipeHint(onClose: () => s.setPref('swipe_hint', true)),
+        const SizedBox(height: 12),
+        Panel(
+          padding: const EdgeInsets.all(6),
+          child: _NodeTable(
+            state: s,
+            sections: sections,
+            // A search shows what it found, folded or not.
+            collapsed: query.isEmpty ? collapsed : const {},
+            onToggle: _toggle,
+          ),
+        ),
       ],
     );
   }

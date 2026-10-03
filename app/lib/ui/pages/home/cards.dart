@@ -30,54 +30,26 @@ class _IpCard extends StatelessWidget {
     };
     final ip = current ? (state.hideIp ? _masked(info.ip) : info.ip) : '—';
 
-    Widget action(IconData i, String tip, VoidCallback? onTap) =>
-        IconButton(tooltip: tip, onPressed: onTap, icon: Icon(i, size: 18), color: p.muted, visualDensity: VisualDensity.compact);
+    final compact = isCompact(context);
+    final ipText = ip;
+    final ipStyle = TextStyle(fontFamily: monoFont, fontFamilyFallback: monoFallback, fontSize: 17, fontWeight: FontWeight.w500);
+    final country = current && info.country.isNotEmpty ? countryName(info.country) : '';
+    Widget action(IconData i, String tip, VoidCallback? onTap) => IconButton(
+      tooltip: tip,
+      onPressed: onTap,
+      icon: Icon(i, size: 18),
+      color: p.muted,
+      visualDensity: VisualDensity.compact,
+      // A phone is narrow: the address needs the room more.
+      constraints: compact ? const BoxConstraints.tightFor(width: 32, height: 36) : null,
+      padding: compact ? EdgeInsets.zero : null,
+    );
 
-    return Panel(
-      child: Row(
+    return _Station(
+      caption: 'Ваш IP-адрес',
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(color: color.withValues(alpha: .12), shape: BoxShape.circle),
-            child: Icon(icon, size: 20, color: color),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Ваш IP-адрес', style: TextStyle(fontSize: 12, color: p.muted)),
-                const SizedBox(height: 2),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.baseline,
-                  textBaseline: TextBaseline.alphabetic,
-                  children: [
-                    Flexible(
-                      child: Text(
-                        ip,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontFamily: monoFont, fontFamilyFallback: monoFallback, fontSize: 18, fontWeight: FontWeight.w500),
-                      ),
-                    ),
-                    if (current && info.country.isNotEmpty) ...[
-                      const SizedBox(width: 10),
-                      Text(countryName(info.country), style: TextStyle(fontSize: 13, color: p.muted)),
-                    ],
-                  ],
-                ),
-                if (note.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    note,
-                    style: TextStyle(fontSize: 12, color: vpn ? okColor : (color == warnColor ? warnColor : p.dim)),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ],
-            ),
-          ),
           action(
             state.hideIp ? Icons.visibility_off_outlined : Icons.visibility_outlined,
             state.hideIp ? 'Показать адрес' : 'Скрыть адрес, например для скриншота',
@@ -99,6 +71,57 @@ class _IpCard extends StatelessWidget {
                   child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
                 )
               : action(Icons.refresh, 'Проверить ещё раз', state.online ? state.refreshIp : null),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // A phone puts the country under the address, which needs the width.
+          if (compact) ...[
+            Text(ipText, maxLines: 1, overflow: TextOverflow.ellipsis, style: ipStyle),
+            if (country.isNotEmpty)
+              Text(
+                country,
+                style: TextStyle(fontSize: 13, color: p.muted),
+                overflow: TextOverflow.ellipsis,
+              ),
+          ] else
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Flexible(
+                  child: Text(ipText, maxLines: 1, overflow: TextOverflow.ellipsis, style: ipStyle),
+                ),
+                if (country.isNotEmpty) ...[
+                  const SizedBox(width: 10),
+                  Flexible(
+                    child: Text(
+                      country,
+                      style: TextStyle(fontSize: 13, color: p.muted),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          if (note.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Row(
+              children: [
+                Icon(icon, size: 13, color: color),
+                const SizedBox(width: 5),
+                Expanded(
+                  child: Text(
+                    note,
+                    style: TextStyle(fontSize: 12, color: vpn ? okColor : (color == warnColor ? warnColor : p.muted)),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 2,
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -125,10 +148,7 @@ class _SpeedCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(label, style: TextStyle(fontSize: 11, color: p.muted)),
-            Text(
-              active ? formatRate(rate) : '—',
-              style: TextStyle(fontFamily: monoFont, fontFamilyFallback: monoFallback, fontSize: 17, fontWeight: FontWeight.w500),
-            ),
+            Text(active ? formatRate(rate) : '—', style: figures(20)),
           ],
         ),
       ],
@@ -197,7 +217,7 @@ class _SpeedPainter extends CustomPainter {
       final tp = TextPainter(
         text: TextSpan(
           text: i == 0 ? '0' : formatRate((maxV * i / 2).round()),
-          style: TextStyle(color: label, fontSize: 10, fontFamily: monoFont),
+          style: TextStyle(color: label, fontSize: 10, fontFamily: displayFont, fontFamilyFallback: displayFallback),
         ),
         textDirection: TextDirection.ltr,
       )..layout();

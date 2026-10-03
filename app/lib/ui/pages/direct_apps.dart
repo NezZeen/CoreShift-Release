@@ -238,7 +238,7 @@ class _AppPickerState extends State<_AppPicker> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text('Запущенные программы', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+              Text('Запущенные программы', style: dialogTitle),
               const SizedBox(height: 4),
               Text(
                 'Запустите нужную программу, если её нет в списке. Системные программы Windows не показываются.',

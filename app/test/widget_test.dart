@@ -33,7 +33,7 @@ void main() {
     return state;
   }
 
-  const pages = ['Серверы', 'Правила', 'Настройки', 'Ядра', 'Журнал', 'Главная'];
+  const pages = ['Серверы', 'Правила', 'Проверка', 'Настройки', 'Ядра', 'Журнал', 'Главная'];
 
   testWidgets('every page renders on demo data', (tester) async {
     final state = await pumpApp(tester);
@@ -241,7 +241,7 @@ void main() {
 
   testWidgets('DNS leak check', (tester) async {
     final state = await pumpApp(tester);
-    await tester.tap(find.text('Настройки').first);
+    await tester.tap(find.text('Проверка').first);
     await tester.pump();
     expect(find.text('Подключитесь в режиме «Все приложения», чтобы проверить'), findsOneWidget);
     await tester.runAsync(() async {
@@ -254,7 +254,8 @@ void main() {
     expect(find.textContaining('Netherlands'), findsWidgets);
     expect(tester.takeException(), isNull);
     await tester.runAsync(() => state.disconnect());
-    // The home page's traffic history is on its way.
+    // The traffic history on «Проверка» is on its way.
+    await tester.pump(const Duration(seconds: 1));
     await tester.pump(const Duration(seconds: 1));
   });
 
@@ -430,6 +431,12 @@ void main() {
       await tester.pump();
     }
 
+    // The lists few people need are folded away.
+    for (final fold in ['Всегда через VPN', 'Блокировать']) {
+      await tester.ensureVisible(find.text(fold));
+      await tester.tap(find.text(fold));
+      await tester.pump();
+    }
     await add('gosuslugi.ru, 10.8.0.0/16', 'bank.example 10.8.0.0/16, 2001:db8::/32');
     expect(list('direct_domains'), ['bank.example']);
     expect(list('direct_ips'), ['10.8.0.0/16', '2001:db8::/32']);
@@ -924,7 +931,7 @@ void main() {
       }
     }
 
-    for (final page in ['Серверы', 'Правила', 'Настройки', 'Главная']) {
+    for (final page in ['Серверы', 'Правила', 'Проверка', 'Настройки', 'Главная']) {
       await tester.tap(find.descendant(of: find.byType(NavigationBar), matching: find.text(page)));
       await check(page);
       // Scroll through the page, so rows further down are laid out too.
@@ -935,14 +942,12 @@ void main() {
       }
     }
     for (final page in ['Ядра', 'Журнал']) {
-      // A frame to start each sheet animation, then time for it to end.
-      await tester.tap(find.text('Ещё'));
+      // The advanced pages open from the settings.
+      await tester.tap(find.descendant(of: find.byType(NavigationBar), matching: find.text('Настройки')));
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 600));
-      await tester.tap(find.text(page).last);
+      await tester.ensureVisible(find.text(page));
+      await tester.tap(find.text(page));
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 600));
-      expect(find.byType(BottomSheet), findsNothing, reason: page);
       expect(
         find.descendant(of: find.byType(PageHeader), matching: find.text(page)),
         findsOneWidget,
@@ -958,6 +963,8 @@ void main() {
   testWidgets('the speed test shows its figures on the desktop and the phone', (tester) async {
     for (final size in [const Size(1400, 900), const Size(390, 844)]) {
       final state = await pumpApp(tester, size: size);
+      // The speed test is on «Проверка».
+      await tester.tap(size.width > 600 ? find.text('Проверка').first : find.descendant(of: find.byType(NavigationBar), matching: find.text('Проверка')));
       await tester.pump(const Duration(seconds: 1));
       expect(find.textContaining('Скорость вашего интернета без VPN'), findsOneWidget, reason: '$size');
       await tester.tap(find.text('Проверить'));
