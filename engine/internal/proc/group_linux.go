@@ -22,3 +22,6 @@ func prepareCmd(cmd *exec.Cmd, _ bool) {
 }
 
 func interrupt(p *os.Process) error { return p.Signal(syscall.SIGTERM) }
+
+// resume has nothing to do: processes start running here.
+func resume(*os.Process) error { return nil }

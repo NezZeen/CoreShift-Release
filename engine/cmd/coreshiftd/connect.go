@@ -44,6 +44,8 @@ func runConnect(ctx context.Context, args []string) error {
 	workDir := fs.String("work-dir", filepath.Join(os.TempDir(), "coreshift"), "where generated configs are written")
 	verbose := fs.Bool("v", false, "print core output and every health check")
 	ua := fs.String("ua", subscription.DefaultUserAgent, "User-Agent sent when the file holds a subscription URL")
+	socksUser := fs.String("socks-user", "", "username the SOCKS port requires (default: random)")
+	socksPass := fs.String("socks-pass", "", "password the SOCKS port requires (default: random)")
 	fs.Parse(args)
 	if fs.NArg() != 1 {
 		fmt.Fprintln(os.Stderr, "usage: coreshiftd connect [flags] <file with a link or subscription | ->")
@@ -82,6 +84,12 @@ func runConnect(ctx context.Context, args []string) error {
 		ReturnToPrimaryAfter: *returnAfter,
 		OnEvent:              func(e supervisor.Event) { printEvent(e, *verbose) },
 	}
+	// The port always requires credentials: any program could use it
+	// otherwise. Without the flags they are random, and not printed.
+	cfg.Auth = core.NewSOCKSAuth()
+	if *socksUser != "" || *socksPass != "" {
+		cfg.Auth = core.SOCKSAuth{User: *socksUser, Pass: *socksPass}
+	}
 	if *manual != "" {
 		cfg.Mode, cfg.ManualCore = supervisor.Manual, core.Kind(*manual)
 	}
@@ -95,7 +103,8 @@ func runConnect(ctx context.Context, args []string) error {
 	if err := sup.Connect(ctx, n, serverAddr); err != nil {
 		return err
 	}
-	fmt.Printf("\nSOCKS5 ready on %s - try:  curl.exe -x socks5h://%s https://ifconfig.me\nCtrl+C to stop.\n\n", addr, addr)
+	fmt.Printf("\nSOCKS5 ready on %s - try:  curl.exe -x socks5h://USER:PASS@%s https://ifconfig.me\n"+
+		"with -socks-user and -socks-pass as given (without them they are random). Ctrl+C to stop.\n\n", addr, addr)
 	<-ctx.Done()
 	sup.Disconnect()
 	return nil

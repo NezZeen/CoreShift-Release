@@ -179,10 +179,10 @@ class _AddDialogState extends State<_AddDialog> {
 /// The subscription's link as a QR code, to add it on a phone: CoreShift's
 /// scanner or any other app's reads it. The link is the access key, so the
 /// window says so.
-Future<void> showSubscriptionQr(BuildContext context, Subscription sub) {
+Future<void> showSubscriptionQr(BuildContext context, Subscription sub, String url) {
   final QrCode code;
   try {
-    code = QrCode.text(sub.url);
+    code = QrCode.text(url);
   } on ArgumentError {
     return Future.value();
   }

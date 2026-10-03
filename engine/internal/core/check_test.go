@@ -46,6 +46,7 @@ func TestCoresAcceptConfigs(t *testing.T) {
 				}
 				t.Run(name, func(t *testing.T) { checkConfig(t, a, bin, n, Options{}) })
 				t.Run(name+"+fragment", func(t *testing.T) { checkConfig(t, a, bin, n, Options{Fragment: true}) })
+				t.Run(name+"+auth", func(t *testing.T) { checkConfig(t, a, bin, n, Options{Auth: NewSOCKSAuth()}) })
 			}
 		})
 	}

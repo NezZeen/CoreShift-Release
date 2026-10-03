@@ -78,6 +78,57 @@ func apiGroupID() (int, bool) {
 
 func restrictDir(dir string) error { return os.Chmod(dir, 0o700) }
 
+// SecureDataDir makes root, the service's data directory, root's (with
+// APIGroup let through to api.json) and takes back what others created in
+// it, as on Windows (datadir.go): a link or file in its place is removed,
+// a regenerable subdirectory someone else touched is removed, anything
+// else is given back to root and closed to others. It returns what it
+// changed, for the log. A run that is not root's (development) only
+// creates the directory.
+func SecureDataDir(root string) ([]string, error) {
+	if os.Geteuid() != 0 {
+		return nil, os.MkdirAll(root, 0o700)
+	}
+	return secureDataDir(root, linuxDirSecurity{})
+}
+
+// linuxDirSecurity is dirSecurity with owners and modes.
+type linuxDirSecurity struct{}
+
+func (linuxDirSecurity) trusted(path string) (bool, error) {
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return false, err
+	}
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	// root's, and nobody else may write to it.
+	return ok && st.Uid == 0 && fi.Mode().Perm()&0o022 == 0, nil
+}
+
+func (linuxDirSecurity) lock(dir string) error {
+	if err := os.Chown(dir, 0, 0); err != nil {
+		return err
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		return err
+	}
+	// The group is let through last, once nobody else can change it.
+	return prepareDataDir(dir)
+}
+
+func (linuxDirSecurity) reclaim(path string) error {
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if err := os.Lchown(path, 0, 0); err != nil {
+		return err
+	}
+	return os.Chmod(path, fi.Mode().Perm()&0o700)
+}
+
+func (linuxDirSecurity) isLink(fi fs.FileInfo) bool { return fi.Mode()&fs.ModeSymlink != 0 }
+
 // WriteShared writes a file the unprivileged UI must be able to read:
 // owned by APIGroup and readable by it (0640), or the owner's alone (0600)
 // where the group is missing or the process may not hand the file to it.

@@ -46,6 +46,10 @@ func (x xray) Render(n *node.Node, o Options) ([]byte, error) {
 	if level == "" {
 		level = o.LogLevel
 	}
+	socks := obj{"auth": "noauth", "udp": true}
+	if o.Auth.Set() {
+		socks = obj{"auth": "password", "accounts": []any{obj{"user": o.Auth.User, "pass": o.Auth.Pass}}, "udp": true}
+	}
 	cfg := obj{
 		// The access log would record every destination the user visits.
 		"log": obj{"loglevel": level, "access": "none"},
@@ -54,7 +58,7 @@ func (x xray) Render(n *node.Node, o Options) ([]byte, error) {
 			"listen":   o.Listen.Addr().String(),
 			"port":     o.Listen.Port(),
 			"protocol": "socks",
-			"settings": obj{"auth": "noauth", "udp": true},
+			"settings": socks,
 		}},
 		"outbounds": []any{out, obj{"tag": "direct", "protocol": "freedom"}},
 	}
@@ -180,9 +184,15 @@ func xrayStream(n *node.Node, sni string) (obj, error) {
 		if t.Mode != "" {
 			x["mode"] = t.Mode
 		}
-		if t.Extra != "" {
+		// Checked here too: nodes saved by earlier versions kept it as the
+		// subscription sent it.
+		clean, err := node.SanitizeXHTTPExtra(t.Extra)
+		if err != nil {
+			return nil, fmt.Errorf("xray: %w", err)
+		}
+		if clean != "" {
 			var extra any
-			if err := json.Unmarshal([]byte(t.Extra), &extra); err != nil {
+			if err := json.Unmarshal([]byte(clean), &extra); err != nil {
 				return nil, fmt.Errorf("xray: xhttp extra is not valid JSON")
 			}
 			x["extra"] = extra

@@ -5,6 +5,7 @@ package service
 import (
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 )
 
@@ -54,5 +55,41 @@ func TestPrepareDataDirLinux(t *testing.T) {
 	os.WriteFile(file, nil, 0o600)
 	if prepareDataDir(file) == nil {
 		t.Fatal("a file accepted as the data directory")
+	}
+}
+
+// As root (the WSL and CI runs): what another user planted in the data
+// directory is taken back or removed.
+func TestSecureDataDirLinux(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("needs root")
+	}
+	root := filepath.Join(t.TempDir(), "coreshift")
+	os.MkdirAll(filepath.Join(root, "work"), 0o777)
+	os.WriteFile(filepath.Join(root, "work", "planted.json"), nil, 0o666)
+	os.WriteFile(filepath.Join(root, "traffic.json"), []byte("{}"), 0o666)
+	os.Symlink("/etc/shadow", filepath.Join(root, "dnsguard.json"))
+	for _, p := range []string{"work", "work/planted.json", "traffic.json"} {
+		os.Lchown(filepath.Join(root, p), 65534, 65534)
+	}
+	notes, err := SecureDataDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "work")); !os.IsNotExist(err) {
+		t.Error("a work directory another user made was kept")
+	}
+	if _, err := os.Lstat(filepath.Join(root, "dnsguard.json")); !os.IsNotExist(err) {
+		t.Error("a planted link was kept")
+	}
+	fi, err := os.Stat(filepath.Join(root, "traffic.json"))
+	if err != nil || fi.Sys().(*syscall.Stat_t).Uid != 0 || fi.Mode().Perm()&0o077 != 0 {
+		t.Errorf("traffic.json not taken back: %v %v", fi.Mode(), err)
+	}
+	if fi, _ := os.Stat(root); fi.Mode().Perm()&0o007 != 0 {
+		t.Errorf("data directory open to others: %v", fi.Mode())
+	}
+	if len(notes) == 0 {
+		t.Error("no notes for the log")
 	}
 }

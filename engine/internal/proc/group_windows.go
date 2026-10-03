@@ -1,6 +1,8 @@
 package proc
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"sync"
@@ -50,13 +52,46 @@ func (g *processGroup) add(p *os.Process) error {
 // A graceful process instead shares the daemon's console in a process group
 // of its own: that is the only way to deliver it CTRL_BREAK, which Go
 // programs such as sing-box handle like Ctrl+C and shut down cleanly on.
+//
+// Every process starts suspended: resume lets it run once it is in the job.
 func prepareCmd(cmd *exec.Cmd, graceful bool) {
 	if !graceful {
-		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: windows.CREATE_NO_WINDOW}
+		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: windows.CREATE_NO_WINDOW | windows.CREATE_SUSPENDED}
 		return
 	}
 	ensureConsole()
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: windows.CREATE_NEW_PROCESS_GROUP}
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: windows.CREATE_NEW_PROCESS_GROUP | windows.CREATE_SUSPENDED}
+}
+
+// resume starts the threads of p, which prepareCmd created suspended: its
+// only one, as nothing ran in it yet.
+func resume(p *os.Process) error {
+	snap, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPTHREAD, 0)
+	if err != nil {
+		return fmt.Errorf("resume: %w", err)
+	}
+	defer windows.CloseHandle(snap)
+	n := 0
+	te := windows.ThreadEntry32{Size: uint32(unsafe.Sizeof(windows.ThreadEntry32{}))}
+	for err := windows.Thread32First(snap, &te); err == nil; err = windows.Thread32Next(snap, &te) {
+		if te.OwnerProcessID != uint32(p.Pid) {
+			continue
+		}
+		h, err := windows.OpenThread(windows.THREAD_SUSPEND_RESUME, false, te.ThreadID)
+		if err != nil {
+			return fmt.Errorf("resume: %w", err)
+		}
+		_, err = windows.ResumeThread(h)
+		windows.CloseHandle(h)
+		if err != nil {
+			return fmt.Errorf("resume: %w", err)
+		}
+		n++
+	}
+	if n == 0 {
+		return errors.New("resume: the process has no thread")
+	}
+	return nil
 }
 
 // interrupt sends CTRL_BREAK to the process group of p, which prepareCmd

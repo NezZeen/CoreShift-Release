@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -131,7 +132,7 @@ type Config struct {
 	// lookup resolves a server name: through server when it is valid,
 	// else through the system resolver.
 	lookup       func(ctx context.Context, host string, server netip.AddrPort) (netip.Addr, error)
-	fetchRuleSet func(ctx context.Context, url string, proxy netip.AddrPort) ([]byte, error)
+	fetchRuleSet func(ctx context.Context, url string, proxy *url.URL) ([]byte, error)
 	hostIPv6     func() bool
 	physical     func() (ping.Bind, error)
 	icmpPing     func(ctx context.Context, ip netip.Addr, b ping.Bind) (time.Duration, error)

@@ -266,9 +266,19 @@ func (s *Service) installAppUpdate(reconnect bool) error {
 		s.setAppUpdate(func(u *AppUpdate) { u.State, u.Error = UpdateError, err.Error() })
 		return err
 	}
-	// Checked again right before it runs as SYSTEM.
 	if sum, err := selfupdate.FileSHA256(path); err != nil || sum != rel.SHA256 {
 		return fail(errors.New("the downloaded update changed or is gone; it will be downloaded again"))
+	}
+	var staged *stagedInstaller
+	if !s.userInstalls() {
+		// Checked again, on a copy nobody can change, right before it runs
+		// as SYSTEM (stage.go).
+		var err error
+		if staged, err = stageInstaller(path, rel.SHA256, s.updatesDir()); err != nil {
+			return fail(err)
+		}
+		defer staged.Close()
+		path = staged.path
 	}
 	s.setAppUpdate(func(u *AppUpdate) { u.State, u.Error = UpdateInstalling, "" })
 	p := pendingUpdate{
@@ -294,6 +304,8 @@ func (s *Service) installAppUpdate(reconnect bool) error {
 	s.Disconnect()
 	if err := s.cfg.launchInstaller(path, filepath.Join(s.updatesDir(), "install.log")); err != nil {
 		os.Remove(filepath.Join(s.updatesDir(), "pending.json"))
+		staged.Close()
+		os.RemoveAll(staged.dir)
 		if reconnect {
 			go s.ConnectSelected(context.Background())
 		}
@@ -306,6 +318,8 @@ func (s *Service) installAppUpdate(reconnect bool) error {
 // update interrupted, or reports that it did not install.
 func (s *Service) finishAppUpdate() {
 	path := filepath.Join(s.updatesDir(), "pending.json")
+	// The installers of earlier updates have finished by now.
+	cleanStaged(s.updatesDir())
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return

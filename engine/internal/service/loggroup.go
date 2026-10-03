@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"coreshift/engine/internal/proc"
 )
 
 // A tunnel that cannot reach its server fails every connection of every app
@@ -15,7 +17,6 @@ import (
 // reports them as one line every so often.
 
 var (
-	ansiRE = regexp.MustCompile(`\x1b?\[[0-9;]*m`)
 	// The TUN layer's own clock, "+0400 2026-10-03 10:26:50 ", which the
 	// journal already shows and which made every line a different one.
 	stampRE = regexp.MustCompile(`^[+-]\d{4} \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\s+`)
@@ -30,7 +31,7 @@ var (
 )
 
 // stripANSI removes the colour codes the TUN layer writes around ERROR.
-func stripANSI(s string) string { return ansiRE.ReplaceAllString(s, "") }
+func stripANSI(s string) string { return proc.StripANSI(s) }
 
 // tidy is the line as the journal shows it: no colour codes, no second clock.
 func tidy(s string) string { return stampRE.ReplaceAllString(stripANSI(s), "") }
