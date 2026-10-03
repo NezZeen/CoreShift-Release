@@ -18,6 +18,7 @@ type linuxHarness struct {
 	link     bool
 	nm       bool
 	fw       bool
+	se       bool
 	stack    dnsStack
 	inputs   []string
 }
@@ -50,6 +51,7 @@ func newLinuxHarness(t *testing.T, resolved bool, resolvConfPath string) *linuxH
 		resolvConfPath: resolvConfPath,
 		detect:         func() dnsStack { return h.stack },
 		firewalld:      func() bool { return h.fw },
+		selinux:        func() bool { return h.se },
 		networkManager: func() bool { return h.nm },
 		linkExists:     func(string) bool { return h.link },
 		linkDirs:       dirs,
@@ -139,6 +141,59 @@ func TestLinuxResolvConfCreatedThenRemoved(t *testing.T) {
 	}
 	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("file should be removed again, stat err = %v", err)
+	}
+}
+
+// With SELinux, the resolv.conf written and the one restored are
+// relabelled: the atomic write leaves them etc_t, which NetworkManager may
+// not replace in enforcing mode.
+func TestLinuxResolvConfRelabelledUnderSELinux(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "resolv.conf")
+	if err := os.WriteFile(path, []byte("nameserver 192.168.1.1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h := newLinuxHarness(t, false, path)
+	h.se = true
+	ctx := context.Background()
+	if err := h.g.Apply(ctx, Config{Interface: "coreshift", Servers: tunDNS}); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"restorecon " + path}
+	if !slices.Equal(h.commands, want) {
+		t.Fatalf("apply commands = %v, want %v", h.commands, want)
+	}
+	h.commands = nil
+	if err := h.g.Revert(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(h.commands, want) {
+		t.Fatalf("revert commands = %v, want %v", h.commands, want)
+	}
+
+	// Without SELinux, nothing is run; nor for a file that was not there.
+	h.se = false
+	h.commands = nil
+	if err := h.g.Apply(ctx, Config{Interface: "coreshift", Servers: tunDNS}); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.g.Revert(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.commands) != 0 {
+		t.Fatalf("commands without SELinux = %v", h.commands)
+	}
+	missing := filepath.Join(t.TempDir(), "resolv.conf")
+	h2 := newLinuxHarness(t, false, missing)
+	h2.se = true
+	if err := h2.g.Apply(ctx, Config{Interface: "coreshift", Servers: tunDNS}); err != nil {
+		t.Fatal(err)
+	}
+	h2.commands = nil
+	if err := h2.g.Revert(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(h2.commands) != 0 {
+		t.Fatalf("revert of a created file ran %v", h2.commands)
 	}
 }
 
