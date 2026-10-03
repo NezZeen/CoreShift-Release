@@ -149,6 +149,9 @@ func New(cfg Config) (*Service, error) {
 	if cfg.hostIPv6 == nil {
 		cfg.hostIPv6 = hostHasIPv6
 	}
+	if cfg.ipv6Off == nil {
+		cfg.ipv6Off = ipv6Disabled
+	}
 	if cfg.physical == nil {
 		cfg.physical = func() (ping.Bind, error) { return ping.Physical(tunlayer.DefaultInterface) }
 	}

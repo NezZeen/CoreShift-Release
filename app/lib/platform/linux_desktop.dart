@@ -35,11 +35,15 @@ String desktopExecArg(String arg) {
 }
 
 /// The autostart entry: CoreShift in the tray when the user signs in.
+///
+/// TryExec makes the session skip it once CoreShift is removed: a package
+/// cannot delete files in the users' homes, so the entry outlives it.
 String autostartEntry(String exe) =>
     '''[Desktop Entry]
 Type=Application
 Name=CoreShift
 Comment=VPN-клиент CoreShift в трее
+TryExec=${exe.replaceAll(r'\', r'\\')}
 Exec=${desktopExecArg(exe)} --tray
 Icon=coreshift
 Terminal=false
