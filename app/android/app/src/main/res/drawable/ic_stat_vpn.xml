@@ -1,11 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Status bar icon: a shield. White on transparent, as Android requires. -->
+<!-- Status bar and quick settings icon: the switch of CoreShift's mark
+     (app/assets/icon/coreshift.svg), a little larger than in the mark.
+     White on transparent, as Android requires. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-    <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M12,1L3,5v6c0,5.55 3.84,10.74 9,12 5.16,-1.26 9,-6.45 9,-12V5l-9,-4zM10,17l-4,-4 1.41,-1.41L10,14.17l6.59,-6.59L18,9l-8,8z" />
+    <group
+        android:pivotX="12"
+        android:pivotY="12"
+        android:scaleX="1.2"
+        android:scaleY="1.2">
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="2.4"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:pathData="M5,8.5H19M7.5,8.5C11,8.5 11.5,15.5 15,15.5H19" />
+    </group>
 </vector>
