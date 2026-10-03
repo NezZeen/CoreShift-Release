@@ -38,6 +38,8 @@ type vpnTUN struct {
 }
 
 func (t *vpnTUN) Start(ctx context.Context, o tunlayer.Options) (service.TUNInstance, error) {
+	// The VpnService owns the routes: it leaves the local network out.
+	lan := tunlayer.LANRoutes(o)
 	o.Platform = true
 	cfg, err := tunlayer.Build(o)
 	if err != nil {
@@ -46,7 +48,7 @@ func (t *vpnTUN) Start(ctx context.Context, o tunlayer.Options) (service.TUNInst
 	if err := os.MkdirAll(t.dir, 0o700); err != nil {
 		return nil, err
 	}
-	pl := &platform{app: t.platform}
+	pl := &platform{app: t.platform, exclude: lan}
 	switch o.AppFilter {
 	case store.AppsOnly:
 		pl.allowed = o.FilterApps
@@ -149,8 +151,10 @@ type platform struct {
 	app Platform
 	// The per-app VPN (store.Routing.AppFilter).
 	allowed, disallowed []string
-	mu                  sync.Mutex
-	addrs               []netip.Addr
+	// exclude are the local ranges kept out of the VPN (ExcludeLAN).
+	exclude []netip.Prefix
+	mu      sync.Mutex
+	addrs   []netip.Addr
 }
 
 var _ adapter.PlatformInterface = (*platform)(nil)
@@ -201,6 +205,14 @@ func (p *platform) OpenInterface(options *tun.Options, _ option.TunPlatformOptio
 	p.addrs = addrs
 	p.mu.Unlock()
 	return tun.New(*options)
+}
+
+func prefixLines(ps []netip.Prefix) string {
+	lines := make([]string, len(ps))
+	for i, p := range ps {
+		lines[i] = p.String()
+	}
+	return strings.Join(lines, "\n")
 }
 
 func tunName(fd int) (string, error) {
