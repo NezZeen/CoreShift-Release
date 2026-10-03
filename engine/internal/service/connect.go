@@ -329,7 +329,10 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 		// The daemon resolves proxy servers, e.g. for latency tests.
 		opts.DirectDNSProcesses = []string{self}
 	}
-	if o.IPv6 {
+	// Where the system has IPv6 switched off, an IPv6 address would stop
+	// the TUN interface from starting: the tunnel is IPv4-only then, as
+	// the system is.
+	if o.IPv6 && !s.cfg.ipv6Off() {
 		opts.Address6 = tunlayer.DefaultAddress6
 		// Checked before the TUN exists, so its own address cannot count.
 		opts.DNS.DirectIPv4Only = !s.cfg.hostIPv6()
