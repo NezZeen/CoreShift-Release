@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"os"
 	"os/exec"
+	"path/filepath"
 )
 
 const (
@@ -55,12 +56,25 @@ func exists(path string) bool {
 func currentDNSEnv() linuxDNSEnv {
 	env := linuxDNSEnv{
 		ResolvedRunning: have("resolvectl") && exists(resolvedVarlinkAPI),
-		Resolvconf:      have("resolvconf"),
+		Resolvconf:      realResolvconf(),
 		Netconfig:       have("netconfig"),
 	}
 	env.ResolvConf, _ = os.ReadFile(resolvConf)
 	env.Link, _ = os.Readlink(resolvConf)
 	return env
+}
+
+// realResolvconf reports whether resolvconf is installed and is not
+// systemd-resolved's resolvectl under that name.
+func realResolvconf() bool {
+	p, err := exec.LookPath("resolvconf")
+	if err != nil {
+		return false
+	}
+	if target, err := filepath.EvalSymlinks(p); err == nil && filepath.Base(target) == "resolvectl" {
+		return false
+	}
+	return true
 }
 
 // networkManagerRuns reports whether NetworkManager is up and nmcli can
