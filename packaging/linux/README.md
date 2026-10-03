@@ -1,186 +1,149 @@
 # CoreShift для Linux
 
-Сборка и установка на ПК с Linux: Ubuntu и Debian (пакет `.deb`), Fedora, Arch и другие системы с systemd (архив `.tar.gz` со скриптом установки).
+Сборка, установка и проверка CoreShift на Linux: Debian и Ubuntu, Fedora, RHEL и openSUSE, Arch, а также любые системы с systemd, OpenRC или runit.
+
+## Пакеты
+
+| Система | Файл | Как поставить | Чем собирается |
+| --- | --- | --- | --- |
+| Debian, Ubuntu, Mint, Pop!_OS | `coreshift_<версия>_amd64.deb` | `sudo apt install ./coreshift_*.deb` | `dpkg-deb` |
+| Fedora, RHEL/Alma/Rocky, openSUSE | `coreshift-<версия>-1.x86_64.rpm` | `sudo dnf install ./coreshift-*.rpm`, `sudo zypper in ./coreshift-*.rpm` | `rpmbuild` (пакет `rpm` / `rpm-build`) |
+| Arch, Manjaro, EndeavourOS | `coreshift-<версия>-1-x86_64.pkg.tar.zst` | `sudo pacman -U coreshift-*.pkg.tar.zst` | `zstd` и GNU tar; на Arch можно и `arch/PKGBUILD` с `makepkg` |
+| Всё остальное, а также OpenRC и runit | `coreshift-<версия>-linux-amd64.tar.gz` | распаковать, затем `sudo ./install.sh` | `tar`, `gzip` |
+
+Для arm64 те же файлы с `arm64` или `aarch64` в имени. В релизе файлы лежат под постоянными именами: `CoreShift-amd64.deb`, `CoreShift-x86_64.rpm`, `CoreShift-x86_64.pkg.tar.zst`, `CoreShift-linux-amd64.tar.gz` (см. [packaging/README.md](../README.md)).
+
+Почему `.rpm` собирается через `rpmbuild` со spec-файлом (`rpm/coreshift.spec`): он есть в репозиториях Ubuntu и Debian (пакет `rpm`), не тянет новых зависимостей и не требует Go-инструментов вроде nfpm. Spec ничего не компилирует, а только упаковывает то же дерево файлов, что `.deb`. Пакет для Arch `build.sh` собирает сам: это `.PKGINFO`, `.INSTALL` и файлы, сжатые zstd, то есть ровно то, что сделал бы `makepkg`. `makepkg` для этого не нужен, его на Ubuntu нет.
 
 ## Как устроено
 
-| Что | Где | Права |
+| Что | Где (пакеты / `install.sh`) | Права |
 | --- | --- | --- |
-| Приложение (Flutter) | `/opt/coreshift/coreshift`, ярлык `dev.coreshift.coreshift.desktop` | пользователь |
-| Служба `coreshiftd` | `/opt/coreshift/coreshiftd`, юнит `coreshift.service` | root, с ограниченным набором capabilities |
-| Ядра xray, sing-box, mihomo | `/opt/coreshift/cores` | root; служба обновляет их сама |
-| Настройки, подписки, журнал DNS | `/var/lib/coreshift` | root |
+| Приложение (Flutter) | `/usr/lib/coreshift/coreshift`, ярлык `/usr/bin/coreshift` / `/usr/local/...` | пользователь |
+| Служба `coreshiftd` | `/usr/bin/coreshiftd` / `/usr/local/bin/coreshiftd` | root, с урезанным набором capabilities |
+| Ядра xray, sing-box, mihomo | `/usr/lib/coreshift/cores` / `/usr/local/lib/coreshift/cores` | root; обновляются сами |
+| Настройки, подписки, журнал DNS | `/var/lib/coreshift` | root (только данные, ничего исполняемого) |
 
-- **Служба работает с загрузки системы**, а VPN включается, только пока открыто приложение: служба подключается, когда приложение открылось (если включён «Автозапуск»), и отключается через 10 секунд после того, как его закрыли. Так же, как на Windows, VPN не работает «невидимо».
-- **Доступ к службе.** Приложение говорит со службой по `127.0.0.1:17900` с токеном из `/var/lib/coreshift/api.json`. Токен читают только члены группы `coreshift`:
+- **Служба работает с загрузки системы.** VPN включается кнопкой и **остаётся включённым, пока его не выключат кнопкой**, даже если окно закрыто. С включённым «Автозапуском» CoreShift запускается при входе в сеанс (`~/.config/autostart/dev.coreshift.coreshift.desktop`), и служба, как на Windows, сразу подключает выбранный сервер. «Выход» в меню трея, как и на Windows, выключает VPN.
+- **Доступ к службе.** Приложение говорит со службой по `127.0.0.1:17900` с токеном из `/var/lib/coreshift/api.json`. Читать токен может только группа `coreshift`:
 
   ```
-  /var/lib/coreshift            root:coreshift 0710   члены группы открывают файлы по имени, но не видят список
+  /var/lib/coreshift            root:coreshift 0710   члены группы открывают файлы по имени, список не видят
   /var/lib/coreshift/api.json   root:coreshift 0640   адрес и токен
   остальное                     root 0700 / 0600      подписки, настройки, конфиги ядер, журнал DNS
   ```
 
-  Пакет создаёт группу и добавляет в неё пользователя, который его ставил (через `sudo` или центр приложений). Других пользователей добавляют командой `sudo usermod -aG coreshift <имя>`. После добавления нужно **выйти из системы и войти снова**. Без группы приложение пишет, что делать.
-- **DNS.** Если работает systemd-resolved (Ubuntu, Fedora; NetworkManager поверх него), интерфейс `coreshift` получает DNS туннеля и домен `~.`, и все запросы уходят туда. Иначе (Debian без resolved, Arch с NetworkManager, обычный `/etc/resolv.conf`) служба временно пишет свой `/etc/resolv.conf` и каждые 5 секунд возвращает его, если NetworkManager или DHCP-клиент его перезаписали. Кроме того, sing-box перехватывает любые DNS-пакеты в туннеле, так что пропущенный резолвер тоже не даёт утечки.
-- **Восстановление после сбоя.** Каждое изменение DNS сначала записывается в журнал `/var/lib/coreshift/dnsguard.json`. При старте службы (с загрузки и после любого перезапуска) `ExecStartPre=coreshiftd dns recover` и сама служба откатывают то, что осталось от упавшего запуска. Журнал проверяется: служба пишет только в `/etc/resolv.conf` и восстанавливает только ссылки на файлы resolved, NetworkManager или resolvconf.
-- **Программы без VPN / через VPN** работают по имени исполняемого файла (`firefox`, `telegram-desktop`, `steam`), как на Windows по `.exe`. В списке «Выбрать из запущенных» видны программы пользователей (uid от 1000), без служб.
-- **Обновления CoreShift** на Linux ставит пакетный менеджер, а не служба: в настройках написано «Обновляйте через пакет». Почему так, ниже. Ядра обновляются сами, как на Windows.
-- **Трей** — StatusNotifierItem. В KDE, Xfce, Cinnamon, MATE и Ubuntu (расширение AppIndicator) он есть сразу. В «чистом» GNOME (Fedora, Debian) нужно расширение [AppIndicator](https://extensions.gnome.org/extension/615/appindicator-support/), иначе значка нет. Окно тогда открывается повторным запуском из меню.
-- **Ссылки `coreshift://`** открывают CoreShift через ярлык (`MimeType=x-scheme-handler/coreshift`). Если CoreShift уже запущен, второй запуск передаёт ссылку ему и закрывается.
-- **Автозапуск** — файл `~/.config/autostart/dev.coreshift.coreshift.desktop`, его пишет приложение по переключателю «Автозапуск».
+  Пакет создаёт группу и добавляет в неё того, кто его ставил (через `sudo`, `doas` или центр приложений). Других пользователей добавляют командой `sudo usermod -aG coreshift <имя>`, после чего нужно **выйти из системы и войти снова**. Без группы приложение показывает эту же подсказку. При каждом старте служба проверяет каталог (`SecureDataDir`): ссылка или файл на месте каталога удаляется, всё чужое возвращается root или удаляется.
+- **Обновления CoreShift** ставит пакетный менеджер, сама служба ничего не устанавливает. Раз в день она читает подписанный `latest-linux.json` из публичного репозитория `NezZeen/CoreShift-Release` (токена в Linux-сборке нет) и проверяет подпись теми же ключами, что на Windows. Если вышла новая версия, приложение пишет «Доступна новая версия X», а кнопка «Скачать» открывает страницу релиза. Источник меняется настройкой `app_update.source`: `github-public:OWNER/REPO` или папка. Ядра обновляются сами, как на Windows.
 
-### Почему нет самообновления
+### Системы инициализации
 
-Самообновление выключено намеренно:
+| Init | Что ставится | Как работает восстановление DNS после сбоя |
+| --- | --- | --- |
+| systemd | юнит `coreshift.service` (`Restart=on-failure`) | `ExecStartPre=coreshiftd dns recover` перед каждым стартом, при загрузке тоже, затем ещё раз сама служба |
+| OpenRC (Alpine, Gentoo, Artix) | `/etc/init.d/coreshift` с `supervise-daemon` | `start_pre` с `dns recover`; после перезапуска упавшей службы откат делает сама служба |
+| runit (Void, Artix) | `/etc/sv/coreshift/run` и `finish` | `run` выполняет `dns recover` перед каждым запуском |
+| другое | ничего | `install.sh` пишет, какие две команды запускать от root при загрузке |
 
-1. Файлы в `/opt/coreshift` принадлежат пакету. Если служба подменит их сама, `dpkg` будет считать, что стоит старая версия, и следующее обновление или удаление пакета может сломаться.
-2. Служба работает от root. Ставить пакеты от root по команде из интернета — это ещё одна поверхность атаки. Подпись снижает риск, но не убирает его. Пакетный менеджер делает то же самое проверенным путём.
-3. Пакеты бывают разные (`.deb`, архив, в будущем `.rpm`), и для каждого нужен свой установщик. Пакетный менеджер уже умеет ставить каждый из них.
+Пакеты `.deb`, `.rpm` и для Arch ставят только юнит systemd. `install.sh` сам определяет init-систему и ставит нужный файл. `coreshiftd service start|stop|status` обращается к той init-системе, которая запущена; через неё же работает кнопка «Запустить службу» (`pkexec coreshiftd service start`).
 
-Поэтому на Linux служба отвечает «off» с причиной `linux: CoreShift is updated with its package`, а приложение пишет «Обновляйте через пакет». Манифест Linux отдельный (`latest-linux.json`, только `.deb`), чтобы Linux-служба никогда не взяла установщик Windows.
+### DNS
+
+Служба определяет способ настройки DNS при каждом подключении:
+
+| Что управляет DNS | Как распознаётся | Что делает CoreShift |
+| --- | --- | --- |
+| systemd-resolved (Ubuntu, Fedora; NetworkManager поверх него) | resolved запущен, `/etc/resolv.conf` указывает на заглушку `127.0.0.53` | интерфейсу `coreshift` задаются DNS туннеля и домен `~.` (`resolvectl`) |
+| resolvconf (Debian) или openresolv (Arch, Void, Alpine, Gentoo) | настоящий `resolvconf` (не `resolvectl`), в шапке файла «generated by resolvconf» или ссылка в `/run/resolvconf` | запись `tun.coreshift`; у openresolv эксклюзивная (`-x`) |
+| netconfig (openSUSE) | `netconfig` есть, в шапке файла «netconfig» | свой сервис для netconfig (`netconfig modify -s coreshift`) |
+| NetworkManager пишет файл сам, обычный файл или ссылка | всё остальное | служба временно пишет свой `/etc/resolv.conf` и каждые 5 с возвращает его, если файл перезаписали |
+
+Если запущен NetworkManager, интерфейс `coreshift` помечается как неуправляемый. Если `/etc/resolv.conf` — ссылка в незнакомое место, служба его не трогает. Это не утечка: sing-box перехватывает в туннеле **любой** DNS-пакет на порт 53, к какому бы серверу он ни шёл. Каждое изменение сначала записывается в журнал. Перед откатом журнал проверяется: служба пишет только в `/etc/resolv.conf`, восстанавливает только ссылки на файлы resolved, NetworkManager, resolvconf, netconfig или WSL, а `resolvectl`, `resolvconf`, `netconfig` и `firewall-cmd` вызывает только с допустимым именем интерфейса.
+
+### Межсетевой экран, SELinux, AppArmor
+
+- **firewalld (Fedora, RHEL, openSUSE).** Пока VPN включён, интерфейс `coreshift` переводится в зону `trusted` (только в runtime, `--change-interface`), а при отключении возвращается обратно. Без этого зона по умолчанию отклоняет соединения, которые TUN-слой отвечает системе. Перезагрузка firewalld или ПК сбрасывает это и так.
+- **nftables/iptables со своими правилами** (политика DROP на input): нужно разрешить вход с интерфейса `coreshift`, например `nft add rule inet filter input iifname "coreshift" accept`. Маршруты sing-box (`auto_route`, `strict_route`) так устроены, что весь трафик, кроме локальных сетей, идёт в TUN, а DNS перехватывается всегда.
+- **SELinux (Fedora, RHEL) в режиме enforcing.** Программы лежат в `/usr/bin` и `/usr/lib/coreshift` и получают обычные метки `bin_t` и `lib_t`. Служба запускается из `/usr/bin/coreshiftd` (`bin_t`), поэтому systemd запускает её в домене `unconfined_service_t`. В `/var/lib` нет ничего исполняемого. `rpm` ставит метки сам. После `install.sh` (`/usr/local`) setup-скрипт сам выполняет `restorecon`. Если служба не стартует, проверьте `ausearch -m avc -ts recent` и при необходимости выполните `sudo restorecon -Rv /usr/local/lib/coreshift /usr/local/bin/coreshiftd /etc/systemd/system/coreshift.service`.
+- **AppArmor (Ubuntu, Debian, openSUSE).** Профиля у CoreShift нет, обе программы работают без ограничений (unconfined). Ограничение user namespaces в Ubuntu 24.04 Flutter-приложение не затрагивает.
+
+### Окружения рабочего стола
+
+- **Трей** — StatusNotifierItem. Он сразу есть в KDE, XFCE, Cinnamon, MATE, Budgie и в GNOME у Ubuntu (расширение AppIndicator включено). В «чистом» GNOME (Fedora, Debian, Arch) нужно расширение [AppIndicator](https://extensions.gnome.org/extension/615/appindicator-support/).
+- **Без трея** (служба `org.kde.StatusNotifierWatcher` на шине сеанса не найдена) крестик сворачивает окно, а не прячет его, и `--tray` при автозапуске открывает окно. Иначе CoreShift пропал бы из виду насовсем.
+- **Wayland и X11.** Работает в обоих: GTK сам выбирает бэкенд. Своё оформление окна рисует приложение, системный заголовок скрыт.
+- **Ярлык и ссылки `coreshift://`**: `dev.coreshift.coreshift.desktop` с `MimeType=x-scheme-handler/coreshift`. Пакеты обновляют базу (`update-desktop-database`). Если браузер всё равно не открывает CoreShift, выполните `xdg-mime default dev.coreshift.coreshift.desktop x-scheme-handler/coreshift`. Повторный запуск передаёт ссылку уже открытому окну (GApplication, D-Bus сеанса) и закрывается.
+- **Автозапуск** — XDG autostart (`~/.config/autostart`). Его понимают все перечисленные окружения.
+
+### musl (Alpine)
+
+Служба собирается статически (`CGO_ENABLED=0`), а ядра xray, sing-box и mihomo тоже статические, поэтому служба работает и на musl. Встраиваемый движок Flutter для Linux собран под glibc, и `gcompat` для GTK и EGL этого не покрывает. Поэтому на Alpine поддерживается **только служба**: `install.sh` на musl-системе ставит её без приложения (`--daemon-only`). Управлять ею без приложения можно через API (`curl` с токеном) или командами `coreshiftd vpn <файл>` и `coreshiftd connect`.
+
+### Архитектуры
+
+amd64 и arm64. Служба и ядра собираются для обеих где угодно (`GOARCH=arm64`). Приложение Flutter собирается только на машине той же архитектуры, поэтому arm64 собирается на arm64: Raspberry Pi 5, сервер Ampere или раннер GitHub `ubuntu-24.04-arm`. Пример конвейера — [ci/linux-packages.yml](ci/linux-packages.yml): он не подключён, его надо скопировать в `.github/workflows/`.
 
 ## Сборка
 
-Собирать нужно на Linux того же процессора: Flutter не собирает Linux-приложения кросс-компиляцией. Для arm64 нужна arm64-машина, например раннер GitHub `ubuntu-24.04-arm`.
+Собирать нужно на Linux той же архитектуры. С Windows это делается через WSL: `packaging\linux\build-wsl.ps1 -Ref <тег или ветка>`, и так же собирает `release.ps1`.
 
-1. Поставить инструменты (Ubuntu 24.04 / Debian 12):
+1. Поставить инструменты (Ubuntu 24.04):
 
    ```
    sudo apt install git curl unzip xz-utils clang cmake ninja-build pkg-config \
-       libgtk-3-dev liblzma-dev libstdc++-12-dev libx11-dev libxi-dev dpkg-dev
+       libgtk-3-dev liblzma-dev libstdc++-12-dev libx11-dev libxi-dev dpkg-dev rpm zstd
    ```
 
-   Go 1.26+ взять с https://go.dev/dl/, Flutter — по инструкции https://docs.flutter.dev/get-started/install/linux (нужна та же версия, что на Windows: `flutter --version` на ПК). Проверка: `flutter doctor` без ошибок в разделе Linux toolchain.
+   Go 1.26+ взять с https://go.dev/dl/, Flutter — по https://docs.flutter.dev/get-started/install/linux (та же версия, что на Windows). Проверка: `flutter doctor`.
 
-2. Скачать ядра. Команда берёт последние стабильные версии с GitHub, сверяет SHA-256 и проверяет, что каждое ядро запускается:
-
-   ```
-   cd engine && go run ./cmd/coreshiftd cores fetch -dir testdata/bin/linux-amd64 && cd ..
-   ```
-
-   Или положить в `engine/testdata/bin/linux-amd64` файлы `xray`, `sing-box`, `mihomo` из релизов (`Xray-linux-64.zip`, `sing-box-<версия>-linux-amd64.tar.gz`, `mihomo-linux-amd64-v1-<версия>.gz`). Ядра называются именно так, без версий.
-
-3. Проверить код:
+2. Проверить код (от root в Linux выполняются и тесты, которые без root пропускаются):
 
    ```
    cd engine && go vet ./... && go test ./... && cd ..
    cd app && flutter analyze && flutter test && cd ..
    ```
 
-   На Linux при этом выполняются и тесты, которые на Windows пропускаются: `secure_linux_test.go` (права на `api.json`), `TestLinuxResolvConfSymlinkRestored`, `TestLinuxApplyRefusesUntrustedSymlink`, `TestRunningIncludesThisTest`.
-
-4. Собрать:
+3. Собрать всё сразу; `--fetch-cores` скачивает последние ядра в `engine/testdata/bin/linux-amd64` и проверяет SHA-256:
 
    ```
-   packaging/linux/build.sh            # или с --fetch-cores вместо шага 2
+   packaging/linux/build.sh --fetch-cores               # или --formats deb,tar
    ```
 
-   Результат: `dist/coreshift_<версия>_amd64.deb` и `dist/coreshift-<версия>-linux-amd64.tar.gz`. Между релизами в имени есть номер сборки (`0.6.5+b130`, `0.6.5-b130`), а `-dirty` означает незакоммиченные изменения.
+   Результат будет в `dist/`. Если для какого-то формата нет инструмента, этот формат пропускается с пометкой.
 
-## Установка
+## Матрица проверки
 
-Ubuntu, Debian, Mint:
+Проверено 3 октября 2026 года на сборке `0.6.7+b122` в WSL2 (systemd, WSLg). Отдельно — в ВМ Hyper-V с KDE Plasma (Ubuntu 24.04). Тестовый сервер — локальный shadowsocks на `127.0.0.1`; настоящие подписки не использовались. Что проверялось везде: установка, автозапуск службы, права на `api.json`, подключение, DNS через туннель, HTTPS по имени через туннель, отключение с восстановлением DNS, `kill -9` службы с восстановлением, удаление и очистка.
 
-```
-sudo apt install ./coreshift_0.6.5_amd64.deb
-```
+| Система | Пакет | Init | DNS-стек | Результат |
+| --- | --- | --- | --- | --- |
+| Ubuntu 24.04 | .deb | systemd | файл (ссылка WSL) | всё ок, приложение и ссылки `coreshift://` тоже |
+| Ubuntu 24.04 | .deb | systemd | systemd-resolved (заглушка) | ок |
+| Debian 13 | .deb | systemd | файл (ссылка WSL) | ок |
+| Debian 13 | .deb | systemd | resolvconf (Debian) | ок |
+| Debian 13 | .tar.gz + install.sh | systemd | файл | ок, `/usr/local` |
+| Fedora 44 | .rpm | systemd | файл + firewalld | ок, интерфейс переходит в зону `trusted` и обратно |
+| Arch | .pkg.tar.zst | systemd | файл / openresolv | ок, у openresolv эксклюзивная запись |
+| openSUSE Tumbleweed | .rpm | systemd | файл / netconfig | ок; у netconfig сервер туннеля стоит вторым, DNS всё равно идёт в туннель |
+| Ubuntu 24.04 KDE (ВМ) | .deb | systemd | NetworkManager + resolved | см. отчёт: после подключения ВМ перестала отвечать по сети |
+| Alpine | .tar.gz `--daemon-only` | OpenRC | openresolv | не проверено: нет системы |
+| Void | .tar.gz | runit | openresolv | не проверено: нет системы |
 
-Fedora, Arch и другие:
+Что проверить на каждой системе:
 
-```
-tar xzf coreshift-0.6.5-linux-amd64.tar.gz
-cd coreshift-0.6.5-linux-amd64
-sudo ./install.sh
-```
+1. Установка: служба `enabled`/`active` (OpenRC: `rc-service coreshift status`, runit: `sv status coreshift`); пользователь в группе `coreshift` после повторного входа; `stat -c '%A %U:%G' /var/lib/coreshift /var/lib/coreshift/api.json` даёт `drwx--x--- root:coreshift` и `-rw-r----- root:coreshift`; `sudo -u nobody cat /var/lib/coreshift/api.json` отвечает «Permission denied».
+2. Приложение из меню: виден главный экран без «Служба не запущена»; повторный запуск не открывает второе окно; ссылка `coreshift://...` из браузера открывает предложение добавить подписку.
+3. Подключение:
+   - `ip link show coreshift`;
+   - DNS: `resolvectl status coreshift` (resolved), `cat /etc/resolv.conf` (файл, resolvconf, netconfig);
+   - `curl https://www.cloudflare.com/cdn-cgi/trace` показывает IP сервера;
+   - проверка утечек DNS в настройках.
+4. Отключение: DNS как до подключения, интерфейса нет.
+5. Сбой: `sudo kill -9 $(pgrep -f 'coreshiftd service run')`. Служба перезапускается, DNS восстановлен, сайты открываются. После жёсткого выключения ПК сеть работает сразу после загрузки.
+6. NetworkManager без resolved: `nmcli connection up <подключение>`, через 5 с снова файл CoreShift; при отключении остаётся новый файл NetworkManager.
+7. firewalld: `firewall-cmd --get-zone-of-interface=coreshift` показывает `trusted`, после отключения интерфейса в зоне нет.
+8. Окно закрыто, VPN включён: VPN продолжает работать (`curl` показывает IP сервера), пока его не выключат кнопкой; «Выход» в трее выключает VPN.
+9. Автозапуск: включить, выйти из сеанса и войти — CoreShift в трее (без трея — окно), VPN подключается.
+10. Удаление: `apt remove`, `dnf remove`, `zypper rm`, `pacman -R` или `./uninstall.sh` останавливают службу и восстанавливают DNS. Подписки остаются; `apt purge` или `uninstall.sh --purge` удаляют и их.
 
-Затем **выйти из системы и войти снова**: это нужно, чтобы вступило в силу членство в группе `coreshift`.
-
-Удаление: `sudo apt remove coreshift` (`purge` удалит и подписки) или `sudo ./uninstall.sh [--purge]`.
-
-## План проверки
-
-Лучше всего начать с Ubuntu 24.04 (systemd-resolved, NetworkManager, GNOME с AppIndicator). Затем, если будет время, проверить Debian 12 без resolved, Fedora 40+ и Arch. Подойдёт и виртуальная машина (VirtualBox или GNOME Boxes), если её сеть идёт через NAT.
-
-### 1. Установка и служба
-
-```
-sudo apt install ./coreshift_*.deb
-systemctl status coreshift          # active (running)
-id                                  # после повторного входа: есть группа coreshift
-sudo ls -l /var/lib/coreshift       # api.json: -rw-r----- root coreshift
-stat -c '%A %U:%G' /var/lib/coreshift   # drwx--x--- root:coreshift
-cat /var/lib/coreshift/api.json     # читается от своего пользователя
-sudo -u nobody cat /var/lib/coreshift/api.json   # Permission denied
-journalctl -u coreshift -n 50       # «API listening on 127.0.0.1:17900»
-```
-
-### 2. Приложение
-
-- Открыть CoreShift из меню. Окно открывается, в нём свой заголовок, сверху нет второго, системного.
-- Значок в трее: левый клик открывает окно, в правом меню есть «Подключить», «Сервер», «Выход».
-- Закрыть окно крестиком: окно прячется, приходит уведомление «CoreShift работает в трее».
-- Ещё раз запустить CoreShift из меню: открывается то же окно, вторая копия не появляется (`pgrep -c coreshift` = 1).
-- Настройки → «Обновления»: текст «Обновляйте через пакет…», кнопки «Проверить сейчас» нет.
-- Настройки → «Защита от утечек DNS»: без упоминания Windows.
-
-### 3. VPN и DNS (Ubuntu, systemd-resolved)
-
-Добавить подписку и подключиться, затем:
-
-```
-ip link show coreshift              # интерфейс есть
-resolvectl status coreshift         # DNS Servers: 172.19.0.2, DNS Domain: ~.
-resolvectl query example.com        # ответ через coreshift
-curl https://ifconfig.me            # IP VPN-сервера
-```
-
-В приложении: Настройки → проверка утечек DNS → «Утечки нет». Затем отключиться и проверить, что `resolvectl status coreshift` пишет, что такого интерфейса нет, а сайты открываются.
-
-### 4. DNS без resolved (Debian 12 или Arch с NetworkManager)
-
-```
-ls -l /etc/resolv.conf              # до подключения
-# подключиться
-cat /etc/resolv.conf                # «Generated by CoreShift…», nameserver 172.19.0.2
-sudo nmcli connection up <ваше подключение>   # NetworkManager перепишет файл
-sleep 6; cat /etc/resolv.conf       # через ≤5 с снова файл CoreShift
-# отключиться
-cat /etc/resolv.conf                # содержимое NetworkManager, не старое
-```
-
-### 5. Сбой и восстановление
-
-```
-# подключиться, затем убить службу так, будто она упала:
-sudo systemctl kill -s KILL coreshift
-sleep 5; systemctl status coreshift      # systemd перезапустил её
-resolvectl status coreshift              # нет интерфейса, DNS системы в порядке
-cat /etc/resolv.conf                     # (без resolved) исходный файл
-```
-
-Ещё один вариант — подключиться и выключить машину кнопкой питания (для ВМ — «Power off»). После загрузки сайты должны открываться сразу, ещё до запуска CoreShift.
-
-### 6. Ссылки, автозапуск, отключение без приложения
-
-- Открыть в браузере ссылку `coreshift://...` (кнопка «Добавить в приложение» в панели провайдера, или `xdg-open '<та же ссылка coreshift://…>'` в терминале). CoreShift предлагает добавить подписку, и в работающей копии тоже.
-- Включить «Автозапуск», затем проверить, что файл `~/.config/autostart/dev.coreshift.coreshift.desktop` появился. Выйти из системы и войти: CoreShift в трее, VPN подключается. Выключить «Автозапуск» — файл исчезает.
-- Подключиться, затем в трее нажать «Выход». VPN отключается сразу. А при `pkill -KILL coreshift` VPN отключается через 10 с: смотреть `journalctl -u coreshift -f`, там «the app is closed; disconnecting».
-
-### 7. Программы и ядра
-
-- Правила → «Программы без VPN» → «Выбрать из запущенных»: в списке firefox и другие программы пользователя, системных служб нет. Добавить `firefox`, переподключиться, и ifconfig.me в Firefox показывает домашний IP, а `curl` — IP VPN.
-- Настройки → Ядра: версии видны, обновление ядра проходит (файлы в `/opt/coreshift/cores` заменяются).
-- Остановить xray (`sudo pkill -f cores/xray`): автосвап на sing-box, VPN работает.
-
-### 8. Удаление
-
-```
-sudo apt remove coreshift
-resolvectl status                    # следов coreshift нет
-ls /var/lib/coreshift                # подписки остались
-sudo apt purge coreshift             # теперь и /var/lib/coreshift удалён
-```
-
-Если что-то не работает, пришлите `journalctl -u coreshift -b` и `/var/lib/coreshift/coreshiftd.log` (`sudo cat`). URL подписок там не пишутся.
-
-Если служба не стартует из-за ограничений в юните (`CapabilityBoundingSet`, `ProtectSystem`), можно временно закомментировать эти строки (`sudo systemctl edit --full coreshift`) и сообщить, какая из них мешала.
+Если что-то не работает, пришлите `journalctl -u coreshift -b` (OpenRC: `/var/log/coreshift.log`) и `sudo cat /var/lib/coreshift/coreshiftd.log`. URL подписок туда не пишутся. Если служба не стартует из-за ограничений юнита (`CapabilityBoundingSet`, `ProtectSystem`), можно временно закомментировать их (`sudo systemctl edit --full coreshift`) и сообщить, какая строка мешала.
