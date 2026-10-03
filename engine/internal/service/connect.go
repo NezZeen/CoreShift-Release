@@ -260,7 +260,7 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 		return serverIP, nil
 	}
 
-	suffixes, proxied := routeSuffixes(o)
+	suffixes, proxied, directFirst := routeSuffixes(o)
 	var domainSets, ipSets, proxySets []tunlayer.RuleSet
 	if o.DNS.RussiaDirect && !o.Selective {
 		// The core is up, so a blocked source can be reached through it.
@@ -285,6 +285,7 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 			FakeIP:           o.DNS.FakeIP,
 			DirectSuffixes:   suffixes,
 			ProxySuffixes:    proxied,
+			DirectFirst:      directFirst,
 			BlockSuffixes:    o.BlockDomains,
 			DirectRuleSets:   domainSets,
 			DirectIPRuleSets: ipSets,
@@ -345,16 +346,19 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 
 // routeSuffixes returns the names that go direct and those that go through
 // the tunnel whatever else matches them: the user's lists, plus with the
-// Russian preset its domains direct and YouTube's in the tunnel
-// (videoSuffixes), unless the user sends them direct.
-func routeSuffixes(o Options) (direct, proxied []string) {
+// Russian preset its domains direct and Google's in the tunnel
+// (googleSuffixes, geosite-google), unless the user sends them direct:
+// directFirst are those of the user's direct names that must win over
+// geosite-google.
+func routeSuffixes(o Options) (direct, proxied, directFirst []string) {
 	direct = mergeSuffixes(alwaysDirect, o.DNS.DirectSuffixes)
 	proxied = o.ProxyDomains
 	if o.DNS.RussiaDirect && !o.Selective {
 		direct = mergeSuffixes(direct, russiaSuffixes)
-		proxied = mergeSuffixes(proxied, presetProxySuffixes(o.DNS.DirectSuffixes))
+		proxied = mergeSuffixes(proxied, googleSuffixes)
+		directFirst = googleDirect(o.DNS.DirectSuffixes)
 	}
-	return direct, proxied
+	return direct, proxied, directFirst
 }
 
 // Disconnect stops everything and restores the system. Safe when idle. A

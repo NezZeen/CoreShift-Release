@@ -534,7 +534,7 @@ func TestRussiaDirectDownloadsRuleSets(t *testing.T) {
 	o := h.tun.opts
 	h.tun.mu.Unlock()
 	if !slices.Contains(o.DNS.DirectSuffixes, "xn--p1ai") || !slices.Contains(o.DNS.DirectSuffixes, "2ip.io") || len(o.DNS.DirectRuleSets) != 1 || len(o.DNS.DirectIPRuleSets) != 1 ||
-		len(o.DNS.ProxyRuleSets) != 1 || o.DNS.ProxyRuleSets[0].Tag != "geosite-category-media-ru-blocked" {
+		len(o.DNS.ProxyRuleSets) != 2 || o.DNS.ProxyRuleSets[0].Tag != "geosite-category-media-ru-blocked" || o.DNS.ProxyRuleSets[1].Tag != "geosite-google" {
 		t.Fatalf("dns options = %+v", o.DNS)
 	}
 	if _, err := os.Stat(o.DNS.DirectIPRuleSets[0].Path); err != nil {
