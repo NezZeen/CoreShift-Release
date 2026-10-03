@@ -153,7 +153,7 @@ class _SectionHeading extends StatelessWidget {
         builder: (context, c) {
           final titleStyle = display(15, color: section.leading == null ? p.muted : p.text);
           final countStyle = TextStyle(fontSize: 12, color: p.dim);
-          final pingStyle = figures(12.5, color: best < 200 ? okColor : (best < 500 ? warnColor : errColor));
+          final pingStyle = figures(12.5, color: p.ink(best < 200 ? okColor : (best < 500 ? warnColor : errColor)));
           final count = '${section.rows.length}', ping = best < 1 << 30 ? 'от $best мс' : null;
           final scaler = MediaQuery.textScalerOf(context);
           double width(String s, TextStyle st) {
@@ -388,10 +388,10 @@ class _LatencyCell extends StatelessWidget {
     if (!l.ok) {
       return Tooltip(
         message: l.error,
-        child: Text('нет ответа', style: mono.copyWith(color: errColor, fontSize: 11)),
+        child: Text('нет ответа', style: mono.copyWith(color: p.errInk, fontSize: 11)),
       );
     }
-    final color = l.ms < 200 ? okColor : (l.ms < 500 ? warnColor : errColor);
+    final color = p.ink(l.ms < 200 ? okColor : (l.ms < 500 ? warnColor : errColor));
     final text = Text('${l.ms} мс', style: mono.copyWith(color: color));
     final how = switch (l.method) {
       'icmp' => 'ICMP-пинг до сервера',

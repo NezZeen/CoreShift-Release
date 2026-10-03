@@ -139,9 +139,15 @@ extension AppStateActions on AppState {
 
   /// Tests the latency of the nodes of [subscription], or of all nodes.
   /// Results arrive as events while the test runs.
+  ///
+  /// The method is the service's own choice: a TCP or ICMP ping, and for a
+  /// server the ping cannot time a request through its core. The setting
+  /// that forced every server through a core has no control any more, so a
+  /// copy left with it goes back to the automatic way.
   Future<void> testLatency([String? subscription]) async {
     testingLatency = true;
     _notify();
+    if (setting('cores.latency_test', 'ping') == 'proxy') await updateSettings((s) => s['cores']['latency_test'] = 'ping');
     await _act(() => backend.call('POST', '/v1/latency', {'subscription': ?subscription}));
     testingLatency = false;
     _notify();
@@ -203,19 +209,31 @@ extension AppStateActions on AppState {
     _notify();
   }
 
-  /// Asks the daemon for the latest release of each core.
-  Future<void> checkCoreUpdates() async {
+  /// Asks the daemon for the latest release of each core. [quiet], for the
+  /// check the app makes by itself: only a new version is told.
+  Future<void> checkCoreUpdates({bool quiet = false}) async {
     checkingUpdates = true;
     _notify();
-    await _act(() async {
-      coreUpdates = [for (final u in await backend.call('GET', '/v1/cores/updates') as List) CoreUpdate.fromJson((u as Map).cast())];
-      final failed = coreUpdates.where((u) => u.error.isNotEmpty).toList();
-      if (failed.isNotEmpty && failed.length == coreUpdates.length) {
+    try {
+      final found = [for (final u in await backend.call('GET', '/v1/cores/updates') as List) CoreUpdate.fromJson((u as Map).cast())];
+      // A core updated meanwhile keeps what its update said.
+      if (updatingCore.isEmpty) coreUpdates = found;
+      final failed = found.where((u) => u.error.isNotEmpty).toList();
+      final fresh = found.where((u) => u.available).toList();
+      if (quiet) {
+        if (fresh.isNotEmpty) {
+          final names = fresh.map((u) => AppState.coreName(u.kind)).join(', ');
+          toast('Доступна новая версия: $names. Обновить можно в настройках, в разделе «Ядра»', ToastKind.info);
+        }
+      } else if (failed.isNotEmpty && failed.length == found.length) {
         toast(humanError(failed.first.error), ToastKind.err);
-      } else if (!coreUpdates.any((u) => u.available)) {
+      } else if (fresh.isEmpty) {
         toast('Все ядра последних версий', ToastKind.ok);
       }
-    });
+    } catch (e) {
+      if (!quiet) toast(humanError('$e'), ToastKind.err);
+      if (e is DaemonOffline) _lost(e);
+    }
     checkingUpdates = false;
     _notify();
   }

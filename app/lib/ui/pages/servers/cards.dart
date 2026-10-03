@@ -195,7 +195,7 @@ class _Fact extends StatelessWidget {
             children: [
               TextSpan(
                 text: value,
-                style: figures(17, weight: FontWeight.w600, color: color ?? p.text),
+                style: figures(17, weight: FontWeight.w600, color: color == null ? p.text : p.ink(color!)),
               ),
               if (note.isNotEmpty && progress != null)
                 TextSpan(
@@ -250,9 +250,6 @@ class _SubMenu extends StatelessWidget {
             if (name != null) state.renameSubscription(sub.id, name);
           case 'page':
             state.openLink(sub.info.webPageUrl);
-          case 'site':
-            await Clipboard.setData(ClipboardData(text: sub.info.webPageUrl));
-            state.toast('Адрес страницы скопирован');
           case 'qr':
             if (context.mounted) await showSubscriptionQr(context, sub);
           case 'delete':
@@ -265,10 +262,7 @@ class _SubMenu extends StatelessWidget {
         if (!sub.isLocal) _item('refresh', Icons.refresh, 'Обновить'),
         _item('rename', Icons.edit_outlined, 'Переименовать'),
         if (!sub.isLocal) _item('qr', Icons.qr_code_2, platform.isAndroid ? 'Показать QR-код' : 'QR-код для телефона'),
-        if (sub.info.webPageUrl.isNotEmpty) ...[
-          _item('page', Icons.open_in_new, 'Открыть страницу подписки'),
-          _item('site', Icons.link, 'Копировать адрес страницы'),
-        ],
+        if (sub.info.webPageUrl.isNotEmpty) _item('page', Icons.open_in_new, 'Открыть страницу подписки'),
         _item('delete', Icons.delete_outline, 'Удалить', color: errColor),
       ],
     );
