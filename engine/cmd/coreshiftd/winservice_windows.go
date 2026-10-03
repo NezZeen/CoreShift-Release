@@ -191,6 +191,37 @@ type winService struct {
 	args []string
 }
 
+// stopWaitHint is how long the service manager is told each step of
+// stopping may take: disconnecting restores DNS and stops the TUN layer,
+// which gets a few seconds to remove its adapter.
+const stopWaitHint = 15 * time.Second
+
+// stopping waits for the daemon to finish, telling the service manager it
+// is still at it, so that it neither gives up on the service nor reports
+// it hung, and answering its questions meanwhile.
+func stopping(status chan<- svc.Status, requests <-chan svc.ChangeRequest, done <-chan error) error {
+	cp := uint32(1)
+	pending := func() svc.Status {
+		return svc.Status{State: svc.StopPending, CheckPoint: cp, WaitHint: uint32(stopWaitHint / time.Millisecond)}
+	}
+	status <- pending()
+	tick := time.NewTicker(stopWaitHint / 3)
+	defer tick.Stop()
+	for {
+		select {
+		case err := <-done:
+			return err
+		case <-tick.C:
+			cp++
+			status <- pending()
+		case r := <-requests:
+			if r.Cmd == svc.Interrogate {
+				status <- pending()
+			}
+		}
+	}
+}
+
 func (w *winService) Execute(_ []string, requests <-chan svc.ChangeRequest, status chan<- svc.Status) (bool, uint32) {
 	status <- svc.Status{State: svc.StartPending}
 
@@ -246,9 +277,8 @@ func (w *winService) Execute(_ []string, requests <-chan svc.ChangeRequest, stat
 			case svc.Interrogate:
 				status <- r.CurrentStatus
 			case svc.Stop, svc.Shutdown:
-				status <- svc.Status{State: svc.StopPending}
 				cancel()
-				if err := <-done; err != nil {
+				if err := stopping(status, requests, done); err != nil {
 					fmt.Fprintln(log, "error:", err)
 				}
 				return false, 0

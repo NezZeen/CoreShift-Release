@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"slices"
 	"sync"
 
 	"coreshift/engine/internal/node"
@@ -71,19 +72,14 @@ func (f *failover) reset() {
 }
 
 // pickNext returns the first server after from that is usable, going round
-// the list once: not from itself, not tried, and accepted by ok.
-func pickNext(nodes []node.Node, from string, tried map[string]bool, ok func(node.Node) bool) (node.Node, bool) {
-	start := -1
-	for i := range nodes {
-		if nodes[i].Fingerprint() == from {
-			start = i
-			break
-		}
-	}
+// the list once: not from itself, not tried, and accepted by ok. fps are
+// the nodes' fingerprints.
+func pickNext(nodes []node.Node, fps []string, from string, tried map[string]bool, ok func(node.Node) bool) (node.Node, bool) {
+	start := slices.Index(fps, from)
 	for step := 1; step <= len(nodes); step++ {
-		n := nodes[(start+step+len(nodes))%len(nodes)]
-		if fp := n.Fingerprint(); fp != from && !tried[fp] && ok(n) {
-			return n, true
+		i := (start + step + len(nodes)) % len(nodes)
+		if fp := fps[i]; fp != from && !tried[fp] && ok(nodes[i]) {
+			return nodes[i], true
 		}
 	}
 	return node.Node{}, false
@@ -92,14 +88,7 @@ func pickNext(nodes []node.Node, from string, tried map[string]bool, ok func(nod
 // subscriptionOf finds the subscription that lists the node with the
 // fingerprint; the selected one first, as the same server may be in several.
 func subscriptionOf(subs []store.Subscription, selected, fingerprint string) (store.Subscription, bool) {
-	has := func(sub store.Subscription) bool {
-		for i := range sub.Nodes {
-			if sub.Nodes[i].Fingerprint() == fingerprint {
-				return true
-			}
-		}
-		return false
-	}
+	has := func(sub store.Subscription) bool { return slices.Contains(sub.Fingerprints(), fingerprint) }
 	for _, sub := range subs {
 		if sub.ID == selected && has(sub) {
 			return sub, true
@@ -135,8 +124,8 @@ func (s *Service) failoverSoon() {
 // that stopped answering. It gives up when none is left; the connection then
 // stays on the last one tried.
 func (s *Service) switchServer(gen int) {
-	s.op.Lock()
-	defer s.op.Unlock()
+	ctx, end := s.beginOp(context.Background())
+	defer end()
 	st := s.cfg.Store
 	s.mu.Lock()
 	current, from := gen == s.gen && s.status.State == Connected, s.lastNode
@@ -158,8 +147,11 @@ func (s *Service) switchServer(gen int) {
 	}
 	cur := from
 	for {
+		if ctx.Err() != nil {
+			return // the user disconnected: no more servers to try
+		}
 		s.fo.markTried(cur.Fingerprint())
-		next, ok := pickNext(sub.Nodes, cur.Fingerprint(), s.fo.triedSet(), func(n node.Node) bool {
+		next, ok := pickNext(sub.Nodes, sub.Fingerprints(), cur.Fingerprint(), s.fo.triedSet(), func(n node.Node) bool {
 			return group[n.Fingerprint()] && len(s.Compatible(&n)) > 0
 		})
 		if !ok {
@@ -170,7 +162,7 @@ func (s *Service) switchServer(gen int) {
 			return
 		}
 		s.hub.publish(Event{Kind: "failover", From: cur.Name, Line: next.Name})
-		if err := s.connectOp(context.Background(), next); err == nil {
+		if err := s.connectOp(ctx, next); err == nil || ctx.Err() != nil {
 			return
 		}
 		// It would not even start: on to the one after it.

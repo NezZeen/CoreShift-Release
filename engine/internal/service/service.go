@@ -85,7 +85,12 @@ type Service struct {
 	tun      TUNInstance
 	stopPing context.CancelFunc // ends the connection's watchers: traffic, network
 
-	mu       sync.Mutex
+	mu sync.Mutex
+	// opCancel cancels the operation holding op (beginOp); opSeq tells
+	// operations apart, discGen counts Disconnect calls.
+	opCancel context.CancelCauseFunc
+	opSeq    uint64
+	discGen  uint64
 	gen      int // incremented per connection; stale teardowns compare it
 	status   Status
 	opts     Options

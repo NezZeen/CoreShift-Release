@@ -141,15 +141,21 @@ func (g *fakeGuard) active() *dnsguard.Config {
 type fakeTUN struct {
 	log      *callLog
 	startErr error
+	hang     bool // Start waits until cancelled
 	mu       sync.Mutex
 	opts     tunlayer.Options
 	inst     *fakeInstance
 }
 
-func (f *fakeTUN) Start(_ context.Context, o tunlayer.Options) (TUNInstance, error) {
+func (f *fakeTUN) Start(ctx context.Context, o tunlayer.Options) (TUNInstance, error) {
 	f.log.add("tun.start")
 	if f.startErr != nil {
 		return nil, f.startErr
+	}
+	if f.hang {
+		// Like an adapter Windows has not freed yet: only cancelling ends it.
+		<-ctx.Done()
+		return nil, ctx.Err()
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
