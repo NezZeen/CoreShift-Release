@@ -2,10 +2,11 @@
 
 # CoreShift
 
-**VPN-клиент для Windows и Android, который сам держит соединение.**
+**VPN-клиент для Windows, Linux и Android, который сам держит соединение.**
 Вставили подписку, нажали одну кнопку, дальше CoreShift всё делает сам.
 
 [![Скачать для Windows](https://img.shields.io/badge/Windows-скачать-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/NezZeen/CoreShift-Release/releases/latest/download/CoreShift-Setup.exe)
+[![Скачать для Linux](https://img.shields.io/badge/Linux-скачать-FCC624?style=for-the-badge&logo=linux&logoColor=black)](#linux)
 [![Скачать для Android](https://img.shields.io/badge/Android-скачать%20APK-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/NezZeen/CoreShift-Release/releases/latest/download/CoreShift.apk)
 
 [![Последняя версия](https://img.shields.io/github/v/release/NezZeen/CoreShift-Release?label=версия&color=6D8CFF)](https://github.com/NezZeen/CoreShift-Release/releases/latest)
@@ -32,9 +33,11 @@
 
 **🗂 Все форматы подписок.** Поддерживаются ссылки `https://…`, списки серверов VLESS (Reality, XHTTP, gRPC…), VMess, Trojan, Shadowsocks, Hysteria2, TUIC, AnyTLS, WireGuard, а также JSON Xray (например, от Remnawave) и конфиги Clash.
 
+**🎮 Hysteria2 для игр и звонков.** Быстрый протокол поверх UDP с минимальной задержкой, в том числе в подписках Remnawave. CoreShift сам запускает его на ядре, которое его поддерживает.
+
 **🚦 Гибкие правила.** Можно выбрать, что идёт через VPN:
 - всё, кроме исключений, или только выбранное;
-- российские сайты напрямую одним переключателем;
+- российские сайты напрямую одним переключателем, при этом Google и YouTube всегда идут через VPN;
 - готовые наборы популярных сервисов в один клик;
 - свои сайты: через VPN, мимо VPN или заблокировать совсем;
 - отдельные программы на Windows (игры, торренты, банки) и приложения на Android — через VPN или мимо него.
@@ -43,7 +46,9 @@
 
 **⏰ Напомнит продлить подписку.** За несколько дней до конца срока и при 90% трафика на главной появится предупреждение с кнопкой «Продлить» и придёт уведомление.
 
-**📊 Всё видно.** На главной ваш IP-адрес и страна, трафик за неделю, тест скорости (загрузка, отдача и задержка) через VPN или без него. Кнопка «Поддержка» ведёт в чат провайдера, если он его указал.
+**📊 Всё видно.** На главной ваш IP-адрес и страна, трафик за неделю, тест скорости через speedtest.net (загрузка, отдача и задержка, ближайший сервер теста) через VPN или без него.
+
+**🧭 Сам разбирается, что сломалось.** Если сервер перестал отвечать, CoreShift отличает это от пропавшего интернета, сам переходит на живой сервер подписки и говорит, какой сервер не отвечает. Локальная сеть — роутер, принтеры, виртуальные машины — работает и при включённом VPN. Кнопка «Поддержка» ведёт в чат провайдера, если он его указал.
 
 **🔄 Обновляется сам.** Обновления подписаны и проверяются перед установкой. На ПК обновление ставится, когда VPN выключен, и не рвёт соединение. Ядра тоже обновляются сами, без кнопок.
 
@@ -62,6 +67,7 @@
 | Система | Скачать |
 |---|---|
 | Windows 10 и 11 (64-bit) | [CoreShift-Setup.exe](https://github.com/NezZeen/CoreShift-Release/releases/latest/download/CoreShift-Setup.exe) |
+| Linux (64-bit) | пакеты для Debian/Ubuntu, Fedora/openSUSE, Arch и архив для остальных — [ниже](#linux) |
 | Android 7 и новее (64-bit ARM) | [CoreShift.apk](https://github.com/NezZeen/CoreShift-Release/releases/latest/download/CoreShift.apk) |
 
 1. Скачайте файл для своей системы и установите его. На Android система попросит разрешить установку из браузера или файлового менеджера.
@@ -69,6 +75,21 @@
 3. Нажмите кнопку подключения.
 
 Все версии и что в них нового — на странице [Releases](https://github.com/NezZeen/CoreShift-Release/releases).
+
+## Linux
+
+| Система | Пакет | Установка |
+|---|---|---|
+| Debian, Ubuntu, Mint, Pop!_OS | [CoreShift-amd64.deb](https://github.com/NezZeen/CoreShift-Release/releases/latest/download/CoreShift-amd64.deb) | `sudo apt install ./CoreShift-amd64.deb` |
+| Fedora, RHEL, Alma, Rocky, openSUSE | [CoreShift-x86_64.rpm](https://github.com/NezZeen/CoreShift-Release/releases/latest/download/CoreShift-x86_64.rpm) | `sudo dnf install ./CoreShift-x86_64.rpm` или `sudo zypper install ./CoreShift-x86_64.rpm` |
+| Arch, Manjaro, EndeavourOS | [CoreShift-x86_64.pkg.tar.zst](https://github.com/NezZeen/CoreShift-Release/releases/latest/download/CoreShift-x86_64.pkg.tar.zst) | `sudo pacman -U CoreShift-x86_64.pkg.tar.zst` |
+| Другие дистрибутивы | [CoreShift-linux-amd64.tar.gz](https://github.com/NezZeen/CoreShift-Release/releases/latest/download/CoreShift-linux-amd64.tar.gz) | распаковать и запустить `sudo ./install.sh` |
+
+<img src="assets/linux-home.png" alt="CoreShift на Linux" width="640">
+
+После установки выйдите из системы и войдите снова: так у вашего пользователя появится доступ к службе CoreShift. VPN работает через системную службу и не выключается, когда закрыто окно. Обновления на Linux ставятся новым пакетом: CoreShift сам сообщит, когда выйдет новая версия.
+
+Проверено на Ubuntu 24.04, Debian 13, Fedora 44, openSUSE Tumbleweed и Arch, на рабочем столе KDE Plasma (X11 и Wayland). В GNOME для значка в трее нужно расширение AppIndicator. Alpine и Void (OpenRC, runit) поддерживаются архивом `.tar.gz`, но пока не проверены на живой системе. Сборка для ARM64 появится позже.
 
 ## Для владельцев панелей
 
