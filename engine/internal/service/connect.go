@@ -253,10 +253,16 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 	// Both lookups must happen before the DNS guard redirects the system
 	// resolver into the tunnel.
 	var direct string
+	var resolvers []netip.Addr
 	if o.TUN {
 		direct = o.DNS.Direct
+		var err error
+		if direct == "" || runtime.GOOS == "linux" {
+			// Linux also keeps them routed into the TUN (LANResolvers).
+			resolvers, err = s.systemResolvers(ctx)
+		}
 		if direct == "" {
-			addrs, err := s.systemResolvers(ctx)
+			addrs := resolvers
 			if err != nil || len(addrs) == 0 {
 				direct = "1.1.1.1"
 				s.hub.publish(Event{Kind: "dns", Error: fmt.Sprintf("no system resolver found (%v); using %s for direct names", err, direct)})
@@ -334,6 +340,7 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 	// Linux: connections to this machine from the local network keep
 	// working while connected (see tunlayer.Options.ExcludeLAN).
 	opts.ExcludeLAN = runtime.GOOS == "linux"
+	opts.LANResolvers = resolvers
 	inst, err := tun.Start(ctx, opts)
 	if err != nil {
 		return netip.Addr{}, fmt.Errorf("start TUN layer: %w", err)
