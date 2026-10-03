@@ -17,6 +17,8 @@ String _appUpdateText(AppState state) {
       '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
   return switch (u.state) {
     'off' when platform.isAndroid => 'Эта сборка не обновляется сама: так бывает у сборки для разработки.',
+    // The Linux daemon never updates CoreShift: the package manager does.
+    'off' when platform.isLinux => 'Обновляйте через пакет: установите новый .deb или архив поверх этого. Настройки и подписки сохранятся.',
     'off' => 'Эта копия не обновляется сама: так бывает у сборки для разработки или у службы старше 0.3.0.',
     'checking' => 'Проверяю…',
     'downloading' => 'Скачиваю версию ${u.label}…',
@@ -67,7 +69,7 @@ class SettingsPage extends StatelessWidget {
             title: 'Автозапуск',
             description: platform.isAndroid
                 ? 'Подключать выбранный сервер при включении телефона и при открытии CoreShift'
-                : 'Запускать CoreShift в трее при входе в Windows и сразу подключать выбранный сервер',
+                : 'Запускать CoreShift в трее при входе в ${platform.isLinux ? 'систему' : 'Windows'} и сразу подключать выбранный сервер',
             trailing: _switch('auto_connect'),
           ),
           if (desktop.canNotify)
@@ -227,16 +229,18 @@ class SettingsPage extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                 ],
-                Btn(
-                  label: 'Проверить сейчас',
-                  small: true,
-                  loading: state.appUpdate.busy,
-                  onPressed: state.online && !state.appUpdate.off ? state.checkAppUpdate : null,
-                ),
+                // Nothing to check on Linux: there is no button to wait for.
+                if (!(platform.isLinux && state.appUpdate.off))
+                  Btn(
+                    label: 'Проверить сейчас',
+                    small: true,
+                    loading: state.appUpdate.busy,
+                    onPressed: state.online && !state.appUpdate.off ? state.checkAppUpdate : null,
+                  ),
               ],
             ),
           ),
-          if (state.hasSetting('app_update.auto') && !platform.isAndroid)
+          if (state.hasSetting('app_update.auto') && !platform.isAndroid && !platform.isLinux)
             SettingRow(
               title: 'Устанавливать обновления автоматически',
               description:
@@ -319,7 +323,8 @@ class _LeakGuard extends StatelessWidget {
   final bool first;
   const _LeakGuard({required this.state, this.first = false});
 
-  List<String> get _guards => ['dns.block_browser_doh', 'dns.block_dot', if (!platform.isAndroid) 'dns.strict'].where(state.hasSetting).toList();
+  // dns.strict is a Windows setting; the Linux daemon ignores it.
+  List<String> get _guards => ['dns.block_browser_doh', 'dns.block_dot', if (platform.isWindows) 'dns.strict'].where(state.hasSetting).toList();
 
   @override
   Widget build(BuildContext context) {
@@ -333,7 +338,9 @@ class _LeakGuard extends StatelessWidget {
       title: 'Защита от утечек DNS',
       description: platform.isAndroid
           ? 'DNS браузеров и DNS-over-TLS только через VPN. Если в Android «Частный DNS» задан вручную, с защитой сайты перестанут открываться'
-          : 'DNS браузеров, DNS-over-TLS и DNS других сетевых адаптеров Windows не уходят мимо туннеля',
+          : platform.isWindows
+          ? 'DNS браузеров, DNS-over-TLS и DNS других сетевых адаптеров Windows не уходят мимо туннеля'
+          : 'DNS браузеров и DNS-over-TLS не уходят мимо туннеля',
       descriptionWidget: partly
           ? Text('Включено не всё: $on из ${guards.length}. Включите, чтобы защитить всё', style: TextStyle(fontSize: 12, color: p.warnInk))
           : null,

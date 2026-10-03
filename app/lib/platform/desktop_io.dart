@@ -119,7 +119,14 @@ class _DesktopFrameState extends State<DesktopFrame> with WindowListener {
     final state = widget.state;
     if (state.prefs['tray_hint_shown'] == true) return;
     state.setPref('tray_hint_shown', true);
-    if (Platform.isWindows) {
+    if (Platform.isLinux) {
+      Process.run('notify-send', [
+        '-a',
+        'CoreShift',
+        'CoreShift работает в трее',
+        'Окно свёрнуто, VPN работает как прежде. Чтобы выйти совсем, откройте меню значка CoreShift в трее → «Выход».',
+      ]).ignore();
+    } else if (Platform.isWindows) {
       final id = _tray?.icon.getId();
       if (id != null) {
         showTrayBalloon(
