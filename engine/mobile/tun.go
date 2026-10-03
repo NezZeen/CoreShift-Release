@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"unsafe"
 
+	"coreshift/engine/internal/dnswake"
 	"coreshift/engine/internal/service"
 	"coreshift/engine/internal/store"
 	"coreshift/engine/internal/tunlayer"
@@ -56,6 +57,11 @@ func (t *vpnTUN) Start(ctx context.Context, o tunlayer.Options) (service.TUNInst
 		pl.disallowed = o.FilterApps
 	}
 	bctx := include.Context(context.Background())
+	// The phone sleeps: DNS connections through the proxy die meanwhile
+	// without a word, and are renewed before the next lookup.
+	if err := dnswake.Install(bctx); err != nil {
+		return nil, err
+	}
 	bctx = singservice.ContextWith[adapter.PlatformInterface](bctx, pl)
 	options, err := json.UnmarshalExtendedContext[option.Options](bctx, cfg)
 	if err != nil {
