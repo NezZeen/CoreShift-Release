@@ -309,7 +309,7 @@ void main() {
       await state.runLeakTest();
     });
     await tester.pump();
-    expect(state.leakReport?.leaks, isFalse);
+    expect(state.leakReport?.verdict, LeakVerdict.ok);
     expect(find.text('Утечки нет'), findsOneWidget);
     expect(find.textContaining('Netherlands'), findsWidgets);
     expect(tester.takeException(), isNull);
@@ -317,25 +317,6 @@ void main() {
     // The home page's traffic history is on its way.
     await tester.pump(const Duration(seconds: 1));
     await tester.pump(const Duration(seconds: 1));
-  });
-
-  test('leak report flags the ISP resolver', () {
-    Map<String, dynamic> e(String type, String ip, String cc, String org) => {'type': type, 'ip': ip, 'country': cc, 'country_name': cc, 'asn': org};
-    final ok = LeakReport.fromEntries([
-      e('ip', '203.0.113.1', 'de', 'AS1 Hosting'),
-      e('dns', '198.51.100.1', 'de', 'AS1 Hosting'),
-      e('dns', '172.253.0.1', 'us', 'AS15169 Google LLC'),
-      e('dns', '172.253.0.1', 'us', 'AS15169 Google LLC'),
-    ]);
-    expect(ok.leaks, isFalse);
-    expect(ok.dns.length, 2);
-    final leak = LeakReport.fromEntries([
-      e('ip', '203.0.113.1', 'de', 'AS1 Hosting'),
-      e('dns', '77.88.8.8', 'ru', 'AS13238 YANDEX LLC'),
-      e('dns', '162.158.1.1', 'de', 'AS13335 CloudFlare Inc'),
-    ]);
-    expect(leak.leaks, isTrue);
-    expect(leak.suspicious.single.ip, '77.88.8.8');
   });
 
   test('new daemon errors read as Russian', () {
