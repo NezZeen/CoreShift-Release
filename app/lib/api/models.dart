@@ -444,7 +444,22 @@ class SpeedResult {
   final bool vpn;
   final String server;
 
-  const SpeedResult({this.downloadBps = 0, this.uploadBps = 0, this.latencyMs = 0, this.vpn = false, this.server = ''});
+  /// Who measured: a speedtest.net server's sponsor, or "Cloudflare"; and
+  /// where the speedtest.net server is. Empty from an older service.
+  final String testServer;
+  final String testCity;
+  final String testCountry;
+
+  const SpeedResult({
+    this.downloadBps = 0,
+    this.uploadBps = 0,
+    this.latencyMs = 0,
+    this.vpn = false,
+    this.server = '',
+    this.testServer = '',
+    this.testCity = '',
+    this.testCountry = '',
+  });
 
   factory SpeedResult.fromJson(Json j) => SpeedResult(
     downloadBps: (j['download_bps'] as num?)?.toInt() ?? 0,
@@ -452,6 +467,9 @@ class SpeedResult {
     latencyMs: (j['latency_ms'] as num?)?.toInt() ?? 0,
     vpn: j['vpn'] == true,
     server: j['server'] ?? '',
+    testServer: j['test_server'] ?? '',
+    testCity: j['test_city'] ?? '',
+    testCountry: j['test_country'] ?? '',
   );
 }
 

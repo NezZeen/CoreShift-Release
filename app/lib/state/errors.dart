@@ -5,20 +5,27 @@ const insecureLinkWarning = 'Ссылка без шифрования, токе�
 
 /// A failed speed test. The service names the phase first, "download: …",
 /// which [humanError] would take for a core update that could not download.
+/// The test goes to speedtest.net, or to Cloudflare when speedtest.net
+/// cannot be reached; an error that names neither phase means both failed.
 String speedTestError(String raw) {
   final e = raw.trim();
   final m = RegExp(r'^(download|upload): (.*)$', dotAll: true).firstMatch(e);
   if (m == null) {
-    if (e.toLowerCase().contains('speed test server unreachable')) return 'Не удалось замерить скорость: нет связи с сервером теста (Cloudflare).';
+    final low = e.toLowerCase();
+    if (low.contains('speed test server unreachable')) {
+      return 'Не удалось замерить скорость: нет связи ни с speedtest.net, ни с Cloudflare. Проверьте подключение к интернету.';
+    }
+    if (low.contains('context canceled')) return 'Тест скорости прерван.';
     return humanError(e);
   }
   final what = m[1] == 'download' ? 'загрузку' : 'отдачу';
   final why = m[2]!.toLowerCase();
+  if (why.contains('context canceled')) return 'Тест скорости прерван.';
   final reason = why.contains('403') || why.contains('429')
-      ? 'сервер теста (Cloudflare) ограничил запросы, попробуйте через несколько минут'
+      ? 'сервер теста ограничил запросы, попробуйте через несколько минут'
       : why.contains('timeout') || why.contains('deadline') || why.contains('nothing went through')
-      ? 'сервер теста (Cloudflare) не ответил вовремя'
-      : 'связь с сервером теста (Cloudflare) оборвалась';
+      ? 'сервер теста не ответил вовремя'
+      : 'связь с сервером теста оборвалась';
   return 'Не удалось замерить $what: $reason.';
 }
 
