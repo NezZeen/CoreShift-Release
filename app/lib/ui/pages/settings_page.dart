@@ -17,8 +17,10 @@ String _appUpdateText(AppState state) {
       '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
   return switch (u.state) {
     'off' when platform.isAndroid => 'Эта сборка не обновляется сама: так бывает у сборки для разработки.',
-    // The Linux daemon never updates CoreShift: the package manager does.
-    'off' when platform.isLinux => 'Обновляйте через пакет: установите новый .deb или архив поверх этого. Настройки и подписки сохранятся.',
+    // The Linux daemon never installs CoreShift: the package manager does;
+    // a release build still announces new versions ('available').
+    'off' when platform.isLinux => 'Эта сборка не ищет новые версии: так бывает у сборки для разработки. Обновляйте через пакет.',
+    'available' => 'Доступна новая версия ${u.label}. Скачайте пакет для своей системы и установите поверх этой.',
     'off' => 'Эта копия не обновляется сама: так бывает у сборки для разработки или у службы старше 0.3.0.',
     'checking' => 'Проверяю…',
     'downloading' => 'Скачиваю версию ${u.label}…',
@@ -27,6 +29,7 @@ String _appUpdateText(AppState state) {
     'ready' => 'Скачана версия ${u.label}.',
     'installing' => 'Устанавливаю ${u.label}. CoreShift перезапустится сам.',
     'error' => humanError(u.error),
+    _ when u.manual && u.checkedAt != null => 'Установлена последняя версия. Проверено ${when(u.checkedAt!)}. Новые версии ставятся пакетом.',
     _ => u.checkedAt == null ? 'Проверка ещё не проводилась.' : 'Установлена последняя версия. Проверено ${when(u.checkedAt!)}.',
   };
 }
@@ -229,7 +232,12 @@ class SettingsPage extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                 ],
-                // Nothing to check on Linux: there is no button to wait for.
+                // Linux: a new version is downloaded from its page by hand.
+                if (state.appUpdate.state == 'available') ...[
+                  Btn(label: 'Скачать', icon: Icons.open_in_new, kind: BtnKind.primary, small: true, onPressed: state.openUpdatePage),
+                  const SizedBox(width: 8),
+                ],
+                // A development build on Linux checks nothing.
                 if (!(platform.isLinux && state.appUpdate.off))
                   Btn(
                     label: 'Проверить сейчас',

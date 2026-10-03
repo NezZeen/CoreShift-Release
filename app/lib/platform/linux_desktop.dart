@@ -8,9 +8,6 @@ import 'dart:io';
 /// so that docks match the window to dev.coreshift.coreshift.desktop.
 const desktopId = 'dev.coreshift.coreshift';
 
-/// The systemd unit of the daemon.
-const serviceUnit = 'coreshift.service';
-
 /// The group whose members may read the daemon's api.json.
 const apiGroup = 'coreshift';
 
@@ -75,17 +72,51 @@ bool setAutostart(bool on, {Map<String, String>? env, String? exe}) {
   }
 }
 
-/// Starts the CoreShift service, asking for the administrator's password
-/// through polkit. Returns why it could not, or null once it started.
-Future<String?> startService() async {
+/// Where the packages put the daemon: /usr/bin from the .deb, .rpm and
+/// Arch packages, /usr/local/bin from install.sh.
+const daemonPaths = ['/usr/bin/coreshiftd', '/usr/local/bin/coreshiftd'];
+
+/// Whether gdbus's answer to NameHasOwner is yes: "(true,)".
+bool parseNameHasOwner(String out) => out.trim().startsWith('(true');
+
+/// Whether the session has a tray (a StatusNotifierWatcher on the session
+/// bus): KDE, XFCE, Cinnamon, MATE and Ubuntu's GNOME have one; plain
+/// GNOME without the AppIndicator extension, and WSLg, do not. Without a
+/// tray the window must never hide: nothing could bring it back.
+Future<bool> trayAvailable() async {
   try {
-    final r = await Process.run('pkexec', ['systemctl', 'start', serviceUnit]);
+    final r = await Process.run('gdbus', [
+      'call',
+      '--session',
+      '--dest',
+      'org.freedesktop.DBus',
+      '--object-path',
+      '/org/freedesktop/DBus',
+      '--method',
+      'org.freedesktop.DBus.NameHasOwner',
+      'org.kde.StatusNotifierWatcher',
+    ]).timeout(const Duration(seconds: 3));
+    return r.exitCode == 0 && parseNameHasOwner('${r.stdout}');
+  } catch (_) {
+    // No gdbus or no session bus: assume none, the safe way.
+    return false;
+  }
+}
+
+/// Starts the CoreShift service, asking for the administrator's password
+/// through polkit; the daemon asks whichever init system runs (systemd,
+/// OpenRC, runit). Returns why it could not, or null once it started.
+Future<String?> startService() async {
+  final daemon = daemonPaths.where((p) => File(p).existsSync()).firstOrNull;
+  if (daemon == null) return 'CoreShift не установлен: нет $daemonPaths';
+  try {
+    final r = await Process.run('pkexec', [daemon, 'service', 'start']);
     if (r.exitCode == 0) return null;
     // pkexec: 126, the dialog was dismissed; 127, not authorized.
     if (r.exitCode == 126 || r.exitCode == 127) return 'Запуск отменён';
     final err = '${r.stderr}'.trim();
     return err.isEmpty ? 'Не удалось запустить службу' : 'Не удалось запустить службу: $err';
   } on ProcessException {
-    return 'Не найден pkexec. Запустите службу в терминале: sudo systemctl start coreshift';
+    return 'Не найден pkexec. Запустите службу в терминале: sudo coreshiftd service start';
   }
 }

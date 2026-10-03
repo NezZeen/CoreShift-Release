@@ -346,7 +346,8 @@ class CoreUpdate {
 
 /// Updates of CoreShift itself (GET /v1/app-update).
 class AppUpdateInfo {
-  /// off, idle, checking, downloading, ready, installing or error.
+  /// off, idle, checking, downloading, ready, installing, error, or
+  /// available (Linux: a newer version to install from its page).
   final String state;
   final String reason;
   final String version;
@@ -358,6 +359,11 @@ class AppUpdateInfo {
   /// Downloaded; installs by itself once the VPN is off.
   final bool waiting;
 
+  /// New versions are installed by the user with the system's packages
+  /// (Linux); [url] is the release's page to download it from.
+  final bool manual;
+  final String url;
+
   const AppUpdateInfo({
     this.state = 'off',
     this.reason = '',
@@ -367,6 +373,8 @@ class AppUpdateInfo {
     this.error = '',
     this.checkedAt,
     this.waiting = false,
+    this.manual = false,
+    this.url = '',
   });
 
   factory AppUpdateInfo.fromJson(Json j) => AppUpdateInfo(
@@ -378,6 +386,8 @@ class AppUpdateInfo {
     error: j['error'] ?? '',
     checkedAt: DateTime.tryParse(j['checked_at'] ?? '')?.toLocal(),
     waiting: j['waiting'] == true,
+    manual: j['manual'] == true,
+    url: j['url'] ?? '',
   );
 
   bool get off => state == 'off';
@@ -460,3 +470,18 @@ class DaemonInfo {
 
 /// The daemon's English names for an unnamed subscription.
 const _placeholderNames = {'Local nodes': 'Мои серверы', 'Subscription': 'Подписка'};
+
+/// Whether [url] is a release page on GitHub, the only address an
+/// announced update (Linux) may send the user to.
+bool isReleasePage(String url) {
+  final u = Uri.tryParse(url);
+  return u != null &&
+      u.scheme == 'https' &&
+      u.host == 'github.com' &&
+      !u.hasPort &&
+      u.userInfo.isEmpty &&
+      !u.hasQuery &&
+      !u.hasFragment &&
+      !u.path.contains('..') &&
+      RegExp(r'^/[A-Za-z0-9-]+/[A-Za-z0-9._-]+/releases(/[A-Za-z0-9._/-]+)?$').hasMatch(u.path);
+}
