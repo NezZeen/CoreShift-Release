@@ -4,8 +4,26 @@ import (
 	"fmt"
 	"net/netip"
 	"os/exec"
+	"strconv"
 	"strings"
 )
+
+// removeStaleResolverRules deletes every rule at the resolver priorities:
+// a daemon killed while connected (kill -9, a crash) cannot remove its
+// own, and the resolvers it used may differ from the next connection's.
+// Called once at start (Service.Recover), when no TUN of ours runs.
+func removeStaleResolverRules() {
+	for _, fam := range []string{"-4", "-6"} {
+		for _, prio := range []int{resolverDNSPriority, resolverRestPriority} {
+			// One rule per run; a bound in case ip keeps succeeding.
+			for i := 0; i < 64; i++ {
+				if exec.Command("ip", fam, "rule", "del", "priority", strconv.Itoa(prio)).Run() != nil {
+					break
+				}
+			}
+		}
+	}
+}
 
 // addResolverRules installs the rules of resolverRuleArgs and returns what
 // removes them. Rules a crashed daemon left behind are removed first; they
