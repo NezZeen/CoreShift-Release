@@ -103,6 +103,11 @@ type linuxGuard struct {
 	// leave the TUN link alone.
 	networkManager func() bool
 	linkExists     func(name string) bool
+	// selinux reports whether SELinux labels files here (Fedora, RHEL):
+	// a resolv.conf the guard writes or restores is relabelled, as the
+	// atomic write leaves it etc_t rather than net_conf_t, which
+	// NetworkManager and the DHCP clients may not replace in enforcing mode.
+	selinux func() bool
 	// linkDirs are the trusted symlink targets' directories (trustedLinkDirs).
 	linkDirs []string
 
@@ -144,9 +149,20 @@ func (g *linuxGuard) Apply(ctx context.Context, cfg Config) error {
 	case stackResolvconf:
 		err = g.applyResolvconf(ctx, cfg)
 	case stackNetconfig:
-		err = g.applyNetconfig(ctx, cfg)
+		if err = g.applyNetconfig(ctx, cfg); err == nil && !g.resolvConfLeadsWith(cfg) {
+			// netconfig took our service but did not put it first. With
+			// NetworkManager its "auto" policy is "STATIC_FALLBACK
+			// NetworkManager" and ignores every other service (openSUSE's
+			// default desktop); with wicked it may rank ours after the
+			// LAN's resolver, which the TUN routes leave outside the tunnel.
+			// Write the file then, as where NetworkManager writes it.
+			if err = g.applyResolvConf(ctx, cfg); err == nil {
+				c := cfg
+				g.written = &c
+			}
+		}
 	default:
-		if err = g.applyResolvConf(cfg); err == nil {
+		if err = g.applyResolvConf(ctx, cfg); err == nil {
 			c := cfg
 			g.written = &c
 		}
@@ -193,7 +209,7 @@ func (g *linuxGuard) Keep(ctx context.Context) error {
 	if err := g.revertLocked(ctx); err != nil {
 		return err
 	}
-	if err := g.applyResolvConf(cfg); err != nil {
+	if err := g.applyResolvConf(ctx, cfg); err != nil {
 		return errors.Join(err, g.revertLocked(ctx))
 	}
 	g.written = &cfg
@@ -248,7 +264,18 @@ func (g *linuxGuard) applyNetconfig(ctx context.Context, cfg Config) error {
 	return nil
 }
 
-func (g *linuxGuard) applyResolvConf(cfg Config) error {
+// resolvConfLeadsWith reports whether resolv.conf's first nameserver is the
+// tunnel's: glibc asks the first one first.
+func (g *linuxGuard) resolvConfLeadsWith(cfg Config) bool {
+	b, err := os.ReadFile(g.resolvConfPath)
+	if err != nil || len(cfg.Servers) == 0 {
+		return false
+	}
+	ns := resolvConfNameservers(b)
+	return len(ns) > 0 && ns[0] == cfg.Servers[0]
+}
+
+func (g *linuxGuard) applyResolvConf(ctx context.Context, cfg Config) error {
 	ch, err := snapshotFile(g.resolvConfPath)
 	if err != nil {
 		return fmt.Errorf("dnsguard: read %s: %w", g.resolvConfPath, err)
@@ -275,7 +302,17 @@ func (g *linuxGuard) applyResolvConf(cfg Config) error {
 	if err := writeFileAtomic(ch.Path, ch.Written, 0o644); err != nil {
 		return fmt.Errorf("dnsguard: write %s: %w", ch.Path, err)
 	}
+	g.relabel(ctx, ch.Path)
 	return nil
+}
+
+// relabel gives path the SELinux label the policy wants there, where
+// SELinux runs. Best effort: a wrong label still reads, it only stops
+// confined programs from replacing the file later.
+func (g *linuxGuard) relabel(ctx context.Context, path string) {
+	if g.selinux != nil && g.selinux() && filepath.IsAbs(path) {
+		_ = g.run(ctx, "restorecon", path)
+	}
 }
 
 func (g *linuxGuard) undo(ctx context.Context, c Change) error {
@@ -336,7 +373,13 @@ func (g *linuxGuard) undo(ctx context.Context, c Change) error {
 		if err := g.checkResolvConfChange(ch); err != nil {
 			return err
 		}
-		return restoreResolvConf(ch)
+		if err := restoreResolvConf(ch); err != nil {
+			return err
+		}
+		if _, err := os.Lstat(ch.Path); err == nil {
+			g.relabel(ctx, ch.Path)
+		}
+		return nil
 	}
 	// Unknown kinds come from a newer build; this one cannot undo them.
 	return nil
