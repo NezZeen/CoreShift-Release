@@ -296,6 +296,11 @@ func build(o Options) (obj, error) {
 		"auto_route":     true,
 		"strict_route":   o.StrictRoute,
 		"stack":          o.Stack,
+		// Linux policy routing: our own table and rule priorities rather
+		// than sing-box's defaults, so CleanupRoutes can tell the rules a
+		// killed TUN layer left from those of anything else.
+		"iproute2_table_index": RouteTable,
+		"iproute2_rule_index":  RuleIndex,
 	}
 	exclude := prefixStrings(o.BypassAddresses)
 	if o.ExcludeLAN {
