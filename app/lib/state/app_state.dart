@@ -202,12 +202,13 @@ class AppState extends ChangeNotifier {
   Timer? _coreTimer;
   bool _coresChecked = false;
 
-  /// Looks for newer cores without a word unless one is found. Android
-  /// updates its cores with the app.
+  /// Looks for newer cores and installs them, without a word unless it
+  /// fails. Android updates its cores with the app.
   Future<void> _autoCoreUpdates() async {
     if (platform.isAndroid || !online || checkingUpdates || updatingCore.isNotEmpty) return;
     _coresChecked = true;
-    await checkCoreUpdates(quiet: true);
+    await checkCoreUpdates();
+    await installCoreUpdates();
   }
 
   /// Tells the user when this version differs from the one that ran last:
@@ -439,6 +440,8 @@ class AppState extends ChangeNotifier {
         }
         if (e.state == 'idle' || e.state == 'failed') speed.clear();
         if (e.state == 'idle') _statsSoon();
+        // A core update found while connected waits for the VPN to be off.
+        if (e.state == 'idle' && live && coreUpdatesWaiting.isNotEmpty) Timer(const Duration(seconds: 2), installCoreUpdates);
         if (e.state == 'failed' && live) _alerts.add(Alert('VPN отключился', humanError(e.error)));
         _statusSoon();
       case 'core-state':

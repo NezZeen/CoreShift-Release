@@ -74,32 +74,21 @@ class _UpdateRow extends StatelessWidget {
         ),
       );
     }
-    if (!update.available) {
-      return Row(
-        children: [
-          const Icon(Icons.check_circle_outline, size: 15, color: okColor),
-          const SizedBox(width: 6),
-          Text('Последняя версия', style: TextStyle(fontSize: 12, color: p.muted)),
-        ],
-      );
-    }
+    // Installed by the app itself: said only while it waits or works.
+    final text = updating ? 'Устанавливается ${update.latest}…' : 'Версия ${update.latest} установится, когда VPN будет выключен';
     return Row(
       children: [
-        Icon(Icons.new_releases_outlined, size: 15, color: p.accentInk),
+        if (updating)
+          SizedBox(width: 13, height: 13, child: CircularProgressIndicator(strokeWidth: 1.5, color: p.dim))
+        else
+          Icon(Icons.schedule, size: 15, color: p.dim),
         const SizedBox(width: 6),
         Expanded(
           child: Text(
-            'Доступна ${update.latest}${update.size > 0 ? ' · ${formatBytes(update.size)}' : ''}',
-            style: const TextStyle(fontSize: 12),
+            text,
+            style: TextStyle(fontSize: 12, color: p.muted),
             overflow: TextOverflow.ellipsis,
           ),
-        ),
-        Btn(
-          label: 'Обновить',
-          small: true,
-          kind: BtnKind.primary,
-          loading: updating,
-          onPressed: state.updatingCore.isNotEmpty ? null : () => state.updateCore(update.kind),
         ),
       ],
     );
@@ -220,7 +209,7 @@ class _CoreList extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             row,
-            if (installed && update != null)
+            if (installed && update != null && (update.error.isNotEmpty || update.available))
               Padding(
                 padding: const EdgeInsets.only(left: 28, top: 8),
                 child: _UpdateRow(state: state, update: update, updating: state.updatingCore == k),
@@ -233,9 +222,7 @@ class _CoreList extends StatelessWidget {
     final single = prio.length == 1;
     final updates = platform.isAndroid
         ? 'Ядра обновляются вместе с приложением.'
-        : state.checkingUpdates
-        ? 'Ищем новые версии…'
-        : 'Новые версии CoreShift ищет сам, раз в день.';
+        : 'CoreShift обновляет ядра сам: ищет новые версии раз в день и ставит их, когда VPN выключен.';
     return Panel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

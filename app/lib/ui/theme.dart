@@ -281,8 +281,10 @@ ThemeData buildTheme(Brightness b) {
       indicatorShape: const StadiumBorder(),
       iconTheme: WidgetStateProperty.resolveWith((s) => IconThemeData(size: 22, color: s.contains(WidgetState.selected) ? onAccent : p.muted)),
       labelTextStyle: WidgetStateProperty.resolveWith(
+        // Six tabs on a 360-point phone: 60 points each.
         (s) => TextStyle(
-          fontSize: 12,
+          fontSize: 11,
+          letterSpacing: -.1,
           fontWeight: s.contains(WidgetState.selected) ? FontWeight.w600 : FontWeight.w500,
           color: s.contains(WidgetState.selected) ? p.text : p.muted,
         ),
