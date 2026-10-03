@@ -348,9 +348,10 @@ func (s *Service) tunLayer() (TUNLayer, error) {
 }
 
 // Recover undoes system changes left by a daemon that did not shut down
-// cleanly. Call it once at start.
+// cleanly. Call it once at start: DNS, and on Linux the TUN layer's ip
+// rules, which outlive a sing-box killed with the daemon.
 func (s *Service) Recover(ctx context.Context) error {
-	return s.cfg.guard.Recover(ctx)
+	return errors.Join(s.cfg.guard.Recover(ctx), tunlayer.CleanupRoutes(ctx, tunlayer.DefaultInterface))
 }
 
 // Compatible returns the installed cores able to run n, in priority order:
