@@ -34,6 +34,7 @@ func New(journalPath string) (Guard, error) {
 		detect:         func() dnsStack { return detectDNSStack(currentDNSEnv()) },
 		networkManager: networkManagerRuns,
 		firewalld:      firewalldRuns,
+		selinux:        selinuxEnabled,
 		linkExists: func(name string) bool {
 			_, err := net.InterfaceByName(name)
 			return err == nil
@@ -84,6 +85,10 @@ func networkManagerRuns() bool { return have("nmcli") && exists("/run/NetworkMan
 // firewalldRuns reports whether firewalld is up: it leaves its PID file
 // in /run while it runs.
 func firewalldRuns() bool { return have("firewall-cmd") && exists("/run/firewalld") }
+
+// selinuxEnabled reports whether SELinux runs (selinuxfs is mounted) and
+// restorecon is there to relabel files.
+func selinuxEnabled() bool { return have("restorecon") && exists("/sys/fs/selinux/enforce") }
 
 func execCommand(ctx context.Context, name string, args ...string) error {
 	return execInput(ctx, nil, name, args...)
