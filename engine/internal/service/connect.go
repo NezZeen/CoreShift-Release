@@ -58,7 +58,38 @@ func (s *Service) connectOp(ctx context.Context, n node.Node) error {
 	if autoDNS.IsValid() {
 		go s.watchNetwork(pingCtx, gen, autoDNS)
 	}
+	if k, ok := s.cfg.guard.(dnsguard.Keeper); ok && opts.TUN {
+		go s.keepDNS(pingCtx, k)
+	}
 	return nil
+}
+
+// keepDNSInterval is how often a guard the system may undo (Linux without
+// systemd-resolved, see dnsguard.Keeper) is checked.
+const keepDNSInterval = 5 * time.Second
+
+// keepDNS puts the DNS redirect back whenever the system undid it, until
+// ctx ends with the connection.
+func (s *Service) keepDNS(ctx context.Context, k dnsguard.Keeper) {
+	t := time.NewTicker(keepDNSInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+		// Under s.op, so it never races a disconnect's Revert.
+		if !s.op.TryLock() {
+			continue
+		}
+		if ctx.Err() == nil {
+			if err := k.Keep(ctx); err != nil {
+				s.hub.publish(Event{Kind: "dns", Error: "keep system DNS redirected: " + err.Error()})
+			}
+		}
+		s.op.Unlock()
+	}
 }
 
 // networkCheckInterval is how often a connection that took the system's
