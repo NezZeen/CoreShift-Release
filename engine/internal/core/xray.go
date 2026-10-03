@@ -180,9 +180,15 @@ func xrayStream(n *node.Node, sni string) (obj, error) {
 		if t.Mode != "" {
 			x["mode"] = t.Mode
 		}
-		if t.Extra != "" {
+		// Checked here too: nodes saved by earlier versions kept it as the
+		// subscription sent it.
+		clean, err := node.SanitizeXHTTPExtra(t.Extra)
+		if err != nil {
+			return nil, fmt.Errorf("xray: %w", err)
+		}
+		if clean != "" {
 			var extra any
-			if err := json.Unmarshal([]byte(t.Extra), &extra); err != nil {
+			if err := json.Unmarshal([]byte(clean), &extra); err != nil {
 				return nil, fmt.Errorf("xray: xhttp extra is not valid JSON")
 			}
 			x["extra"] = extra
