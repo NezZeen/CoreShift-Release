@@ -8,6 +8,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"time"
 
@@ -330,6 +331,9 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 	if serverIP.IsValid() {
 		opts.BypassAddresses = []netip.Prefix{netip.PrefixFrom(serverIP, serverIP.BitLen())}
 	}
+	// Linux: connections to this machine from the local network keep
+	// working while connected (see tunlayer.Options.ExcludeLAN).
+	opts.ExcludeLAN = runtime.GOOS == "linux"
 	inst, err := tun.Start(ctx, opts)
 	if err != nil {
 		return netip.Addr{}, fmt.Errorf("start TUN layer: %w", err)
