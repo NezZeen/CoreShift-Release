@@ -345,9 +345,10 @@ class _Tray {
     icon.setContextMenu(menu);
     if (Platform.isLinux) {
       // A StatusNotifierItem: the panel draws the menu itself, and nativeapi
-      // exports it only for the "clicked" trigger, while it ignores the
-      // panel's Activate. So a click on the icon opens the menu, whose first
-      // item opens the window; without this neither click did anything.
+      // exports it only for the "clicked" trigger; without this neither
+      // click did anything. A right click now opens the menu, whose first
+      // item opens the window. A left click still does nothing in Plasma
+      // 5.27: it calls Activate, which nativeapi accepts and ignores.
       icon.setContextMenuTrigger(tray.ContextMenuTrigger.clicked);
       // The name in the panel's list of tray entries.
       icon.setTitle('CoreShift');
