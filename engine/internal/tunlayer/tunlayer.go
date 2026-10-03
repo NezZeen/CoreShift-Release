@@ -35,6 +35,17 @@ const (
 // every lookup itself, so repeating them is cheap.
 const fakeIPTTL = 1
 
+// dnsTimeout bounds every lookup (sing-box's default is 10 s). The remote
+// server's connection runs through the proxy and can die without a word:
+// the server or a carrier NAT drops it while a phone sleeps, and nothing on
+// this side notices. sing-box replaces it only once a query on it times out
+// (dns/transport/https.go, and the TCP/TLS/UDP multiplexer), so until then
+// every lookup hangs on it. Timing out sooner replaces it sooner, before
+// the system resolvers' own retry (Android's and glibc's come after 5 s),
+// which then goes out on a fresh connection. A new connection through the
+// proxy needs a few round trips to the server, well inside this.
+const dnsTimeout = "4s"
+
 var (
 	DefaultAddress      = netip.MustParsePrefix("172.19.0.1/30")
 	DefaultAddress6     = netip.MustParsePrefix("fdfe:dcba:9876::1/126")
@@ -450,7 +461,7 @@ func buildDNS(o Options) (obj, error) {
 		}
 	}
 
-	dns := obj{"servers": servers, "rules": rules, "final": final}
+	dns := obj{"servers": servers, "rules": rules, "final": final, "timeout": dnsTimeout}
 	if !o.Address6.IsValid() {
 		dns["strategy"] = "ipv4_only"
 	}
