@@ -63,14 +63,32 @@ class Palette extends ThemeExtension<Palette> {
     errInk: Color(0xFFC0322D),
   );
 
-  /// A lamp's colour fit for text on this theme's panels.
-  Color ink(Color lamp) => switch (lamp) {
+  /// Dark text on light panels: the light theme.
+  bool get isLight => text.computeLuminance() < .5;
+
+  /// A colour fit for text on this theme's panels: the lamps' own text
+  /// versions, and on the light theme any other colour, such as a
+  /// protocol's, darkened until it reads (about 4.5:1 on white).
+  Color ink(Color c) => switch (c) {
     accent => accentInk,
     okColor => okInk,
     warnColor => warnInk,
     errColor => errInk,
-    _ => lamp,
+    _ when isLight => _deepen(c),
+    _ => c,
   };
+
+  /// Darker in steps until its luminance gives 5.5:1 against white, so it
+  /// still gives 4.5:1 on a chip tinted with it: a yellow-green needs more
+  /// than a blue.
+  static Color _deepen(Color c) {
+    var hsl = HSLColor.fromColor(c);
+    hsl = hsl.withSaturation(hsl.saturation.clamp(0, .85));
+    while (hsl.lightness > .05 && 1.05 / (hsl.toColor().computeLuminance() + .05) < 5.5) {
+      hsl = hsl.withLightness(hsl.lightness - .02);
+    }
+    return hsl.toColor();
+  }
 
   @override
   Palette copyWith() => this;
@@ -281,10 +299,8 @@ ThemeData buildTheme(Brightness b) {
       indicatorShape: const StadiumBorder(),
       iconTheme: WidgetStateProperty.resolveWith((s) => IconThemeData(size: 22, color: s.contains(WidgetState.selected) ? onAccent : p.muted)),
       labelTextStyle: WidgetStateProperty.resolveWith(
-        // Six tabs on a 360-point phone: 60 points each.
         (s) => TextStyle(
-          fontSize: 11,
-          letterSpacing: -.1,
+          fontSize: 12,
           fontWeight: s.contains(WidgetState.selected) ? FontWeight.w600 : FontWeight.w500,
           color: s.contains(WidgetState.selected) ? p.text : p.muted,
         ),

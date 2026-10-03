@@ -294,7 +294,7 @@ class _AppPickerState extends State<_AppPicker> {
                                 added
                                     ? Padding(
                                         padding: const EdgeInsets.symmetric(horizontal: 8),
-                                        child: Text(widget.badge, style: TextStyle(fontSize: 12, color: okColor.withValues(alpha: .9))),
+                                        child: Text(widget.badge, style: TextStyle(fontSize: 12, color: context.pal.okInk)),
                                       )
                                     : Btn(label: 'Добавить', small: true, onPressed: () => widget.onAdd(a.name)),
                               ],

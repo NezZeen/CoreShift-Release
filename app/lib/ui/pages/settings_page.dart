@@ -7,6 +7,7 @@ import '../../state/errors.dart';
 import '../shell.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'leak_check.dart';
 
 /// What the self-update is doing, in words.
 String _appUpdateText(AppState state) {
@@ -129,6 +130,8 @@ class SettingsPage extends StatelessWidget {
               trailing: _switch('cores.fragment'),
             ),
           _LeakGuard(state: state, first: !rowsBefore),
+          // The test of what the switch guards against, beside it.
+          LeakCheck(state: state),
         ],
       ),
     );

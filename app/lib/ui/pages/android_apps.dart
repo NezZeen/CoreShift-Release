@@ -58,7 +58,7 @@ class AndroidAppsPanel extends StatelessWidget {
                 Expanded(
                   child: Text(
                     apps.isEmpty ? (mode == 'only' ? 'Ничего не выбрано: пока через VPN идут все' : 'Ничего не выбрано') : 'Выбрано: ${apps.length}',
-                    style: TextStyle(fontSize: 13, color: apps.isEmpty && mode == 'only' ? warnColor : p.text),
+                    style: TextStyle(fontSize: 13, color: apps.isEmpty && mode == 'only' ? p.warnInk : p.text),
                   ),
                 ),
                 Btn(

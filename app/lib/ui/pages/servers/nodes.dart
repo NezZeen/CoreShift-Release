@@ -360,7 +360,7 @@ class _SwipeBackground extends StatelessWidget {
         if (alignLeft)
           Text(
             label,
-            style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 13),
+            style: TextStyle(color: context.pal.ink(color), fontWeight: FontWeight.w600, fontSize: 13),
           ),
       ],
     ),

@@ -319,16 +319,20 @@ class Pill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = context.pal;
+    // The light theme: the tint stays, the text and the edge darken so a
+    // pale colour still reads.
+    final ink = p.ink(color);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: .13),
+        color: color.withValues(alpha: p.isLight ? .14 : .13),
         borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: color.withValues(alpha: .28)),
+        border: Border.all(color: p.isLight ? ink.withValues(alpha: .35) : color.withValues(alpha: .28)),
       ),
       child: Text(
         text,
-        style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600, fontFamily: mono ? monoFont : null),
+        style: TextStyle(color: ink, fontSize: 11, fontWeight: FontWeight.w600, fontFamily: mono ? monoFont : null),
       ),
     );
   }

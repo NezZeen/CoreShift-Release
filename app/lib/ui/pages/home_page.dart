@@ -12,9 +12,6 @@ import 'servers_page.dart' show showAddSubscription;
 import '../countries.dart';
 import '../theme.dart';
 import '../widgets.dart';
-import 'leak_check.dart';
-
-part 'home/checks.dart';
 part 'home/hero.dart';
 part 'home/compact.dart';
 part 'home/connect.dart';
@@ -39,7 +36,7 @@ class HomePage extends StatelessWidget {
       return LayoutBuilder(
         builder: (context, c) => PageFrame(
           children: [
-            SizedBox(height: max(0, (c.maxHeight - 600) / 2)),
+            SizedBox(height: max(0, (c.maxHeight - 720) / 2)),
             _CompactHome(state: state),
           ],
         ),
@@ -47,8 +44,8 @@ class HomePage extends StatelessWidget {
     }
     // The desktop: the button and its state on the left; on the right the
     // way the traffic takes (this device, the server, the address sites
-    // see) and while connected the speed. The tests and statistics are on
-    // «Проверка», the cores on their page.
+    // see), while connected the speed, and quietly under it the speed test
+    // and the traffic. The DNS leak test is in the settings, by its switch.
     return LayoutBuilder(
       builder: (context, c) {
         final wide = c.maxWidth >= 900;
@@ -69,11 +66,14 @@ class HomePage extends StatelessWidget {
             _Route(state: state),
             // Without a connection it has nothing to show.
             if (st.active) ...[const SizedBox(height: 14), _SpeedCard(state: state)],
+            // The speed test and the traffic, quiet, under the rest.
+            const SizedBox(height: 14),
+            _HomeTools(state: state),
           ],
         );
         return PageFrame(
           children: [
-            SizedBox(height: max(0, (c.maxHeight - (wide ? 560 : 820) - (warning ? 70 : 0)) / 2)),
+            SizedBox(height: max(0, (c.maxHeight - (wide ? 640 : 940) - (warning ? 70 : 0)) / 2)),
             Center(
               child: ConstrainedBox(
                 constraints: BoxConstraints(maxWidth: wide ? 1040 : 600),
