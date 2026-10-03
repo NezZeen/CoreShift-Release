@@ -35,7 +35,7 @@ func (s *Service) AutoConnect(ctx context.Context) error {
 			return nil
 		}
 		err = s.ConnectSelected(ctx)
-		if err == nil || errors.Is(err, ErrNoSelection) || ctx.Err() != nil {
+		if err == nil || errors.Is(err, ErrNoSelection) || errors.Is(err, ErrDisconnected) || ctx.Err() != nil {
 			return err
 		}
 	}

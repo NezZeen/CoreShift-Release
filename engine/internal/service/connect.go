@@ -17,16 +17,59 @@ import (
 	"coreshift/engine/internal/tunlayer"
 )
 
+// ErrDisconnected is what a connection attempt returns when the user
+// disconnected while it was under way, or waiting to start.
+var ErrDisconnected = errors.New("disconnected while connecting")
+
+// beginOp takes s.op for a long operation, a connection or a switch of
+// servers, and returns its context, which Disconnect cancels: connecting
+// can take minutes (a core that does not start, a TUN adapter Windows is
+// slow to free), and the user's Disconnect, or the service stopping, must
+// not wait for it. An operation that was waiting for s.op when Disconnect
+// came starts cancelled. end releases s.op.
+func (s *Service) beginOp(ctx context.Context) (opCtx context.Context, end func()) {
+	s.mu.Lock()
+	disc := s.discGen
+	s.mu.Unlock()
+	s.op.Lock()
+	ctx, cancel := context.WithCancelCause(ctx)
+	s.mu.Lock()
+	if s.discGen != disc {
+		cancel(ErrDisconnected)
+	}
+	s.opSeq++
+	id := s.opSeq
+	s.opCancel = cancel
+	s.mu.Unlock()
+	return ctx, func() {
+		s.mu.Lock()
+		if s.opSeq == id {
+			s.opCancel = nil
+		}
+		s.mu.Unlock()
+		cancel(nil)
+		s.op.Unlock()
+	}
+}
+
+// disconnected reports that ctx ended because of Disconnect.
+func disconnected(ctx context.Context) bool {
+	return errors.Is(context.Cause(ctx), ErrDisconnected)
+}
+
 // Connect switches to n, replacing any current connection.
 func (s *Service) Connect(ctx context.Context, n node.Node) error {
-	s.op.Lock()
-	defer s.op.Unlock()
+	ctx, end := s.beginOp(ctx)
+	defer end()
 	s.fo.reset() // a server chosen by the user starts a new round of switching
 	return s.connectOp(ctx, n)
 }
 
-// connectOp is Connect with s.op held.
+// connectOp is Connect with s.op held, by beginOp.
 func (s *Service) connectOp(ctx context.Context, n node.Node) error {
+	if disconnected(ctx) {
+		return ErrDisconnected // the user disconnected before it began
+	}
 	s.stopLatencyTest()
 	s.stopLocked()
 
@@ -40,8 +83,16 @@ func (s *Service) connectOp(ctx context.Context, n node.Node) error {
 	s.setStatus(Status{State: Connecting, Node: n.Name, Protocol: string(n.Protocol), TUN: opts.TUN, Since: time.Now()})
 
 	_, err := s.connectLocked(ctx, n, gen, opts)
+	if err == nil && disconnected(ctx) {
+		err = ErrDisconnected // during the last step
+	}
 	if err != nil {
 		s.stopLocked()
+		if disconnected(ctx) {
+			// Not a failure: what the user asked for.
+			s.setStatus(Status{State: Idle, TUN: s.Options().TUN})
+			return ErrDisconnected
+		}
 		s.fail(err)
 		return err
 	}
@@ -99,13 +150,13 @@ func (s *Service) watchNetwork(ctx context.Context, gen int, direct netip.Addr) 
 // reconnectGen reconnects the last node unless connection gen has ended
 // meanwhile, e.g. the user disconnected. A failure is reported by Connect.
 func (s *Service) reconnectGen(gen int) {
-	s.op.Lock()
-	defer s.op.Unlock()
+	ctx, end := s.beginOp(context.Background())
+	defer end()
 	s.mu.Lock()
 	n, current := s.lastNode, gen == s.gen && s.status.State == Connected
 	s.mu.Unlock()
 	if current {
-		_ = s.connectOp(context.Background(), n)
+		_ = s.connectOp(ctx, n)
 	}
 }
 
@@ -271,8 +322,17 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 	return serverIP, nil
 }
 
-// Disconnect stops everything and restores the system. Safe when idle.
+// Disconnect stops everything and restores the system. Safe when idle. A
+// connection or a switch of servers under way, or waiting to start, is
+// cancelled rather than waited for.
 func (s *Service) Disconnect() {
+	s.mu.Lock()
+	s.discGen++
+	cancel := s.opCancel
+	s.mu.Unlock()
+	if cancel != nil {
+		cancel(ErrDisconnected)
+	}
 	s.op.Lock()
 	defer s.op.Unlock()
 	if s.Status().State == Idle {
