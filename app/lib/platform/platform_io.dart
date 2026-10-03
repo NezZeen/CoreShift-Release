@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../api/backend.dart';
 import '../api/models.dart';
+import 'linux_desktop.dart' as linux;
 import 'win_service.dart' as win;
 
 /// On Android the engine runs inside the app; this channel reaches its
@@ -16,6 +17,10 @@ const _android = MethodChannel('coreshift/android');
 String? _androidApiFile;
 
 bool get isAndroid => Platform.isAndroid;
+
+bool get isLinux => Platform.isLinux;
+
+bool get isWindows => Platform.isWindows;
 
 /// What runs the VPN, for messages: a Windows service, or on Android the
 /// engine inside the app.
@@ -87,7 +92,7 @@ Future<String?> initialLink(List<String> args) async {
 
 /// Calls [handler] with each link opened while the app runs.
 void onLink(void Function(String link) handler) {
-  final channel = Platform.isAndroid ? _android : (Platform.isWindows ? _desktop : null);
+  final channel = Platform.isAndroid ? _android : (Platform.isWindows || Platform.isLinux ? _desktop : null);
   channel?.setMethodCallHandler((call) async {
     if (call.method == 'openLink' && call.arguments is String) handler(call.arguments as String);
   });
@@ -144,6 +149,23 @@ class _Endpoint {
   const _Endpoint(this.base, this.token);
 }
 
+/// Whether [reason], why the daemon is offline, is that the user may not
+/// reach it (Linux: not in the coreshift group), which starting it again
+/// would not change.
+bool daemonAccessDenied(String reason) => Platform.isLinux && reason == linux.groupHint;
+
+/// Why the API file [f] could not be read, for the user.
+String _unreadable(File f, FileSystemException e) {
+  final code = e.osError?.errorCode;
+  if (Platform.isLinux) {
+    // ENOENT: the daemon is not running (it removes the file on exit).
+    if (code == 2) return '$_engine не запущен$_ending';
+    // EACCES, EPERM: not in the group the file is for.
+    if (code == 13 || code == 1) return linux.groupHint;
+  }
+  return 'Нет доступа к ${f.path}: ${e.osError?.message ?? e.message}';
+}
+
 class HttpBackend implements Backend {
   final String file;
   // DIRECT: by default Dart takes a proxy from HTTP_PROXY, which some
@@ -161,14 +183,16 @@ class HttpBackend implements Backend {
   Future<_Endpoint> _endpoint({bool reload = false}) async {
     if (_ep != null && !reload) return _ep!;
     final f = File(file);
-    if (!await f.exists()) {
+    // On Linux the file is in a directory only the coreshift group may
+    // enter: there a missing file and a refused one look alike to exists().
+    if (!Platform.isLinux && !await f.exists()) {
       throw DaemonOffline('$_engine не запущен$_ending');
     }
     try {
       final j = jsonDecode(await f.readAsString()) as Map<String, dynamic>;
       return _ep = _Endpoint(Uri.parse(j['address'] as String), j['token'] as String);
     } on FileSystemException catch (e) {
-      throw DaemonOffline('Нет доступа к ${f.path}: ${e.osError?.message ?? e.message}');
+      throw DaemonOffline(_unreadable(f, e));
     } catch (_) {
       throw DaemonOffline('Файл ${f.path} повреждён');
     }
@@ -258,19 +282,27 @@ class HttpBackend implements Backend {
 }
 
 /// Starts the Windows service, which runs only while the app does, without
-/// administrator rights; null where there is no such service.
+/// administrator rights; null where there is no such service. The Linux
+/// service runs from boot (systemd), so there is nothing to start quietly.
 bool Function()? get daemonStarter => Platform.isWindows ? win.startServiceQuietly : null;
 
 /// Adds the app to the programs the system starts at sign-in, or removes
 /// it; null where CoreShift does not (Android starts it at boot itself).
-bool Function(bool on)? get autostartSetter => Platform.isWindows ? win.setAutostart : null;
+/// On Linux it is an XDG autostart entry.
+bool Function(bool on)? get autostartSetter => Platform.isWindows
+    ? win.setAutostart
+    : Platform.isLinux
+    ? (on) => linux.setAutostart(on)
+    : null;
 
-/// Whether the UI can start a stopped service itself (with a UAC prompt).
-bool get canStartService => Platform.isWindows;
+/// Whether the UI can start a stopped service itself (with a UAC prompt on
+/// Windows, polkit's password dialog on Linux).
+bool get canStartService => Platform.isWindows || Platform.isLinux;
 
-/// Starts the CoreShift service, asking Windows for administrator rights.
+/// Starts the CoreShift service, asking for administrator rights.
 /// Returns why it could not, or null once the request went through.
 Future<String?> startService() async {
+  if (Platform.isLinux) return linux.startService();
   if (!Platform.isWindows) return 'Запустите службу coreshift вручную';
   try {
     final r = await Process.run('powershell.exe', [
