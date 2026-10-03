@@ -25,6 +25,9 @@ AutoReqProv:    no
 Requires:       (gtk3 or libgtk-3-0)
 Requires:       (libX11 or libX11-6)
 Requires:       (libXi or libXi6)
+# The Flutter engine opens EGL and GLES through libepoxy at run time.
+Requires:       (libglvnd-egl or libEGL1)
+Requires:       (libglvnd-gles or libGLESv2-2)
 Requires:       systemd
 Requires:       (shadow-utils or shadow)
 Recommends:     polkit
