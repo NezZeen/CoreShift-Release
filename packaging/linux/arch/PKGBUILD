@@ -16,7 +16,7 @@ pkgdesc="VPN client for subscriptions with automatic core switching"
 arch=('x86_64' 'aarch64')
 url="https://github.com/NezZeen/CoreShift-Release"
 license=('LicenseRef-Proprietary')
-depends=('gtk3' 'libx11' 'libxi' 'systemd')
+depends=('gtk3' 'libglvnd' 'libx11' 'libxi' 'systemd')
 optdepends=('polkit: start the service from the app'
 	'libnotify: notifications'
 	'gnome-shell-extension-appindicator: the tray icon in GNOME')

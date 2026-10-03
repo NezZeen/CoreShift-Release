@@ -174,7 +174,7 @@ Priority: optional
 Architecture: $arch
 Maintainer: CoreShift <coreshift@localhost>
 Installed-Size: $size_kb
-Depends: libgtk-3-0 | libgtk-3-0t64, libx11-6, libxi6, passwd
+Depends: libgtk-3-0 | libgtk-3-0t64, libegl1, libgles2, libx11-6, libxi6, passwd
 Recommends: pkexec | policykit-1, libnotify-bin
 Suggests: gnome-shell-extension-appindicator
 Homepage: https://github.com/NezZeen/CoreShift-Release
@@ -222,7 +222,7 @@ if want arch; then
 			echo "size = $((size_kb * 1024))"
 			echo "arch = $pac_arch"
 			echo "license = LicenseRef-Proprietary"
-			for dep in gtk3 libx11 libxi systemd; do echo "depend = $dep"; done
+			for dep in gtk3 libglvnd libx11 libxi systemd; do echo "depend = $dep"; done
 			echo "optdepend = polkit: start the service from the app"
 			echo "optdepend = libnotify: notifications"
 			echo "optdepend = gnome-shell-extension-appindicator: the tray icon in GNOME"
