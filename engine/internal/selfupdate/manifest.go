@@ -36,11 +36,29 @@ import (
 // a folder holding the three files.
 const DefaultSource = "github:NezZeen/coreshift-releases"
 
+// PublicSource is where Linux looks for new versions: the public
+// repository of downloads (packaging/linux/README.md). Linux builds carry no
+// releases token, and they only tell the user about a new version, whose
+// page is then opened in the browser; nothing is installed. The manifest is
+// verified with the same keys all the same, so a release in it must have
+// been signed by us.
+const PublicSource = "github-public:NezZeen/CoreShift-Release"
+
+// DefaultSourceFor is where releases for goos are looked for when the
+// settings name no source.
+func DefaultSourceFor(goos string) string {
+	if goos == "linux" {
+		return PublicSource
+	}
+	return DefaultSource
+}
+
 // ManifestName and SignatureName are the published file names of the
 // Windows release; AndroidManifestName is the Android one's manifest.
-// LinuxManifestName is reserved for Linux packages, which are not published
-// for self-update (Linux installs updates with its package manager): it
-// keeps a Linux daemon from ever taking the Windows manifest.
+// LinuxManifestName describes the Linux release by its .deb: Linux only
+// announces new versions (its package manager installs them), and the
+// name of its own keeps a Linux daemon from ever taking the Windows
+// manifest.
 const (
 	ManifestName        = "latest.json"
 	SignatureName       = ManifestName + ".sig"
@@ -97,7 +115,7 @@ func (m Manifest) Label() string { return fmt.Sprintf("%s (build %d)", m.Version
 var (
 	versionRE   = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 	sha256RE    = regexp.MustCompile(`^[0-9a-f]{64}$`)
-	installerRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*\.(exe|apk)$`)
+	installerRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*\.(exe|apk|deb)$`)
 )
 
 // Verify checks sig, the signature of manifest, against keys and parses

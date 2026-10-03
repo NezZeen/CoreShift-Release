@@ -18,8 +18,8 @@ const (
 	resolvedVarlinkAPI = "/run/systemd/resolve/io.systemd.Resolve"
 )
 
-// New returns the Linux guard. It needs CAP_NET_ADMIN (resolvectl) or write
-// access to /etc/resolv.conf.
+// New returns the Linux guard. It needs root (or CAP_NET_ADMIN for
+// resolvectl and write access to /etc/resolv.conf).
 func New(journalPath string) (Guard, error) {
 	j, err := OpenJournal(journalPath)
 	if err != nil {
@@ -28,9 +28,11 @@ func New(journalPath string) (Guard, error) {
 	return &linuxGuard{
 		journal:        j,
 		run:            execCommand,
+		runInput:       execInput,
 		resolvConfPath: resolvConf,
-		useResolved:    resolvedInUse,
+		detect:         func() dnsStack { return detectDNSStack(currentDNSEnv()) },
 		networkManager: networkManagerRuns,
+		firewalld:      firewalldRuns,
 		linkExists: func(name string) bool {
 			_, err := net.InterfaceByName(name)
 			return err == nil
@@ -39,18 +41,46 @@ func New(journalPath string) (Guard, error) {
 	}, nil
 }
 
-// networkManagerRuns reports whether NetworkManager is up and nmcli can
-// talk to it.
-func networkManagerRuns() bool {
-	if _, err := exec.LookPath("nmcli"); err != nil {
-		return false
-	}
-	_, err := os.Stat("/run/NetworkManager")
+func have(cmd string) bool {
+	_, err := exec.LookPath(cmd)
 	return err == nil
 }
 
+func exists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// currentDNSEnv gathers what detectDNSStack decides on.
+func currentDNSEnv() linuxDNSEnv {
+	env := linuxDNSEnv{
+		ResolvedRunning: have("resolvectl") && exists(resolvedVarlinkAPI),
+		Resolvconf:      have("resolvconf"),
+		Netconfig:       have("netconfig"),
+	}
+	env.ResolvConf, _ = os.ReadFile(resolvConf)
+	env.Link, _ = os.Readlink(resolvConf)
+	return env
+}
+
+// networkManagerRuns reports whether NetworkManager is up and nmcli can
+// talk to it.
+func networkManagerRuns() bool { return have("nmcli") && exists("/run/NetworkManager") }
+
+// firewalldRuns reports whether firewalld is up: it leaves its PID file
+// in /run while it runs.
+func firewalldRuns() bool { return have("firewall-cmd") && exists("/run/firewalld") }
+
 func execCommand(ctx context.Context, name string, args ...string) error {
-	out, err := exec.CommandContext(ctx, name, args...).CombinedOutput()
+	return execInput(ctx, nil, name, args...)
+}
+
+func execInput(ctx context.Context, input []byte, name string, args ...string) error {
+	cmd := exec.CommandContext(ctx, name, args...)
+	if input != nil {
+		cmd.Stdin = bytes.NewReader(input)
+	}
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("%w: %s", err, bytes.TrimSpace(out))
 	}
@@ -59,16 +89,7 @@ func execCommand(ctx context.Context, name string, args ...string) error {
 
 // resolvedInUse reports whether resolved is running and glibc actually asks it,
 // i.e. /etc/resolv.conf points at its stub listener.
-func resolvedInUse() bool {
-	if _, err := exec.LookPath("resolvectl"); err != nil {
-		return false
-	}
-	if _, err := os.Stat(resolvedVarlinkAPI); err != nil {
-		return false
-	}
-	b, err := os.ReadFile(resolvConf)
-	return err == nil && usesResolvedStub(b)
-}
+func resolvedInUse() bool { return detectDNSStack(currentDNSEnv()) == stackResolved }
 
 // SystemResolvers returns the upstream resolvers the system currently uses.
 // Call it before Apply: afterwards the system resolves through the tunnel.

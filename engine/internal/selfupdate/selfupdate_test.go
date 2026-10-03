@@ -256,3 +256,89 @@ func TestGitHubSource(t *testing.T) {
 		t.Errorf("no token: %v", err)
 	}
 }
+
+func TestPublicSource(t *testing.T) {
+	s, err := ParseSource(PublicSource)
+	if err != nil || !s.Public || s.Repo != "NezZeen/CoreShift-Release" || s.String() != PublicSource {
+		t.Fatalf("public = %+v, %v", s, err)
+	}
+	if s, _ := ParseSource(DefaultSource); s.Public {
+		t.Error("the private repository taken for a public one")
+	}
+	if DefaultSourceFor("linux") != PublicSource || DefaultSourceFor("windows") != DefaultSource || DefaultSourceFor("android") != DefaultSource {
+		t.Error("default sources per platform changed")
+	}
+	if _, err := ParseSource("github-public:owner"); err == nil {
+		t.Error("github-public:owner accepted")
+	}
+}
+
+func TestReleasePage(t *testing.T) {
+	const repo = "o/r"
+	for page, want := range map[string]string{
+		"https://github.com/o/r/releases/tag/v0.7.0": "https://github.com/o/r/releases/tag/v0.7.0",
+		"https://github.com/o/x/releases/tag/v0.7.0": "https://github.com/o/r/releases",
+		"https://evil.example/o/r/releases/tag/v1":   "https://github.com/o/r/releases",
+		"http://github.com/o/r/releases/tag/v1":      "https://github.com/o/r/releases",
+		"https://user@github.com/o/r/releases/tag/1": "https://github.com/o/r/releases",
+		"https://github.com/o/r/releases/../../x":    "https://github.com/o/r/releases",
+		"https://github.com/o/r/releases/tag/v1?x=1": "https://github.com/o/r/releases",
+		"https://github.com/o/r/releases/":           "https://github.com/o/r/releases",
+		"":                                           "https://github.com/o/r/releases",
+	} {
+		if got := releasePage(repo, page); got != want {
+			t.Errorf("releasePage(%q) = %q, want %q", page, got, want)
+		}
+	}
+}
+
+// A public source is read without the token, which is never sent, and
+// still verified with the keys.
+func TestPublicGitHubSource(t *testing.T) {
+	k := newKey(t)
+	body, sig := release(t, k, func(m *Manifest) { m.Installer = "coreshift_0.3.0_amd64.deb" })
+	var api *httptest.Server
+	var sent bool
+	api = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "" {
+			sent = true
+		}
+		switch r.URL.Path {
+		case "/repos/o/pub/releases":
+			fmt.Fprintf(w, `[{"html_url":"https://github.com/o/pub/releases/tag/v0.3.0","assets":[
+				{"name":"latest-linux.json","url":"%[1]s/a/1","size":%[2]d},
+				{"name":"latest-linux.json.sig","url":"%[1]s/a/2","size":%[3]d},
+				{"name":"coreshift_0.3.0_amd64.deb","url":"%[1]s/a/3","size":%[4]d}]}]`,
+				api.URL+"/repos/o/pub/releases", len(body), len(sig), len(installer))
+		case "/repos/o/pub/releases/a/1":
+			w.Write(body)
+		case "/repos/o/pub/releases/a/2":
+			w.Write(sig)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer api.Close()
+	oldBase, oldToken := APIBase, token
+	APIBase, token = api.URL, "secret-token"
+	defer func() { APIBase, token = oldBase, oldToken }()
+
+	src, _ := ParseSource("github-public:o/pub")
+	rel, err := Check(context.Background(), http.DefaultClient, src, ManifestFor("linux"), []string{k.pub})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rel.Version != "0.3.0" || rel.Page != "https://github.com/o/pub/releases/tag/v0.3.0" {
+		t.Errorf("release %+v, page %q", rel.Manifest, rel.Page)
+	}
+	if sent {
+		t.Error("the token was sent to a public source")
+	}
+	token = ""
+	if _, err := Check(context.Background(), http.DefaultClient, src, ManifestFor("linux"), []string{k.pub}); err != nil {
+		t.Errorf("without a token: %v", err)
+	}
+	if _, err := Check(context.Background(), http.DefaultClient, src, ManifestFor("linux"), []string{newKey(t).pub}); err == nil {
+		t.Error("a manifest signed with another key accepted")
+	}
+}

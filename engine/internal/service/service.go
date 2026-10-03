@@ -220,6 +220,9 @@ func New(cfg Config) (*Service, error) {
 		if cfg.SelfUpdateOff != "" {
 			s.upd.state.Reason = cfg.SelfUpdateOff
 		}
+		if cfg.AnnounceUpdates {
+			s.upd.state = AppUpdate{State: UpdateIdle}
+		}
 	}
 	if cfg.fetchRuleSet != nil {
 		s.rules.fetch = cfg.fetchRuleSet

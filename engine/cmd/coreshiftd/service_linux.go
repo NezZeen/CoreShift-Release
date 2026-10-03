@@ -17,10 +17,6 @@ import (
 	"coreshift/engine/internal/service"
 )
 
-// serviceUnit is the systemd unit the packages install
-// (packaging/linux/coreshift.service).
-const serviceUnit = "coreshift.service"
-
 // isElevated reports whether the daemon may create the TUN interface:
 // root, or a process given CAP_NET_ADMIN (systemd's AmbientCapabilities).
 func isElevated() bool {
@@ -35,10 +31,10 @@ func isElevated() bool {
 	return ok && hasCap(caps, capNetAdmin)
 }
 
-// runService is the Linux service. systemd runs "service run" as root from
-// boot (packaging/linux/coreshift.service); the package installs and
-// enables it, so install and uninstall only say so. start and stop ask
-// systemd.
+// runService is the Linux service. The init system runs "service run" as
+// root from boot (packaging/linux: a systemd unit, an OpenRC script or a
+// runit service); the packages install and enable it, so install and
+// uninstall only say so. start, stop and status ask the init system.
 func runService(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return errors.New("usage: coreshiftd service {run|start|stop|status} [flags]")
@@ -47,17 +43,27 @@ func runService(ctx context.Context, args []string) error {
 	case "run":
 		return runLinuxService(ctx, args[1:])
 	case "start", "stop", "status":
-		cmd := exec.CommandContext(ctx, "systemctl", args[0], serviceUnit)
+		argv, err := serviceCommand(detectInit(pathExists), args[0])
+		if err != nil {
+			return err
+		}
+		cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 		return cmd.Run()
 	case "install", "uninstall":
-		return fmt.Errorf("on Linux the %s package installs %s and enables it; see packaging/linux/README.md", "coreshift", serviceUnit)
+		return errors.New("on Linux the coreshift package (or install.sh) installs the service and enables it; see packaging/linux/README.md")
 	}
 	return fmt.Errorf("unknown service command %q", args[0])
 }
 
+func pathExists(p string) bool {
+	_, err := os.Stat(p)
+	return err == nil
+}
+
 // selfUpdateOff is why the Linux daemon does not update CoreShift: its
-// package manager does, see packaging/linux/README.md.
+// package manager does, see packaging/linux/README.md. New versions are
+// still announced (Config.AnnounceUpdates).
 const selfUpdateOff = "linux: CoreShift is updated with its package"
 
 func runLinuxService(ctx context.Context, args []string) error {
@@ -68,7 +74,6 @@ func runLinuxService(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("service run", flag.ContinueOnError)
 	df := addDaemonFlags(fs)
 	apiAddr := fs.String("api", "127.0.0.1:17900", "loopback address of the UI API")
-	follow := fs.Bool("follow-app", true, "connect when the app comes (with auto-connect on) and disconnect once it has been closed")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -78,11 +83,13 @@ func runLinuxService(ctx context.Context, args []string) error {
 	}
 	cfg.SelfUpdate = false
 	cfg.SelfUpdateOff = selfUpdateOff
+	cfg.AnnounceUpdates = service.Version != "dev"
 	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
 		return err
 	}
-	// systemd keeps stdout in the journal too (journalctl -u coreshift),
-	// but the file outlives a reboot on systems with a volatile journal.
+	// The init system keeps stdout too (journalctl -u coreshift, OpenRC's
+	// output_log, runit's svlogd), but the file outlives a reboot on
+	// systems with a volatile log.
 	logPath := filepath.Join(cfg.DataDir, "coreshiftd.log")
 	rotateLog(logPath, 3)
 	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
@@ -92,7 +99,7 @@ func runLinuxService(ctx context.Context, args []string) error {
 	defer f.Close()
 	log := io.MultiWriter(f, os.Stdout)
 	fmt.Fprintf(log, "coreshiftd %s as uid %d, %s\n", service.VersionString(), os.Geteuid(), strings.Join(os.Args[1:], " "))
-	err = serveWith(ctx, cfg, *apiAddr, log, serveOptions{followApp: *follow})
+	err = serveWith(ctx, cfg, *apiAddr, log, serveOptions{connectWithApp: true})
 	if err != nil {
 		fmt.Fprintln(log, "error:", err)
 	}

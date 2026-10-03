@@ -95,6 +95,10 @@ type Config struct {
 	// leaves updates to its package manager. Empty means a development
 	// build.
 	SelfUpdateOff string
+	// AnnounceUpdates, with SelfUpdate false, still looks for new releases
+	// and reports them (UpdateAvailable) without downloading anything:
+	// Linux, where the package manager installs them.
+	AnnounceUpdates bool
 	// InstallUpdate, if set, hands a verified update to the system's
 	// installer, which asks the user (Android): nothing installs by
 	// itself, and an update the user declined is offered again.
