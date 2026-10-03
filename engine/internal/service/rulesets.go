@@ -11,6 +11,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -44,8 +46,59 @@ var (
 		{Tag: "geosite-category-media-ru-blocked",
 			URL:   "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-media-ru-blocked.srs",
 			Proxy: true},
+		googleSet,
 	}
 )
+
+// Google, YouTube included, stays in the tunnel with the Russian preset on,
+// whatever address a name resolves to: geosite-google, and googleSuffixes
+// for when that set is not downloaded yet or cannot be. A video or update
+// server of Google Global Cache inside a Russian provider has that
+// provider's address, which geoip-ru would send direct, where YouTube is
+// slowed down; its links would also be refused there, being signed for the
+// address that asked for them, the tunnel's. A connection made by such an
+// address (a name the browser looked up before connecting, its own DNS
+// over HTTPS, QUIC kept from before) matches by the name the TUN layer
+// sniffs from it, which these rules see before geoip-ru; Google's own
+// ranges are not in geoip-ru, so no address list is needed. google.ru is
+// listed for the same reason: the preset sends .ru direct. A name the user
+// lists to go direct stays direct (googleDirect).
+var googleSet = geoSet{Tag: "geosite-google", URL: "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-google.srs", Proxy: true}
+
+var googleSuffixes = []string{
+	// Search and the national domains people in and around Russia meet.
+	"google.com", "google.ru", "google.by", "google.kz", "google.com.ua", "google.am", "google.az", "google.ge",
+	"google.co.uk", "google.de", "google.fr", "google.pl", "google.nl", "google.it", "google.es", "google.fi",
+	"google.cz", "google.lv", "google.lt", "google.ee", "google.com.tr", "google.co.il", "g.co", "goo.gl",
+	// Infrastructure: APIs, static files, user content, downloads and
+	// updates (gvt*), the caches' reverse names.
+	"googleapis.com", "gstatic.com", "googleusercontent.com", "gvt1.com", "gvt2.com", "gvt3.com", "1e100.net",
+	"googledomains.com", "withgoogle.com", "recaptcha.net",
+	// Ads and analytics, which sites embed.
+	"googlesyndication.com", "googleadservices.com", "doubleclick.net", "google-analytics.com", "googletagmanager.com",
+	"googletagservices.com", "app-measurement.com",
+	// Android, Gmail, Chrome, Firebase.
+	"android.com", "gmail.com", "googlemail.com", "chrome.com", "chromium.org", "firebaseio.com", "crashlytics.com",
+	// YouTube.
+	"youtube.com", "youtu.be", "yt.be", "youtube-nocookie.com", "youtubekids.com", "googlevideo.com", "ytimg.com", "ggpht.com",
+}
+
+// googleDirect returns the names of the user's direct list that are Google's
+// (a name of googleSuffixes or one below it): they must stay direct ahead of
+// geosite-google, which would otherwise take them. Wider ones, like "com",
+// are not: Google stays in the tunnel then.
+func googleDirect(userDirect []string) []string {
+	var out []string
+	for _, d := range userDirect {
+		if slices.ContainsFunc(googleSuffixes, func(g string) bool { return under(d, g) }) {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// under reports whether name is domain or below it.
+func under(name, domain string) bool { return name == domain || strings.HasSuffix(name, "."+domain) }
 
 const (
 	ruleSetMaxAge  = 7 * 24 * time.Hour

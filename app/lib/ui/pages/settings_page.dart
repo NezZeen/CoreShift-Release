@@ -100,7 +100,12 @@ class SettingsPage extends StatelessWidget {
 
     // On Android with every app through the VPN the panel may have nothing
     // to offer: then it is left out.
-    final rowsBefore = !platform.isAndroid || !state.setting('tun', true) || state.hasSetting('ipv6') || state.hasSetting('cores.fragment');
+    final rowsBefore =
+        !platform.isAndroid ||
+        !state.setting('tun', true) ||
+        state.hasSetting('ipv6') ||
+        state.hasSetting('cores.fragment') ||
+        state.hasSetting('cores.switch_server');
     final hasNetwork = rowsBefore || state.hasSetting('dns.block_dot') || state.hasSetting('dns.block_browser_doh');
     final network = Panel(
       child: Column(
@@ -133,6 +138,14 @@ class SettingsPage extends StatelessWidget {
                   'Делит начало защищённого соединения с сервером на части, чтобы провайдер не узнал его. '
                   'Включите, если VPN то работает, то нет. Работает в Xray и sing-box, mihomo подключается без этого',
               trailing: _switch('cores.fragment'),
+            ),
+          if (state.hasSetting('cores.switch_server'))
+            SettingRow(
+              title: 'Менять сервер, если он не отвечает',
+              description:
+                  'Если сервер не отвечает, а интернет работает, CoreShift подключит следующий сервер той же подписки, который отвечает. '
+                  'Автовыбор от панели провайдера меняет сервер всегда',
+              trailing: _switch('cores.switch_server'),
             ),
           _LeakGuard(state: state, first: !rowsBefore),
           // The test of what the switch guards against, beside it.

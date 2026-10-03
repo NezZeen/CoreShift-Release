@@ -58,6 +58,10 @@ type CoreSettings struct {
 	// Fragment splits the TLS ClientHello to the server to get past DPI
 	// (core.Options.Fragment).
 	Fragment bool `json:"fragment"`
+	// SwitchServer moves to the next server of the subscription that
+	// answers when the connected one does not answer at all, while the
+	// internet does. A panel's automatic selection switches regardless.
+	SwitchServer bool `json:"switch_server"`
 }
 
 type DNSSettings struct {
@@ -154,6 +158,7 @@ func Defaults() Settings {
 			HealthFailures:  3,
 			ReturnAfterMin:  10,
 			LatencyTest:     LatencyPing,
+			SwitchServer:    true,
 		},
 		DNS: DNSSettings{
 			Remote: "https://1.1.1.1/dns-query",

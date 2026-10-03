@@ -183,7 +183,7 @@ class _DeviceStation extends StatelessWidget {
         : selected
         ? 'в VPN только выбранные сайты и программы'
         : russia
-        ? 'российские сайты напрямую, остальное в VPN'
+        ? 'российские сайты напрямую, кроме Google и YouTube, остальное в VPN'
         : 'весь трафик идёт в VPN';
     return _Station(
       caption: 'Это устройство',
@@ -277,20 +277,36 @@ class _ServerStation extends StatelessWidget {
 }
 
 /// The connection is up but traffic does not get through: the server is
-/// down, blocked or the network is bad. Says so, instead of "Подключено"
-/// alone, and offers the one thing that can help from here.
+/// down, blocked or the network is bad. Says which, as the engine found
+/// looking past the tunnel, with the server's name, instead of "Подключено"
+/// alone, and offers what can help from here: another server, unless the
+/// network is at fault, and reconnecting.
 class _UnresponsiveBanner extends StatelessWidget {
   final AppState state;
   const _UnresponsiveBanner({required this.state});
 
   @override
-  Widget build(BuildContext context) => _Notice(
-    color: errColor,
-    icon: Icons.cloud_off_outlined,
-    text:
-        'Сервер не отвечает: связь через него не проходит. Он может быть недоступен или заблокирован. Попробуйте переподключиться или выберите другой сервер.',
-    action: Btn(label: 'Переподключить', small: true, onPressed: state.busy ? null : state.reconnect),
-  );
+  Widget build(BuildContext context) {
+    final problem = state.serverProblem;
+    final (title, text) = AppState.serverProblemText(problem, cleanNodeName(state.status.node));
+    final offline = problem == 'offline';
+    return _Notice(
+      color: errColor,
+      icon: offline ? Icons.wifi_off_outlined : Icons.cloud_off_outlined,
+      title: title,
+      text: text,
+      actions: [
+        if (!offline)
+          Btn(
+            label: 'Другой сервер',
+            small: true,
+            kind: BtnKind.primary,
+            onPressed: state.busy ? null : () => showQuickPick(context, state, onAll: () => Nav.to(context, PageId.servers)),
+          ),
+        Btn(label: 'Переподключить', small: true, onPressed: state.busy ? null : state.reconnect),
+      ],
+    );
+  }
 }
 
 /// A coloured line on the home page: a warning and what to do about it.
@@ -300,7 +316,10 @@ class _Notice extends StatelessWidget {
   final String? title;
   final String text;
   final Widget? action;
-  const _Notice({required this.color, required this.icon, this.title, required this.text, this.action});
+
+  /// Several ways out, in a row under the text rather than beside it.
+  final List<Widget> actions;
+  const _Notice({required this.color, required this.icon, this.title, required this.text, this.action, this.actions = const []});
 
   @override
   Widget build(BuildContext context) {
@@ -309,6 +328,7 @@ class _Notice extends StatelessWidget {
       children: [
         if (title != null) Text(title!, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
         Text(text, style: TextStyle(fontSize: 12, color: title == null ? null : context.pal.muted)),
+        if (actions.isNotEmpty) ...[const SizedBox(height: 8), Wrap(spacing: 8, runSpacing: 6, children: actions)],
       ],
     );
     return Container(

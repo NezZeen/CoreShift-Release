@@ -28,6 +28,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"coreshift/engine/internal/core"
@@ -65,6 +66,9 @@ type Status struct {
 	// Pending is set when settings changed during this connection; they
 	// apply after reconnecting.
 	Pending bool `json:"settings_pending,omitempty"`
+	// Problem is set while connected when no core gets through: whether the
+	// server or the network is at fault (a Reach), until a check passes.
+	Problem string `json:"problem,omitempty"`
 }
 
 type Service struct {
@@ -79,7 +83,9 @@ type Service struct {
 	apps    appWatch
 	stats   *trafficStats
 	fo      failover
-	speedMu sync.Mutex // one speed test at a time
+	// healthFails counts the active core's failed checks in a row.
+	healthFails atomic.Int32
+	speedMu     sync.Mutex // one speed test at a time
 	// socks are the credentials of the cores' SOCKS inbound, new each
 	// start; only the TUN layer and the service's own clients know them.
 	socks core.SOCKSAuth
@@ -104,6 +110,10 @@ type Service struct {
 	pending  bool      // opts changed since the running connection started
 	lastNode node.Node // for Reconnect
 	hasLast  bool
+	// serverIP is the connected server's address, for checkReach;
+	// diagnosing is set while one runs.
+	serverIP   netip.Addr
+	diagnosing bool
 	// tunDNS is the TUN layer's resolver while it runs. Server names are
 	// looked up there by the daemon itself, which the layer answers with
 	// real addresses (tunlayer.Options.DirectDNSProcesses). Through the
@@ -346,6 +356,10 @@ func (s *Service) tunLayer() (TUNLayer, error) {
 	s.cfg.tun = &singBoxTUN{
 		group: group, bin: bin, dir: filepath.Join(s.cfg.DataDir, "tun"),
 		onLine: func(l string) { s.Log("tun", l) },
+		// Line is when the next attempt comes, Error why this one failed.
+		onRetry: func(_ int, delay time.Duration, cause error) {
+			s.hub.publish(Event{Kind: "tun", Reason: "retry", Line: delay.String(), Error: cause.Error()})
+		},
 	}
 	return s.cfg.tun, nil
 }

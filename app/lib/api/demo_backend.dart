@@ -32,6 +32,7 @@ class DemoBackend implements Backend {
       'return_after_min': 10,
       'latency_test': 'ping',
       'fragment': false,
+      'switch_server': true,
     },
     'dns': {'remote': 'https://1.1.1.1/dns-query', 'direct': '', 'fake_ip': true, 'block_browser_doh': false, 'block_dot': false, 'strict': true},
     'routing': {

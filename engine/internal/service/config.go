@@ -48,6 +48,9 @@ type Options struct {
 	LatencyTest string
 	// Fragment splits the TLS ClientHello to get past DPI.
 	Fragment bool
+	// SwitchServer moves to another server of the subscription when the
+	// connected one does not answer (store.CoreSettings.SwitchServer).
+	SwitchServer bool
 
 	// TUN routes all system traffic through the tunnel and guards DNS.
 	// Without it only the SOCKS port is served.
@@ -184,6 +187,7 @@ func OptionsFromSettings(set store.Settings) Options {
 		ReturnToPrimaryAfter: time.Duration(c.ReturnAfterMin) * time.Minute,
 		LatencyTest:          c.LatencyTest,
 		Fragment:             c.Fragment,
+		SwitchServer:         c.SwitchServer,
 		TUN:                  set.TUN,
 		IPv6:                 set.IPv6,
 		DirectApps:           slices.Clone(set.Routing.DirectApps),

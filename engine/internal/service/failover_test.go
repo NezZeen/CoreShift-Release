@@ -70,7 +70,7 @@ const panelJSON = `{
 const plainLinks = "trojan://pw@203.0.113.1:443#proxy\ntrojan://pw@203.0.113.2:443#proxy-2\ntrojan://pw@203.0.113.3:443#proxy-3"
 
 // switchHarness adds the subscription and connects its server named first.
-func switchHarness(t *testing.T, content, first string) (*harness, *store.Store, store.Subscription) {
+func switchHarness(t *testing.T, content, first string, mutate ...func(*Config, *store.Settings)) (*harness, *store.Store, store.Subscription) {
 	t.Helper()
 	st, err := store.Open(filepath.Join(t.TempDir(), "store.json"), store.Options{})
 	if err != nil {
@@ -79,10 +79,18 @@ func switchHarness(t *testing.T, content, first string) (*harness, *store.Store,
 	set := st.Settings()
 	// The health checks must not interfere: the test sends the events itself.
 	set.Cores.HealthURL, set.Cores.HealthIntervalS, set.Cores.HealthFailures = "http://health.test/generate_204", 3600, 2
+	for _, m := range mutate {
+		m(nil, &set)
+	}
 	if _, err := st.SetSettings(set); err != nil {
 		t.Fatal(err)
 	}
-	h := newHarness(t, func(c *Config) { c.Store = st })
+	h := newHarness(t, func(c *Config) {
+		c.Store = st
+		for _, m := range mutate {
+			m(c, nil)
+		}
+	})
 	sub, err := st.Add(context.Background(), store.AddRequest{Name: "s", Content: content})
 	if err != nil {
 		t.Fatal(err)
