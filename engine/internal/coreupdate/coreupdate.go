@@ -21,14 +21,22 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 
 	"coreshift/engine/internal/core"
 )
 
-// APIBase is the GitHub API; tests point it elsewhere.
-var APIBase = "https://api.github.com"
+// APIBase is the GitHub API, and DownloadBase where release files are;
+// tests point them elsewhere.
+var (
+	APIBase      = "https://api.github.com"
+	DownloadBase = "https://github.com"
+)
+
+// versionRE is a release tag the engine can compare: "v1.14.2", "26.3.27".
+var versionRE = regexp.MustCompile(`^v?\d+(\.\d+){1,3}$`)
 
 const maxDownload = 256 << 20
 
@@ -117,13 +125,24 @@ func Latest(ctx context.Context, c *http.Client, k core.Kind) (Release, error) {
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&body); err != nil {
 		return Release{}, fmt.Errorf("%s: check for updates: %w", k, err)
 	}
+	// Only stable releases with a plain version number: anything else
+	// cannot be compared with the installed core.
+	if !versionRE.MatchString(body.Tag) {
+		return Release{}, fmt.Errorf("%s: the latest release is %q, not a version", k, body.Tag)
+	}
 	name, err := assetName(k, body.Tag, runtime.GOOS, runtime.GOARCH)
 	if err != nil {
 		return Release{}, err
 	}
+	// The file must come from the project's own release, by the name the
+	// project gives it.
+	want := DownloadBase + "/" + repo + "/releases/download/" + body.Tag + "/" + name
 	for _, a := range body.Assets {
 		if a.Name != name {
 			continue
+		}
+		if a.URL != want {
+			return Release{}, fmt.Errorf("%s %s: %s is not where the project publishes it", k, body.Tag, name)
 		}
 		sum, ok := strings.CutPrefix(a.Digest, "sha256:")
 		if !ok || len(sum) != 64 {
