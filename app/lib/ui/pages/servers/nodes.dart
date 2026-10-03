@@ -18,11 +18,11 @@ class _NodeTable extends StatelessWidget {
         ),
       );
     }
-    final headStyle = TextStyle(fontSize: 11, color: p.dim, letterSpacing: .6, fontWeight: FontWeight.w600);
-    // The columns need about 640 points; narrower, the rows become a list.
+    final headStyle = TextStyle(fontSize: 12, color: p.dim, fontWeight: FontWeight.w600);
+    // The columns need about 600 points; narrower, the rows become a list.
     return LayoutBuilder(
       builder: (context, c) {
-        final narrow = isCompact(context) || c.maxWidth < 640;
+        final narrow = isCompact(context) || c.maxWidth < 600;
         return Column(
           children: [
             _row(
@@ -30,11 +30,11 @@ class _NodeTable extends StatelessWidget {
               header: true,
               radio: const SizedBox(),
               badge: const SizedBox(),
-              name: Text('СЕРВЕР', style: headStyle),
-              proto: Text('ПРОТОКОЛ', style: headStyle),
+              name: Text('Сервер', style: headStyle),
+              proto: Text('Протокол', style: headStyle),
               ping: Tooltip(
                 message: 'Зелёный — до 200 мс, жёлтый — до 500 мс',
-                child: Text('ПИНГ', style: headStyle),
+                child: Text('Пинг', style: headStyle),
               ),
               action: const SizedBox(),
             ),
@@ -151,14 +151,9 @@ class _SectionHeading extends StatelessWidget {
       padding: EdgeInsets.fromLTRB(12, first ? 6 : 14, 8, 6),
       child: LayoutBuilder(
         builder: (context, c) {
-          final titleStyle = TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: section.leading == null ? p.muted : p.text);
+          final titleStyle = display(15, color: section.leading == null ? p.muted : p.text);
           final countStyle = TextStyle(fontSize: 12, color: p.dim);
-          final pingStyle = TextStyle(
-            fontSize: 11.5,
-            color: best < 200 ? okColor : (best < 500 ? warnColor : errColor),
-            fontFamily: monoFont,
-            fontFamilyFallback: monoFallback,
-          );
+          final pingStyle = figures(12.5, color: p.ink(best < 200 ? okColor : (best < 500 ? warnColor : errColor)));
           final count = '${section.rows.length}', ping = best < 1 << 30 ? 'от $best мс' : null;
           final scaler = MediaQuery.textScalerOf(context);
           double width(String s, TextStyle st) {
@@ -238,11 +233,11 @@ class _NodeRowState extends State<_NodeRow> {
 
     final Widget action;
     if (connected) {
-      action = narrow ? const Icon(Icons.check_circle, size: 18, color: okColor) : const Pill('ПОДКЛЮЧЁН', color: okColor);
+      action = narrow ? const Icon(Icons.check_circle, size: 18, color: okColor) : const Pill('Подключён', color: okColor);
     } else if (active) {
       action = narrow
           ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: accent))
-          : const Pill('ПОДКЛЮЧЕНИЕ…', color: accent);
+          : Pill('Подключение…', color: p.accentInk);
     } else if (!unusable && sel && narrow) {
       action = Btn(icon: Icons.power_settings_new, small: true, kind: BtnKind.primary, tooltip: 'Подключить', onPressed: s.busy || !s.online ? null : connect);
     } else if (!unusable && (hover || sel) && !narrow) {
@@ -365,7 +360,7 @@ class _SwipeBackground extends StatelessWidget {
         if (alignLeft)
           Text(
             label,
-            style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 13),
+            style: TextStyle(color: context.pal.ink(color), fontWeight: FontWeight.w600, fontSize: 13),
           ),
       ],
     ),
@@ -381,7 +376,7 @@ class _LatencyCell extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.pal;
     final l = latency;
-    const mono = TextStyle(fontFamily: monoFont, fontFamilyFallback: monoFallback, fontSize: 12, fontWeight: FontWeight.w500);
+    final mono = figures(13.5);
     if (l == null) {
       return testing
           ? Align(
@@ -393,10 +388,10 @@ class _LatencyCell extends StatelessWidget {
     if (!l.ok) {
       return Tooltip(
         message: l.error,
-        child: Text('нет ответа', style: mono.copyWith(color: errColor, fontSize: 11)),
+        child: Text('нет ответа', style: mono.copyWith(color: p.errInk, fontSize: 11)),
       );
     }
-    final color = l.ms < 200 ? okColor : (l.ms < 500 ? warnColor : errColor);
+    final color = p.ink(l.ms < 200 ? okColor : (l.ms < 500 ? warnColor : errColor));
     final text = Text('${l.ms} мс', style: mono.copyWith(color: color));
     final how = switch (l.method) {
       'icmp' => 'ICMP-пинг до сервера',

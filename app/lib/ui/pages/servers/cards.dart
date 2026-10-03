@@ -14,15 +14,15 @@ class _Chip extends StatelessWidget {
       child: GestureDetector(
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
           decoration: BoxDecoration(
-            color: on ? p.surface3 : Colors.transparent,
+            color: on ? p.text : Colors.transparent,
             borderRadius: BorderRadius.circular(99),
-            border: Border.all(color: on ? p.border2 : p.border),
+            border: Border.all(color: on ? p.text : p.border2),
           ),
           child: Text(
             label,
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: on ? p.text : p.muted),
+            style: TextStyle(fontSize: 12, fontWeight: on ? FontWeight.w600 : FontWeight.w500, color: on ? p.bg : p.muted),
           ),
         ),
       ),
@@ -43,7 +43,7 @@ class _EmptySubs extends StatelessWidget {
         children: [
           Icon(Icons.cloud_download_outlined, size: 40, color: p.dim),
           const SizedBox(height: 14),
-          const Text('Подписок пока нет', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+          Text('Подписок пока нет', style: dialogTitle),
           const SizedBox(height: 6),
           Text(
             'Добавьте ссылку на подписку от вашего провайдера или вставьте ссылки на серверы (vless://, trojan://, hy2://…)',
@@ -77,6 +77,7 @@ class _SubCard extends StatelessWidget {
     return Panel(
       padding: compact ? const EdgeInsets.fromLTRB(14, 4, 4, 12) : const EdgeInsets.fromLTRB(16, 12, 8, 14),
       borderColor: selected ? accent : null,
+      color: selected ? accent.withValues(alpha: .07) : null,
       onTap: onTap,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -84,11 +85,7 @@ class _SubCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text(
-                  sub.displayName,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                  overflow: TextOverflow.ellipsis,
-                ),
+                child: Text(sub.displayName, style: display(16), overflow: TextOverflow.ellipsis),
               ),
               // The panel's support-url header: its support chat.
               if (i.supportUrl.isNotEmpty) ...[
@@ -198,7 +195,7 @@ class _Fact extends StatelessWidget {
             children: [
               TextSpan(
                 text: value,
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: color ?? p.text),
+                style: figures(17, weight: FontWeight.w600, color: color == null ? p.text : p.ink(color!)),
               ),
               if (note.isNotEmpty && progress != null)
                 TextSpan(
@@ -253,9 +250,6 @@ class _SubMenu extends StatelessWidget {
             if (name != null) state.renameSubscription(sub.id, name);
           case 'page':
             state.openLink(sub.info.webPageUrl);
-          case 'site':
-            await Clipboard.setData(ClipboardData(text: sub.info.webPageUrl));
-            state.toast('Адрес страницы скопирован');
           case 'qr':
             if (context.mounted) await showSubscriptionQr(context, sub);
           case 'delete':
@@ -268,10 +262,7 @@ class _SubMenu extends StatelessWidget {
         if (!sub.isLocal) _item('refresh', Icons.refresh, 'Обновить'),
         _item('rename', Icons.edit_outlined, 'Переименовать'),
         if (!sub.isLocal) _item('qr', Icons.qr_code_2, platform.isAndroid ? 'Показать QR-код' : 'QR-код для телефона'),
-        if (sub.info.webPageUrl.isNotEmpty) ...[
-          _item('page', Icons.open_in_new, 'Открыть страницу подписки'),
-          _item('site', Icons.link, 'Копировать адрес страницы'),
-        ],
+        if (sub.info.webPageUrl.isNotEmpty) _item('page', Icons.open_in_new, 'Открыть страницу подписки'),
         _item('delete', Icons.delete_outline, 'Удалить', color: errColor),
       ],
     );
@@ -308,7 +299,7 @@ class _SwipeHint extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(Icons.swipe, size: 17, color: accent),
+          Icon(Icons.swipe, size: 17, color: p.accentInk),
           const SizedBox(width: 10),
           Expanded(
             child: Text('Смахните сервер вправо, чтобы подключиться', style: TextStyle(fontSize: 12, color: p.muted)),
