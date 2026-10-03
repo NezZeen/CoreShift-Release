@@ -209,29 +209,21 @@ extension AppStateActions on AppState {
     _notify();
   }
 
-  /// Asks the daemon for the latest release of each core. [quiet], for the
-  /// check the app makes by itself: only a new version is told.
-  Future<void> checkCoreUpdates({bool quiet = false}) async {
+  /// Asks the daemon for the latest release of each core. Nothing is told:
+  /// what is found is installed by [installCoreUpdates], and a check that
+  /// fails, often only for want of a network, goes to the journal.
+  Future<void> checkCoreUpdates() async {
     checkingUpdates = true;
     _notify();
     try {
       final found = [for (final u in await backend.call('GET', '/v1/cores/updates') as List) CoreUpdate.fromJson((u as Map).cast())];
       // A core updated meanwhile keeps what its update said.
       if (updatingCore.isEmpty) coreUpdates = found;
-      final failed = found.where((u) => u.error.isNotEmpty).toList();
-      final fresh = found.where((u) => u.available).toList();
-      if (quiet) {
-        if (fresh.isNotEmpty) {
-          final names = fresh.map((u) => AppState.coreName(u.kind)).join(', ');
-          toast('Доступна новая версия: $names. Обновить можно в настройках, в разделе «Ядра»', ToastKind.info);
-        }
-      } else if (failed.isNotEmpty && failed.length == found.length) {
-        toast(humanError(failed.first.error), ToastKind.err);
-      } else if (fresh.isEmpty) {
-        toast('Все ядра последних версий', ToastKind.ok);
+      for (final u in found.where((u) => u.error.isNotEmpty)) {
+        _log(DateTime.now(), u.kind, 'не удалось узнать о новой версии: ${humanError(u.error)}', LogLevel.warn);
       }
     } catch (e) {
-      if (!quiet) toast(humanError('$e'), ToastKind.err);
+      _log(DateTime.now(), 'ядра', 'не удалось узнать о новых версиях: ${humanError('$e')}', LogLevel.warn);
       if (e is DaemonOffline) _lost(e);
     }
     checkingUpdates = false;
@@ -240,17 +232,41 @@ extension AppStateActions on AppState {
 
   CoreUpdate? updateOf(String kind) => coreUpdates.where((u) => u.kind == kind).firstOrNull;
 
-  /// Installs the latest release of [kind].
+  /// The cores with a newer version found and not installed yet.
+  List<String> get coreUpdatesWaiting => [
+    for (final u in coreUpdates)
+      if (u.available && u.error.isEmpty && info.installed(u.kind)) u.kind,
+  ];
+
+  /// Installs every newer core found, one after another, without asking.
+  /// Only while the VPN is off: a connection is never broken for it, the
+  /// update waits for the next disconnect. The service checks each download
+  /// as it always does; the journal tells what was installed.
+  Future<void> installCoreUpdates() async {
+    for (final kind in coreUpdatesWaiting) {
+      if (!online || status.active || busy || updatingCore.isNotEmpty) return;
+      await updateCore(kind);
+    }
+  }
+
+  /// Installs the latest release of [kind]. Only a failure is told; the
+  /// service's event puts the new version in the journal.
   Future<void> updateCore(String kind) async {
     updatingCore = kind;
     _notify();
-    await _act(() async {
+    try {
       final r = await backend.call('POST', '/v1/cores/$kind/update') as Json;
       final v = r['version'] as String? ?? '';
       coreUpdates = [for (final u in coreUpdates) u.kind == kind ? CoreUpdate(kind: kind, current: v, latest: v) : u];
       await _reloadInfo();
-      toast('${AppState.coreName(kind)} обновлён до $v${status.active ? '. Новая версия заработает после переподключения' : ''}', ToastKind.ok);
-    });
+    } catch (e) {
+      final msg = 'Не удалось обновить ${AppState.coreName(kind)}: ${humanError('$e')}';
+      _log(DateTime.now(), kind, msg, LogLevel.err);
+      toast(msg, ToastKind.err);
+      // Not tried again until the next check.
+      coreUpdates = [for (final u in coreUpdates) u.kind == kind ? CoreUpdate(kind: kind, current: u.current, latest: u.latest, error: '$e') : u];
+      if (e is DaemonOffline) _lost(e);
+    }
     updatingCore = '';
     _notify();
   }

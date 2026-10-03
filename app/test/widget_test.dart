@@ -35,16 +35,12 @@ void main() {
 
   const pages = ['Серверы', 'Правила', 'Проверка', 'Настройки', 'Ядра', 'Журнал', 'Главная'];
 
-  /// Opens [page]: a main page from the navigation; the cores from their
-  /// card in the settings, the journal from «Проверка», the one place each.
+  /// Opens [page]: a main page from the navigation, the cores from their
+  /// card in the settings.
   Future<void> open(WidgetTester tester, String page) async {
     final phone = find.byType(NavigationBar).evaluate().isNotEmpty;
     Finder nav(String p) => phone ? find.descendant(of: find.byType(NavigationBar), matching: find.text(p)) : find.text(p).first;
-    final from = switch (page) {
-      'Ядра' => 'Настройки',
-      'Журнал' => 'Проверка',
-      _ => null,
-    };
+    final from = page == 'Ядра' ? 'Настройки' : null;
     if (from == null) {
       await tester.tap(nav(page));
       return;
@@ -211,32 +207,42 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
   }, timeout: const Timeout(Duration(minutes: 1)));
 
-  testWidgets('core versions and updates', (tester) async {
+  testWidgets('cores update themselves while the VPN is off', (tester) async {
     final state = await pumpApp(tester);
-    // New versions are looked for by the app itself, once it is connected.
+    // Looked for and installed by the app itself, without a word.
     await tester.runAsync(() async {
-      for (var i = 0; i < 100 && (state.coreUpdates.isEmpty || state.checkingUpdates); i++) {
+      for (var i = 0; i < 200 && state.info.versionOf('sing-box') != '1.14.3'; i++) {
+        await Future.delayed(const Duration(milliseconds: 20));
+      }
+      await Future.delayed(const Duration(milliseconds: 100));
+    });
+    await tester.pump();
+    expect(state.info.versionOf('sing-box'), '1.14.3');
+    expect(state.logs.any((l) => l.source == 'sing-box' && l.message == 'обновлено до 1.14.3'), isTrue);
+    expect(state.toasts, isEmpty);
+    await open(tester, 'Ядра');
+    await tester.pump();
+    for (final gone in ['Проверить обновления', 'Обновить']) {
+      expect(find.text(gone), findsNothing, reason: gone);
+    }
+    expect(find.textContaining('Доступна'), findsNothing);
+    expect(find.text('версия 1.14.3'), findsOneWidget);
+
+    // Found while connected: it waits for the VPN to be off.
+    await tester.runAsync(() => state.connect());
+    state.coreUpdates = [const CoreUpdate(kind: 'xray', current: '26.3.27', latest: '26.4.1', available: true)];
+    await tester.runAsync(() => state.installCoreUpdates());
+    await tester.pump();
+    expect(state.coreUpdatesWaiting, ['xray']);
+    expect(find.text('Версия 26.4.1 установится, когда VPN будет выключен'), findsOneWidget);
+    await tester.runAsync(() async {
+      await state.disconnect();
+      for (var i = 0; i < 200 && state.coreUpdatesWaiting.isNotEmpty; i++) {
         await Future.delayed(const Duration(milliseconds: 20));
       }
     });
     await tester.pump();
-    expect(state.coreUpdates, isNotEmpty);
-    expect(state.toasts.map((t) => t.message), contains(contains('Доступна новая версия: sing-box')));
-    await open(tester, 'Настройки');
-    await tester.pump();
-    expect(find.text('Доступна новая версия: sing-box'), findsOneWidget);
-    await open(tester, 'Ядра');
-    await tester.pump();
-    expect(find.text('Проверить обновления'), findsNothing);
-    expect(find.text('версия 1.14.2'), findsOneWidget);
-    expect(find.text('Доступна 1.14.3 · 33 МБ'), findsOneWidget);
-    expect(find.text('Последняя версия'), findsNWidgets(2));
-    await tester.runAsync(() => state.updateCore('sing-box'));
-    await tester.pump();
-    expect(state.info.versionOf('sing-box'), '1.14.3');
-    expect(find.text('версия 1.14.3'), findsOneWidget);
-    // The toast of the automatic check may still be up; the list is done.
-    expect(find.textContaining('Доступна 1.14'), findsNothing);
+    expect(state.coreUpdatesWaiting, isEmpty);
     expect(tester.takeException(), isNull);
     await tester.pump(const Duration(seconds: 6));
   });
@@ -967,46 +973,51 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
   });
 
-  testWidgets('every page fits a phone', (tester) async {
-    final state = await pumpApp(tester, size: const Size(390, 844));
-    expect(find.byType(NavigationBar), findsOneWidget);
-    final problems = <String>[];
-    Future<void> check(String page) async {
-      await tester.pump();
-      for (Object? e = tester.takeException(); e != null; e = tester.takeException()) {
-        problems.add('$page: ${'$e'.split('\n').first}');
+  for (final width in [390.0, 360.0]) {
+    testWidgets('every page fits a phone ${width.round()} wide', (tester) async {
+      final state = await pumpApp(tester, size: Size(width, 800));
+      expect(find.byType(NavigationBar), findsOneWidget);
+      // Six tabs, the journal one of them.
+      expect(find.byType(NavigationDestination), findsNWidgets(6));
+      final problems = <String>[];
+      Future<void> check(String page) async {
+        await tester.pump();
+        for (Object? e = tester.takeException(); e != null; e = tester.takeException()) {
+          problems.add('$page: ${'$e'.split('\n').first}');
+        }
       }
-    }
 
-    for (final page in ['Серверы', 'Правила', 'Проверка', 'Настройки', 'Главная']) {
-      await tester.tap(find.descendant(of: find.byType(NavigationBar), matching: find.text(page)));
-      await check(page);
-      // Scroll through the page, so rows further down are laid out too.
-      final scrollable = find.byType(Scrollable);
-      if (scrollable.evaluate().isNotEmpty) {
-        await tester.drag(scrollable.first, const Offset(0, -2000));
-        await check('$page (scrolled)');
+      for (final page in ['Серверы', 'Правила', 'Проверка', 'Журнал', 'Настройки', 'Главная']) {
+        await tester.tap(find.descendant(of: find.byType(NavigationBar), matching: find.text(page)));
+        await check(page);
+        // Scroll through the page, so rows further down are laid out too.
+        final scrollable = find.byType(Scrollable);
+        if (scrollable.evaluate().isNotEmpty) {
+          await tester.drag(scrollable.first, const Offset(0, -2000));
+          await check('$page (scrolled)');
+        }
       }
-    }
-    for (final page in ['Ядра', 'Журнал']) {
-      // The cores open from the settings, the journal from «Проверка».
-      await open(tester, page);
+      // The cores open from the settings.
+      await open(tester, 'Ядра');
       await tester.pump();
-      expect(
-        find.descendant(of: find.byType(PageHeader), matching: find.text(page)),
-        findsOneWidget,
-        reason: page,
-      );
-      await check(page);
-    }
-    expect(problems, isEmpty);
-    expect(state.loaded, isTrue);
-    await tester.pump(const Duration(seconds: 30));
-  });
+      expect(find.descendant(of: find.byType(PageHeader), matching: find.text('Ядра')), findsOneWidget);
+      await check('Ядра');
+      expect(problems, isEmpty);
+      expect(state.loaded, isTrue);
+      await tester.pump(const Duration(seconds: 30));
+    });
+  }
 
   testWidgets('the speed test shows its figures on the desktop and the phone', (tester) async {
     for (final size in [const Size(1400, 900), const Size(390, 844)]) {
       final state = await pumpApp(tester, size: size);
+      // The cores' own update, which runs on the real clock, done first:
+      // the test steps the speed test on the test's clock.
+      await tester.runAsync(() async {
+        for (var i = 0; i < 200 && (state.checkingUpdates || state.updatingCore.isNotEmpty || state.coreUpdatesWaiting.isNotEmpty); i++) {
+          await Future.delayed(const Duration(milliseconds: 20));
+        }
+      });
       // The speed test is on «Проверка».
       await tester.tap(size.width > 600 ? find.text('Проверка').first : find.descendant(of: find.byType(NavigationBar), matching: find.text('Проверка')));
       await tester.pump(const Duration(seconds: 1));
@@ -1294,6 +1305,8 @@ void main() {
     final state = await pumpApp(tester);
     await open(tester, 'Журнал');
     await tester.pump();
+    // A main page: no way back to another one, and not on «Проверка».
+    expect(find.byIcon(Icons.arrow_back), findsNothing);
     expect(find.text('Все'), findsOneWidget);
     expect(find.text('Ошибки'), findsOneWidget);
     for (final gone in ['Автосвап', 'Ядра', 'Очистить']) {
