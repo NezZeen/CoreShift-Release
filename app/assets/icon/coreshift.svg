@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 24 24">
+  <!-- CoreShift: a railway switch on the amber of the lamps. Drawn by tool/make_icons.py. -->
+  <rect width="24" height="24" rx="6" fill="#F0A23B"/>
+  <g fill="none" stroke="#241604" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M5 8.5H19"/>
+    <path d="M7.5 8.5C11 8.5 11.5 15.5 15 15.5H19"/>
+  </g>
+</svg>
