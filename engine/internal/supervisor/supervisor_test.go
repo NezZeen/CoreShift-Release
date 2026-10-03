@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -424,5 +425,36 @@ func TestReturnToPrimaryOnRequest(t *testing.T) {
 	h.waitFor(t, "xray connected", 10*time.Second, func(e Event) bool { return e.Kind == EventState && e.State == Connected && e.Core == core.Xray })
 	if err := h.s.ReturnToPrimary(context.Background()); !errors.Is(err, ErrOnPrimary) {
 		t.Errorf("on the primary: err = %v, want ErrOnPrimary", err)
+	}
+}
+
+// A core that stops taking connections on its own port is restarted at
+// once; hanging again soon after, it is dropped for the next core.
+func TestHungCoreIsRestartedThenDropped(t *testing.T) {
+	t.Setenv("FAKECORE_XRAY", "hang-after:400ms")
+	h := newHarness(t, nil)
+	connect(t, h, trojanLink)
+	e := h.waitFor(t, "a restart of the hung core", 10*time.Second, func(e Event) bool { return e.Kind == EventRestart })
+	if e.Core != core.Xray || e.Reason != ReasonHung || !strings.Contains(e.Err.Error(), "stopped taking connections") {
+		t.Fatalf("restart event = %+v", e)
+	}
+	h.waitFor(t, "a swap after hanging again", 10*time.Second, isSwap(core.SingBox, ReasonHung))
+	if st := h.s.Status(); st.Core != core.SingBox || st.Failed[core.Xray] == "" {
+		t.Fatalf("status = %+v", st)
+	}
+}
+
+func TestFailedHealthCheckNamesEveryAddress(t *testing.T) {
+	first := errors.New("context deadline exceeded")
+	err := probesFailed(
+		[]string{"http://cp.cloudflare.com/generate_204", "http://www.gstatic.com/generate_204", "http://captive.apple.com/hotspot-detect.html"},
+		[]error{first, &url.Error{Op: "Get", URL: "http://www.gstatic.com/generate_204", Err: errors.New("EOF")}, nil},
+	)
+	want := "cp.cloudflare.com: context deadline exceeded; www.gstatic.com: EOF; captive.apple.com: no answer"
+	if err.Error() != want {
+		t.Errorf("error = %q, want %q", err, want)
+	}
+	if !errors.Is(err, first) {
+		t.Error("the error does not unwrap to the first address's")
 	}
 }
