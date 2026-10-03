@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The amber of CoreShift's mark, behind the adaptive icon's glyph. -->
+    <color name="ic_launcher_background">#F0A23B</color>
+</resources>
