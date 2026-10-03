@@ -239,8 +239,9 @@ func mihomoPlugin(pl *node.ShadowsocksOptions) (string, obj) {
 		}
 		return "v2ray-plugin", o
 	}
+	// No other plugin passes Supports; none gets options it does not know.
 	o := obj{}
-	for k, v := range opts {
+	for k, v := range sip003Opts(sip003Clean(pl.Plugin, pl.PluginOpts)) {
 		o[k] = v
 	}
 	return pl.Plugin, o

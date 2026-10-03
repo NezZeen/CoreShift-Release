@@ -98,7 +98,7 @@ func singBoxOutbound(n *node.Node, o Options) (obj, error) {
 		out["password"] = n.Password
 		if p := n.Shadowsocks; p != nil && p.Plugin != "" {
 			out["plugin"] = p.Plugin
-			out["plugin_opts"] = p.PluginOpts
+			out["plugin_opts"] = sip003Clean(p.Plugin, p.PluginOpts)
 		}
 	case node.Hysteria2:
 		out["type"] = "hysteria2"
