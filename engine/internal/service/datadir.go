@@ -73,6 +73,9 @@ func secureDataDir(root string, sec dirSecurity) ([]string, error) {
 		}
 		if isRegenerable(e.Name()) {
 			if ok, err := trustedTree(sec, path, fi); err != nil || !ok {
+				// Taken back first: its owner may have closed it to
+				// SYSTEM, which then could not even list it to delete it.
+				reclaimTree(path, fi, sec)
 				if err := os.RemoveAll(path); err != nil {
 					errs = append(errs, fmt.Errorf("remove %s: %w", path, err))
 					continue
@@ -101,9 +104,11 @@ func reclaimTree(path string, fi fs.FileInfo, sec dirSecurity) ([]string, error)
 		return []string{"removed the link " + path}, nil
 	}
 	var notes []string
+	// An owner that cannot be read is no one the service knows: its
+	// owner closed it, and taking it back is how to open it again.
 	ok, err := sec.trusted(path)
 	if err != nil {
-		return nil, err
+		ok = false
 	}
 	if !ok {
 		if err := sec.reclaim(path); err != nil {
