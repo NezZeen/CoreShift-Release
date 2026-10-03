@@ -8,7 +8,6 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -49,18 +48,20 @@ func (s *Supervisor) TestLatency(ctx context.Context, nodes []node.Node, serverA
 	if concurrency < 1 {
 		concurrency = 1
 	}
+	// A goroutine per test running, not per node: a subscription may list
+	// thousands.
 	sem := make(chan struct{}, concurrency)
 	var wg sync.WaitGroup
 	for i := range nodes {
+		select {
+		case sem <- struct{}{}:
+		case <-ctx.Done():
+			onResult(LatencyResult{Index: i, Err: ctx.Err()})
+			continue
+		}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			select {
-			case sem <- struct{}{}:
-			case <-ctx.Done():
-				onResult(LatencyResult{Index: i, Err: ctx.Err()})
-				return
-			}
 			defer func() { <-sem }()
 			var addr string
 			if i < len(serverAddrs) {
@@ -150,10 +151,8 @@ type lastLine struct {
 	line string
 }
 
-var ansiEscape = regexp.MustCompile(`\x1b\[[0-9;]*[A-Za-z]`)
-
 func (l *lastLine) set(line string) {
-	line = strings.TrimSpace(ansiEscape.ReplaceAllString(line, ""))
+	line = strings.TrimSpace(proc.StripANSI(line))
 	if line == "" {
 		return
 	}

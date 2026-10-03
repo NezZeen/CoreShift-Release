@@ -236,13 +236,14 @@ type nodeView struct {
 	LatencyMethod string `json:"latency_method,omitempty"`
 }
 
-func (a *api) nodeView(subID string, n *node.Node) nodeView {
+// nodeView describes n, whose fingerprint is fp.
+func (a *api) nodeView(subID string, n *node.Node, fp string) nodeView {
 	cores := a.svc.Compatible(n)
 	if cores == nil {
 		cores = []core.Kind{}
 	}
 	v := nodeView{
-		Fingerprint: n.Fingerprint(), Name: n.Name, Protocol: n.Protocol,
+		Fingerprint: fp, Name: n.Name, Protocol: n.Protocol,
 		Transport: n.TransportLabel(), Security: n.SecurityLabel(),
 		Server: n.Server, Port: n.Port, Cores: cores,
 	}
@@ -259,8 +260,9 @@ func (a *api) subscriptionView(sub *store.Subscription, set store.Settings) subs
 		AddedAt: sub.AddedAt, UpdatedAt: sub.UpdatedAt, CheckedAt: sub.CheckedAt,
 		NextUpdate: store.NextRefresh(sub, set), LastError: sub.LastError,
 	}
+	fps := sub.Fingerprints()
 	for i := range sub.Nodes {
-		v.Nodes[i] = a.nodeView(sub.ID, &sub.Nodes[i])
+		v.Nodes[i] = a.nodeView(sub.ID, &sub.Nodes[i], fps[i])
 	}
 	return v
 }
@@ -369,7 +371,7 @@ func (a *api) selectionView(st *store.Store) selectionView {
 	sel, n, ok := st.Selected()
 	v := selectionView{Selection: sel, Available: ok}
 	if ok {
-		nv := a.nodeView(sel.Subscription, &n)
+		nv := a.nodeView(sel.Subscription, &n, n.Fingerprint())
 		v.Node = &nv
 	}
 	return v
