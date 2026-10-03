@@ -38,16 +38,23 @@ const DefaultSource = "github:NezZeen/coreshift-releases"
 
 // ManifestName and SignatureName are the published file names of the
 // Windows release; AndroidManifestName is the Android one's manifest.
+// LinuxManifestName is reserved for Linux packages, which are not published
+// for self-update (Linux installs updates with its package manager): it
+// keeps a Linux daemon from ever taking the Windows manifest.
 const (
 	ManifestName        = "latest.json"
 	SignatureName       = ManifestName + ".sig"
 	AndroidManifestName = "latest-android.json"
+	LinuxManifestName   = "latest-linux.json"
 )
 
 // ManifestFor is the manifest of the release for goos.
 func ManifestFor(goos string) string {
-	if goos == "android" {
+	switch goos {
+	case "android":
 		return AndroidManifestName
+	case "linux":
+		return LinuxManifestName
 	}
 	return ManifestName
 }
@@ -55,8 +62,11 @@ func ManifestFor(goos string) string {
 // installerExt is the kind of installer a manifest may name: a manifest
 // signed for one platform cannot hand another platform's file to it.
 func installerExt(manifest string) string {
-	if manifest == AndroidManifestName {
+	switch manifest {
+	case AndroidManifestName:
 		return ".apk"
+	case LinuxManifestName:
+		return ".deb"
 	}
 	return ".exe"
 }

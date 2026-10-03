@@ -14,6 +14,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"coreshift/engine/internal/service"
@@ -107,12 +108,32 @@ const (
 // serve runs the daemon until ctx ends or, with withApp, until the app has
 // been closed for appGrace.
 func serve(ctx context.Context, cfg service.Config, apiAddr string, log io.Writer, verbose, withApp bool) error {
+	return serveWith(ctx, cfg, apiAddr, log, serveOptions{verbose: verbose, exitWithoutApp: withApp})
+}
+
+type serveOptions struct {
+	// verbose prints core output and every health check.
+	verbose bool
+	// exitWithoutApp stops the daemon once the app has been closed for
+	// appGrace (the Windows service, which the app starts).
+	exitWithoutApp bool
+	// followApp keeps the daemon running, but connects (with auto-connect
+	// on) when the app comes and disconnects when it has been closed for
+	// appGrace (the Linux service, which runs from boot).
+	followApp bool
+}
+
+func serveWith(ctx context.Context, cfg service.Config, apiAddr string, log io.Writer, o serveOptions) error {
+	verbose, withApp := o.verbose, o.exitWithoutApp
 	addr, err := parseAddrPort(apiAddr)
 	if err != nil || !addr.Addr().IsLoopback() {
 		return fmt.Errorf("-api must be a loopback address, got %q", apiAddr)
 	}
 	if !isElevated() {
 		cfg.TUNUnavailable = "TUN mode needs administrator rights, which the daemon does not have; turn TUN off in the settings or run the daemon elevated"
+		if runtime.GOOS == "linux" {
+			cfg.TUNUnavailable = "TUN mode needs root or CAP_NET_ADMIN, which the daemon does not have; run it as the coreshift systemd service"
+		}
 	}
 	st, err := service.OpenStore(cfg.DataDir, store.Options{})
 	if errors.Is(err, store.ErrReset) {
@@ -170,11 +191,15 @@ func serve(ctx context.Context, cfg service.Config, apiAddr string, log io.Write
 	}
 	go st.RunUpdater(ctx, time.Minute)
 	go svc.RunAppUpdates(ctx)
-	go func() {
-		if err := svc.AutoConnect(ctx); err != nil && ctx.Err() == nil {
-			fmt.Fprintln(log, "auto-connect:", err)
-		}
-	}()
+	if o.followApp {
+		go followApp(ctx, svc, log)
+	} else {
+		go func() {
+			if err := svc.AutoConnect(ctx); err != nil && ctx.Err() == nil {
+				fmt.Fprintln(log, "auto-connect:", err)
+			}
+		}()
+	}
 
 	<-ctx.Done()
 	fmt.Fprintln(log, "shutting down")
@@ -185,6 +210,42 @@ func serve(ctx context.Context, cfg service.Config, apiAddr string, log io.Write
 		srv.Close() // event streams never go idle
 	}
 	return nil
+}
+
+// appSession is what followApp needs of the service.
+type appSession interface {
+	WaitAppAttached(ctx context.Context) bool
+	WaitAppGone(ctx context.Context, first, grace time.Duration) bool
+	AutoConnect(ctx context.Context) error
+	Disconnect()
+}
+
+// followApp ties the VPN to the app for a daemon that outlives it: each
+// time the app comes, auto-connect runs as when the Windows service starts
+// with the app; once it has been gone for appGrace, the VPN goes down, so
+// it never runs unseen. Until ctx ends.
+func followApp(ctx context.Context, svc appSession, log io.Writer) {
+	for {
+		if !svc.WaitAppAttached(ctx) {
+			return
+		}
+		round, stop := context.WithCancel(ctx)
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			if err := svc.AutoConnect(round); err != nil && round.Err() == nil {
+				fmt.Fprintln(log, "auto-connect:", err)
+			}
+		}()
+		gone := svc.WaitAppGone(ctx, appGrace, appGrace)
+		stop()
+		<-done
+		if !gone {
+			return
+		}
+		fmt.Fprintln(log, "the app is closed; disconnecting")
+		svc.Disconnect()
+	}
 }
 
 func parseAddrPort(s string) (netip.AddrPort, error) { return netip.ParseAddrPort(s) }
