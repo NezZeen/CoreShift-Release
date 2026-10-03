@@ -183,6 +183,10 @@ class SettingsPage extends StatelessWidget {
           ),
         ),
         SettingRow(title: 'Fake-IP', description: 'Имена резолвятся на стороне сервера — быстрее и без утечек DNS', trailing: _switch('dns.fake_ip')),
+        // Each guard of «Защита от утечек DNS» on its own, for when one of
+        // them gets in the way.
+        for (final (path, title, description) in _LeakGuard.parts)
+          if (state.hasSetting(path)) SettingRow(title: title, description: description, trailing: _switch(path)),
       ],
     );
 
@@ -301,7 +305,7 @@ class SettingsPage extends StatelessWidget {
               children: [
                 const PageHeader('Настройки'),
                 for (final w in [general, if (hasNetwork) network, cores, about]) Padding(padding: const EdgeInsets.only(bottom: 16), child: w),
-                Fold(title: 'Дополнительно', sub: 'обновление подписок, User-Agent, DNS-серверы', child: expert),
+                Fold(title: 'Дополнительно', sub: 'обновление подписок, User-Agent, DNS-серверы, защита DNS по отдельности', child: expert),
               ],
             ),
           ),
@@ -319,7 +323,24 @@ class _LeakGuard extends StatelessWidget {
   final bool first;
   const _LeakGuard({required this.state, this.first = false});
 
-  List<String> get _guards => ['dns.block_browser_doh', 'dns.block_dot', if (!platform.isAndroid) 'dns.strict'].where(state.hasSetting).toList();
+  /// The guards one by one, as «Дополнительно» lists them.
+  static List<(String, String, String)> get parts => [
+    (
+      'dns.block_browser_doh',
+      'DNS браузеров только через VPN',
+      'Firefox не включает свой DNS-over-HTTPS сам, а если он включён вручную, его запросы идут через туннель',
+    ),
+    (
+      'dns.block_dot',
+      'Блокировать DNS-over-TLS (порт 853)',
+      platform.isAndroid
+          ? 'Android в режиме «Частный DNS: автоматически» перейдёт на обычный DNS. Если «Частный DNS» задан вручную, сайты перестанут открываться'
+          : 'Программы с собственным DNS-over-TLS перейдут на DNS через туннель',
+    ),
+    if (!platform.isAndroid) ('dns.strict', 'Строгий DNS в Windows', 'Запретить Windows опрашивать DNS других сетевых адаптеров в обход туннеля'),
+  ];
+
+  List<String> get _guards => [for (final (path, _, _) in parts) path].where(state.hasSetting).toList();
 
   @override
   Widget build(BuildContext context) {
