@@ -131,6 +131,7 @@ type Config struct {
 	tcpPing      func(ctx context.Context, ap netip.AddrPort, b ping.Bind) (time.Duration, error)
 	netInterval  time.Duration
 	speedURL     string // instead of speedServer
+	ookla        func(proxy *url.URL) ooklaTest
 
 	checkRelease     func(ctx context.Context, client *http.Client, src selfupdate.Source) (selfupdate.Release, error)
 	downloadRelease  func(ctx context.Context, client *http.Client, rel selfupdate.Release, dir string) (string, error)
