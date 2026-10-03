@@ -68,7 +68,11 @@ func (t *singBoxTUN) Start(ctx context.Context, o tunlayer.Options) (TUNInstance
 	for attempt := 0; ; attempt++ {
 		p, err := t.start(ctx, path, name)
 		if err == nil {
-			return tunProcess{p, name}, nil
+			var undo func()
+			if o.ExcludeLAN {
+				undo = addResolverRules(o.LANResolvers, t.onLine)
+			}
+			return tunProcess{p, name, undo}, nil
 		}
 		if attempt >= adapterRetries || !isAdapterRace(err) {
 			return nil, err
@@ -122,9 +126,14 @@ func isAdapterRace(err error) bool {
 type tunProcess struct {
 	*proc.Process
 	name string
+	// undoRules removes the resolver rules (resolver_rules.go), if any.
+	undoRules func()
 }
 
 func (t tunProcess) Stop() {
+	if t.undoRules != nil {
+		t.undoRules()
+	}
 	t.Process.Stop()
 	waitInterfaceGone(context.Background(), t.name, interfaceGoneTimeout)
 }
