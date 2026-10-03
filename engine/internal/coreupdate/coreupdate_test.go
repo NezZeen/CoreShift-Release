@@ -74,19 +74,26 @@ func newFakeGitHub(t *testing.T, asset string, files map[string][]byte) *fakeGit
 		case strings.HasSuffix(r.URL.Path, "/releases/latest"):
 			_ = json.NewEncoder(w).Encode(map[string]any{"tag_name": "v9.9.9", "assets": []any{
 				map[string]any{"name": "other.zip", "browser_download_url": g.URL + "/other", "size": 1, "digest": "sha256:00"},
-				map[string]any{"name": asset, "browser_download_url": g.URL + "/dl/" + asset, "size": len(g.archive), "digest": g.digest},
+				map[string]any{"name": asset, "browser_download_url": g.URL + "/" + repoOf(r.URL.Path) + "/releases/download/v9.9.9/" + asset,
+					"size": len(g.archive), "digest": g.digest},
 			}})
-		case strings.HasPrefix(r.URL.Path, "/dl/"):
+		case strings.Contains(r.URL.Path, "/releases/download/"):
 			_, _ = w.Write(g.archive)
 		default:
 			http.NotFound(w, r)
 		}
 	}))
 	t.Cleanup(g.Close)
-	old := APIBase
-	APIBase = g.URL
-	t.Cleanup(func() { APIBase = old })
+	old, oldDL := APIBase, DownloadBase
+	APIBase, DownloadBase = g.URL, g.URL
+	t.Cleanup(func() { APIBase, DownloadBase = old, oldDL })
 	return g
+}
+
+// repoOf is OWNER/REPO of an API path /repos/OWNER/REPO/releases/latest.
+func repoOf(path string) string {
+	p := strings.Split(strings.TrimPrefix(path, "/repos/"), "/")
+	return p[0] + "/" + p[1]
 }
 
 func TestInstallReplacesCoreAndLibraries(t *testing.T) {

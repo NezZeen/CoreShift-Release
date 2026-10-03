@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"net/http"
+	"net/url"
 	"runtime"
 	"strings"
 	"sync"
@@ -13,10 +14,14 @@ import (
 // per subscription (Remnawave's HWID limit). Such a panel answers a request
 // without x-hwid with a placeholder server instead of the real ones.
 type Device struct {
-	HWID      string // stable per machine, empty when unknown
+	// HWID is the machine-wide id earlier versions sent to every panel;
+	// empty when unknown. ForPanel derives the id a panel gets now.
+	HWID      string
 	OS        string
 	OSVersion string
 	Model     string
+
+	machine string // the machine's own id, never sent
 }
 
 var (
@@ -66,9 +71,40 @@ func ThisDevice() Device {
 			// The panel gets a hash, never the machine's own ID.
 			sum := sha256.Sum256([]byte("coreshift-hwid:" + id))
 			device.HWID = hex.EncodeToString(sum[:16])
+			device.machine = id
 		}
 	})
 	return device
+}
+
+// ForPanel returns the device as the panel serving rawURL sees it: its
+// HWID is a hash of the machine's id and the panel's host, stable for that
+// panel, so that different panels cannot tell they serve the same machine.
+// With legacy set it keeps the machine-wide HWID earlier versions sent to
+// every panel: a panel that counted the device under it would otherwise
+// count it again, as a new device, against the subscription's limit.
+func (d Device) ForPanel(rawURL string, legacy bool) Device {
+	if legacy || d.machine == "" {
+		return d
+	}
+	d.HWID = panelHWID(d.machine, rawURL)
+	return d
+}
+
+// panelHWID derives the HWID the panel at rawURL gets from the machine's id.
+func panelHWID(machine, rawURL string) string {
+	sum := sha256.Sum256([]byte("coreshift-hwid-panel:" + machine + "|" + PanelHost(rawURL)))
+	return hex.EncodeToString(sum[:16])
+}
+
+// PanelHost is the host (and port, if any) of a subscription URL in lower
+// case: what tells one panel from another.
+func PanelHost(rawURL string) string {
+	u, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return ""
+	}
+	return strings.ToLower(u.Host)
 }
 
 func (d Device) setHeaders(h http.Header) {

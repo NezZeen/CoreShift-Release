@@ -131,6 +131,9 @@ func (a *api) connect(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case errors.Is(err, ErrNoSelection):
 		writeError(w, http.StatusConflict, err)
+	case errors.Is(err, ErrDisconnected):
+		// The user disconnected meanwhile: that is the state to show.
+		writeJSON(w, http.StatusOK, a.svc.Status())
 	case err != nil:
 		writeError(w, http.StatusBadGateway, err)
 	default:
@@ -141,7 +144,7 @@ func (a *api) connect(w http.ResponseWriter, r *http.Request) {
 func (a *api) reconnect(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := backgroundCtx(2 * time.Minute)
 	defer cancel()
-	if err := a.svc.Reconnect(ctx); err != nil {
+	if err := a.svc.Reconnect(ctx); err != nil && !errors.Is(err, ErrDisconnected) {
 		writeError(w, http.StatusBadGateway, err)
 		return
 	}

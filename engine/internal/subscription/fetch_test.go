@@ -102,7 +102,38 @@ func TestFetchSendsDeviceAndRejectsPlaceholders(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "App not supported") || len(f.Nodes) != 0 {
 		t.Errorf("err = %v, nodes = %d", err, len(f.Nodes))
 	}
-	if want := ThisDevice().HWID; hwid != want || want == "" {
+	d := ThisDevice()
+	if want := d.ForPanel(srv.URL+"/sub/token", false).HWID; hwid != want || want == "" {
 		t.Errorf("x-hwid = %q, want %q", hwid, want)
+	}
+	// A subscription added before per-panel ids keeps the old one, so the
+	// panel does not count this machine as a new device.
+	if _, err := FetchAs(context.Background(), srv.Client(), srv.URL+"/sub/token", "", true); err == nil {
+		t.Fatal("placeholders accepted")
+	}
+	if hwid != d.HWID {
+		t.Errorf("legacy x-hwid = %q, want %q", hwid, d.HWID)
+	}
+}
+
+func TestPanelHWID(t *testing.T) {
+	d := Device{HWID: "legacy", machine: "machine-guid"}
+	a := d.ForPanel("https://panel-a.example/sub/one", false).HWID
+	a2 := d.ForPanel("https://PANEL-A.example/api/sub/two?x=1", false).HWID
+	b := d.ForPanel("https://panel-b.example/sub/one", false).HWID
+	if a != a2 {
+		t.Errorf("the same panel gets different ids: %s, %s", a, a2)
+	}
+	if a == b || a == "legacy" || len(a) != 32 {
+		t.Errorf("panel ids %q and %q", a, b)
+	}
+	if got := d.ForPanel("https://panel-a.example/sub/one", true).HWID; got != "legacy" {
+		t.Errorf("legacy id = %q", got)
+	}
+	if got := (Device{}).ForPanel("https://panel-a.example/", false).HWID; got != "" {
+		t.Errorf("unknown machine sends %q", got)
+	}
+	if got := PanelHost("https://User:pw@Panel.Example:8443/sub/x"); got != "panel.example:8443" {
+		t.Errorf("PanelHost = %q", got)
 	}
 }

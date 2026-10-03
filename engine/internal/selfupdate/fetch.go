@@ -36,7 +36,9 @@ type Source struct {
 var repoRE = regexp.MustCompile(`^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$`)
 
 // ParseSource accepts "github:OWNER/REPO" or an absolute folder path on this
-// computer (not a network path).
+// computer (not a network path). That the folder is reached without links
+// and on a local disk is checked each time it is read (checkLocal): the
+// folder may not exist yet when the setting is saved.
 func ParseSource(s string) (Source, error) {
 	s = strings.TrimSpace(s)
 	if repo, ok := strings.CutPrefix(s, "github:"); ok {
@@ -54,6 +56,15 @@ func ParseSource(s string) (Source, error) {
 		return Source{Dir: filepath.Clean(s)}, nil
 	}
 	return Source{}, fmt.Errorf("%q is neither github:OWNER/REPO nor a full folder path", s)
+}
+
+// readLocal reads a file of a folder source, which must be on this
+// computer (checkLocal).
+func readLocal(path string) ([]byte, error) {
+	if err := checkLocal(path); err != nil {
+		return nil, err
+	}
+	return os.ReadFile(path)
 }
 
 func (s Source) String() string {
@@ -87,11 +98,11 @@ func Check(ctx context.Context, client *http.Client, src Source, manifest string
 }
 
 func checkDir(src Source, manifest string, keys []string) (Release, error) {
-	body, err := os.ReadFile(filepath.Join(src.Dir, manifest))
+	body, err := readLocal(filepath.Join(src.Dir, manifest))
 	if err != nil {
 		return Release{}, fmt.Errorf("check for updates: %w", err)
 	}
-	sig, err := os.ReadFile(filepath.Join(src.Dir, manifest+".sig"))
+	sig, err := readLocal(filepath.Join(src.Dir, manifest+".sig"))
 	if err != nil {
 		return Release{}, fmt.Errorf("check for updates: %w", err)
 	}
@@ -285,6 +296,9 @@ func Download(ctx context.Context, client *http.Client, rel Release, dir string)
 func copyInstaller(ctx context.Context, client *http.Client, rel Release, w io.Writer) error {
 	var r io.ReadCloser
 	if rel.src.Dir != "" {
+		if err := checkLocal(rel.installer); err != nil {
+			return fmt.Errorf("download update: %w", err)
+		}
 		f, err := os.Open(rel.installer)
 		if err != nil {
 			return fmt.Errorf("download update: %w", err)

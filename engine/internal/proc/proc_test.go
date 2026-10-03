@@ -18,6 +18,21 @@ func TestLineWriter(t *testing.T) {
 	}
 }
 
+func TestStripANSI(t *testing.T) {
+	for in, want := range map[string]string{
+		"\x1b[31mERROR\x1b[0m[1] x":      "ERROR[1] x",
+		"\x1b[2K\x1b[1;32mok\x1b[m":      "ok",
+		"[31mERROR [0m[1] x":             "ERROR [1] x",
+		"[38;5;207m534559423 [0m 0ms] x": "534559423  0ms] x",
+		"keep [a,b] and [3] and [m]":     "keep [a,b] and [3] and [m]",
+		"plain":                          "plain",
+	} {
+		if got := StripANSI(in); got != want {
+			t.Errorf("StripANSI(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestTailKeepsLastLines(t *testing.T) {
 	tl := &tail{max: 3}
 	for i := 1; i <= 5; i++ {

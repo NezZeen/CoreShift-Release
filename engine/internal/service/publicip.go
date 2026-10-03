@@ -39,10 +39,12 @@ func (s *Service) PublicIP(ctx context.Context) (IPInfo, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	vpn := s.Status().State == Connected
-	tr := &http.Transport{Proxy: nil, DisableKeepAlives: true}
+	var proxy *url.URL
 	if vpn {
-		tr.Proxy = http.ProxyURL(&url.URL{Scheme: "socks5", Host: s.cfg.Listen.String()})
+		proxy = s.proxyURL()
 	}
+	tr := newTransport(proxy)
+	tr.DisableKeepAlives = true
 	defer tr.CloseIdleConnections()
 	client := &http.Client{Transport: tr}
 
