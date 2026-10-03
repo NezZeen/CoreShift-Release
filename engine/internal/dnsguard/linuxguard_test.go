@@ -325,7 +325,7 @@ func TestLinuxRecoverAcceptsOwnEntries(t *testing.T) {
 	}
 }
 
-func TestLinuxApplyRefusesUntrustedSymlink(t *testing.T) {
+func TestLinuxApplyLeavesUntrustedSymlink(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("symlinks need extra privileges on Windows")
 	}
@@ -338,8 +338,13 @@ func TestLinuxApplyRefusesUntrustedSymlink(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := newLinuxHarness(t, false, path)
-	if err := h.g.Apply(context.Background(), Config{Interface: "coreshift", Servers: tunDNS}); err == nil {
-		t.Fatal("Apply should refuse a link outside the trusted directories")
+	// Left alone, without failing the connection: the TUN layer hijacks
+	// DNS anyway.
+	if err := h.g.Apply(context.Background(), Config{Interface: "coreshift", Servers: tunDNS}); err != nil {
+		t.Fatal(err)
+	}
+	if h.g.journal.Len() != 0 {
+		t.Fatal("a change recorded for a link left alone")
 	}
 	if link, err := os.Readlink(path); err != nil || link != target {
 		t.Fatalf("link changed: %q, %v", link, err)
@@ -363,6 +368,8 @@ func TestTrustedLink(t *testing.T) {
 		"../home/user/resolv.conf":                 false,
 		"/run/systemd/resolve/../../../tmp/resolv": false,
 		"/runner/resolv.conf":                      false,
+		"/mnt/wsl/resolv.conf":                     true,
+		"/mnt/c/resolv.conf":                       false,
 	} {
 		if got := g.trustedLink("/etc/resolv.conf", target); got != want {
 			t.Errorf("trustedLink(%q) = %v, want %v", target, got, want)

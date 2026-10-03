@@ -1,0 +1,19 @@
+# pacman's install script for CoreShift (Arch, Manjaro, EndeavourOS).
+
+post_install() {
+	/usr/lib/coreshift/coreshift-setup.sh configure || true
+}
+
+post_upgrade() {
+	post_install
+}
+
+pre_remove() {
+	# Stopping restores the system's DNS.
+	/usr/lib/coreshift/coreshift-setup.sh stop || true
+}
+
+post_remove() {
+	systemctl daemon-reload 2>/dev/null || true
+	echo "CoreShift's settings and subscriptions stay in /var/lib/coreshift; remove the folder to forget them."
+}

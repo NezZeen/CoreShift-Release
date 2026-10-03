@@ -1,0 +1,29 @@
+#!/sbin/openrc-run
+# The CoreShift daemon under OpenRC (Alpine, Gentoo, Artix-openrc).
+# A template: install.sh fills in @BINDIR@ and @LIBDIR@ and installs it as
+# /etc/init.d/coreshift. See packaging/linux/README.md.
+
+name="CoreShift VPN daemon"
+description="Proxy cores, the TUN interface and DNS protection for CoreShift"
+command="@BINDIR@/coreshiftd"
+command_args="service run -data-dir /var/lib/coreshift -cores-dir @LIBDIR@/cores"
+# supervise-daemon starts the daemon again when it dies; the daemon undoes
+# DNS a crashed run left behind on every start.
+supervisor="supervise-daemon"
+respawn_delay=2
+respawn_max=0
+umask=077
+output_log="/var/log/coreshift.log"
+error_log="/var/log/coreshift.log"
+retry="TERM/20/KILL/5"
+
+depend() {
+	need net
+	after firewall
+}
+
+start_pre() {
+	# A crash, a power cut or a kill can leave the system's DNS pointing at
+	# a tunnel that is gone: undo that first, at boot too.
+	"$command" dns recover -journal /var/lib/coreshift/dnsguard.json || true
+}

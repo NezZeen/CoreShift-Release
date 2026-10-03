@@ -51,8 +51,9 @@ const maxResolvConf = 64 << 10
 
 // trustedLinkDirs are where a symlinked /etc/resolv.conf may point: the
 // files systemd-resolved, NetworkManager and resolvconf manage. A link
-// anywhere else is neither replaced nor restored.
-var trustedLinkDirs = []string{"/run/", "/var/run/", "/etc/resolvconf/", "/usr/lib/systemd/", "/lib/systemd/"}
+// anywhere else is neither replaced nor restored. /mnt/wsl holds the
+// resolv.conf WSL generates for its distributions.
+var trustedLinkDirs = []string{"/run/", "/var/run/", "/etc/resolvconf/", "/usr/lib/systemd/", "/lib/systemd/", "/mnt/wsl/"}
 
 type commandRunner func(ctx context.Context, name string, args ...string) error
 
@@ -254,8 +255,9 @@ func (g *linuxGuard) applyResolvConf(cfg Config) error {
 	}
 	if ch.Symlink != "" && !g.trustedLink(ch.Path, ch.Symlink) {
 		// Restoring an unusual link would have to be trusted later; better
-		// to touch nothing. The TUN layer still hijacks port 53.
-		return fmt.Errorf("dnsguard: %s links to %s, which CoreShift does not manage", ch.Path, ch.Symlink)
+		// to touch nothing. Every query still reaches the tunnel's DNS:
+		// the TUN layer hijacks port 53 whatever the resolver.
+		return nil
 	}
 	if len(ch.Content) > maxResolvConf {
 		return fmt.Errorf("dnsguard: %s is larger than %d KB", ch.Path, maxResolvConf>>10)
