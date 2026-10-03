@@ -5,98 +5,47 @@ const _weekdaysLong = ['понедельник', 'вторник', 'среда',
 
 String _dayLabel(DateTime d) => '${_weekdaysLong[d.weekday - 1]}, ${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}';
 
-/// Today, the week and the way into the details: the traffic through the
-/// VPN, with the week's bars.
-class _TrafficCard extends StatelessWidget {
+/// The traffic through the VPN in one line: today's, and the week's in
+/// bars behind «Подробнее».
+class _TrafficRow extends StatelessWidget {
   final AppState state;
-  const _TrafficCard({required this.state});
+  const _TrafficRow({required this.state});
 
   @override
   Widget build(BuildContext context) {
-    WidgetsBinding.instance.addPostFrameCallback((_) => state.watchStats());
-    if (state.statsUnsupported || !state.statsLoaded) return const SizedBox();
+    final p = context.pal;
     final week = state.statsDays(7);
     final today = week.isEmpty ? TrafficDay(DateTime.now(), 0, 0) : week.last;
-    void open() => showTrafficStats(context, state);
-    return Panel(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(bottom: 14),
-            child: Row(
-              children: [
-                Text('Трафик', style: display(16)),
-                if (!isCompact(context)) ...[
-                  const SizedBox(width: 10),
-                  Flexible(
-                    child: Text(
-                      'через VPN, за 7 дней',
-                      style: TextStyle(color: context.pal.muted, fontSize: 12),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-                const Spacer(),
-                Btn(label: 'Подробнее', small: true, onPressed: open),
-              ],
-            ),
-          ),
-          Wrap(
-            spacing: 32,
-            runSpacing: 10,
-            children: [
-              _Total(label: 'Сегодня', down: today.down, up: today.up),
-              _Total(label: 'За 7 дней', down: week.fold(0, (n, d) => n + d.down), up: week.fold(0, (n, d) => n + d.up)),
-            ],
-          ),
-          const SizedBox(height: 14),
-          SizedBox(height: 96, child: _TrafficChart(days: week)),
-        ],
-      ),
-    );
-  }
-}
-
-class _Amount extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final int bytes;
-  const _Amount({required this.icon, required this.color, required this.bytes});
-
-  @override
-  Widget build(BuildContext context) => Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      Icon(icon, size: 14, color: color),
-      const SizedBox(width: 4),
-      Text(formatBytes(bytes), style: figures(17)),
-    ],
-  );
-}
-
-class _Total extends StatelessWidget {
-  final String label;
-  final int down;
-  final int up;
-  const _Total({required this.label, required this.down, required this.up});
-
-  @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(label, style: TextStyle(fontSize: 11, color: context.pal.muted)),
-      const SizedBox(height: 2),
-      Row(
+    final total = week.fold<int>(0, (n, d) => n + d.total);
+    return _ToolRow(
+      icon: Icons.bar_chart,
+      title: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _Amount(icon: Icons.south, color: okColor, bytes: down),
-          const SizedBox(width: 14),
-          _Amount(icon: Icons.north, color: accent, bytes: up),
+          const Text('Трафик', style: TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(width: 10),
+          Flexible(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.south, size: 13, color: okColor),
+                  Text(' ${formatBytes(today.down)}  ', style: figures(15)),
+                  const Icon(Icons.north, size: 13, color: accent),
+                  Text(' ${formatBytes(today.up)}', style: figures(15)),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
-    ],
-  );
+      note: 'сегодня; за неделю ${formatBytes(total)}',
+      noteColor: p.dim,
+      action: Btn(label: 'Подробнее', small: true, onPressed: () => showTrafficStats(context, state)),
+    );
+  }
 }
 
 /// Bars per day: the download below in green, the upload above in blue.

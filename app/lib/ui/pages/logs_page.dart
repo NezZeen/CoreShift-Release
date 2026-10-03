@@ -156,12 +156,12 @@ class _Line extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.pal;
     final isCore = allCores.contains(l.source);
-    final srcColor = isCore ? coreStyle(l.source).color : (l.level == LogLevel.swap ? swapColor : p.muted);
+    final srcColor = isCore ? p.ink(coreStyle(l.source).color) : (l.level == LogLevel.swap ? p.ink(swapColor) : p.muted);
     final msgColor = switch (l.level) {
-      LogLevel.err => errColor,
-      LogLevel.warn => warnColor,
-      LogLevel.ok => okColor,
-      LogLevel.swap => swapColor,
+      LogLevel.err => p.errInk,
+      LogLevel.warn => p.warnInk,
+      LogLevel.ok => p.okInk,
+      LogLevel.swap => p.ink(swapColor),
       LogLevel.info => p.text,
     };
     const mono = TextStyle(fontFamily: monoFont, fontFamilyFallback: monoFallback, fontSize: 12.5, height: 1.45);

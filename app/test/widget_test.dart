@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -33,7 +35,7 @@ void main() {
     return state;
   }
 
-  const pages = ['Серверы', 'Правила', 'Проверка', 'Настройки', 'Ядра', 'Журнал', 'Главная'];
+  const pages = ['Серверы', 'Правила', 'Настройки', 'Ядра', 'Журнал', 'Главная'];
 
   /// Opens [page]: a main page from the navigation, the cores from their
   /// card in the settings.
@@ -289,8 +291,10 @@ void main() {
 
   testWidgets('DNS leak check', (tester) async {
     final state = await pumpApp(tester);
-    await tester.tap(find.text('Проверка').first);
+    // In the settings, beside the switch that guards against leaks.
+    await open(tester, 'Настройки');
     await tester.pump();
+    await tester.ensureVisible(find.text('Проверка утечки DNS'));
     expect(find.text('Подключитесь в режиме «Все приложения», чтобы проверить'), findsOneWidget);
     await tester.runAsync(() async {
       await state.connect();
@@ -302,7 +306,7 @@ void main() {
     expect(find.textContaining('Netherlands'), findsWidgets);
     expect(tester.takeException(), isNull);
     await tester.runAsync(() => state.disconnect());
-    // The traffic history on «Проверка» is on its way.
+    // The home page's traffic history is on its way.
     await tester.pump(const Duration(seconds: 1));
     await tester.pump(const Duration(seconds: 1));
   });
@@ -799,7 +803,9 @@ void main() {
       expect(find.text('Amsterdam'), findsWidgets);
       // The subscription is on its card, the cores on their page, the mode
       // in the settings.
-      for (final t in ['Очередь ядер', 'Через VPN', 'Смен ядра', 'Трафик', 'АВТОСВАП', 'Xray-core', 'подписка ещё']) {
+      // No tab of tests either: the speed test and the traffic are a line
+      // each under the route.
+      for (final t in ['Очередь ядер', 'Через VPN', 'Смен ядра', 'АВТОСВАП', 'Xray-core', 'подписка ещё', 'Проверка']) {
         expect(find.textContaining(t), findsNothing, reason: '$t at $size');
       }
       await tester.runAsync(() async {
@@ -977,8 +983,8 @@ void main() {
     testWidgets('every page fits a phone ${width.round()} wide', (tester) async {
       final state = await pumpApp(tester, size: Size(width, 800));
       expect(find.byType(NavigationBar), findsOneWidget);
-      // Six tabs, the journal one of them.
-      expect(find.byType(NavigationDestination), findsNWidgets(6));
+      // Five tabs, the journal one of them.
+      expect(find.byType(NavigationDestination), findsNWidgets(5));
       final problems = <String>[];
       Future<void> check(String page) async {
         await tester.pump();
@@ -987,7 +993,7 @@ void main() {
         }
       }
 
-      for (final page in ['Серверы', 'Правила', 'Проверка', 'Журнал', 'Настройки', 'Главная']) {
+      for (final page in ['Серверы', 'Правила', 'Журнал', 'Настройки', 'Главная']) {
         await tester.tap(find.descendant(of: find.byType(NavigationBar), matching: find.text(page)));
         await check(page);
         // Scroll through the page, so rows further down are laid out too.
@@ -1018,9 +1024,10 @@ void main() {
           await Future.delayed(const Duration(milliseconds: 20));
         }
       });
-      // The speed test is on «Проверка».
-      await tester.tap(size.width > 600 ? find.text('Проверка').first : find.descendant(of: find.byType(NavigationBar), matching: find.text('Проверка')));
+      // The speed test is a line on the home page.
       await tester.pump(const Duration(seconds: 1));
+      await tester.ensureVisible(find.text('Проверить'));
+      await tester.pump();
       expect(find.textContaining('Скорость вашего интернета без VPN'), findsOneWidget, reason: '$size');
       await tester.tap(find.text('Проверить'));
       for (var i = 0; i < 6; i++) {
@@ -1301,11 +1308,36 @@ void main() {
     await tester.pump(const Duration(seconds: 6));
   });
 
+  test('tinted text reads on the light theme', () {
+    double contrast(Color a, Color b) {
+      final la = a.computeLuminance(), lb = b.computeLuminance();
+      return (max(la, lb) + .05) / (min(la, lb) + .05);
+    }
+
+    const p = Palette.light;
+    final colors = [
+      for (final pr in ['vless', 'vmess', 'trojan', 'shadowsocks', 'hysteria2', 'tuic', 'wireguard', 'anytls', 'other']) protocolColor(pr),
+      for (final k in allCores) coreStyle(k).color,
+      accent,
+      okColor,
+      warnColor,
+      errColor,
+      swapColor,
+    ];
+    for (final c in colors) {
+      // On a chip: the panel with the colour's tint over it.
+      final chip = Color.alphaBlend(c.withValues(alpha: .14), p.surface);
+      expect(contrast(p.ink(c), chip), greaterThanOrEqualTo(4.5), reason: '$c');
+    }
+    // The dark theme keeps its colours.
+    expect(Palette.dark.ink(protocolColor('hysteria2')), protocolColor('hysteria2'));
+  });
+
   testWidgets('the journal: all or errors, and a copy for support', (tester) async {
     final state = await pumpApp(tester);
     await open(tester, 'Журнал');
     await tester.pump();
-    // A main page: no way back to another one, and not on «Проверка».
+    // A main page: no way back to another one.
     expect(find.byIcon(Icons.arrow_back), findsNothing);
     expect(find.text('Все'), findsOneWidget);
     expect(find.text('Ошибки'), findsOneWidget);
