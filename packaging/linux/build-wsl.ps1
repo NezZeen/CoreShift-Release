@@ -50,7 +50,11 @@ $script = @"
 set -euo pipefail
 work=/root/coreshift-release-build
 rm -rf "`$work"
-git -c safe.directory='*' clone -q --branch '$Ref' '$(WslPath $gitDir)' "`$work"
+# The repository on the Windows disk belongs to another user as WSL sees
+# it; git refuses to read it unless told it is safe.
+git config --global --get-all safe.directory | grep -qx '$(WslPath $gitDir)' ||
+	git config --global --add safe.directory '$(WslPath $gitDir)'
+git clone -q --branch '$Ref' '$(WslPath $gitDir)' "`$work"
 cd "`$work"
 packaging/linux/build.sh $coresArg --out "`$work/dist"
 cp "`$work"/dist/coreshift[-_]* '$(WslPath $OutDir)/'

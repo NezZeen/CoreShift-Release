@@ -12,8 +12,11 @@
 
 ```
 cd engine && go vet ./... && go test ./...
+cd engine && GOOS=linux go build ./... && GOOS=linux go vet ./... && GOOS=linux GOARCH=arm64 go build ./...
 cd app && flutter analyze && flutter test
 ```
+
+Linux-пакеты собираются и проверяются в WSL (`Ubuntu-24.04`): `packaging\linux\build-wsl.ps1 -Ref <ветка>`, подробности — в [packaging/linux/README.md](packaging/linux/README.md).
 
 Flutter стоит в `C:\src\flutter` (в PATH пользователя, но не обязательно в PATH сессии: добавить `C:\src\flutter\bin`). Код Dart форматируется `dart format --line-length 160`.
 
