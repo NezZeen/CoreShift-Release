@@ -140,6 +140,12 @@ func (s *Service) UpdateCore(ctx context.Context, k core.Kind) (string, error) {
 	}); err != nil {
 		return "", err
 	}
+	// Never an older version, nor the same one again: a release the
+	// project took back, or an answer that is not GitHub's, would
+	// otherwise replace a newer core.
+	if cur := s.CoreVersions(ctx)[k]; cur != "" && !newerVersion(rel.Version, cur) {
+		return "", fmt.Errorf("%s %s is installed; the latest release, %s, is not newer", k, cur, rel.Version)
+	}
 	var v string
 	if err := s.viaProxyOrDirect(ctx, 10*time.Minute, func(c *http.Client) (err error) {
 		v, err = coreupdate.Install(ctx, c, rel, bin)
