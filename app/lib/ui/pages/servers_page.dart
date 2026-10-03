@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -47,9 +49,17 @@ class _ServersPageState extends State<ServersPage> {
   String? subFilter; // null = all subscriptions
   String protoFilter = '';
   String query = '';
-  final collapsed = <String>{};
+
+  /// Folded countries and subscriptions; kept, so they stay folded when
+  /// the user comes back.
+  late final collapsed = <String>{...?(widget.state.prefs['servers_folded'] as List?)?.whereType<String>()};
 
   AppState get s => widget.state;
+
+  void _toggle(String id) {
+    setState(() => collapsed.contains(id) ? collapsed.remove(id) : collapsed.add(id));
+    s.setPref('servers_folded', collapsed.toList());
+  }
 
   @override
   void initState() {
@@ -105,7 +115,7 @@ class _ServersPageState extends State<ServersPage> {
     } else if (multi) {
       for (final sub in s.subscriptions) {
         final mine = rest.where((r) => r.$1.id == sub.id).toList();
-        if (mine.isNotEmpty) out.add(_Section(id: 's:${sub.id}', title: sub.displayName, rows: mine));
+        if (mine.isNotEmpty) out.add(_Section(id: 's:${sub.id}', title: sub.displayName, rows: mine, collapsible: true));
       }
     } else if (rest.isNotEmpty) {
       out.add(_Section(id: 'all', rows: rest, showSub: multi));
@@ -293,8 +303,9 @@ class _ServersPageState extends State<ServersPage> {
             child: _NodeTable(
               state: s,
               sections: sections,
-              collapsed: collapsed,
-              onToggle: (id) => setState(() => collapsed.contains(id) ? collapsed.remove(id) : collapsed.add(id)),
+              // A search shows what it found, folded or not.
+              collapsed: query.isEmpty ? collapsed : const {},
+              onToggle: _toggle,
             ),
           ),
         ],

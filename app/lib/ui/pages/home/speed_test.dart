@@ -120,23 +120,23 @@ class _CompactSpeedTest extends StatelessWidget {
       return v.toStringAsFixed(v >= 100 ? 0 : 1);
     }
 
+    // One unit for both: a phone has no room for two. The line shrinks as
+    // a whole rather than cutting the unit when the width is short.
     final figures = t.phase == SpeedPhase.idle || t.phase == SpeedPhase.failed
         ? null
-        : Row(
-            children: [
-              Icon(Icons.south, size: 14, color: okColor),
-              Text(' ${figure(t.downBps)}  ', style: mono),
-              Icon(Icons.north, size: 14, color: accent),
-              Text(' ${figure(t.upBps)} ', style: mono),
-              // One unit for both: a phone has no room for two.
-              Flexible(
-                child: Text(
-                  '$unit${t.latencyMs > 0 ? ' · ${t.latencyMs} мс' : ''}',
-                  style: TextStyle(fontSize: 12, color: p.muted),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
+        : FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.south, size: 14, color: okColor),
+                Text(' ${figure(t.downBps)}  ', style: mono),
+                Icon(Icons.north, size: 14, color: accent),
+                Text(' ${figure(t.upBps)} ', style: mono),
+                Text('$unit${t.latencyMs > 0 ? ' · ${t.latencyMs} мс' : ''}', style: TextStyle(fontSize: 12, color: p.muted)),
+              ],
+            ),
           );
     return Panel(
       padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
