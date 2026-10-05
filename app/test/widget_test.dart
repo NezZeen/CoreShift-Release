@@ -1514,16 +1514,26 @@ void main() {
     final state = await pumpApp(tester);
     final t = DateTime.now();
     final before = state.logs.length;
-    for (final reason in ['waiting', 'back', 'lost', 'back', 'reconnect']) {
-      state.injectEvent(Event(time: t, kind: 'network', reason: reason));
+    // A second apart: the journal drops an exact repeat (same time, source
+    // and text) as a replay of the event stream.
+    final reasons = ['waiting', 'back', 'lost', 'back', 'reconnect'];
+    for (var i = 0; i < reasons.length; i++) {
+      state.injectEvent(
+        Event(
+          time: t.add(Duration(seconds: i)),
+          kind: 'network',
+          reason: reasons[i],
+        ),
+      );
     }
+    final later = t.add(Duration(seconds: reasons.length));
     // A service before 0.7.2 told a failure twice; this one once, in Russian.
     const old = 'resolve server node.example: lookup node.example: no such host';
-    state.injectEvent(Event(time: t, kind: 'state', state: 'failed', error: old));
-    state.injectEvent(Event(time: t, kind: 'error', error: old));
+    state.injectEvent(Event(time: later, kind: 'state', state: 'failed', error: old));
+    state.injectEvent(Event(time: later, kind: 'error', error: old));
     const now = 'адрес сервера node.example не найден в DNS: имя неверное или сервер убран, обновите подписку';
-    state.injectEvent(Event(time: t, kind: 'state', state: 'failed', error: now));
-    state.injectEvent(Event(time: t, kind: 'state', state: 'no-network'));
+    state.injectEvent(Event(time: later, kind: 'state', state: 'failed', error: now));
+    state.injectEvent(Event(time: later, kind: 'state', state: 'no-network'));
     final lines = state.logs.skip(before).map((l) => '${l.source}: ${l.message}').toList();
     expect(lines, [
       'сеть: сети нет: подключусь, как только она появится',
