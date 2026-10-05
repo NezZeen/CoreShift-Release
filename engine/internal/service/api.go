@@ -346,15 +346,17 @@ func (a *api) events(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	defer a.streams.add(cancel)()
 
+	// Subscribed before the answer: a client that sees the stream open
+	// gets every event from then on.
+	events, unsubscribe := a.svc.Subscribe(r.URL.Query().Get("replay") == "1")
+	defer unsubscribe()
+
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.WriteHeader(http.StatusOK)
 	if rc.Flush() != nil {
 		return
 	}
-
-	events, unsubscribe := a.svc.Subscribe(r.URL.Query().Get("replay") == "1")
-	defer unsubscribe()
 	if r.URL.Query().Get("app") == "1" {
 		defer a.svc.AttachApp()()
 	}
