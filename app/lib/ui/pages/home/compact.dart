@@ -64,8 +64,11 @@ class _CompactSpeed extends StatelessWidget {
   final AppState state;
   const _CompactSpeed({required this.state});
 
+  // Redrawn with every traffic sample, unlike the page around it.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ListenableBuilder(listenable: state.traffic, builder: (context, _) => _build(context));
+
+  Widget _build(BuildContext context) {
     final p = context.pal;
     final (up, down) = state.speed.isEmpty ? (0, 0) : state.speed.last;
     Widget metric(IconData icon, Color color, String label, int rate) => Expanded(
