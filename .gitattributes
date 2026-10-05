@@ -2,3 +2,6 @@
 * text=auto eol=lf
 *.png binary
 *.ico binary
+# Rule sets (engine/internal/ruleset/data): zlib data, which may hold no
+# NUL byte and pass for text.
+*.srs binary

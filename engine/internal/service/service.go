@@ -312,6 +312,9 @@ func New(cfg Config) (*Service, error) {
 	if cfg.fetchRuleSet != nil {
 		s.rules.fetch = cfg.fetchRuleSet
 	}
+	if cfg.ruleSetBaseline != nil {
+		s.rules.baseline = cfg.ruleSetBaseline
+	}
 	// The guard is needed even with TUN off, to undo what a crashed run left.
 	if cfg.guard == nil {
 		g, err := dnsguard.New(filepath.Join(cfg.DataDir, "dnsguard.json"))
