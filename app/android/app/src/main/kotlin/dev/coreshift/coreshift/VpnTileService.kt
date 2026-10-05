@@ -61,6 +61,7 @@ class VpnTileService : TileService() {
             tile.subtitle = when (VpnStatus.state) {
                 "connected" -> VpnStatus.node.ifEmpty { "Подключено" }
                 "connecting" -> "Подключение…"
+                "no-network" -> "Нет сети"
                 "disconnecting" -> "Отключение…"
                 else -> "Выключен"
             }

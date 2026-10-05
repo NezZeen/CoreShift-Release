@@ -140,7 +140,7 @@ func (r *ruleSets) get(ctx context.Context, sets []geoSet, proxy *url.URL) (doma
 		case err != nil:
 			if err := r.download(ctx, gs, path, proxy); err != nil {
 				r.publish(Event{Kind: "rules", Reason: gs.Tag,
-					Error: fmt.Sprintf("rule set %s unavailable, its sites go through the tunnel: %v", gs.Tag, err)})
+					Error: fmt.Sprintf("база %s не загрузилась, её сайты пойдут через туннель: %v", gs.Tag, err)})
 				continue
 			}
 			r.publish(Event{Kind: "rules", Reason: gs.Tag, Line: "downloaded"})
@@ -176,7 +176,7 @@ func (r *ruleSets) refresh(gs geoSet, path string, proxy *url.URL) {
 		r.mu.Unlock()
 	}()
 	if err := r.download(context.Background(), gs, path, proxy); err != nil {
-		r.publish(Event{Kind: "rules", Reason: gs.Tag, Error: fmt.Sprintf("refresh rule set %s (keeping the old one): %v", gs.Tag, err)})
+		r.publish(Event{Kind: "rules", Reason: gs.Tag, Error: fmt.Sprintf("база %s не обновилась, работает прежняя: %v", gs.Tag, err)})
 		return
 	}
 	r.publish(Event{Kind: "rules", Reason: gs.Tag, Line: "updated"})

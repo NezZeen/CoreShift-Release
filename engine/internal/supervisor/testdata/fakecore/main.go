@@ -9,6 +9,8 @@
 //	unhealthy               accept SOCKS but answer health checks with 503
 //	unhealthy-after:<dur>   healthy at first, 503 afterwards
 //	hang-after:<dur>        serve, then stop taking connections but keep running
+//	offline-file:<file>     answer health checks with 503 while <file> exists,
+//	                        as every check fails while the device has no network
 //	port-taken              say its port is taken (as mihomo does), serve anyway
 //	port-taken-after:<dur>  serve, then say its port is taken
 //
@@ -55,6 +57,7 @@ func main() {
 	verb, arg, _ := strings.Cut(mode, ":")
 	healthyUntil := time.Time{} // zero: forever
 	var hangAfter time.Duration
+	offlineFile := ""
 	switch verb {
 	case "crash-start":
 		fmt.Println("fatal: config rejected by fake core")
@@ -74,6 +77,8 @@ func main() {
 		}()
 	case "hang-after":
 		hangAfter, _ = time.ParseDuration(arg)
+	case "offline-file":
+		offlineFile = arg
 	case "port-taken":
 		// What mihomo prints when its port is taken, and it keeps running;
 		// the fake then serves anyway, as whatever holds the port would.
@@ -107,6 +112,11 @@ func main() {
 			return
 		}
 		healthy := healthyUntil.IsZero() || time.Now().Before(healthyUntil)
+		if offlineFile != "" {
+			if _, err := os.Stat(offlineFile); err == nil {
+				healthy = false
+			}
+		}
 		go serve(c, healthy)
 	}
 }

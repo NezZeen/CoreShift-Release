@@ -3,8 +3,10 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/netip"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -73,9 +75,36 @@ func TestReachTellsServerFromNetwork(t *testing.T) {
 		cfg := Config{AppOutsideVPN: c.outside}
 		c.cfg(&cfg, nil)
 		s := &Service{cfg: cfg}
-		if got, detail := s.checkReach(context.Background(), c.n, ip); got != c.want {
+		got, detail := s.checkReach(context.Background(), c.n, ip)
+		if got != c.want {
 			t.Errorf("%s: %s (%s), want %s", name, got, detail, c.want)
 		}
+		// The journal shows it as it is: in Russian, the errors in words.
+		if !strings.ContainsAny(detail, "аеиоуы") || strings.Contains(detail, "i/o timeout") {
+			t.Errorf("%s: detail %q", name, detail)
+		}
+	}
+}
+
+func TestNetErrText(t *testing.T) {
+	for err, want := range map[error]string{
+		context.DeadlineExceeded:                        "нет ответа",
+		errors.New("dial tcp 1.1.1.1:443: i/o timeout"): "нет ответа",
+		errors.New("connectex: A socket operation was attempted to an unreachable host."): "адрес недоступен",
+		errors.New("connect: connection refused"):                                         "соединение отклонено",
+		errors.New("request timed out"):                                                   "нет ответа",
+		errors.New("weird"):                                                               "weird",
+	} {
+		if got := netErrText(err); got != want {
+			t.Errorf("%v: %q, want %q", err, got, want)
+		}
+	}
+	got := netErrsText([]error{
+		fmt.Errorf("%s: %w", "8.8.8.8:443", errors.New("i/o timeout")),
+		fmt.Errorf("%s: %w", "1.1.1.1:443", errors.New("network is unreachable")),
+	})
+	if got != "1.1.1.1:443 — адрес недоступен; 8.8.8.8:443 — нет ответа" {
+		t.Errorf("hosts: %q", got)
 	}
 }
 

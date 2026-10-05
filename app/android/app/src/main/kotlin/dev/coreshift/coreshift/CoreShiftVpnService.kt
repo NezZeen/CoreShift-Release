@@ -71,7 +71,9 @@ class CoreShiftVpnService : VpnService() {
     /** Stops the service if no VPN was built, as after a failed autostart. */
     @Synchronized
     fun stopIfIdle() {
-        if (tun == null) shutdown()
+        // Waiting for a network keeps the service, and with it the engine's
+        // process, until the connection is made or cancelled.
+        if (tun == null && VpnStatus.state != "no-network") shutdown()
     }
 
     /**
@@ -201,6 +203,13 @@ class CoreShiftVpnService : VpnService() {
                 .setContentText("↓ ${VpnStatus.formatRate(s.down)}    ↑ ${VpnStatus.formatRate(s.up)}")
                 .setSubText("Подключено")
             if (s.since > 0) b.setWhen(s.since).setUsesChronometer(true).setShowWhen(true)
+        } else if (s.state == "no-network") {
+            b.setContentTitle("Нет сети")
+                .setContentText(
+                    if (tun != null) "VPN продолжит работу, когда сеть вернётся" else "Подключусь, когда появится сеть",
+                )
+                .setSubText(s.node.ifEmpty { "CoreShift" })
+                .setShowWhen(false)
         } else {
             b.setContentTitle(if (s.state == "disconnecting") "Отключение…" else "Подключение…")
                 .setContentText(s.node.ifEmpty { "CoreShift" })

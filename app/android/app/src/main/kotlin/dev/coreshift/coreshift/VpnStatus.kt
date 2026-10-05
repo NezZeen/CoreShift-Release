@@ -29,7 +29,8 @@ object VpnStatus {
     var up = 0L
         private set
 
-    val active get() = state == "connecting" || state == "connected"
+    /** "no-network": waiting for a network to connect, or held until it returns. */
+    val active get() = state == "connecting" || state == "connected" || state == "no-network"
 
     fun set(state: String, node: String, since: Long) {
         this.state = state

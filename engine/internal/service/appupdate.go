@@ -126,7 +126,7 @@ func (s *Service) appUpdateSettings() store.AppUpdate {
 // connected reports whether the VPN is on or coming up.
 func (s *Service) connected() bool {
 	st := s.Status().State
-	return st == Connected || st == Connecting || st == Disconnecting
+	return st.active() || st == Disconnecting
 }
 
 // CheckAppUpdate asks the updater to check now. It answers at once; the
@@ -349,7 +349,7 @@ func (s *Service) finishAppUpdate(ctx context.Context) {
 	}
 	if len(p.Sessions) > 0 {
 		if err := s.cfg.startApp(p.Sessions); err != nil {
-			s.hub.publish(Event{Kind: "app-update", Error: "start the app after the update: " + err.Error()})
+			s.hub.publish(Event{Kind: "app-update", Error: "не удалось запустить приложение после обновления: " + err.Error()})
 		}
 	}
 	if p.Reconnect {

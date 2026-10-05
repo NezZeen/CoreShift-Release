@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -503,5 +504,74 @@ func TestFailedHealthCheckNamesEveryAddress(t *testing.T) {
 	}
 	if !errors.Is(err, first) {
 		t.Error("the error does not unwrap to the first address's")
+	}
+}
+
+// Without a network every check fails, whatever the core: nothing is
+// swapped, restarted or reported as no better until the network returns.
+func TestOfflineHoldsTheCore(t *testing.T) {
+	for _, k := range []string{"XRAY", "SING_BOX", "MIHOMO"} {
+		t.Setenv("FAKECORE_"+k, "unhealthy")
+	}
+	var offline atomic.Bool
+	offline.Store(true)
+	h := newHarness(t, func(c *Config) { c.Offline = offline.Load })
+	connect(t, h, trojanLink)
+	h.waitFor(t, "a failed check", 5*time.Second, func(e Event) bool { return e.Kind == EventHealth && e.Err != nil })
+	time.Sleep(1500 * time.Millisecond) // many checks, 100ms apart
+	for _, e := range h.drain() {
+		switch e.Kind {
+		case EventSwap, EventCoreFailed, EventNoBetter, EventRestart:
+			t.Fatalf("offline, yet %s for %s", e.Kind, e.Core)
+		}
+	}
+	if st := h.s.Status(); st.State != Connected || st.Core != core.Xray {
+		t.Fatalf("status = %+v", st)
+	}
+	// The network is back and the checks still fail: now it is the server's
+	// or the cores' business again.
+	offline.Store(false)
+	h.waitFor(t, "no better core", 15*time.Second, func(e Event) bool { return e.Kind == EventNoBetter })
+}
+
+// With the screen off as well, no network still wins: nothing is counted
+// or swapped, and the checks keep the idle pace.
+func TestOfflineHoldsTheCoreWhenIdle(t *testing.T) {
+	for _, k := range []string{"XRAY", "SING_BOX", "MIHOMO"} {
+		t.Setenv("FAKECORE_"+k, "unhealthy")
+	}
+	h := newHarness(t, func(c *Config) {
+		c.Offline = func() bool { return true }
+		c.IdleHealthInterval = 400 * time.Millisecond
+	})
+	h.s.SetIdle(true)
+	connect(t, h, trojanLink)
+	time.Sleep(1500 * time.Millisecond)
+	checks := 0
+	for _, e := range h.drain() {
+		switch e.Kind {
+		case EventSwap, EventCoreFailed, EventNoBetter, EventRestart:
+			t.Fatalf("offline and idle, yet %s for %s", e.Kind, e.Core)
+		case EventHealth:
+			checks++
+		}
+	}
+	// Right away, then every 400ms: not every failRetry-capped 100ms.
+	if checks == 0 || checks > 6 {
+		t.Errorf("%d checks in 1.5s", checks)
+	}
+}
+
+// A core whose port stops answering while the network is gone is not
+// restarted: the network, not the core, is at fault.
+func TestOfflineDoesNotRestartAHungCore(t *testing.T) {
+	t.Setenv("FAKECORE_XRAY", "hang-after:300ms")
+	h := newHarness(t, func(c *Config) { c.Offline = func() bool { return true } })
+	connect(t, h, trojanLink)
+	time.Sleep(2500 * time.Millisecond) // online it is restarted within a second
+	for _, e := range h.drain() {
+		if e.Kind == EventRestart || e.Kind == EventSwap {
+			t.Fatalf("offline, yet %s for %s", e.Kind, e.Core)
+		}
 	}
 }

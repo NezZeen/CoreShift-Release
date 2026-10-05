@@ -386,6 +386,7 @@ class _Tray {
       ConnState.connecting => ('busy', 'CoreShift — подключение…'),
       ConnState.disconnecting => ('busy', 'CoreShift — отключение…'),
       ConnState.failed => ('idle', 'CoreShift — ошибка подключения'),
+      ConnState.noNetwork => ('busy', 'CoreShift — нет сети, ждём её${st.node.isEmpty ? '' : ': ${st.node}'}'),
       ConnState.idle => ('idle', 'CoreShift — отключено'),
     };
     final key = '$image|$tip|${st.active}|${state.busy}|${state.online}';

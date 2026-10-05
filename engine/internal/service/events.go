@@ -10,8 +10,11 @@ import (
 // Event is what the UI receives, as JSON over the API or directly on Android.
 type Event struct {
 	Time time.Time `json:"time"`
-	// Kind is one of: state, core-state, swap, core-failed, health, log, tun,
-	// dns, error; "latency" for node latency tests (Reason "started" and
+	// Kind is one of: state (a failed connection carries its Error),
+	// core-state, swap, core-failed, health, log, tun, dns; "network" when
+	// the device lost its network or got it back (Reason "lost", "waiting",
+	// "back" or "reconnect", see netwatch.go; Line says it in words);
+	// "latency" for node latency tests (Reason "started" and
 	// "finished" around one result per node); "store" when settings,
 	// subscriptions or the selection
 	// changed (Reason says which, see store.Change); "options" when the
