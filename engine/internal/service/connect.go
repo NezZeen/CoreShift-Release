@@ -76,7 +76,7 @@ func (s *Service) connectOp(ctx context.Context, n node.Node) error {
 	s.mu.Lock()
 	s.gen++
 	gen, opts := s.gen, s.opts
-	s.pending = false
+	s.pending, s.optsPending, s.connOpts = false, false, opts
 	s.lastNode, s.hasLast = n, true
 	s.mu.Unlock()
 	s.sup.SetPolicy(opts.policy())

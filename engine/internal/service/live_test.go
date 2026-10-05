@@ -125,7 +125,7 @@ func ssInbound(port uint16) map[string]any {
 // ssLink names the server "localhost": panels' placeholders have loopback
 // addresses, which a fetched subscription leaves out.
 func ssLink(port uint16, name string) string {
-	return fmt.Sprintf("ss://%s@localhost:%d#%s",base64.RawURLEncoding.EncodeToString([]byte("aes-128-gcm:live-test")), port, url.PathEscape(name))
+	return fmt.Sprintf("ss://%s@localhost:%d#%s", base64.RawURLEncoding.EncodeToString([]byte("aes-128-gcm:live-test")), port, url.PathEscape(name))
 }
 
 // killListener ends the process listening on port of 127.0.0.1, as a core
