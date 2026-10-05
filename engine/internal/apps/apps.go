@@ -24,12 +24,16 @@ func Running() ([]App, error) {
 	return tidy(list), nil
 }
 
+// own are CoreShift's programs: the window talks only to the service, and
+// the service's own traffic never goes through the tunnel.
+var own = map[string]bool{"coreshift": true, "coreshift.exe": true, "coreshiftd": true, "coreshiftd.exe": true}
+
 func tidy(list []App) []App {
 	seen := map[string]bool{}
 	out := []App{}
 	for _, a := range list {
 		key := strings.ToLower(a.Name)
-		if a.Name == "" || a.Path == "" || seen[key] || isSystem(a.Path) {
+		if a.Name == "" || a.Path == "" || seen[key] || own[key] || isSystem(a.Path) {
 			continue
 		}
 		seen[key] = true
