@@ -28,6 +28,11 @@ func parseXrayJSON(configs []fields) (Result, error) {
 	res := Result{Format: FormatXray}
 	idx := 0
 	template := false
+	// byTag marks the nodes named after their outbound's tag ("proxy-2"),
+	// as the servers of a config that holds several are: Remnawave lists
+	// its automatic selection ("🎲 Автовыбор") as such a config, next to a
+	// config per server named by its "remarks".
+	var byTag []bool
 	for _, cfg := range configs {
 		if _, ok := cfg["remnawave"]; ok {
 			template = true
@@ -47,15 +52,37 @@ func parseXrayJSON(configs []fields) (Result, error) {
 				continue
 			}
 			res.Nodes = append(res.Nodes, n)
+			byTag = append(byTag, len(proxies) > 1 && strings.TrimSpace(o.str("remarks", "name")) == "")
 			if inBalancer(o.str("tag"), selectors) {
 				res.Auto = append(res.Auto, n.Fingerprint())
 			}
 		}
 	}
+	res.Nodes = dropTagTwins(res.Nodes, byTag)
 	if len(res.Nodes) == 0 && len(res.Skipped) == 0 && template {
 		return res, errors.New("this is a Remnawave template, not a subscription: the panel adds the servers when it serves it to an app")
 	}
 	return res, nil
+}
+
+// dropTagTwins leaves out the nodes named by their tag (byTag) that are
+// also in the list under a name of their own: the same server, with the
+// same fingerprint, so the automatic selection (Result.Auto) still finds
+// it. Without twins nothing is dropped, tag names or not.
+func dropTagTwins(nodes []node.Node, byTag []bool) []node.Node {
+	named := map[string]bool{}
+	for i := range nodes {
+		if !byTag[i] {
+			named[nodes[i].Fingerprint()] = true
+		}
+	}
+	out := nodes[:0:0]
+	for i := range nodes {
+		if !byTag[i] || !named[nodes[i].Fingerprint()] {
+			out = append(out, nodes[i])
+		}
+	}
+	return out
 }
 
 // xrayBalancerSelectors returns what the config's balancers select from:
