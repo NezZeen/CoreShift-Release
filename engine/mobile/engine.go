@@ -111,7 +111,11 @@ func report(ctx context.Context, svc *service.Service, p Platform) {
 				st := statusOf(svc)
 				p.StateChanged(st.State, st.Node, st.SinceMillis)
 			case "traffic":
-				p.Traffic(e.DownRate, e.UpRate)
+				// With the screen off no one sees the notification's speed;
+				// the first sample after it comes on brings it up to date.
+				if !svc.Background() {
+					p.Traffic(e.DownRate, e.UpRate)
+				}
 			}
 		}
 	}
@@ -222,6 +226,7 @@ func Start(dataDir, libDir, deviceID, osVersion, model string, p Platform) error
 	go srv.Serve(ln)
 
 	ctx, cancel := context.WithCancel(context.Background())
+	go svc.WarmUp(ctx)
 	go st.RunUpdater(ctx, time.Minute)
 	go svc.RunAppUpdates(ctx)
 	go report(ctx, svc, p)
@@ -279,6 +284,20 @@ func Disconnect() {
 	mu.Unlock()
 	if e != nil {
 		e.svc.Disconnect()
+	}
+}
+
+// SetScreenOn tells the engine whether the phone's screen is on. With it
+// off the engine wakes the phone less: the traffic is sampled every half
+// minute, a working connection is checked once a minute, and the
+// notification's speed is left alone (service.SetBackground). The app
+// calls it at start and on every change.
+func SetScreenOn(on bool) {
+	mu.Lock()
+	e := running
+	mu.Unlock()
+	if e != nil {
+		e.svc.SetBackground(!on)
 	}
 }
 

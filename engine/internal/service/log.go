@@ -3,26 +3,47 @@ package service
 import (
 	"strings"
 	"time"
+
+	"coreshift/engine/internal/supervisor"
 )
 
 // logGroupEvery is how often a repeating error is reported (see logGrouper).
 const logGroupEvery = 30 * time.Second
 
 // Log adds a line of output to the event stream, as the TUN layer reports
-// it (a separate process on the desktop, part of the app on Android).
+// it (a separate process on the desktop, part of the app on Android), and
+// as the cores print it (onCoreEvent).
 func (s *Service) Log(source, line string) {
+	// The TUN layer's and the cores' complaints that the device has no
+	// default interface: the network watcher looks at once (netwatch.go).
 	if netHint(line) {
-		s.kickNetwork() // see netwatch.go
+		s.kickNetwork()
 	}
+	line = tidy(line)
 	switch {
 	case noiseLine(line):
+	case s.logs.twin(line):
+		// sing-box's second report of a lookup it just reported.
 	case s.healthFails.Load() >= upstreamDeadChecks && lookupTimeout(line):
 		// Every app's lookups through the tunnel time out while the
 		// server does not answer: one line says it, not one per name.
 		s.logs.addAs(source, upstreamDNSDead)
 	default:
-		s.logs.add(source, line)
+		s.logs.addTidy(source, line)
 	}
+}
+
+// onCoreEvent is the supervisor's event handler: the cores' output goes
+// through the journal's grouper as the TUN layer's does, so that a server
+// out of reach is one line and a count rather than a line for every
+// connection of every app and every health check; the rest goes on as it
+// is (onSupervisorEvent).
+func (s *Service) onCoreEvent(e supervisor.Event) {
+	if e.Kind == supervisor.EventLog {
+		s.Log(string(e.Core), e.Line)
+		return
+	}
+	s.onSupervisorEvent(e)
 }
 
 // upstreamDeadChecks failed checks in a row of the active core mean the
@@ -34,7 +55,7 @@ const upstreamDNSDead = "DNS через VPN не отвечает: сервер 
 // lookupTimeout recognises the TUN layer's lookup that timed out, as every
 // lookup through a tunnel whose server is gone does.
 func lookupTimeout(l string) bool {
-	return strings.Contains(l, "lookup failed") &&
+	return (strings.Contains(l, "lookup failed") || strings.Contains(l, "router: lookup")) &&
 		(strings.Contains(l, "context deadline exceeded") || strings.Contains(l, "i/o timeout"))
 }
 

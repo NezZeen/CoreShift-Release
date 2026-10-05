@@ -370,6 +370,36 @@ func TestLatencyPing(t *testing.T) {
 	_ = h
 }
 
+// Results of servers that are gone are forgotten when their subscription
+// is tested again: the engine runs for days.
+func TestLatencyForgetsServersThatLeft(t *testing.T) {
+	h, srv := newStoreAPI(t, nil)
+	var sub subscriptionView
+	callJSON(t, srv, "POST", "/v1/subscriptions", map[string]string{"content": trojanLink}, &sub)
+	l := &h.svc.latency
+	l.mu.Lock()
+	l.results = map[string]NodeLatency{sub.ID + "/stale": {}, "other/kept": {}}
+	l.mu.Unlock()
+	has := func(k string) bool {
+		l.mu.Lock()
+		defer l.mu.Unlock()
+		_, ok := l.results[k]
+		return ok
+	}
+	if _, err := h.svc.TestLatency(context.Background(), sub.ID); err != nil {
+		t.Fatal(err)
+	}
+	if has(sub.ID+"/stale") || !has("other/kept") || !has(sub.ID+"/"+sub.Nodes[0].Fingerprint) {
+		t.Errorf("after testing the subscription: %v", l.results)
+	}
+	if _, err := h.svc.TestLatency(context.Background(), ""); err != nil {
+		t.Fatal(err)
+	}
+	if has("other/kept") || !has(sub.ID+"/"+sub.Nodes[0].Fingerprint) {
+		t.Errorf("after testing them all: %v", l.results)
+	}
+}
+
 func TestLatencyTestUsesResolvedServers(t *testing.T) {
 	var mu sync.Mutex
 	looked := map[string]int{}

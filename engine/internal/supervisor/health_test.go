@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -79,6 +80,104 @@ func serveSOCKS(c net.Conn, setup time.Duration) {
 	c.Write([]byte{5, 0, 0, 1, 0, 0, 0, 0, 0, 0})
 	go io.Copy(up, c)
 	io.Copy(c, up)
+}
+
+// healthServers stands in for Health.URL and the fallbacks: each answers
+// with code after delay, and counts the requests.
+func healthServers(t *testing.T, primary, fallback http.HandlerFunc) (string, *atomic.Int32, *atomic.Int32) {
+	t.Helper()
+	var first, rest atomic.Int32
+	count := func(n *atomic.Int32, h http.HandlerFunc) *httptest.Server {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			n.Add(1)
+			h(w, r)
+		}))
+		t.Cleanup(srv.Close)
+		// First (cleanups run last in, first out): ends a request left hanging.
+		t.Cleanup(srv.CloseClientConnections)
+		return srv
+	}
+	p := count(&first, primary)
+	f1, f2 := count(&rest, fallback), count(&rest, fallback)
+	old := healthFallbacks
+	healthFallbacks = []string{f1.URL + "/generate_204", f2.URL + "/generate_204"}
+	t.Cleanup(func() { healthFallbacks = old })
+	return p.URL + "/generate_204", &first, &rest
+}
+
+func answer(code int, after time.Duration) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-time.After(after):
+		case <-r.Context().Done():
+		}
+		w.WriteHeader(code)
+	}
+}
+
+// A connection that works costs one request per check: the fallbacks are
+// for when the first address does not answer.
+func TestHealthCheckAsksFallbacksOnlyWhenNeeded(t *testing.T) {
+	socks, _ := slowSOCKS(t, 0)
+	proxy := core.SOCKSAuth{}.ProxyURL(socks)
+	h := Health{Timeout: 5 * time.Second}
+
+	t.Run("primary answers", func(t *testing.T) {
+		u, first, rest := healthServers(t, answer(http.StatusNoContent, 0), answer(http.StatusNoContent, 0))
+		h.URL = u
+		for range 3 {
+			if _, err := checkHealth(context.Background(), proxy, h); err != nil {
+				t.Fatal(err)
+			}
+		}
+		time.Sleep(healthFallbackAfter + 200*time.Millisecond)
+		if first.Load() != 3 || rest.Load() != 0 {
+			t.Errorf("requests: %d to the first address, %d to the fallbacks; want 3 and 0", first.Load(), rest.Load())
+		}
+	})
+
+	t.Run("primary fails", func(t *testing.T) {
+		u, _, rest := healthServers(t, answer(http.StatusBadGateway, 0), answer(http.StatusNoContent, 0))
+		h.URL = u
+		start := time.Now()
+		if _, err := checkHealth(context.Background(), proxy, h); err != nil {
+			t.Fatal(err)
+		}
+		// Asked at once, not after healthFallbackAfter.
+		if d := time.Since(start); d >= healthFallbackAfter {
+			t.Errorf("the fallbacks were asked only after %v", d)
+		}
+		if rest.Load() == 0 {
+			t.Error("no fallback was asked")
+		}
+	})
+
+	t.Run("primary hangs", func(t *testing.T) {
+		u, _, _ := healthServers(t, answer(http.StatusNoContent, time.Minute), answer(http.StatusNoContent, 0))
+		h.URL = u
+		start := time.Now()
+		lat, err := checkHealth(context.Background(), proxy, h)
+		if err != nil {
+			t.Fatal(err)
+		}
+		d := time.Since(start)
+		if d < healthFallbackAfter || d > healthFallbackAfter+2*time.Second {
+			t.Errorf("answered after %v; want soon after %v", d, healthFallbackAfter)
+		}
+		// The latency is the fallback's own.
+		if lat >= healthFallbackAfter {
+			t.Errorf("latency %v counts the wait for the first address", lat)
+		}
+	})
+
+	t.Run("none answers", func(t *testing.T) {
+		u, _, _ := healthServers(t, answer(http.StatusBadGateway, 0), answer(http.StatusServiceUnavailable, 0))
+		h.URL = u
+		_, err := checkHealth(context.Background(), proxy, h)
+		if err == nil || !strings.Contains(err.Error(), "502") || strings.Count(err.Error(), "503") != 2 {
+			t.Errorf("err = %v; want every address named with its answer", err)
+		}
+	})
 }
 
 func TestDelayLeavesOutConnectionSetup(t *testing.T) {

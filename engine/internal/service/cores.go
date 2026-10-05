@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"net/http"
 	"net/url"
@@ -21,15 +22,28 @@ import (
 type coreState struct {
 	mu       sync.Mutex
 	versions map[core.Kind]string
+	// probing is closed when the cores being asked for their versions have
+	// answered; nil when none are.
+	probing  chan struct{}
 	updating sync.Mutex
 }
 
 // CoreVersions returns the version of every installed core; a core that
-// does not tell is left out.
+// does not tell is left out. Callers at the same time share one start of
+// each core: the app asks as it opens, just as the start asks
+// (WarmUp).
 func (s *Service) CoreVersions(ctx context.Context) map[core.Kind]string {
 	s.cores.mu.Lock()
 	if s.cores.versions == nil {
 		s.cores.versions = map[core.Kind]string{}
+	}
+	if done := s.cores.probing; done != nil {
+		s.cores.mu.Unlock()
+		select {
+		case <-done:
+		case <-ctx.Done():
+		}
+		return s.knownVersions()
 	}
 	missing := map[core.Kind]string{}
 	for k, bin := range s.cfg.Binaries {
@@ -37,6 +51,12 @@ func (s *Service) CoreVersions(ctx context.Context) map[core.Kind]string {
 			missing[k] = bin
 		}
 	}
+	if len(missing) == 0 {
+		s.cores.mu.Unlock()
+		return s.knownVersions()
+	}
+	done := make(chan struct{})
+	s.cores.probing = done
 	s.cores.mu.Unlock()
 
 	var wg sync.WaitGroup
@@ -44,7 +64,7 @@ func (s *Service) CoreVersions(ctx context.Context) map[core.Kind]string {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			v, err := core.Version(ctx, k, bin)
+			v, err := s.cfg.coreVersion(ctx, k, bin)
 			if err != nil {
 				return
 			}
@@ -54,15 +74,24 @@ func (s *Service) CoreVersions(ctx context.Context) map[core.Kind]string {
 		}()
 	}
 	wg.Wait()
+	s.cores.mu.Lock()
+	s.cores.probing = nil
+	s.cores.mu.Unlock()
+	close(done)
+	return s.knownVersions()
+}
 
+func (s *Service) knownVersions() map[core.Kind]string {
 	s.cores.mu.Lock()
 	defer s.cores.mu.Unlock()
-	out := make(map[core.Kind]string, len(s.cores.versions))
-	for k, v := range s.cores.versions {
-		out[k] = v
-	}
-	return out
+	return maps.Clone(s.cores.versions)
 }
+
+// WarmUp learns what the app asks for first as it opens, so the answer is
+// ready by then: the cores' versions, which take starting each core (a
+// quarter of a second on a PC, more on a phone). Run it on its own
+// goroutine at start.
+func (s *Service) WarmUp(ctx context.Context) { s.CoreVersions(ctx) }
 
 // CoreUpdate says whether a newer release of an installed core exists.
 type CoreUpdate struct {
