@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../api/punycode.dart';
+import '../../platform/platform.dart' as platform;
 import '../../state/app_state.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -133,7 +135,8 @@ class _RuleListPanelState extends State<RuleListPanel> {
             spacing: 6,
             runSpacing: 6,
             children: [
-              for (final d in domains) _chip(context, d, () => _save(domains.where((x) => x != d).toList(), ips)),
+              // Names in other scripts are kept in punycode, shown as typed.
+              for (final d in domains) _chip(context, domainToUnicode(d), () => _save(domains.where((x) => x != d).toList(), ips)),
               for (final a in ips) _chip(context, a, () => _save(domains, ips.where((x) => x != a).toList()), ip: true),
             ],
           ),
@@ -187,7 +190,20 @@ class ServicePreset {
   final List<String> ips;
   final List<String> apps;
   const ServicePreset(this.name, this.icon, {required this.domains, this.ips = const [], this.apps = const []});
+
+  /// [apps] as this system names its programs: on Linux without ".exe"
+  /// (Discord runs as …/Discord, and is matched by its path); Android picks
+  /// the apps in the VPN in a list of its own.
+  List<String> get localApps => presetApps(apps, linux: platform.isLinux, android: platform.isAndroid);
 }
+
+/// Programs named as on Windows ("Discord.exe"), as [linux] or [android]
+/// names them; see [ServicePreset.localApps].
+List<String> presetApps(List<String> apps, {required bool linux, required bool android}) => android
+    ? const []
+    : linux
+    ? [for (final a in apps) a.replaceFirst(RegExp(r'\.exe$', caseSensitive: false), '')]
+    : apps;
 
 const servicePresets = [
   ServicePreset(
@@ -257,7 +273,7 @@ class ServicePresetsPanel extends StatelessWidget {
   bool _on(ServicePreset sp) {
     final domains = _list('proxy_domains').toSet(), ips = _list('proxy_ips').toSet();
     final apps = _list('proxy_apps').map((a) => a.toLowerCase()).toSet();
-    return domains.containsAll(sp.domains) && ips.containsAll(sp.ips) && apps.containsAll(sp.apps.map((a) => a.toLowerCase()));
+    return domains.containsAll(sp.domains) && ips.containsAll(sp.ips) && apps.containsAll(sp.localApps.map((a) => a.toLowerCase()));
   }
 
   Future<void> _toggle(ServicePreset sp) async {
@@ -274,7 +290,7 @@ class ServicePresetsPanel extends StatelessWidget {
 
       r['proxy_domains'] = edit('proxy_domains', sp.domains);
       r['proxy_ips'] = edit('proxy_ips', sp.ips);
-      r['proxy_apps'] = edit('proxy_apps', sp.apps, fold: true);
+      r['proxy_apps'] = edit('proxy_apps', sp.localApps, fold: true);
     });
     if (err == null) state.toast(on ? '${sp.name} больше не идёт через VPN' : '${sp.name} теперь идёт через VPN', ToastKind.ok);
   }
@@ -296,7 +312,7 @@ class ServicePresetsPanel extends StatelessWidget {
                   builder: (context) {
                     final on = _on(sp);
                     return Tooltip(
-                      message: [...sp.domains, if (sp.ips.isNotEmpty) '+ адреса серверов', ...sp.apps].join(', '),
+                      message: [...sp.domains, if (sp.ips.isNotEmpty) '+ адреса серверов', ...sp.localApps].join(', '),
                       waitDuration: const Duration(milliseconds: 600),
                       child: InkWell(
                         borderRadius: BorderRadius.circular(10),
