@@ -193,6 +193,7 @@ func serveWith(ctx context.Context, cfg service.Config, apiAddr string, log io.W
 			}
 		}()
 	}
+	go svc.WarmUp(ctx)
 	go st.RunUpdater(ctx, time.Minute)
 	go svc.RunAppUpdates(ctx)
 	if o.resumeFile != "" && takeResume(o.resumeFile, bootID(), time.Now()) {

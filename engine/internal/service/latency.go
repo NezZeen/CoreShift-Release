@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/netip"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -95,6 +96,18 @@ func (s *Service) TestLatency(ctx context.Context, subID string) ([]NodeLatency,
 	l.cancel = cancel
 	if l.results == nil {
 		l.results = map[string]NodeLatency{}
+	}
+	// Servers that left the subscriptions tested take their results along:
+	// a panel that renews its servers would otherwise grow the map for as
+	// long as the engine runs, days on a phone.
+	current := make(map[string]bool, len(refs))
+	for _, r := range refs {
+		current[r.sub+"/"+r.fp] = true
+	}
+	for k := range l.results {
+		if (subID == "" || strings.HasPrefix(k, subID+"/")) && !current[k] {
+			delete(l.results, k)
+		}
 	}
 	l.mu.Unlock()
 	defer func() {
