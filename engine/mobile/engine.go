@@ -223,7 +223,7 @@ func Start(dataDir, libDir, deviceID, osVersion, model string, p Platform) error
 		ln.Close()
 		return fmt.Errorf("write %s: %w", apiFile, err)
 	}
-	srv := &http.Server{Handler: service.NewAPI(svc, token, addr), ReadHeaderTimeout: 10 * time.Second}
+	srv := service.NewAPIServer(service.NewAPI(svc, token, addr))
 	go srv.Serve(ln)
 
 	ctx, cancel := context.WithCancel(context.Background())

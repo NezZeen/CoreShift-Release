@@ -73,7 +73,7 @@ func runLinuxService(ctx context.Context, args []string) error {
 
 	fs := flag.NewFlagSet("service run", flag.ContinueOnError)
 	df := addDaemonFlags(fs)
-	apiAddr := fs.String("api", "127.0.0.1:17900", "loopback address of the UI API")
+	apiAddr := fs.String("api", defaultAPIAddr, apiAddrUsage)
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
