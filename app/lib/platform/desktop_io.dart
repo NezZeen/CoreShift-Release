@@ -361,6 +361,8 @@ class _Tray {
     t._update();
     icon.setVisible(true);
     state.addListener(t._update);
+    // The tooltip's speed.
+    state.traffic.addListener(t._update);
     return t;
   }
 
@@ -465,6 +467,7 @@ class _Tray {
 
   void dispose() {
     state.removeListener(_update);
+    state.traffic.removeListener(_update);
     icon.dispose();
   }
 }

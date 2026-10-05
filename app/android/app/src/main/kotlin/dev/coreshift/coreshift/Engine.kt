@@ -1,13 +1,16 @@
 package dev.coreshift.coreshift
 
 import android.annotation.SuppressLint
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.net.ConnectivityManager
 import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.os.Build
+import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
 import dev.coreshift.mobile.Mobile
@@ -49,6 +52,34 @@ object Engine {
         }
         Mobile.currentStatus().let { VpnStatus.set(it.state, it.node, it.sinceMillis) }
         watchNetwork(app)
+        watchScreen(app)
+    }
+
+    /**
+     * Tells the engine whether the screen is on: with it off the engine
+     * checks the connection and samples the traffic less often, and leaves
+     * the notification alone, so the phone sleeps more.
+     */
+    private fun watchScreen(context: Context) {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(c: Context, intent: Intent) {
+                when (intent.action) {
+                    Intent.ACTION_SCREEN_ON -> Mobile.setScreenOn(true)
+                    Intent.ACTION_SCREEN_OFF -> Mobile.setScreenOn(false)
+                }
+            }
+        }
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_SCREEN_OFF)
+        }
+        // System broadcasts reach a receiver that is not exported too.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            context.registerReceiver(receiver, filter)
+        }
+        Mobile.setScreenOn(context.getSystemService(PowerManager::class.java).isInteractive)
     }
 
     /** Connects the selected server in the background, from the tile. */

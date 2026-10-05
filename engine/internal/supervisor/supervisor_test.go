@@ -244,6 +244,53 @@ func TestStaysConnectedWhenNoCoreChecksOut(t *testing.T) {
 	}
 }
 
+// healthChecks counts the active core's checks among events.
+func healthChecks(events []Event) (ok, failed int) {
+	for _, e := range events {
+		if e.Kind == EventHealth && !e.Probe {
+			if e.Err == nil {
+				ok++
+			} else {
+				failed++
+			}
+		}
+	}
+	return ok, failed
+}
+
+// While the device is idle a healthy connection is checked seldom; a check
+// that fails is repeated at the usual pace, and a swap is no slower; the
+// device back in use is checked at once.
+func TestIdleDeviceChecksSeldom(t *testing.T) {
+	t.Setenv("FAKECORE_XRAY", "unhealthy-after:2s")
+	h := newHarness(t, func(c *Config) { c.IdleHealthInterval = 700 * time.Millisecond })
+	connect(t, h, trojanLink)
+	h.waitFor(t, "first check", 2*time.Second, func(e Event) bool { return e.Kind == EventHealth })
+	h.s.SetIdle(true)
+	h.drain()
+	time.Sleep(1500 * time.Millisecond)
+	ok, _ := healthChecks(h.drain())
+	// Every 100 ms when in use: 15 checks; idle, every 700 ms.
+	if ok < 1 || ok > 3 {
+		t.Errorf("%d checks in 1.5 s while idle, want 2", ok)
+	}
+	// Xray turns unhealthy: failed checks repeat every 100 ms (the
+	// interval being shorter than failRetry), and sing-box takes over.
+	start := time.Now()
+	h.waitFor(t, "swap while idle", 10*time.Second, isSwap(core.SingBox, ReasonHealth))
+	t.Logf("swapped %v later", time.Since(start))
+
+	// In use again: a check right away, not after the idle interval.
+	time.Sleep(100 * time.Millisecond)
+	h.drain()
+	h.s.SetIdle(false)
+	woke := time.Now()
+	h.waitFor(t, "check on wake", 2*time.Second, func(e Event) bool { return e.Kind == EventHealth && !e.Probe })
+	if d := time.Since(woke); d > 400*time.Millisecond {
+		t.Errorf("first check %v after waking", d)
+	}
+}
+
 func TestHealthCheckUsesFallbacks(t *testing.T) {
 	urls := healthURLs("http://own.test/204")
 	if urls[0] != "http://own.test/204" || len(urls) != 1+len(healthFallbacks) {

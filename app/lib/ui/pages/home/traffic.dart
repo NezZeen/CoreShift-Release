@@ -11,8 +11,11 @@ class _TrafficRow extends StatelessWidget {
   final AppState state;
   const _TrafficRow({required this.state});
 
+  // Today's figure grows with every traffic sample, unlike the page around it.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ListenableBuilder(listenable: state.traffic, builder: (context, _) => _build(context));
+
+  Widget _build(BuildContext context) {
     final p = context.pal;
     final week = state.statsDays(7);
     final today = week.isEmpty ? TrafficDay(DateTime.now(), 0, 0) : week.last;
@@ -209,7 +212,7 @@ class _TrafficDetails extends StatelessWidget {
   Widget build(BuildContext context) {
     final compact = isCompact(context);
     return ListenableBuilder(
-      listenable: state,
+      listenable: Listenable.merge([state, state.traffic]),
       builder: (context, _) {
         final p = context.pal;
         final days = state.statsDays(7);

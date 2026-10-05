@@ -245,27 +245,24 @@ end;
 
 // The service runs as SYSTEM from this folder: outside Program Files it
 // could inherit write access for users, who could then replace its files.
-// Only administrators and SYSTEM may change them: the folder gets its own
-// permissions, and everything in it takes them from the folder.
+// Only administrators and SYSTEM may change them: the folder and everything
+// in it belong to Administrators (an owner may always change permissions,
+// so an empty folder a user made beforehand must not stay theirs), the
+// folder gets its own permissions, and everything in it takes them from
+// the folder. Done before the files are copied as well as after, so the
+// folder is never open to users while they arrive; this also gives the
+// files of 0.4.0 betas, which had none, their permissions back.
 procedure LockDownAppDir;
 var
   Code: Integer;
 begin
+  ForceDirectories(ExpandConstant('{app}'));
+  Exec(ExpandConstant('{sys}\icacls.exe'), '"' + ExpandConstant('{app}') + '" /setowner *S-1-5-32-544 /T /C /Q',
+    '', SW_HIDE, ewWaitUntilTerminated, Code);
   Exec(ExpandConstant('{sys}\icacls.exe'), '"' + ExpandConstant('{app}') + '" /inheritance:r /grant:r *S-1-5-18:(OI)(CI)F *S-1-5-32-544:(OI)(CI)F *S-1-5-32-545:(OI)(CI)RX /C /Q',
     '', SW_HIDE, ewWaitUntilTerminated, Code);
   Exec(ExpandConstant('{sys}\icacls.exe'), '"' + ExpandConstant('{app}') + '\*" /reset /T /C /Q',
     '', SW_HIDE, ewWaitUntilTerminated, Code);
-end;
-
-// Gives the folder of an earlier install its usual permissions back, before
-// its files are replaced; 0.4.0 betas left the files there with none.
-procedure UnlockAppDir;
-var
-  Code: Integer;
-begin
-  if DirExists(ExpandConstant('{app}')) then
-    Exec(ExpandConstant('{sys}\icacls.exe'), '"' + ExpandConstant('{app}') + '" /reset /T /C /Q',
-      '', SW_HIDE, ewWaitUntilTerminated, Code);
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
@@ -274,7 +271,7 @@ var
 begin
   Result := '';
   CloseApp;
-  UnlockAppDir;
+  LockDownAppDir;
   // Remove the service of an earlier install, wherever it ran from. Stopping
   // it disconnects the VPN and restores DNS.
   if ServiceExists then
