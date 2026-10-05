@@ -7,6 +7,11 @@
 //	    writes latest.json and latest.json.sig into DIR and copies the
 //	    installer there: the three assets of the release; for an APK they
 //	    are latest-android.json and latest-android.json.sig
+//	coreshift-release rulesets [-dir internal/ruleset/data] [-accept]
+//	    downloads SagerNet's current copies of the rule sets CoreShift
+//	    carries and takes them if ruleset.Check accepts each next to the
+//	    previous copy; -accept takes ones that are far from it, after a look
+//	    at why (never damaged ones)
 //
 // Keep the key out of the repository: whoever has it can make every
 // installed CoreShift run their installer as SYSTEM.
@@ -39,6 +44,8 @@ func main() {
 		err = keygen(os.Args[2:])
 	case "manifest":
 		err = manifest(os.Args[2:])
+	case "rulesets":
+		err = rulesets(os.Args[2:])
 	default:
 		usage()
 	}
@@ -49,7 +56,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: coreshift-release keygen -out FILE | manifest -installer SETUP.exe -version 1.2.3 -build N [-commit C] -key FILE -out DIR")
+	fmt.Fprintln(os.Stderr, "usage: coreshift-release keygen -out FILE | manifest -installer SETUP.exe -version 1.2.3 -build N [-commit C] -key FILE -out DIR | rulesets [-dir DIR] [-accept]")
 	os.Exit(2)
 }
 

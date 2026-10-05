@@ -1571,6 +1571,21 @@ void main() {
     await tester.pump(const Duration(seconds: 6));
   });
 
+  testWidgets('a rule set that was not updated or was damaged still works: no toast', (tester) async {
+    final state = await pumpApp(tester);
+    final t = DateTime.now().add(const Duration(seconds: 1));
+    state.toasts.clear();
+    state.injectEvent(Event(time: t, kind: 'rules', reason: 'geoip-ru', line: 'builtin'));
+    state.injectEvent(Event(time: t, kind: 'rules', reason: 'geoip-ru', line: 'kept', error: 'база geoip-ru не обновилась, работает прежняя: has 8.8.8.8'));
+    state.injectEvent(Event(time: t, kind: 'rules', reason: 'geosite-category-ru', line: 'damaged', error: 'база geosite-category-ru испорчена: damaged'));
+    expect(state.toasts, isEmpty);
+    expect(state.logs.map((l) => l.message), contains('geoip-ru: взята встроенная копия'));
+    // One that could not be had at all: its sites go through the tunnel.
+    state.injectEvent(Event(time: t, kind: 'rules', reason: 'geoip-ru', error: 'база geoip-ru не загрузилась, её сайты пойдут через туннель: offline'));
+    expect(state.toasts.single.message, contains('не загрузились'));
+    await tester.pump(const Duration(seconds: 6));
+  });
+
   testWidgets('the journal on a phone: the title first, the search under it', (tester) async {
     await pumpApp(tester, size: const Size(390, 844));
     await open(tester, 'Журнал');

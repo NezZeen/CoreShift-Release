@@ -660,11 +660,18 @@ class AppState extends ChangeNotifier {
         if (e.error.isNotEmpty) {
           _log(e.time, 'правила', e.error, LogLevel.warn);
           // Without geosite-google the built-in list keeps Google in the tunnel.
-          if (live && e.reason != 'geosite-google') {
+          // A set that was not updated ("kept") or was damaged on disk (the
+          // copy built into CoreShift takes its place) still works.
+          if (live && e.reason != 'geosite-google' && e.line != 'kept' && e.line != 'damaged') {
             toast('Базы российских сайтов не загрузились — они пойдут через туннель. Подробности в журнале.', ToastKind.err);
           }
         } else {
-          _log(e.time, 'правила', '${e.reason}: ${e.line == 'updated' ? 'обновлена' : 'загружена'}', LogLevel.info);
+          final what = switch (e.line) {
+            'updated' => 'обновлена',
+            'builtin' => 'взята встроенная копия',
+            _ => 'загружена',
+          };
+          _log(e.time, 'правила', '${e.reason}: $what', LogLevel.info);
         }
     }
   }
