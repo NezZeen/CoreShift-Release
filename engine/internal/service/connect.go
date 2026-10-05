@@ -353,13 +353,21 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 		// The daemon resolves proxy servers, e.g. for latency tests.
 		opts.DirectDNSProcesses = []string{self}
 	}
-	// Where the system has IPv6 switched off, an IPv6 address would stop
-	// the TUN interface from starting: the tunnel is IPv4-only then, as
-	// the system is.
-	if o.IPv6 && !s.cfg.ipv6Off() {
+	switch {
+	case s.cfg.ipv6Off():
+		// Where the system has IPv6 switched off, an IPv6 address would
+		// stop the TUN interface from starting: the tunnel is IPv4-only
+		// then, as the system is, and strict_route keeps whatever IPv6 is
+		// left out of reach.
+	case o.IPv6:
 		opts.Address6 = tunlayer.DefaultAddress6
 		// Checked before the TUN exists, so its own address cannot count.
 		opts.DNS.DirectIPv4Only = !s.cfg.hostIPv6()
+	default:
+		// IPv6 switched off by the user: the TUN takes it still and
+		// refuses it, so it cannot go around the tunnel with the host's
+		// real address (see tunlayer.Options.RefuseIPv6).
+		opts.RefuseIPv6 = true
 	}
 	if serverIP.IsValid() {
 		opts.BypassAddresses = []netip.Prefix{netip.PrefixFrom(serverIP, serverIP.BitLen())}
@@ -370,6 +378,14 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 	opts.ExcludeLAN = true
 	opts.LANResolvers = resolvers
 	inst, err := tun.Start(ctx, opts)
+	if err != nil && opts.RefuseIPv6 && ctx.Err() == nil && ipv6Refused(err) {
+		// The system would not give the interface IPv6 after all (Windows
+		// with IPv6 switched off in a way ipv6Off cannot see). IPv4-only,
+		// strict_route still keeps IPv6 out of reach.
+		s.hub.publish(Event{Kind: "tun", Error: fmt.Sprintf("интерфейс не принял IPv6 (%v): туннель только IPv4", err)})
+		opts.RefuseIPv6 = false
+		inst, err = tun.Start(ctx, opts)
+	}
 	if err != nil {
 		return netip.Addr{}, fmt.Errorf("start TUN layer: %w", err)
 	}

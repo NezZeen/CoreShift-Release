@@ -168,6 +168,14 @@ func isAdapterRace(err error) bool {
 		strings.Contains(msg, "address: The object already exists")
 }
 
+// ipv6Refused recognises the TUN layer failing because the system would not
+// give its interface IPv6: sing-tun's "set ipv6 address" (Windows), or
+// netlink refusing the IPv6 address (Linux).
+func ipv6Refused(err error) bool {
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "ipv6") || strings.Contains(msg, tunlayer.DefaultAddress6.Addr().String())
+}
+
 // tunProcess stops like the process it wraps, then waits until the
 // interface is gone, so the next Start does not race its removal.
 type tunProcess struct {

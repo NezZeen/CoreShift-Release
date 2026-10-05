@@ -21,6 +21,11 @@ Type=simple
 # tunnel that is gone. Undo that before anything else: at boot, and before
 # each restart. The daemon does it again itself, so a failure here is not
 # fatal ("-").
+# The data folder must be there for ReadWritePaths below: the package makes
+# it, but users remove it to forget their settings. "+": outside the
+# sandbox, where /var/lib is writable; the daemon then sets its owner and
+# mode (SecureDataDir).
+ExecStartPre=+mkdir -p -m 0700 /var/lib/coreshift
 ExecStartPre=-@BINDIR@/coreshiftd dns recover -journal /var/lib/coreshift/dnsguard.json
 ExecStart=@BINDIR@/coreshiftd service run -data-dir /var/lib/coreshift -cores-dir @LIBDIR@/cores
 Restart=on-failure
@@ -32,22 +37,50 @@ KillMode=mixed
 TimeoutStopSec=20
 UMask=0077
 
-# Hardening. The daemon needs root's network powers (TUN, routes, nftables,
-# systemd-resolved, firewalld), to see other users' processes for per-app
-# routing, to write /etc/resolv.conf where nothing manages it, and to
-# replace the cores when they update.
-CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_NET_BIND_SERVICE CAP_SYS_PTRACE CAP_DAC_READ_SEARCH CAP_DAC_OVERRIDE CAP_CHOWN CAP_FOWNER CAP_KILL
+# Hardening, as far as the daemon, the cores, the TUN layer and the DNS
+# tools it runs (resolvectl, resolvconf, netconfig, nmcli, firewall-cmd,
+# restorecon) still work; they all run within it. Checked with
+# systemd-analyze security and in WSL (packaging/linux/README.md).
+#
+# Capabilities: NET_ADMIN for the TUN, routes and rules and for
+# systemd-resolved's per-link DNS; NET_RAW for binding sockets to the
+# physical interface (SO_BINDTODEVICE) and for ping; SYS_PTRACE and
+# DAC_READ_SEARCH to read other users' /proc/<pid>/exe and fd for per-app
+# routing; CHOWN and FOWNER to hand the data folder and api.json to the
+# coreshift group and take foreign files back (SecureDataDir). Root owns
+# every file the daemon writes, so DAC_OVERRIDE is not needed, nor KILL:
+# it signals only its own children. Ports below 1024 are never bound.
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_PTRACE CAP_DAC_READ_SEARCH CAP_CHOWN CAP_FOWNER
 NoNewPrivileges=yes
-# /usr and /boot read-only, but for the cores, which update themselves.
-ProtectSystem=true
-ReadWritePaths=@LIBDIR@/cores
+# Everything read-only, but for the data, the cores (they update
+# themselves) and what the DNS guard changes: /etc/resolv.conf, replaced
+# atomically, so all of /etc, and the state of resolvconf and netconfig,
+# where those are in use. sing-box sets rp_filter on its interface.
+ProtectSystem=strict
+ReadWritePaths=/var/lib/coreshift @LIBDIR@/cores /etc -/run/resolvconf -/run/netconfig -/var/adm/netconfig
+ReadWritePaths=/proc/sys/net/ipv4/conf
 ProtectHome=read-only
 PrivateTmp=yes
+# Of the devices, only the TUN.
+DevicePolicy=closed
+DeviceAllow=/dev/net/tun rw
+ProtectKernelTunables=yes
 ProtectKernelModules=yes
+ProtectKernelLogs=yes
 ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+RestrictNamespaces=yes
 RestrictSUIDSGID=yes
 RestrictRealtime=yes
 LockPersonality=yes
+# Go needs no writable code, and neither do firewall-cmd (Python) or the
+# other DNS tools.
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
 
 [Install]
 WantedBy=multi-user.target
