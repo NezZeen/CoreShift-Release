@@ -228,6 +228,15 @@ class SubInfo {
   int get used => upload + download;
 }
 
+/// Whole days a subscription has left, counted up as panels count them: a
+/// 30-day plan bought a minute ago has 30 days, not 29, and one ending in
+/// 47 hours has 2. 0 within the last day (and after it).
+int subscriptionDaysLeft(DateTime expire, [DateTime? now]) {
+  final left = expire.difference(now ?? DateTime.now());
+  if (left.inHours < 24) return 0;
+  return (left.inMinutes / (24 * 60)).ceil();
+}
+
 /// A panel's traffic figure (limit, used, left). Panels (Remnawave, Marzban,
 /// 3x-ui) count a gigabyte as 1024³ bytes: a "100 GB" plan has a limit of
 /// 107 374 182 400 bytes, which must read «100 ГБ», not «107 ГБ».

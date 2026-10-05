@@ -70,9 +70,9 @@ class _SubCard extends StatelessWidget {
     final p = context.pal;
     final i = sub.info;
     final refreshing = state.refreshing.contains(sub.id);
-    final daysLeft = i.expire?.difference(DateTime.now()).inDays;
+    final daysLeft = i.expire == null ? null : subscriptionDaysLeft(i.expire!);
     final expired = i.expire != null && i.expire!.isBefore(DateTime.now());
-    final expiresSoon = daysLeft != null && daysLeft < 7;
+    final expiresSoon = daysLeft != null && daysLeft <= 7;
     final compact = isCompact(context);
     return Panel(
       padding: compact ? const EdgeInsets.fromLTRB(14, 4, 4, 12) : const EdgeInsets.fromLTRB(16, 12, 8, 14),
