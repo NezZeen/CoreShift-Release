@@ -675,6 +675,57 @@ func TestTrafficEvents(t *testing.T) {
 	}
 }
 
+// With the device idle the traffic is sampled seldom; back in use, at once.
+func TestTrafficWhileIdle(t *testing.T) {
+	h := newHarness(t, func(c *Config) { c.trafficEvery, c.trafficIdleEvery = 50*time.Millisecond, 600*time.Millisecond })
+	if err := h.connect(t, hy2Link); err != nil {
+		t.Fatal(err)
+	}
+	count := func(d time.Duration) (n int) {
+		end := time.After(d)
+		for {
+			select {
+			case e := <-h.events:
+				if e.Kind == kindTraffic {
+					n++
+				}
+			case <-end:
+				return n
+			}
+		}
+	}
+	if n := count(500 * time.Millisecond); n < 5 {
+		t.Fatalf("%d traffic events in 0.5 s in use", n)
+	}
+	h.svc.SetBackground(true)
+	if !h.svc.Background() {
+		t.Fatal("not in the background")
+	}
+	count(100 * time.Millisecond) // a sample under way
+	if n := count(time.Second); n > 2 {
+		t.Errorf("%d traffic events in 1 s while idle, want 1 or 2", n)
+	}
+	// Just after an idle sample, the next would be 600 ms away.
+	next := func() time.Time {
+		for {
+			select {
+			case e := <-h.events:
+				if e.Kind == kindTraffic {
+					return time.Now()
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatal("no traffic event")
+			}
+		}
+	}
+	next()
+	h.svc.SetBackground(false)
+	woke := time.Now()
+	if d := next().Sub(woke); d > 300*time.Millisecond {
+		t.Errorf("the first sample came %v after waking", d)
+	}
+}
+
 func TestNewerVersion(t *testing.T) {
 	for _, c := range []struct {
 		a, b string
