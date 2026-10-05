@@ -281,6 +281,12 @@ begin
   if CurStep <> ssPostInstall then
     Exit;
   LockDownAppDir;
+  // "service install" also creates the local group "CoreShift Users",
+  // whose members alone may read the service's token, and adds the user
+  // signed in to this session: the one who ran setup, even when an
+  // administrator's password elevated it. The service names the members
+  // in the token file's permissions as well, so the app started below
+  // works now, before the user next signs in.
   if not Daemon(ExpandConstant('{app}\coreshiftd.exe'), 'service install', Output) or
      not Daemon(ExpandConstant('{app}\coreshiftd.exe'), 'service start', Output) then
     SuppressibleMsgBox('Служба CoreShift не запустилась, без неё VPN не будет работать:' + #13#10#13#10 + Output,
@@ -301,6 +307,10 @@ begin
         Exec(ExpandConstant('{app}\coreshiftd.exe'), 'service uninstall', '', SW_HIDE, ewWaitUntilTerminated, Code);
         // In case the service could not undo its DNS changes itself.
         Exec(ExpandConstant('{app}\coreshiftd.exe'), 'dns recover', '', SW_HIDE, ewWaitUntilTerminated, Code);
+        // The "CoreShift Users" group, whose members may use the service.
+        // Only here: an update uninstalls the old service too, but the
+        // group and its members stay.
+        Exec(ExpandConstant('{app}\coreshiftd.exe'), 'service remove-group', '', SW_HIDE, ewWaitUntilTerminated, Code);
       end;
     usPostUninstall:
       begin
