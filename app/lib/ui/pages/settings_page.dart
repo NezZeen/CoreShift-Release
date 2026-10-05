@@ -127,7 +127,9 @@ class SettingsPage extends StatelessWidget {
             SettingRow(
               first: platform.isAndroid && state.setting('tun', true),
               title: 'IPv6 через туннель',
-              description: 'IPv6-трафик тоже идёт через VPN, а не мимо него. Выключите, если какие-то сайты перестали открываться',
+              description:
+                  'IPv6-трафик тоже идёт через VPN. Если выключить, IPv6 при подключении не работает вовсе и сайты открываются по IPv4. '
+                  'Выключите, если какие-то сайты перестали открываться',
               trailing: _switch('ipv6'),
             ),
           if (state.hasSetting('cores.fragment'))
