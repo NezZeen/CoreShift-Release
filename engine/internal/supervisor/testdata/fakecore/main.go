@@ -9,6 +9,8 @@
 //	unhealthy               accept SOCKS but answer health checks with 503
 //	unhealthy-after:<dur>   healthy at first, 503 afterwards
 //	hang-after:<dur>        serve, then stop taking connections but keep running
+//	port-taken              say its port is taken (as mihomo does), serve anyway
+//	port-taken-after:<dur>  serve, then say its port is taken
 //
 // FAKECORE_FORWARD=<zone>=<host:port> relays connections to names in the
 // zone to host:port, as a real core reaches them, name resolved remotely.
@@ -72,6 +74,15 @@ func main() {
 		}()
 	case "hang-after":
 		hangAfter, _ = time.ParseDuration(arg)
+	case "port-taken":
+		// What mihomo prints when its port is taken, and it keeps running;
+		// the fake then serves anyway, as whatever holds the port would.
+		fmt.Printf("level=error msg=\"Listener socks-in listen err: listen tcp 127.0.0.1:%s: bind: address already in use\"\n", port)
+	case "port-taken-after":
+		d, _ := time.ParseDuration(arg)
+		time.AfterFunc(d, func() {
+			fmt.Printf("level=error msg=\"Listener socks-in listen err: listen tcp 127.0.0.1:%s: bind: address already in use\"\n", port)
+		})
 	case "unhealthy":
 		healthyUntil = time.Now()
 	case "unhealthy-after":
