@@ -85,6 +85,11 @@ class DemoBackend implements Backend {
   Json? _lastNode;
   bool _pending = false;
 
+  /// The settings the connection uses, as the service compares them: not
+  /// auto-connect, nor the updates.
+  String _connSettings = '';
+  String _connPart(Json s) => jsonEncode({...s}..removeWhere((k, _) => const {'auto_connect', 'updates', 'app_update'}.contains(k)));
+
   /// Traffic per day, oldest first, ending with today (GET /v1/stats).
   final List<List<int>> _history = [];
   int _todayUp = 0, _todayDown = 0;
@@ -278,6 +283,7 @@ class DemoBackend implements Backend {
     _stop(silent: true);
     _lastNode = node;
     _pending = false;
+    _connSettings = _connPart(_settings);
     final chain = _chain(node['protocol'], node['transport']);
     if (chain.isEmpty) throw const ApiError(502, 'no installed core supports this node');
     final tun = _settings['tun'] == true;
@@ -499,7 +505,7 @@ class DemoBackend implements Backend {
         if (problems.isNotEmpty) throw ApiError(400, problems.join('\n'));
         _settings = jsonDecode(jsonEncode(b)) as Json;
         _settings['routing'].addAll(clean);
-        if (_status['state'] == 'connected') _pending = true;
+        if (_status['state'] == 'connected') _pending = _connPart(_settings) != _connSettings;
         _emit({'kind': 'store', 'reason': 'settings'});
         return jsonDecode(jsonEncode(_settings));
       case 'GET /subscriptions':
