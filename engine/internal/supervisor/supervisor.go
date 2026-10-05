@@ -531,6 +531,9 @@ func (s *Supervisor) monitor(ctx context.Context, p *process, n node.Node, serve
 			return "", "", nil
 		case <-p.Exited():
 			return ReasonExited, "", p.ExitError()
+		case <-p.lost():
+			// Its port answers, but not with this core behind it.
+			return ReasonExited, "", errPortTaken(p.listen)
 		case <-check.C:
 			_, err := s.check(ctx, p)
 			if ctx.Err() != nil {
@@ -625,6 +628,8 @@ func (s *Supervisor) awaitHealthy(ctx context.Context, p *process) (time.Duratio
 			return 0, ctx.Err()
 		case <-p.Exited():
 			return 0, p.ExitError()
+		case <-p.lost():
+			return 0, errPortTaken(p.listen)
 		case <-time.After(min(s.cfg.Health.Interval, failRetry)):
 		}
 	}
@@ -668,22 +673,38 @@ func (s *Supervisor) launch(ctx context.Context, k core.Kind, n node.Node, serve
 		return nil, fmt.Errorf("listen address %s is already in use", listen)
 	}
 
+	watch := newPortWatch(listen)
 	pr, err := s.group.Start(proc.Spec{
-		Name:   string(k),
-		Path:   s.cfg.Binaries[k],
-		Args:   a.RunArgs(path, dir),
-		Dir:    dir,
-		OnLine: func(line string) { s.emit(Event{Kind: EventLog, Core: k, Line: line, Probe: probe}) },
+		Name: string(k),
+		Path: s.cfg.Binaries[k],
+		Args: a.RunArgs(path, dir),
+		Dir:  dir,
+		OnLine: func(line string) {
+			watch.line(line)
+			s.emit(Event{Kind: EventLog, Core: k, Line: line, Probe: probe})
+		},
 	})
 	if err != nil {
 		return nil, err
 	}
-	p := &process{Process: pr, kind: k, listen: listen, probe: probe, stats: o.Stats, secret: o.StatsSecret}
-	if err := pr.WaitFor(ctx, s.cfg.StartTimeout, "socks port "+listen.String(), func() bool { return proc.PortOpen(listen) }); err != nil {
+	p := &process{Process: pr, kind: k, listen: listen, probe: probe, stats: o.Stats, secret: o.StatsSecret, portLost: watch.ch}
+	// A core that could not open its port is done waiting for: the port
+	// answering then is someone else's.
+	ready := func() bool { return watch.failed() || proc.PortOpen(listen) }
+	if err := pr.WaitFor(ctx, s.cfg.StartTimeout, "socks port "+listen.String(), ready); err != nil {
 		p.stop()
 		return nil, err
 	}
+	if watch.failed() {
+		p.stop()
+		return nil, errPortTaken(listen)
+	}
 	return p, nil
+}
+
+// errPortTaken is a core's failure to open its SOCKS port at addr.
+func errPortTaken(addr netip.AddrPort) error {
+	return fmt.Errorf("the core could not open its port %s: another program holds it", addr)
 }
 
 func (s *Supervisor) drop(failed map[core.Kind]error, k core.Kind, reason Reason, err error) {
