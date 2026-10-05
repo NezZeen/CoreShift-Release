@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -35,10 +36,16 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	fakeCore = filepath.Join(dir, "fakecore"+exe())
-	build := exec.Command("go", "build", "-o", fakeCore, "../supervisor/testdata/fakecore")
-	build.Stdout, build.Stderr = os.Stdout, os.Stderr
-	if err := build.Run(); err != nil {
-		panic("building fakecore: " + err.Error())
+	// A test binary built elsewhere, run where there is no Go (a network
+	// namespace rig), is handed one built along with it.
+	if p := os.Getenv("CORESHIFT_FAKECORE"); p != "" {
+		fakeCore = p
+	} else {
+		build := exec.Command("go", "build", "-o", fakeCore, "../supervisor/testdata/fakecore")
+		build.Stdout, build.Stderr = os.Stdout, os.Stderr
+		if err := build.Run(); err != nil {
+			panic("building fakecore: " + err.Error())
+		}
 	}
 	code := m.Run()
 	os.RemoveAll(dir)
@@ -196,6 +203,8 @@ type harness struct {
 	guard  *fakeGuard
 	listen netip.AddrPort
 	events <-chan Event
+	// offline takes the device's network away (Config.netUp).
+	offline atomic.Bool
 }
 
 func newHarness(t *testing.T, mutate func(*Config)) *harness {
@@ -233,7 +242,9 @@ func newHarness(t *testing.T, mutate func(*Config)) *harness {
 			return 0, errors.New("unreachable")
 		},
 		// No speedtest.net from tests: the speed test goes to speedURL.
-		ookla: noOokla,
+		ookla:   noOokla,
+		netUp:   func() bool { return !h.offline.Load() },
+		netPoll: 50 * time.Millisecond,
 	}
 	if mutate != nil {
 		mutate(&cfg)
@@ -443,7 +454,7 @@ func TestMissingSystemResolverFallsBack(t *testing.T) {
 	for {
 		select {
 		case e := <-h.events:
-			if e.Kind == "dns" && strings.Contains(e.Error, "no system resolver") {
+			if e.Kind == "dns" && strings.Contains(e.Error, "системный DNS не найден (no adapters)") {
 				return
 			}
 		case <-time.After(time.Second):

@@ -55,6 +55,7 @@ class HomePage extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _Hero(state: state),
+            if (st.state == ConnState.noNetwork) ...[const SizedBox(height: 16), _NoNetworkBanner(state: state)],
             if (state.serverUnresponsive) ...[const SizedBox(height: 16), _UnresponsiveBanner(state: state)],
             if (st.settingsPending) ...[const SizedBox(height: 16), _PendingBanner(state: state)],
             _BackupBanner(state: state),

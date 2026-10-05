@@ -51,7 +51,16 @@ const (
 	Connected     State = "connected"
 	Disconnecting State = "disconnecting"
 	Failed        State = "failed"
+	// NoNetwork: the device has no network (netwatch.go). Either a
+	// connection waits for one to start (Status.Waiting), or a connection
+	// that lost it is held as it is, its tunnel and DNS redirect in place,
+	// until it returns.
+	NoNetwork State = "no-network"
 )
+
+// active reports whether the VPN is on, coming up or waiting for the
+// network to do either.
+func (st State) active() bool { return st == Connecting || st == Connected || st == NoNetwork }
 
 type Status struct {
 	State    State                `json:"state"`
@@ -69,6 +78,9 @@ type Status struct {
 	// Problem is set while connected when no core gets through: whether the
 	// server or the network is at fault (a Reach), until a check passes.
 	Problem string `json:"problem,omitempty"`
+	// Waiting, in state NoNetwork, means nothing is up yet: the connection
+	// starts once the network is there. Without it the connection is held.
+	Waiting bool `json:"waiting,omitempty"`
 }
 
 type Service struct {
@@ -129,6 +141,20 @@ type Service struct {
 	// when the settings leave the choice to the system; watchNetwork
 	// follows it.
 	autoDNS netip.Addr
+	// waitCancel ends a connection's wait for the network (awaitNetwork).
+	waitCancel context.CancelFunc
+
+	// The network, as netwatch.go follows it: netDown is set while a
+	// connection is held for want of one; netKick asks the watcher to look
+	// now; netSeen tells it that something got through, so there is a
+	// network whatever the route table says, and netBlind that the source
+	// was caught wrong, until it sees a network again; healthOK is when a
+	// check of the active core last passed (Unix nanoseconds).
+	netDown  atomic.Bool
+	netKick  chan struct{}
+	netSeen  atomic.Bool
+	netBlind atomic.Bool
+	healthOK atomic.Int64
 }
 
 func New(cfg Config) (*Service, error) {
@@ -181,6 +207,21 @@ func New(cfg Config) (*Service, error) {
 	}
 	if cfg.netInterval == 0 {
 		cfg.netInterval = networkCheckInterval
+	}
+	if cfg.netUp == nil {
+		cfg.netUp = cfg.NetworkUp
+	}
+	if cfg.netUp == nil {
+		cfg.netUp = hasNetwork
+	}
+	if cfg.netPoll == 0 {
+		cfg.netPoll = netPollInterval
+	}
+	if cfg.netGrace == 0 {
+		cfg.netGrace = netBackGrace
+	}
+	if cfg.netEvidence == 0 {
+		cfg.netEvidence = netEvidenceInterval
 	}
 	if cfg.coreVersion == nil {
 		cfg.coreVersion = core.Version
@@ -246,7 +287,7 @@ func New(cfg Config) (*Service, error) {
 	}
 
 	s := &Service{cfg: cfg, hub: newHub(), opts: cfg.Options, status: Status{State: Idle, TUN: cfg.TUN}, socks: core.NewSOCKSAuth(),
-		awake: make(chan struct{}, 1)}
+		awake: make(chan struct{}, 1), netKick: make(chan struct{}, 1)}
 	s.logs = newLogGrouper(logGroupEvery, func(source, line string) {
 		s.hub.publish(Event{Kind: "log", Source: source, Line: line})
 	})
@@ -287,6 +328,7 @@ func New(cfg Config) (*Service, error) {
 		Health:               p.Health,
 		ReturnToPrimaryAfter: p.ReturnToPrimaryAfter,
 		Fragment:             p.Fragment,
+		Offline:              s.offline,
 		OnEvent:              s.onCoreEvent,
 	})
 	if err != nil {
@@ -331,7 +373,7 @@ func (s *Service) SetOptions(o Options) {
 	o = o.withDefaults()
 	s.mu.Lock()
 	s.opts = o
-	active := s.status.State == Connecting || s.status.State == Connected
+	active := s.status.State.active()
 	s.pending = s.pending || active
 	if !active {
 		s.status.TUN = o.TUN
@@ -411,9 +453,10 @@ func (s *Service) Subscribe(replay bool) (<-chan Event, func()) { return s.hub.s
 func (s *Service) Status() Status {
 	s.mu.Lock()
 	st := s.status
-	st.Pending = s.pending && (st.State == Connected || st.State == Connecting)
+	st.Pending = s.pending && st.State.active()
 	s.mu.Unlock()
-	if st.State == Connected || st.State == Connecting {
+	// While waiting for the network no core runs yet.
+	if st.State.active() && !st.Waiting {
 		sup := s.sup.Status()
 		st.Core, st.Chain, st.Failed = sup.Core, sup.Chain, sup.Failed
 	}

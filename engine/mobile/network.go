@@ -40,10 +40,21 @@ func parseList[T any](s string, parse func(string) (T, error)) []T {
 // monitor.
 type networkState struct {
 	mu        sync.Mutex
+	reported  bool // the app has said which network there is, if any
 	iface     *control.Interface
 	dns       []netip.Addr
 	callbacks list.List[tun.DefaultInterfaceUpdateCallback]
 	mine      []string
+	// changed tells the service the network came or went
+	// (Service.NetworkChanged), so it need not wait for its next look.
+	changed func()
+}
+
+// onChange sets what is told when the network comes or goes.
+func (n *networkState) onChange(f func()) {
+	n.mu.Lock()
+	n.changed = f
+	n.mu.Unlock()
 }
 
 var currentNetwork = &networkState{}
@@ -55,13 +66,16 @@ func (n *networkState) set(name string, index int, addrs []netip.Prefix, dns []n
 		iface = &control.Interface{Index: index, MTU: 1500, Name: name, Addresses: addrs, Flags: net.FlagUp | net.FlagRunning}
 	}
 	changed := !sameInterface(n.iface, iface)
-	n.iface, n.dns = iface, dns
-	callbacks := n.callbacks.Array()
+	n.iface, n.dns, n.reported = iface, dns, true
+	callbacks, notify := n.callbacks.Array(), n.changed
 	n.mu.Unlock()
 	if changed {
 		// sing-box closes connections of the old network.
 		for _, cb := range callbacks {
 			cb(iface, 0)
+		}
+		if notify != nil {
+			notify()
 		}
 	}
 }
@@ -71,6 +85,15 @@ func sameInterface(a, b *control.Interface) bool {
 		return a == b
 	}
 	return a.Index == b.Index && a.Name == b.Name
+}
+
+// up reports whether the phone has a network: the service's NetworkUp.
+// Before the app first says, it does: the callback comes a moment after the
+// engine starts, and a connection must not wait for it.
+func (n *networkState) up() bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return !n.reported || n.iface != nil
 }
 
 // resolvers are the DNS servers of the network: the TUN layer's resolver

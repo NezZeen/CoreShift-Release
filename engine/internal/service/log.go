@@ -14,6 +14,11 @@ const logGroupEvery = 30 * time.Second
 // it (a separate process on the desktop, part of the app on Android), and
 // as the cores print it (onCoreEvent).
 func (s *Service) Log(source, line string) {
+	// The TUN layer's and the cores' complaints that the device has no
+	// default interface: the network watcher looks at once (netwatch.go).
+	if netHint(line) {
+		s.kickNetwork()
+	}
 	line = tidy(line)
 	switch {
 	case noiseLine(line):
