@@ -45,7 +45,7 @@ extension AppStateSubAlerts on AppState {
           final e = i.expire!.toLocal(), day = e.year == now.year && e.month == now.month && e.day == now.day ? 'сегодня' : 'завтра';
           out.add(SubWarning(s, traffic: false, level: 2, title: 'Подписка $name закончится $day', body: 'Продлите её у провайдера, чтобы VPN не отключился.'));
         } else if (left.inHours < 72) {
-          final days = (left.inHours / 24).ceil();
+          final days = subscriptionDaysLeft(i.expire!, now);
           out.add(
             SubWarning(
               s,
