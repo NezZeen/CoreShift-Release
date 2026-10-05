@@ -182,6 +182,9 @@ func New(cfg Config) (*Service, error) {
 	if cfg.netInterval == 0 {
 		cfg.netInterval = networkCheckInterval
 	}
+	if cfg.coreVersion == nil {
+		cfg.coreVersion = core.Version
+	}
 	if cfg.trafficEvery == 0 {
 		cfg.trafficEvery = trafficInterval
 	}
