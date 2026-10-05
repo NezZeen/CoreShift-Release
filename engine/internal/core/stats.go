@@ -1,10 +1,10 @@
 package core
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/binary"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -32,7 +32,10 @@ func ReadTraffic(ctx context.Context, k Kind, addr netip.AddrPort, secret string
 	return clashTraffic(ctx, addr, secret)
 }
 
-var statsClient = &http.Client{Transport: &http.Transport{Proxy: nil, DisableKeepAlives: true}}
+// statsClient keeps its connection to the core's API between samples: they
+// come every second for as long as the VPN is on. Each run of a core has a
+// port of its own, and a connection to one that stopped is closed with it.
+var statsClient = &http.Client{Transport: &http.Transport{Proxy: nil, MaxIdleConnsPerHost: 1, IdleConnTimeout: 30 * time.Second}}
 
 func clashTraffic(ctx context.Context, addr netip.AddrPort, secret string) (Traffic, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+addr.String()+"/connections", nil)
@@ -50,14 +53,133 @@ func clashTraffic(ctx context.Context, addr netip.AddrPort, secret string) (Traf
 	if resp.StatusCode != http.StatusOK {
 		return Traffic{}, fmt.Errorf("clash api: %s", resp.Status)
 	}
-	var body struct {
-		Up   int64 `json:"uploadTotal"`
-		Down int64 `json:"downloadTotal"`
-	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 16<<20)).Decode(&body); err != nil {
+	t, err := clashTotals(bufio.NewReaderSize(io.LimitReader(resp.Body, 16<<20), 4<<10))
+	if err != nil {
 		return Traffic{}, fmt.Errorf("clash api: %w", err)
 	}
-	return Traffic{Up: body.Up, Down: body.Down}, nil
+	// Drained, the connection goes back to the pool for the next sample.
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 16<<20))
+	return t, nil
+}
+
+// clashTotals reads uploadTotal and downloadTotal from the Clash API's
+// /connections answer, a JSON object, without decoding the list of open
+// connections that comes with them: on a busy device it is hundreds of
+// kilobytes, every second. It reads only as far as it needs to. sing-box
+// sorts the keys (connections first), mihomo does not.
+func clashTotals(r *bufio.Reader) (Traffic, error) {
+	var t Traffic
+	var haveUp, haveDown bool
+	depth := 0
+	key := make([]byte, 0, 16)
+	// expectKey: at depth 1, the next string is a key.
+	expectKey := false
+	for !haveUp || !haveDown {
+		c, err := r.ReadByte()
+		if err != nil {
+			if err == io.EOF {
+				err = errors.New("malformed answer: it ends early")
+			}
+			return Traffic{}, err
+		}
+		switch c {
+		case '{', '[':
+			depth++
+			expectKey = depth == 1 && c == '{'
+		case '}', ']':
+			depth--
+			if depth < 0 {
+				return Traffic{}, errors.New("malformed answer")
+			}
+			if depth == 0 {
+				return t, nil // a total missing counts as nothing yet
+			}
+		case ',':
+			expectKey = depth == 1
+		case '"':
+			s, err := readJSONString(r, &key, expectKey)
+			if err != nil {
+				return Traffic{}, err
+			}
+			if !expectKey {
+				continue
+			}
+			expectKey = false
+			var dst *int64
+			switch string(s) {
+			case "uploadTotal":
+				dst, haveUp = &t.Up, true
+			case "downloadTotal":
+				dst, haveDown = &t.Down, true
+			default:
+				continue
+			}
+			v, err := readJSONInt(r)
+			if err != nil {
+				return Traffic{}, fmt.Errorf("%s: %w", s, err)
+			}
+			*dst = v
+		}
+	}
+	return t, nil
+}
+
+// readJSONString reads the rest of a string whose opening quote was read.
+// With keep it returns the raw bytes (escapes left as they are: the keys
+// looked for have none) in *buf; otherwise it only skips them.
+func readJSONString(r *bufio.Reader, buf *[]byte, keep bool) ([]byte, error) {
+	*buf = (*buf)[:0]
+	for {
+		c, err := r.ReadByte()
+		if err != nil {
+			return nil, errors.New("malformed answer: unterminated string")
+		}
+		switch c {
+		case '"':
+			return *buf, nil
+		case '\\':
+			if _, err := r.ReadByte(); err != nil {
+				return nil, errors.New("malformed answer: unterminated string")
+			}
+			c = 0 // an escaped character never matches a key looked for
+		}
+		if keep && len(*buf) < 32 {
+			*buf = append(*buf, c)
+		}
+	}
+}
+
+// readJSONInt reads the colon and the non-negative integer after a key.
+func readJSONInt(r *bufio.Reader) (int64, error) {
+	var v int64
+	digits := 0
+	for {
+		c, err := r.ReadByte()
+		if err != nil {
+			return 0, errors.New("malformed answer")
+		}
+		switch {
+		case c == ':' && digits == 0, c == ' ' || c == '\t' || c == '\n' || c == '\r':
+			if digits > 0 {
+				return v, nil
+			}
+		case c >= '0' && c <= '9':
+			if v > (1<<63-1-9)/10 {
+				return 0, errors.New("number out of range")
+			}
+			v = v*10 + int64(c-'0')
+			digits++
+		default:
+			if digits == 0 {
+				return 0, fmt.Errorf("not a number: %q", c)
+			}
+			// The value ended: put back what follows (a comma, a brace).
+			if err := r.UnreadByte(); err != nil {
+				return 0, err
+			}
+			return v, nil
+		}
+	}
 }
 
 // xrayStatsClient speaks HTTP/2 without TLS, which is what gRPC over a
