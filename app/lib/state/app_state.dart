@@ -131,6 +131,12 @@ class AppState extends ChangeNotifier {
   int sessionDown = 0;
   static const speedKeep = 120;
 
+  /// Notifies with every traffic sample, apart from the rest of the state:
+  /// one a second while connected would otherwise redraw whatever page is
+  /// open. What shows [speed] or the bytes moved listens to it.
+  Listenable get traffic => _traffic;
+  final _traffic = ValueNotifier<int>(0);
+
   /// The latest release of each core, once checked.
   List<CoreUpdate> coreUpdates = [];
 
@@ -599,7 +605,7 @@ class AppState extends ChangeNotifier {
         if (speed.length > speedKeep) speed.removeRange(0, speed.length - speedKeep);
         sessionUp = e.up;
         sessionDown = e.down;
-        _notify();
+        if (!_disposed) _traffic.value++;
       case 'cores':
         _log(e.time, e.core, 'обновлено до ${e.line}', LogLevel.ok);
         _reloadInfo();
@@ -904,6 +910,7 @@ class AppState extends ChangeNotifier {
     _statsTimer?.cancel();
     _subTimer?.cancel();
     _coreTimer?.cancel();
+    _traffic.dispose();
     super.dispose();
   }
 }
