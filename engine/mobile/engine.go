@@ -224,6 +224,7 @@ func Start(dataDir, libDir, deviceID, osVersion, model string, p Platform) error
 	go srv.Serve(ln)
 
 	ctx, cancel := context.WithCancel(context.Background())
+	go svc.WarmUp(ctx)
 	go st.RunUpdater(ctx, time.Minute)
 	go svc.RunAppUpdates(ctx)
 	go report(ctx, svc, p)

@@ -66,6 +66,42 @@ func TestUpdateCoreNeverGoesBack(t *testing.T) {
 	}
 }
 
+// The start and the app opening ask for the versions at the same time:
+// each core is started once for both, and once only.
+func TestCoreVersionsAskEachCoreOnce(t *testing.T) {
+	var calls atomic.Int32
+	h := newHarness(t, func(c *Config) {
+		c.coreVersion = func(_ context.Context, k core.Kind, _ string) (string, error) {
+			calls.Add(1)
+			time.Sleep(100 * time.Millisecond) // starting a core takes a while
+			if k == core.Mihomo {
+				return "", errors.New("no version printed")
+			}
+			return "1.2.3", nil
+		}
+	})
+	installed := len(h.svc.cfg.Binaries)
+	go h.svc.WarmUp(context.Background())
+	time.Sleep(20 * time.Millisecond)
+	results := make(chan map[core.Kind]string, 4)
+	for range 4 {
+		go func() { results <- h.svc.CoreVersions(context.Background()) }()
+	}
+	for range 4 {
+		if v := <-results; len(v) != installed-1 || v[core.Xray] != "1.2.3" {
+			t.Errorf("versions %v", v)
+		}
+	}
+	if n := calls.Load(); n != int32(installed) {
+		t.Errorf("%d core starts for %d cores", n, installed)
+	}
+	// Known now: asked again, only the core that did not tell is.
+	h.svc.CoreVersions(context.Background())
+	if n := calls.Load(); n != int32(installed)+1 {
+		t.Errorf("%d core starts after asking again, want %d", n, installed+1)
+	}
+}
+
 // A request made while the connection comes up waits for it, rather than
 // going direct before the tunnel exists, and then goes through the core.
 func TestRequestsWaitForTheConnection(t *testing.T) {
