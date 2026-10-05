@@ -1,8 +1,9 @@
 import 'dart:convert';
 
-/// What a link from outside asks CoreShift to add: a panel's "add to app"
-/// button (coreshift://, happ://, v2rayng://…), a scanned QR code or the
-/// clipboard.
+/// What a link from outside asks CoreShift to add: a panel's «add to
+/// CoreShift» button (coreshift://, the only scheme the system opens
+/// CoreShift for), or a scanned QR code or the clipboard, where other
+/// clients' links (happ://, v2rayng://…) are read too.
 class ImportLink {
   /// A subscription URL (http or https), or empty.
   final String url;
