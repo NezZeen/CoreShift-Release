@@ -266,7 +266,11 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 			addrs := resolvers
 			if err != nil || len(addrs) == 0 {
 				direct = "1.1.1.1"
-				s.hub.publish(Event{Kind: "dns", Error: fmt.Sprintf("no system resolver found (%v); using %s for direct names", err, direct)})
+				why := "the network names none"
+				if err != nil {
+					why = err.Error()
+				}
+				s.hub.publish(Event{Kind: "dns", Error: fmt.Sprintf("no system resolver found (%s); using %s for direct names", why, direct)})
 			} else {
 				direct = addrs[0].String()
 				s.mu.Lock()
