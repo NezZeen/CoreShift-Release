@@ -1,12 +1,10 @@
 package service
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
@@ -17,13 +15,15 @@ import (
 	"time"
 
 	"coreshift/engine/internal/fsutil"
+	"coreshift/engine/internal/ruleset"
 	"coreshift/engine/internal/tunlayer"
 )
 
-// geoSet is a rule set behind a routing preset.
+// geoSet is a rule set behind a routing preset. CoreShift carries a copy
+// of each and downloads newer ones from ruleset.URL(Tag), see package
+// ruleset.
 type geoSet struct {
 	Tag string
-	URL string
 	// IP marks address-based sets (geoip), which the TUN layer matches after
 	// resolving names.
 	IP bool
@@ -41,11 +41,9 @@ type geoSet struct {
 var (
 	russiaSuffixes = []string{"ru", "su", "xn--p1ai", "2ip.io"}
 	russiaSets     = []geoSet{
-		{Tag: "geosite-category-ru", URL: "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ru.srs"},
-		{Tag: "geoip-ru", URL: "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-ru.srs", IP: true},
-		{Tag: "geosite-category-media-ru-blocked",
-			URL:   "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-media-ru-blocked.srs",
-			Proxy: true},
+		{Tag: "geosite-category-ru"},
+		{Tag: "geoip-ru", IP: true},
+		{Tag: "geosite-category-media-ru-blocked", Proxy: true},
 		googleSet,
 	}
 )
@@ -63,7 +61,7 @@ var (
 // ranges are not in geoip-ru, so no address list is needed. google.ru is
 // listed for the same reason: the preset sends .ru direct. A name the user
 // lists to go direct stays direct (googleDirect).
-var googleSet = geoSet{Tag: "geosite-google", URL: "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-google.srs", Proxy: true}
+var googleSet = geoSet{Tag: "geosite-google", Proxy: true}
 
 var googleSuffixes = []string{
 	// Search and the national domains people in and around Russia meet.
@@ -103,48 +101,48 @@ func under(name, domain string) bool { return name == domain || strings.HasSuffi
 const (
 	ruleSetMaxAge  = 7 * 24 * time.Hour
 	ruleSetTimeout = 20 * time.Second
-	ruleSetMaxSize = 16 << 20
 )
 
-// ruleSets keeps rule set files in dir, downloading them when missing and
-// refreshing them in the background when old.
+// ruleSets keeps rule set files in dir: the copies built into CoreShift at
+// first, then newer ones from SagerNet, refreshed in the background when
+// old. A downloaded copy replaces the one on disk only if ruleset.Check
+// accepts it next to that one and the built-in one.
 type ruleSets struct {
-	dir     string
-	fetch   func(ctx context.Context, url string, proxy *url.URL) ([]byte, error)
-	publish func(Event)
+	dir   string
+	fetch func(ctx context.Context, url string, proxy *url.URL) ([]byte, error)
+	// baseline returns the built-in copy of a set and when it was
+	// downloaded: ruleset.Baseline.
+	baseline func(tag string) ([]byte, time.Time, bool)
+	publish  func(Event)
 
 	mu         sync.Mutex
 	refreshing map[string]bool
 }
 
 func newRuleSets(dir string, publish func(Event)) *ruleSets {
-	return &ruleSets{dir: dir, fetch: fetchRuleSet, publish: publish, refreshing: map[string]bool{}}
+	return &ruleSets{dir: dir, fetch: fetchRuleSet, baseline: ruleset.Baseline, publish: publish, refreshing: map[string]bool{}}
 }
 
 // get returns the sets available on disk, split into direct domain, direct
-// IP and proxy sets. A missing set is downloaded now, through proxy (the
-// active core's SOCKS inbound, credentials included; nil for none) and then
-// directly; one that cannot be had is reported and left out, so connecting
-// still works, only with fewer names going direct.
+// IP and proxy sets. A set missing from disk, damaged there or older than
+// the built-in copy is replaced by the built-in copy; one CoreShift has no
+// copy of is downloaded now, through proxy (the active core's SOCKS
+// inbound, credentials included; nil for none) and then directly. One that
+// cannot be had is reported and left out, so connecting still works, only
+// with fewer names going direct.
 func (r *ruleSets) get(ctx context.Context, sets []geoSet, proxy *url.URL) (domain, ip, proxied []tunlayer.RuleSet) {
 	for _, gs := range sets {
 		path := filepath.Join(r.dir, gs.Tag+".srs")
-		fi, err := os.Lstat(path)
-		if err == nil && !fi.Mode().IsRegular() {
-			// A link or anything else in place of a file the service
-			// wrote: fetched anew.
-			os.RemoveAll(path)
-			err = fs.ErrNotExist
-		}
+		mod, ok := r.ready(gs, path)
 		switch {
-		case err != nil:
+		case !ok:
 			if err := r.download(ctx, gs, path, proxy); err != nil {
 				r.publish(Event{Kind: "rules", Reason: gs.Tag,
 					Error: fmt.Sprintf("база %s не загрузилась, её сайты пойдут через туннель: %v", gs.Tag, err)})
 				continue
 			}
 			r.publish(Event{Kind: "rules", Reason: gs.Tag, Line: "downloaded"})
-		case time.Since(fi.ModTime()) > ruleSetMaxAge:
+		case time.Since(mod) > ruleSetMaxAge:
 			go r.refresh(gs, path, proxy)
 		}
 		rs := tunlayer.RuleSet{Tag: gs.Tag, Path: path}
@@ -176,13 +174,63 @@ func (r *ruleSets) refresh(gs geoSet, path string, proxy *url.URL) {
 		r.mu.Unlock()
 	}()
 	if err := r.download(context.Background(), gs, path, proxy); err != nil {
-		r.publish(Event{Kind: "rules", Reason: gs.Tag, Error: fmt.Sprintf("база %s не обновилась, работает прежняя: %v", gs.Tag, err)})
+		// Line "kept": the set still works, only not updated.
+		r.publish(Event{Kind: "rules", Reason: gs.Tag, Line: "kept", Error: fmt.Sprintf("база %s не обновилась, работает прежняя: %v", gs.Tag, err)})
 		return
 	}
 	r.publish(Event{Kind: "rules", Reason: gs.Tag, Line: "updated"})
 }
 
+// ready makes sure path holds a usable copy of gs and returns when it was
+// downloaded. A link or anything else in place of a file the service wrote,
+// a damaged file, or one older than the built-in copy gives way to the
+// built-in copy, dated as downloaded. false means there is neither.
+func (r *ruleSets) ready(gs geoSet, path string) (time.Time, bool) {
+	var cur []byte
+	var mod time.Time
+	fi, err := os.Lstat(path)
+	switch {
+	case err != nil:
+	case !fi.Mode().IsRegular():
+		os.RemoveAll(path)
+	default:
+		cur, err = os.ReadFile(path)
+		if err == nil {
+			err = ruleset.Check(gs.Tag, cur)
+		}
+		if err != nil {
+			r.publish(Event{Kind: "rules", Reason: gs.Tag, Line: "damaged", Error: fmt.Sprintf("база %s испорчена: %v", gs.Tag, err)})
+			os.Remove(path)
+			cur = nil
+		}
+		mod = fi.ModTime()
+	}
+	base, fetched, haveBase := r.baseline(gs.Tag)
+	if cur != nil && (!haveBase || !mod.Before(fetched)) {
+		return mod, true
+	}
+	if !haveBase {
+		return time.Time{}, false
+	}
+	if err := writeAtomic(path, base); err != nil {
+		r.publish(Event{Kind: "rules", Reason: gs.Tag, Error: fmt.Sprintf("база %s не записалась: %v", gs.Tag, err)})
+		return time.Time{}, false
+	}
+	os.Chtimes(path, fetched, fetched)
+	r.publish(Event{Kind: "rules", Reason: gs.Tag, Line: "builtin"})
+	return fetched, true
+}
+
+// download fetches gs into path, if ruleset.Check accepts it next to the
+// copy on disk and the built-in one.
 func (r *ruleSets) download(ctx context.Context, gs geoSet, path string, proxy *url.URL) error {
+	var refs [][]byte
+	if cur, err := os.ReadFile(path); err == nil {
+		refs = append(refs, cur)
+	}
+	if base, _, ok := r.baseline(gs.Tag); ok {
+		refs = append(refs, base)
+	}
 	// Through the proxy first: the source may be blocked where the user is.
 	vias := []*url.URL{nil}
 	if proxy != nil {
@@ -190,9 +238,9 @@ func (r *ruleSets) download(ctx context.Context, gs geoSet, path string, proxy *
 	}
 	var errs []error
 	for _, via := range vias {
-		b, err := r.fetch(ctx, gs.URL, via)
+		b, err := r.fetch(ctx, ruleset.URL(gs.Tag), via)
 		if err == nil {
-			err = checkRuleSet(b)
+			err = ruleset.Check(gs.Tag, b, refs...)
 		}
 		if err == nil {
 			return writeAtomic(path, b)
@@ -207,14 +255,6 @@ func (r *ruleSets) download(ctx context.Context, gs geoSet, path string, proxy *
 		}
 	}
 	return errors.Join(errs...)
-}
-
-// checkRuleSet rejects what is not a binary rule set, such as an error page.
-func checkRuleSet(b []byte) error {
-	if !bytes.HasPrefix(b, []byte("SRS")) {
-		return errors.New("response is not a rule set")
-	}
-	return nil
 }
 
 func fetchRuleSet(ctx context.Context, rawURL string, proxy *url.URL) ([]byte, error) {
@@ -238,11 +278,11 @@ func fetchRuleSet(ctx context.Context, rawURL string, proxy *url.URL) ([]byte, e
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("server returned %s", resp.Status)
 	}
-	b, err := io.ReadAll(io.LimitReader(resp.Body, ruleSetMaxSize+1))
+	b, err := io.ReadAll(io.LimitReader(resp.Body, ruleset.MaxSize+1))
 	if err != nil {
 		return nil, err
 	}
-	if len(b) > ruleSetMaxSize {
+	if len(b) > ruleset.MaxSize {
 		return nil, errors.New("rule set too large")
 	}
 	return b, nil
