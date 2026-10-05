@@ -4,6 +4,7 @@ import 'dart:math';
 
 import 'backend.dart';
 import 'models.dart';
+import 'punycode.dart';
 import '../version.dart';
 
 /// A simulated daemon for previewing the UI (`--dart-define=DEMO=true`, and
@@ -444,7 +445,8 @@ class DemoBackend implements Backend {
         List<String> names(String key) {
           final out = <String>[];
           for (final d in routing[key] as List? ?? const []) {
-            final v = '$d'.trim().toLowerCase().replaceAll(RegExp(r'^\.+|\.+$'), '');
+            // Like the daemon: a name in another script is kept in punycode.
+            final v = domainToAscii('$d'.trim().toLowerCase().replaceAll(RegExp(r'^\.+|\.+$'), ''));
             if (v.isEmpty) continue;
             if (!RegExp(r'^[a-z0-9_-]+(\.[a-z0-9_-]+)*$').hasMatch(v)) {
               problems.add('routing.$key: "$d" is not a domain');
