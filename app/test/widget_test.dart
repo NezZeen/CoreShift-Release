@@ -1473,6 +1473,20 @@ void main() {
     expect(tester.takeException(), isNull);
     await tester.pump(const Duration(seconds: 6));
   });
+
+  testWidgets('the journal on a phone: the title first, the search under it', (tester) async {
+    await pumpApp(tester, size: const Size(390, 844));
+    await open(tester, 'Журнал');
+    await tester.pump();
+    final title = tester.getRect(find.text('Журнал').first);
+    final search = tester.getRect(find.widgetWithText(TextField, 'Поиск'));
+    final copy = tester.getRect(find.text('Копировать'));
+    expect(search.top, greaterThan(title.bottom), reason: 'the search wrapped above the title');
+    expect((copy.center.dy - title.center.dy).abs(), lessThan(24), reason: 'the copy button beside the title');
+    expect(tester.getRect(find.text('Ошибки')).center.dy, closeTo(search.center.dy, 12));
+    expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(seconds: 6));
+  });
 }
 
 /// A daemon that is not running.
