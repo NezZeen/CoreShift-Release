@@ -283,7 +283,7 @@ class _Sidebar extends StatelessWidget {
                 const SizedBox(width: 6),
                 Tooltip(
                   message: state.versionMismatch
-                      ? 'Приложение ${state.version.label}, служба ${state.info.buildVersion.label}: версии различаются, переустановите CoreShift'
+                      ? state.versionMismatchAdvice
                       : 'Версия ${state.version.label}${state.version.commit.isEmpty ? '' : ', коммит ${state.version.commit}'}',
                   child: Text(
                     state.version.known ? state.version.version : state.info.version,

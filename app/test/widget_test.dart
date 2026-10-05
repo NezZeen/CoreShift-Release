@@ -660,9 +660,23 @@ void main() {
     await tester.pump();
     await tester.ensureVisible(find.text('Версия службы'));
     expect(find.text('0.2.0'), findsWidgets);
+    // Two builds of one version: not «0.2.0» against «0.2.0».
+    expect(find.text('другая сборка'), findsOneWidget);
     expect(find.textContaining('Переустановите CoreShift целиком'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pump(const Duration(seconds: 6));
+  });
+
+  test('a service newer than the window asks to restart the window', () {
+    // The demo service reports 0.2.0; the window is still 0.1.9, as after a
+    // package upgrade on Linux with the window open.
+    final state = AppState(DemoBackend(), version: const BuildVersion('0.1.9', 12, 'abc1234'))..info = DaemonInfo.fromJson({'version': '0.2.0', 'build': 15});
+    expect(state.versionMismatch, isTrue);
+    expect(state.serviceVersionLabel, '0.2.0');
+    expect(state.versionMismatchAdvice, contains('Перезапустите CoreShift'));
+    state.info = DaemonInfo.fromJson({'version': '0.1.9', 'build': 10});
+    expect(state.serviceVersionLabel, 'другая сборка');
+    expect(state.versionMismatchAdvice, contains('Переустановите CoreShift целиком'));
   });
 
   testWidgets('finds, offers and installs an update of CoreShift', (tester) async {
@@ -1554,6 +1568,20 @@ void main() {
     final (title, body) = AppState.serverProblemText('unknown', 'Финляндия');
     expect(title, 'Связь через «Финляндия» не проходит');
     expect(body, contains('виноват сервер или сеть'));
+    await tester.pump(const Duration(seconds: 6));
+  });
+
+  testWidgets('the journal on a phone: the title first, the search under it', (tester) async {
+    await pumpApp(tester, size: const Size(390, 844));
+    await open(tester, 'Журнал');
+    await tester.pump();
+    final title = tester.getRect(find.text('Журнал').first);
+    final search = tester.getRect(find.widgetWithText(TextField, 'Поиск'));
+    final copy = tester.getRect(find.text('Копировать'));
+    expect(search.top, greaterThan(title.bottom), reason: 'the search wrapped above the title');
+    expect((copy.center.dy - title.center.dy).abs(), lessThan(24), reason: 'the copy button beside the title');
+    expect(tester.getRect(find.text('Ошибки')).center.dy, closeTo(search.center.dy, 12));
+    expect(tester.takeException(), isNull);
     await tester.pump(const Duration(seconds: 6));
   });
 }

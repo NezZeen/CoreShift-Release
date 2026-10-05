@@ -88,44 +88,56 @@ class _LogsPageState extends State<LogsPage> {
     final lines = _shown();
     if (_follow && before != _linesFor) _toEnd();
     final compact = isCompact(context);
+    final search = TextField(
+      onChanged: (v) => setState(() => query = v.trim().toLowerCase()),
+      style: const TextStyle(fontSize: 13),
+      decoration: InputDecoration(
+        isDense: true,
+        hintText: 'Поиск',
+        prefixIcon: Icon(Icons.search, size: 16, color: p.dim),
+        prefixIconConstraints: const BoxConstraints(minWidth: 32),
+      ),
+    );
+    final seg = Seg<_Filter>(value: filter, options: const [(_Filter.all, 'Все'), (_Filter.errors, 'Ошибки')], onChanged: (v) => setState(() => filter = v));
+    // The whole journal with the cores' warnings and errors: what support needs.
+    final copy = Btn(
+      label: 'Копировать',
+      icon: Icons.copy,
+      small: true,
+      tooltip: 'Скопировать весь журнал с версиями и режимом, для поддержки',
+      onPressed: widget.state.logs.isEmpty
+          ? null
+          : () {
+              Clipboard.setData(ClipboardData(text: widget.state.journalForSupport().join('\n')));
+              widget.state.toast('Журнал скопирован');
+            },
+    );
     return Padding(
       padding: compact ? const EdgeInsets.fromLTRB(16, 16, 16, 12) : const EdgeInsets.fromLTRB(32, 28, 32, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // On a phone the search and the filter take a row of their own
+          // under the title: beside it they wrapped above it.
           PageHeader(
             'Журнал',
             subtitle: 'Подключения, смены ядер и ошибки. Скопируйте журнал, чтобы отправить его в поддержку.',
             actions: [
-              SizedBox(
-                width: compact ? 140 : 220,
-                child: TextField(
-                  onChanged: (v) => setState(() => query = v.trim().toLowerCase()),
-                  style: const TextStyle(fontSize: 13),
-                  decoration: InputDecoration(
-                    isDense: true,
-                    hintText: 'Поиск',
-                    prefixIcon: Icon(Icons.search, size: 16, color: p.dim),
-                    prefixIconConstraints: const BoxConstraints(minWidth: 32),
-                  ),
-                ),
-              ),
-              Seg<_Filter>(value: filter, options: const [(_Filter.all, 'Все'), (_Filter.errors, 'Ошибки')], onChanged: (v) => setState(() => filter = v)),
-              // The whole journal with the cores' warnings and errors: what support needs.
-              Btn(
-                label: 'Копировать',
-                icon: Icons.copy,
-                small: true,
-                tooltip: 'Скопировать весь журнал с версиями и режимом, для поддержки',
-                onPressed: widget.state.logs.isEmpty
-                    ? null
-                    : () {
-                        Clipboard.setData(ClipboardData(text: widget.state.journalForSupport().join('\n')));
-                        widget.state.toast('Журнал скопирован');
-                      },
-              ),
+              if (!compact) ...[SizedBox(width: 220, child: search), seg],
+              copy,
             ],
           ),
+          if (compact)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                children: [
+                  Expanded(child: search),
+                  const SizedBox(width: 8),
+                  seg,
+                ],
+              ),
+            ),
           Expanded(
             child: Container(
               decoration: BoxDecoration(

@@ -206,3 +206,29 @@ func TestDelayLeavesOutConnectionSetup(t *testing.T) {
 		t.Errorf("health check: %v, %v", full, err)
 	}
 }
+
+// A check cut short by a disconnect or a switch of servers is not reported:
+// the journal said "the check failed: context canceled" on every switch.
+func TestCancelledCheckIsNotReported(t *testing.T) {
+	socks, _ := slowSOCKS(t, 5*time.Second)
+	var events []Event
+	s := &Supervisor{cfg: Config{Health: Health{URL: "http://health.test/generate_204", Timeout: 5 * time.Second},
+		OnEvent: func(e Event) { events = append(events, e) }}.withDefaults()}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(200*time.Millisecond, cancel)
+	if _, err := s.check(ctx, &process{kind: core.Xray, listen: socks}); err == nil {
+		t.Fatal("a cancelled check passed")
+	}
+	if len(events) != 0 {
+		t.Errorf("a cancelled check was reported: %+v", events)
+	}
+
+	// One that runs its course is.
+	if _, err := s.check(context.Background(), &process{kind: core.Xray, listen: netip.MustParseAddrPort("127.0.0.1:1")}); err == nil {
+		t.Fatal("a check through a closed port passed")
+	}
+	if len(events) != 1 || events[0].Kind != EventHealth || events[0].Err == nil {
+		t.Errorf("events = %+v, want one failed check", events)
+	}
+}

@@ -90,24 +90,39 @@ class PanelTitle extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: Row(
-              children: [
-                Flexible(
-                  child: Text(title, style: display(16), overflow: TextOverflow.ellipsis),
-                ),
-                if (compact && info != null) InfoIcon(title: title, text: info!),
-                if (sub != null && !compact) ...[
-                  const SizedBox(width: 10),
-                  Flexible(
-                    child: Text(
-                      sub!,
-                      style: TextStyle(color: context.pal.muted, fontSize: 12),
-                      overflow: TextOverflow.ellipsis,
+            child: sub != null && !compact
+                // The title first, the subtitle in what is left: sharing the
+                // width, a two-column page at 1280 px cut both short,
+                // «Сайты и адреса без …».
+                ? LayoutBuilder(
+                    builder: (context, c) => Row(
+                      children: [
+                        ConstrainedBox(
+                          constraints: BoxConstraints(maxWidth: c.maxWidth),
+                          child: Text(title, style: display(16), overflow: TextOverflow.ellipsis),
+                        ),
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.only(left: 10),
+                            child: Text(
+                              sub!,
+                              style: TextStyle(color: context.pal.muted, fontSize: 12),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
+                  )
+                : Row(
+                    children: [
+                      Flexible(
+                        child: Text(title, style: display(16), overflow: TextOverflow.ellipsis),
+                      ),
+                      if (compact && info != null) InfoIcon(title: title, text: info!),
+                    ],
                   ),
-                ],
-              ],
-            ),
           ),
           ?trailing,
         ],

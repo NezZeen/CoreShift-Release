@@ -37,6 +37,16 @@ func TestLinuxSystemPath(t *testing.T) {
 		"/usr/bin/telegram-desktop":                     false,
 		"/opt/google/chrome/chrome":                     false,
 		"/home/me/.local/share/Steam/ubuntu12_32/steam": false,
+		// The session's plumbing, seen in a desktop session: not listed.
+		"/usr/bin/dbus-daemon":             true,
+		"/usr/bin/pipewire":                true,
+		"/usr/bin/Xwayland":                true,
+		"/usr/bin/plasmashell":             true,
+		"/usr/bin/ibus-daemon":             true,
+		"/usr/bin/bash":                    true,
+		"/usr/bin/qbittorrent":             false,
+		"/usr/share/discord/Discord":       false,
+		"/usr/lib/thunderbird/thunderbird": false,
 	} {
 		if got := linuxSystemPath(path); got != want {
 			t.Errorf("linuxSystemPath(%q) = %v, want %v", path, got, want)

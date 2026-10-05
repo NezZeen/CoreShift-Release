@@ -26,6 +26,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -123,9 +124,13 @@ type Service struct {
 	gen      int // incremented per connection; stale teardowns compare it
 	status   Status
 	opts     Options
-	pending  bool      // opts changed since the running connection started
-	lastNode node.Node // for Reconnect
-	hasLast  bool
+	connOpts Options // the options the running connection started with
+	// pending: a core was updated since the running connection started;
+	// optsPending: the options differ from connOpts.
+	pending     bool
+	optsPending bool
+	lastNode    node.Node // for Reconnect
+	hasLast     bool
 	// serverIP is the connected server's address, for checkReach;
 	// diagnosing is set while one runs.
 	serverIP   netip.Addr
@@ -368,13 +373,15 @@ func (s *Service) Options() Options {
 }
 
 // SetOptions replaces the options. A running connection keeps the old ones
-// and is marked pending until it is reconnected.
+// and is marked pending until it is reconnected, unless they are the same:
+// settings outside the options (auto-connect, updates) and a change undone
+// leave it as it is.
 func (s *Service) SetOptions(o Options) {
 	o = o.withDefaults()
 	s.mu.Lock()
 	s.opts = o
 	active := s.status.State.active()
-	s.pending = s.pending || active
+	s.optsPending = active && !reflect.DeepEqual(o, s.connOpts)
 	if !active {
 		s.status.TUN = o.TUN
 	}
@@ -453,7 +460,7 @@ func (s *Service) Subscribe(replay bool) (<-chan Event, func()) { return s.hub.s
 func (s *Service) Status() Status {
 	s.mu.Lock()
 	st := s.status
-	st.Pending = s.pending && st.State.active()
+	st.Pending = (s.pending || s.optsPending) && st.State.active()
 	s.mu.Unlock()
 	// While waiting for the network no core runs yet.
 	if st.State.active() && !st.Waiting {

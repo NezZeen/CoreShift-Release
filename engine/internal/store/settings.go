@@ -11,6 +11,8 @@ import (
 	"slices"
 	"strings"
 
+	"golang.org/x/net/idna"
+
 	"coreshift/engine/internal/core"
 	"coreshift/engine/internal/selfupdate"
 	"coreshift/engine/internal/tunlayer"
@@ -416,11 +418,20 @@ func normalizeApp(raw string) (string, error) {
 	return a, nil
 }
 
-// normalizeDomain turns ".Example.RU." into "example.ru".
+// normalizeDomain turns ".Example.RU." into "example.ru", and a name in
+// another script into its punycode, as the cores match it: "Госуслуги.РФ"
+// into "xn--c1aapkosapc.xn--p1ai".
 func normalizeDomain(raw string) (string, error) {
 	d := strings.ToLower(strings.Trim(strings.TrimSpace(raw), "."))
 	if d == "" {
 		return "", nil
+	}
+	if strings.ContainsFunc(d, func(r rune) bool { return r > 0x7f }) {
+		a, err := idna.Lookup.ToASCII(d)
+		if err != nil {
+			return "", fmt.Errorf("%q is not a domain", raw)
+		}
+		d = a
 	}
 	if len(d) > 253 {
 		return "", fmt.Errorf("%q is too long", raw)
@@ -430,9 +441,6 @@ func normalizeDomain(raw string) (string, error) {
 			return "", fmt.Errorf("%q is not a domain", raw)
 		}
 		for _, r := range label {
-			if r > 0x7f {
-				return "", fmt.Errorf("%q: write internationalized names in punycode (.рф is xn--p1ai)", raw)
-			}
 			if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-' || r == '_') {
 				return "", fmt.Errorf("%q is not a domain", raw)
 			}
