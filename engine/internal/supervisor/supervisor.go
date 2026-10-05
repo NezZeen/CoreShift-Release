@@ -633,6 +633,12 @@ func (s *Supervisor) awaitHealthy(ctx context.Context, p *process) (time.Duratio
 
 func (s *Supervisor) check(ctx context.Context, p *process) (time.Duration, error) {
 	lat, err := checkHealth(ctx, s.cfg.Auth.ProxyURL(p.listen), s.cfg.Health)
+	// A check cut short by a disconnect, or by a switch to another server,
+	// says nothing about the connection: reported, it read in the journal
+	// as "the check failed: context canceled" on every switch.
+	if err != nil && ctx.Err() != nil {
+		return lat, err
+	}
 	s.emit(Event{Kind: EventHealth, Core: p.kind, Latency: lat, Err: err, Probe: p.probe})
 	return lat, err
 }
