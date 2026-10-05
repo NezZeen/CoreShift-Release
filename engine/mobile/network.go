@@ -45,6 +45,16 @@ type networkState struct {
 	dns       []netip.Addr
 	callbacks list.List[tun.DefaultInterfaceUpdateCallback]
 	mine      []string
+	// changed tells the service the network came or went
+	// (Service.NetworkChanged), so it need not wait for its next look.
+	changed func()
+}
+
+// onChange sets what is told when the network comes or goes.
+func (n *networkState) onChange(f func()) {
+	n.mu.Lock()
+	n.changed = f
+	n.mu.Unlock()
 }
 
 var currentNetwork = &networkState{}
@@ -57,12 +67,15 @@ func (n *networkState) set(name string, index int, addrs []netip.Prefix, dns []n
 	}
 	changed := !sameInterface(n.iface, iface)
 	n.iface, n.dns, n.reported = iface, dns, true
-	callbacks := n.callbacks.Array()
+	callbacks, notify := n.callbacks.Array(), n.changed
 	n.mu.Unlock()
 	if changed {
 		// sing-box closes connections of the old network.
 		for _, cb := range callbacks {
 			cb(iface, 0)
+		}
+		if notify != nil {
+			notify()
 		}
 	}
 }
