@@ -9,6 +9,9 @@ import '../version.dart';
 
 /// A simulated daemon for previewing the UI (`--dart-define=DEMO=true`, and
 /// always on the web). It answers the same endpoints as the real one.
+/// A panel's gigabyte (see formatQuota).
+const double _gib = 1024.0 * 1024 * 1024;
+
 class DemoBackend implements Backend {
   final _events = StreamController<Event>.broadcast();
   final _rand = Random(7);
@@ -136,8 +139,8 @@ class DemoBackend implements Backend {
           ['\u{1F1F0}\u{1F1FF} Almaty', 'shadowsocks', 'tcp', 'none', 'kz1.northlink.example'],
           ['\u{1F1EF}\u{1F1F5} Tokyo', 'anytls', 'tcp', 'tls', 'jp1.northlink.example'],
         ],
-        used: 142e9,
-        total: 500e9,
+        used: 142 * _gib,
+        total: 500 * _gib,
         expireDays: 47,
       ),
     );
@@ -151,8 +154,8 @@ class DemoBackend implements Backend {
           ['Riga', 'wireguard', 'udp', 'none', '203.0.113.22'],
         ],
         title: 'Резерв',
-        used: 18e9,
-        total: 100e9,
+        used: 18 * _gib,
+        total: 100 * _gib,
         expireDays: 7,
       ),
     );

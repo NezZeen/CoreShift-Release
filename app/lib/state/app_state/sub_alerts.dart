@@ -41,9 +41,9 @@ extension AppStateSubAlerts on AppState {
             SubWarning(s, traffic: false, level: 3, title: 'Подписка $name закончилась', body: 'Продлите её у провайдера: без этого серверы не работают.'),
           );
         } else if (left.inHours < 24) {
-          out.add(
-            SubWarning(s, traffic: false, level: 2, title: 'Подписка $name закончится сегодня', body: 'Продлите её у провайдера, чтобы VPN не отключился.'),
-          );
+          // Within a day: tonight or tomorrow morning.
+          final e = i.expire!.toLocal(), day = e.year == now.year && e.month == now.month && e.day == now.day ? 'сегодня' : 'завтра';
+          out.add(SubWarning(s, traffic: false, level: 2, title: 'Подписка $name закончится $day', body: 'Продлите её у провайдера, чтобы VPN не отключился.'));
         } else if (left.inHours < 72) {
           final days = (left.inHours / 24).ceil();
           out.add(
@@ -75,7 +75,7 @@ extension AppStateSubAlerts on AppState {
               traffic: true,
               level: 1,
               title: 'Трафик подписки $name почти израсходован',
-              body: 'Осталось ${_bytes(i.total - i.used)} из ${_bytes(i.total)}.',
+              body: 'Осталось ${formatQuota(i.total - i.used)} из ${formatQuota(i.total)}.',
             ),
           );
         }
@@ -104,11 +104,5 @@ extension AppStateSubAlerts on AppState {
     }
     // Forget what no longer applies, e.g. a subscription renewed or removed.
     if (changed || now.length != warned.length) setPref('sub_warned', now);
-  }
-
-  static String _bytes(int b) {
-    if (b >= 1e9) return '${(b / 1e9).toStringAsFixed(b >= 1e11 ? 0 : 1)} ГБ';
-    if (b >= 1e6) return '${(b / 1e6).toStringAsFixed(0)} МБ';
-    return '${(b / 1e3).toStringAsFixed(0)} КБ';
   }
 }
