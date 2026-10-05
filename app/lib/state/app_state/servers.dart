@@ -34,15 +34,16 @@ extension AppStateServers on AppState {
   }
 
   /// The working node with the lowest ping among all subscriptions, if any
-  /// was tested. While the connected server does not answer it is left out:
-  /// its ping is from before, and «Другой сервер» offered it again.
+  /// was tested. While the connected server does not answer it is left out,
+  /// in every subscription that has it: its ping is from before, and
+  /// «Другой сервер» offered it again.
   (Subscription, NodeView)? fastestNode() {
     (Subscription, NodeView)? best;
     var bestMs = 0;
-    final skipSelected = serverUnresponsive;
+    final skip = serverUnresponsive ? selection.fingerprint : null;
     for (final sub in subscriptions) {
       for (final n in sub.nodes) {
-        if (skipSelected && isSelected(sub, n)) continue;
+        if (n.fingerprint == skip) continue;
         final l = latencyOf(sub.id, n.fingerprint);
         if (l != null && l.ok && n.cores.isNotEmpty && (best == null || l.ms < bestMs)) {
           best = (sub, n);
