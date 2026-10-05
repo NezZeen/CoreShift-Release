@@ -320,6 +320,7 @@ class _StatusPill extends StatelessWidget {
             ConnState.connecting => (warnColor, 'Подключение…'),
             ConnState.disconnecting => (warnColor, 'Отключение…'),
             ConnState.failed => (errColor, 'Ошибка'),
+            ConnState.noNetwork => (warnColor, state.status.waiting ? 'Ждём сеть…' : 'Нет сети'),
             ConnState.idle => (p.dim, 'Отключено'),
           };
     final active = state.status.active;
@@ -335,7 +336,7 @@ class _StatusPill extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Lamp(color: color, lit: on || st == ConnState.connecting, size: 9),
+          Lamp(color: color, lit: on || st == ConnState.connecting || st == ConnState.noNetwork, size: 9),
           const SizedBox(width: 10),
           Expanded(
             child: Column(

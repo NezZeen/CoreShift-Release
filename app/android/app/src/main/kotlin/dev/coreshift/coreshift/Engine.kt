@@ -80,18 +80,30 @@ object Engine {
     private fun watchNetwork(context: Context) {
         val cm = context.getSystemService(ConnectivityManager::class.java)
         cm.registerDefaultNetworkCallback(object : ConnectivityManager.NetworkCallback() {
-            override fun onLinkPropertiesChanged(network: Network, lp: LinkProperties) = report(lp)
+            override fun onLinkPropertiesChanged(network: Network, lp: LinkProperties) = report(network, lp)
 
             override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
-                cm.getLinkProperties(network)?.let { report(it) }
+                cm.getLinkProperties(network)?.let { report(network, it) }
             }
 
-            override fun onLost(network: Network) = Mobile.setNetwork("", 0, "", "")
+            // Only the network reported last: when Wi-Fi hands over to mobile
+            // data the old one may be lost after the new one came, and the
+            // phone is not offline then.
+            override fun onLost(network: Network) {
+                if (network != current) return
+                current = null
+                Mobile.setNetwork("", 0, "", "")
+            }
         })
     }
 
-    private fun report(lp: LinkProperties) {
+    /** The default network the engine was told of last. */
+    @Volatile
+    private var current: Network? = null
+
+    private fun report(network: Network, lp: LinkProperties) {
         val name = lp.interfaceName ?: return
+        current = network
         val index = try {
             NetworkInterface.getByName(name)?.index ?: 0
         } catch (_: Exception) {
@@ -126,6 +138,9 @@ object Engine {
         override fun stateChanged(state: String, node: String, sinceMillis: Long) {
             VpnStatus.set(state, node, sinceMillis)
             CoreShiftVpnService.current()?.refreshNotification()
+            // A wait for the network that ended without a VPN (cancelled,
+            // failed) leaves no TUN to close: the service goes by itself.
+            if (state == "idle" || state == "failed") CoreShiftVpnService.current()?.stopIfIdle()
             VpnTileService.refresh(context)
         }
 

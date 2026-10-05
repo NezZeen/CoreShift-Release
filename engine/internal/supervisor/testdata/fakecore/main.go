@@ -9,6 +9,8 @@
 //	unhealthy               accept SOCKS but answer health checks with 503
 //	unhealthy-after:<dur>   healthy at first, 503 afterwards
 //	hang-after:<dur>        serve, then stop taking connections but keep running
+//	offline-file:<file>     answer health checks with 503 while <file> exists,
+//	                        as every check fails while the device has no network
 //
 // FAKECORE_FORWARD=<zone>=<host:port> relays connections to names in the
 // zone to host:port, as a real core reaches them, name resolved remotely.
@@ -53,6 +55,7 @@ func main() {
 	verb, arg, _ := strings.Cut(mode, ":")
 	healthyUntil := time.Time{} // zero: forever
 	var hangAfter time.Duration
+	offlineFile := ""
 	switch verb {
 	case "crash-start":
 		fmt.Println("fatal: config rejected by fake core")
@@ -72,6 +75,8 @@ func main() {
 		}()
 	case "hang-after":
 		hangAfter, _ = time.ParseDuration(arg)
+	case "offline-file":
+		offlineFile = arg
 	case "unhealthy":
 		healthyUntil = time.Now()
 	case "unhealthy-after":
@@ -96,6 +101,11 @@ func main() {
 			return
 		}
 		healthy := healthyUntil.IsZero() || time.Now().Before(healthyUntil)
+		if offlineFile != "" {
+			if _, err := os.Stat(offlineFile); err == nil {
+				healthy = false
+			}
+		}
 		go serve(c, healthy)
 	}
 }
