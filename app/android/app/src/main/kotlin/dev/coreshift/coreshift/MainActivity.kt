@@ -140,7 +140,12 @@ class MainActivity : FlutterActivity() {
                 mapOf(
                     "package" to it.packageName,
                     "label" to pm.getApplicationLabel(it).toString(),
-                    "system" to ((it.flags and ApplicationInfo.FLAG_SYSTEM) != 0),
+                    // Preinstalled and never updated. Chrome, YouTube or Gmail
+                    // come with the phone too, but the Play Store updates them:
+                    // they are the user's apps, not hidden behind «Показывать
+                    // системные».
+                    "system" to ((it.flags and ApplicationInfo.FLAG_SYSTEM) != 0 &&
+                        (it.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) == 0),
                 )
             }
     }
