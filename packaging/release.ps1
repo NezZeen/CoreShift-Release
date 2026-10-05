@@ -13,10 +13,19 @@
 # Run it on main with everything committed. main then goes on; the branch
 # keeps the released code, so the version can be rebuilt, compared or fixed
 # later (packaging\build-version.ps1 builds any of them).
+#
+# The version commit also takes SagerNet's current rule sets into the copies
+# CoreShift carries (engine\internal\ruleset\data, coreshift-release
+# rulesets): the service starts from them and checks the sets it downloads
+# later against them. If they cannot be downloaded, or one is far from the
+# previous copy, the release stops before anything is committed;
+# -KeepRuleSets releases with the copies already committed.
 param(
     [Parameter(Mandatory = $true)][string]$Version,
     # Only commit, tag and branch; build later.
     [switch]$NoBuild,
+    # Leave the built-in rule sets as they are.
+    [switch]$KeepRuleSets,
     [ValidateSet('all', 'windows', 'android', 'linux')]
     [string]$Platform = 'all',
     # Leave the Linux packages out, e.g. on a computer without WSL.
@@ -55,6 +64,16 @@ try {
     $current = (Get-Content VERSION -Raw).Trim()
     if ([version]$Version -le [version]$current -and (git tag --list "v$current")) {
         throw "$Version is not later than the released $current"
+    }
+
+    if (-not $KeepRuleSets) {
+        Push-Location "$root\engine"
+        try {
+            go run ./cmd/coreshift-release rulesets
+            Check 'coreshift-release rulesets (-KeepRuleSets releases with the committed ones)'
+        } finally { Pop-Location }
+        git add engine/internal/ruleset/data
+        Check 'git add'
     }
 
     # ASCII, no BOM: build.ps1 and the tools read it as plain text.
