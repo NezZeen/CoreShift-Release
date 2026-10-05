@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sync"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -16,11 +17,11 @@ const (
 	// Only SYSTEM and Administrators; not inherited from ProgramData, where
 	// every user may read.
 	sddlPrivate = "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
-	// Readable by local users, so the unprivileged UI can read the API token.
-	sddlShared = "D:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FR;;;BU)"
 	// The data directory: SYSTEM and Administrators, and everything in it
-	// after them; users may list the directory itself (to find api.json),
-	// nothing more, and nothing in it inherits that.
+	// after them; users may list the directory itself (to find api.json,
+	// so that the app tells a stopped service from a refused file),
+	// nothing more, and nothing in it inherits that. api.json itself is
+	// for the API group only (sharedSDDL, apigroup_windows.go).
 	sddlRoot = "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;;0x1200a9;;;BU)"
 )
 
@@ -35,7 +36,8 @@ func restrictDir(dir string) error {
 	return setDACL(dir, sddlPrivate)
 }
 
-// WriteShared writes a file the unprivileged UI must be able to read. The
+// WriteShared writes a file the unprivileged UI must be able to read: the
+// members of APIGroupName may, besides SYSTEM and Administrators. The
 // file is always made anew, by the service, and replaces the old one: a
 // file someone else created would stay theirs, to rewrite at will.
 func WriteShared(path string, data []byte) error {
@@ -49,7 +51,7 @@ func WriteShared(path string, data []byte) error {
 		werr = cerr
 	}
 	if werr == nil && elevated() {
-		werr = setDACL(name, sddlShared)
+		werr = setDACL(name, currentSharedSDDL())
 	}
 	if werr == nil {
 		werr = os.Rename(name, path)
@@ -60,9 +62,31 @@ func WriteShared(path string, data []byte) error {
 	return werr
 }
 
+// keepSharedEvery is how often KeepShared looks at the API group.
+const keepSharedEvery = 15 * time.Second
+
 // KeepShared keeps the permissions of a file WriteShared wrote up to date
-// while ctx lasts.
-func KeepShared(ctx context.Context, path string) {}
+// while ctx lasts: a user added to the API group may read it within
+// keepSharedEvery, one removed no longer, without signing out and in and
+// without a restart of the service.
+func KeepShared(ctx context.Context, path string) {
+	if !elevated() {
+		return
+	}
+	last := "" // applied again at the first tick: the group may have changed since WriteShared
+	t := time.NewTicker(keepSharedEvery)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+		if sddl := currentSharedSDDL(); sddl != last && setDACL(path, sddl) == nil {
+			last = sddl
+		}
+	}
+}
 
 func setDACL(path, sddl string) error {
 	sd, err := windows.SecurityDescriptorFromString(sddl)
