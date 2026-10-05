@@ -132,8 +132,11 @@ class _SpeedCard extends StatelessWidget {
   final AppState state;
   const _SpeedCard({required this.state});
 
+  // Redrawn with every traffic sample, unlike the page around it.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ListenableBuilder(listenable: state.traffic, builder: (context, _) => _build(context));
+
+  Widget _build(BuildContext context) {
     final p = context.pal;
     final active = state.status.state == ConnState.connected;
     final data = active ? state.speed : const <(int, int)>[];
