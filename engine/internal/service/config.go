@@ -146,8 +146,12 @@ type Config struct {
 	icmpPing     func(ctx context.Context, ip netip.Addr, b ping.Bind) (time.Duration, error)
 	tcpPing      func(ctx context.Context, ap netip.AddrPort, b ping.Bind) (time.Duration, error)
 	netInterval  time.Duration
-	speedURL     string // instead of speedServer
-	ookla        func(proxy *url.URL) ooklaTest
+	// trafficEvery and trafficIdleEvery stand in for trafficInterval and
+	// trafficIdleInterval.
+	trafficEvery     time.Duration
+	trafficIdleEvery time.Duration
+	speedURL         string // instead of speedServer
+	ookla            func(proxy *url.URL) ooklaTest
 	// leakBase and leakDomain stand in for bash.ws; leakHome for looking
 	// up the address outside the VPN.
 	leakBase   string

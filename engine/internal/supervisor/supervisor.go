@@ -27,6 +27,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"coreshift/engine/internal/core"
@@ -110,7 +111,11 @@ type Config struct {
 	// ReturnToPrimaryAfter is how long to run on a backup core before probing
 	// the primary again. Zero disables returning.
 	ReturnToPrimaryAfter time.Duration
-	LogLevel             string
+	// IdleHealthInterval is how often a healthy connection is checked while
+	// the device is idle (SetIdle), when Health.Interval is shorter; zero
+	// means a minute.
+	IdleHealthInterval time.Duration
+	LogLevel           string
 	// Fragment splits the TLS ClientHello to the server (core.Options).
 	Fragment bool
 
@@ -146,6 +151,9 @@ func (c Config) withDefaults() Config {
 	}
 	if c.StartTimeout == 0 {
 		c.StartTimeout = 10 * time.Second
+	}
+	if c.IdleHealthInterval == 0 {
+		c.IdleHealthInterval = time.Minute
 	}
 	if c.LogLevel == "" {
 		c.LogLevel = "warn"
@@ -207,6 +215,11 @@ type Supervisor struct {
 
 	// returnReq asks the monitor to move back to the primary core now.
 	returnReq chan chan error
+
+	// idle is set while the device is idle (SetIdle); awake tells the
+	// monitor it no longer is.
+	idle  atomic.Bool
+	awake chan struct{}
 }
 
 func New(cfg Config) (*Supervisor, error) {
@@ -235,7 +248,31 @@ func New(cfg Config) (*Supervisor, error) {
 	if err != nil {
 		return nil, fmt.Errorf("supervisor: %w", err)
 	}
-	return &Supervisor{cfg: cfg, group: g, status: Status{State: Idle}, returnReq: make(chan chan error)}, nil
+	return &Supervisor{cfg: cfg, group: g, status: Status{State: Idle}, returnReq: make(chan chan error), awake: make(chan struct{}, 1)}, nil
+}
+
+// SetIdle says whether the device is idle: a phone with its screen off.
+// Meanwhile a healthy connection is checked only every IdleHealthInterval:
+// each check is a request through the server, which keeps a phone's radio
+// awake. A check that fails is repeated as soon as ever, so a server that
+// stops answering is still left as quickly once that is seen; and when
+// the device is no longer idle the connection is checked at once.
+func (s *Supervisor) SetIdle(idle bool) {
+	if s.idle.Swap(idle) == idle || idle {
+		return
+	}
+	select {
+	case s.awake <- struct{}{}:
+	default:
+	}
+}
+
+// healthEvery is how long after a check that passed the next one comes.
+func (s *Supervisor) healthEvery() time.Duration {
+	if s.idle.Load() {
+		return max(s.cfg.Health.Interval, s.cfg.IdleHealthInterval)
+	}
+	return s.cfg.Health.Interval
 }
 
 // Connect starts serving n and returns once a core runs, or with an error
@@ -536,7 +573,7 @@ func (s *Supervisor) monitor(ctx context.Context, p *process, n node.Node, serve
 			if ctx.Err() != nil {
 				return "", "", nil
 			}
-			delay := s.cfg.Health.Interval
+			delay := s.healthEvery()
 			if err == nil {
 				fails, deaf = 0, 0
 			} else {
@@ -565,6 +602,10 @@ func (s *Supervisor) monitor(ctx context.Context, p *process, n node.Node, serve
 				}
 			}
 			check.Reset(delay)
+		case <-s.awake:
+			// The device is in use again: whatever happened to the server
+			// meanwhile is seen now, not a minute later.
+			check.Reset(0)
 		case <-back:
 			if s.probe(ctx, primary, n, serverAddr) == nil {
 				return ReasonReturn, "", nil
