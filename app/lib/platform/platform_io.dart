@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 
 import '../api/backend.dart';
 import '../api/models.dart';
+import '../api/proof.dart';
+import 'api_access.dart';
 import 'linux_desktop.dart' as linux;
 import 'win_service.dart' as win;
 
@@ -58,9 +60,7 @@ typedef AndroidApp = ({String package, String label, bool system});
 Future<List<AndroidApp>> installedApps() async {
   if (!Platform.isAndroid) return [];
   final list = await _android.invokeListMethod<Map>('apps') ?? const [];
-  return [
-    for (final m in list) (package: m['package'] as String, label: m['label'] as String, system: m['system'] == true),
-  ];
+  return [for (final m in list) (package: m['package'] as String, label: m['label'] as String, system: m['system'] == true)];
 }
 
 /// An app's icon as a PNG; null when it has none.
@@ -150,21 +150,35 @@ class _Endpoint {
 }
 
 /// Whether [reason], why the daemon is offline, is that the user may not
-/// reach it (Linux: not in the coreshift group), which starting it again
-/// would not change.
-bool daemonAccessDenied(String reason) => Platform.isLinux && reason == linux.groupHint;
+/// reach it (not in the group of the API file: coreshift on Linux,
+/// «CoreShift Users» on Windows), which starting it again would not change.
+bool daemonAccessDenied(String reason) => (Platform.isLinux || Platform.isWindows) && reason.startsWith(accessDeniedPrefix);
 
 /// Why the API file [f] could not be read, for the user.
-String _unreadable(File f, FileSystemException e) {
+DaemonOffline _unreadable(File f, FileSystemException e) {
   final code = e.osError?.errorCode;
   if (Platform.isLinux) {
     // ENOENT: the daemon is not running (it removes the file on exit).
-    if (code == 2) return '$_engine не запущен$_ending';
+    if (code == 2) return DaemonOffline('$_engine не запущен$_ending');
     // EACCES, EPERM: not in the group the file is for.
-    if (code == 13 || code == 1) return linux.groupHint;
+    if (code == 13 || code == 1) return const DaemonOffline(linux.groupHint, accessDenied: true);
   }
-  return 'Нет доступа к ${f.path}: ${e.osError?.message ?? e.message}';
+  if (Platform.isWindows) {
+    // ERROR_FILE_NOT_FOUND: removed between the check and the read.
+    if (code == 2) return DaemonOffline('$_engine не запущен$_ending');
+    // ERROR_ACCESS_DENIED: not in the group the file is for.
+    if (code == 5) return DaemonOffline(windowsGroupHint(windowsAccount(Platform.environment)), accessDenied: true);
+  }
+  return DaemonOffline('Нет доступа к ${f.path}: ${e.osError?.message ?? e.message}');
 }
+
+/// What to say when whoever answers at the address of api.json does not
+/// prove it knows the token: not the service that wrote the file.
+String get _impostor =>
+    'По адресу из ${Platform.isAndroid ? 'файла движка' : 'файла службы'} отвечает другая программа, а не $_engineLower. '
+    '${Platform.isAndroid ? 'Перезапустите CoreShift' : 'Перезапустите CoreShift или компьютер'}';
+
+String get _engineLower => Platform.isAndroid ? 'движок CoreShift' : 'служба CoreShift';
 
 class HttpBackend implements Backend {
   final String file;
@@ -180,8 +194,18 @@ class HttpBackend implements Backend {
   @override
   String get description => _ep?.base.authority ?? file;
 
+  /// The address and token of api.json, once whoever answers there proved
+  /// it knows the token: a file left by a service that crashed may name a
+  /// port another program holds now, which must get nothing from the app.
   Future<_Endpoint> _endpoint({bool reload = false}) async {
     if (_ep != null && !reload) return _ep!;
+    _ep = null;
+    final ep = await _readFile();
+    await _verify(ep);
+    return _ep = ep;
+  }
+
+  Future<_Endpoint> _readFile() async {
     final f = File(file);
     // On Linux the file is in a directory only the coreshift group may
     // enter: there a missing file and a refused one look alike to exists().
@@ -190,12 +214,41 @@ class HttpBackend implements Backend {
     }
     try {
       final j = jsonDecode(await f.readAsString()) as Map<String, dynamic>;
-      return _ep = _Endpoint(Uri.parse(j['address'] as String), j['token'] as String);
+      return _Endpoint(Uri.parse(j['address'] as String), j['token'] as String);
     } on FileSystemException catch (e) {
-      throw DaemonOffline(_unreadable(f, e));
+      throw _unreadable(f, e);
     } catch (_) {
       throw DaemonOffline('Файл ${f.path} повреждён');
     }
+  }
+
+  /// Asks the service at [ep] to prove it knows the token, before anything
+  /// else is sent there.
+  Future<void> _verify(_Endpoint ep) async {
+    try {
+      final nonce = newNonce();
+      final req = await _client.getUrl(ep.base.resolve('/v1/hello'));
+      req.headers.set(HttpHeaders.authorizationHeader, 'Bearer ${ep.token}');
+      req.headers.set(nonceHeader, nonce);
+      final resp = await req.close();
+      await resp.drain<void>();
+      // A service that started anew has a new token and has replaced the
+      // file by now: the next attempt reads it.
+      if (resp.statusCode == HttpStatus.unauthorized) throw DaemonOffline('$_engine не отвечает');
+      if (!proofValid(resp.headers.value(proofHeader), ep.token, nonce)) throw DaemonOffline(_impostor);
+    } on SocketException {
+      throw DaemonOffline('$_engine не отвечает');
+    } on HttpException {
+      throw DaemonOffline('$_engine не отвечает');
+    }
+  }
+
+  /// Checks the proof of a response to a request that carried [nonce]; a
+  /// response without it did not come from the service.
+  void _check(HttpClientResponse resp, _Endpoint ep, String nonce) {
+    if (proofValid(resp.headers.value(proofHeader), ep.token, nonce)) return;
+    _ep = null;
+    throw DaemonOffline(_impostor);
   }
 
   @override
@@ -205,8 +258,10 @@ class HttpBackend implements Backend {
     for (var attempt = 0; ; attempt++) {
       final ep = await _endpoint(reload: attempt > 0);
       try {
+        final nonce = newNonce();
         final req = await _client.openUrl(method, ep.base.resolve(path));
         req.headers.set(HttpHeaders.authorizationHeader, 'Bearer ${ep.token}');
+        req.headers.set(nonceHeader, nonce);
         if (body != null) {
           req.headers.contentType = ContentType.json;
           req.add(utf8.encode(jsonEncode(body)));
@@ -214,6 +269,13 @@ class HttpBackend implements Backend {
         final resp = await req.close();
         final text = await resp.transform(utf8.decoder).join();
         if (resp.statusCode == HttpStatus.unauthorized && attempt == 0) continue;
+        if (!proofValid(resp.headers.value(proofHeader), ep.token, nonce) && resp.statusCode != HttpStatus.unauthorized) {
+          // Not the service: it may have restarted elsewhere, which the
+          // file says; else whoever holds the port gets nothing more.
+          _ep = null;
+          if (attempt == 0) continue;
+          throw DaemonOffline(_impostor);
+        }
         final decoded = text.trim().isEmpty ? null : jsonDecode(text);
         if (resp.statusCode >= 400) {
           final msg = decoded is Map && decoded['error'] is String ? decoded['error'] as String : 'HTTP ${resp.statusCode}';
@@ -243,10 +305,14 @@ class HttpBackend implements Backend {
       onListen: () async {
         try {
           final ep = await _endpoint(reload: true);
+          final nonce = newNonce();
           req = await _client.getUrl(ep.base.resolve('/v1/events?replay=1&app=1'));
           req!.headers.set(HttpHeaders.authorizationHeader, 'Bearer ${ep.token}');
+          req!.headers.set(nonceHeader, nonce);
           final resp = await req!.close();
           if (cancelled) return;
+          // The service refuses a stale token before it proves anything.
+          if (resp.statusCode != HttpStatus.unauthorized) _check(resp, ep, nonce);
           if (resp.statusCode != HttpStatus.ok) {
             throw ApiError(resp.statusCode, 'event stream: HTTP ${resp.statusCode}');
           }

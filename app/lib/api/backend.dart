@@ -27,7 +27,11 @@ class ApiError implements Exception {
 
 class DaemonOffline implements Exception {
   final String message;
-  const DaemonOffline(this.message);
+
+  /// The user may not use the daemon (not in its group): starting it again
+  /// would not help.
+  final bool accessDenied;
+  const DaemonOffline(this.message, {this.accessDenied = false});
 
   @override
   String toString() => message;
