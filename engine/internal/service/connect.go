@@ -79,7 +79,12 @@ func (s *Service) connectOp(ctx context.Context, n node.Node) error {
 	s.pending, s.optsPending, s.connOpts = false, false, opts
 	s.lastNode, s.hasLast = n, true
 	s.mu.Unlock()
-	s.sup.SetPolicy(opts.policy())
+	pol := opts.policy()
+	// Without the TUN layer the SOCKS port is the proxy the user's programs
+	// are set to use, with no credentials to give. Android always has its
+	// VPN, and there other apps must not reach the port.
+	pol.OpenInbound = !opts.TUN && !s.cfg.AppOutsideVPN
+	s.sup.SetPolicy(pol)
 	s.setStatus(Status{State: Connecting, Node: n.Name, Protocol: string(n.Protocol), TUN: opts.TUN, Since: time.Now()})
 
 	serverIP, err := s.connectLocked(ctx, n, gen, opts)

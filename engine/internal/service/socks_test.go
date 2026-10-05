@@ -1,8 +1,12 @@
 package service
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"coreshift/engine/internal/core"
 )
 
 // The TUN layer reaches the core with the credentials the core requires,
@@ -44,5 +48,35 @@ func drainEvents(h *harness) map[string]bool {
 		default:
 			return out
 		}
+	}
+}
+
+// Without TUN the SOCKS port is the proxy programs are set to use, with no
+// credentials to give (browsers cannot): the core's inbound is open then.
+// With TUN, and on Android, it keeps them.
+func TestSOCKSPortIsOpenWithoutTUN(t *testing.T) {
+	for _, c := range []struct {
+		name          string
+		tun, android  bool
+		wantPasswords bool
+	}{
+		{"TUN", true, false, true},
+		{"proxy only", false, false, false},
+		{"Android", false, true, true},
+	} {
+		h := newHarness(t, func(cfg *Config) { cfg.TUN, cfg.AppOutsideVPN = c.tun, c.android })
+		if err := h.connect(t, trojanLink); err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		k := h.svc.Status().Core
+		a, _ := core.ByKind(k)
+		b, err := os.ReadFile(filepath.Join(h.svc.cfg.DataDir, "work", string(k), a.ConfigName()))
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if got := strings.Contains(string(b), h.svc.sup.SOCKSAuth().Pass); got != c.wantPasswords {
+			t.Errorf("%s: the %s inbound requires credentials: %v, want %v", c.name, k, got, c.wantPasswords)
+		}
+		h.svc.Disconnect()
 	}
 }

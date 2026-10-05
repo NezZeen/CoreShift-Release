@@ -104,6 +104,10 @@ type Config struct {
 	// Auth is required by every core's SOCKS inbound, the probes' and the
 	// latency tests' too; zero means New makes random ones (SOCKSAuth).
 	Auth core.SOCKSAuth
+	// OpenInbound leaves the inbound on Listen without credentials: without
+	// the TUN layer it is the proxy the user's programs are set to use, and
+	// they have none to give (browsers cannot). The probes keep Auth.
+	OpenInbound bool
 
 	Health       Health
 	StartTimeout time.Duration
@@ -278,6 +282,7 @@ type Policy struct {
 	Health               Health
 	ReturnToPrimaryAfter time.Duration
 	Fragment             bool
+	OpenInbound          bool // Config.OpenInbound
 }
 
 // SetPolicy replaces the swap policy. It stops any running connection, so
@@ -289,6 +294,7 @@ func (s *Supervisor) SetPolicy(p Policy) {
 	c := s.cfg
 	c.Priority, c.Mode, c.ManualCore = slices.Clone(p.Priority), p.Mode, p.ManualCore
 	c.Health, c.ReturnToPrimaryAfter, c.Fragment = p.Health, p.ReturnToPrimaryAfter, p.Fragment
+	c.OpenInbound = p.OpenInbound
 	s.cfg = c.withDefaults()
 }
 
@@ -655,6 +661,9 @@ func (s *Supervisor) launch(ctx context.Context, k core.Kind, n node.Node, serve
 		return nil, err
 	}
 	o := core.Options{Listen: listen, Auth: s.cfg.Auth, LogLevel: s.cfg.LogLevel, ServerAddr: serverAddr, Fragment: s.cfg.Fragment}
+	if !probe && s.cfg.OpenInbound {
+		o.Auth = core.SOCKSAuth{}
+	}
 	if !probe {
 		// Traffic counters for the UI. Losing them is not worth failing
 		// the core over, so any trouble here just leaves them off.
