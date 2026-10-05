@@ -2,14 +2,61 @@ package service
 
 import (
 	"context"
+	"errors"
+	"path/filepath"
 	"testing"
 	"time"
+
+	"coreshift/engine/internal/store"
 )
 
 func waitGone(s *Service, first, grace time.Duration) <-chan bool {
 	ch := make(chan bool, 1)
 	go func() { ch <- s.WaitAppGone(context.Background(), first, grace) }()
 	return ch
+}
+
+// «Автозапуск»: the selected server is connected at start only with the
+// setting on, and a first attempt that fails (the network is not up yet
+// after boot) is tried again.
+func TestAutoConnect(t *testing.T) {
+	for _, on := range []bool{false, true} {
+		st, err := store.Open(filepath.Join(t.TempDir(), "store.json"), store.Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		set := st.Settings()
+		set.AutoConnect = on
+		set.Cores.HealthURL, set.Cores.HealthIntervalS = "http://health.test/generate_204", 3600
+		if _, err := st.SetSettings(set); err != nil {
+			t.Fatal(err)
+		}
+		sub, err := st.Add(context.Background(), store.AddRequest{Name: "s", Content: trojanLink})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := st.Select(sub.ID, sub.Nodes[0].Fingerprint(), sub.Nodes[0].Name); err != nil {
+			t.Fatal(err)
+		}
+		h := newHarness(t, func(c *Config) { c.Store = st })
+		// No network at first: the TUN layer cannot start.
+		h.tun.startErr = errors.New("network is unreachable")
+		time.AfterFunc(time.Second, func() {
+			h.tun.mu.Lock()
+			h.tun.startErr = nil
+			h.tun.mu.Unlock()
+		})
+		if err := h.svc.AutoConnect(context.Background()); err != nil {
+			t.Fatalf("on=%v: %v", on, err)
+		}
+		want := Idle
+		if on {
+			want = Connected
+		}
+		if st := h.svc.Status(); st.State != want {
+			t.Errorf("on=%v: %+v, want %s", on, st, want)
+		}
+	}
 }
 
 func TestAppGoneWhenNoneEverAttaches(t *testing.T) {
