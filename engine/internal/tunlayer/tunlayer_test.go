@@ -5,6 +5,7 @@ import (
 	"net/netip"
 	"reflect"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -429,6 +430,92 @@ func TestIPv6Tunnel(t *testing.T) {
 	}
 	if find(list(sub(cfg, "route"), "rules"), v6ToProxy) != nil {
 		t.Error("a host with IPv6 must reach direct sites over its own IPv6")
+	}
+}
+
+// IPv6 switched off (RefuseIPv6), on the desktop (Windows, Linux): the TUN
+// takes all of it and refuses it before a connection is made, so it can go
+// neither through the tunnel nor around it with the host's real address.
+func TestRefuseIPv6(t *testing.T) {
+	o := baseOptions()
+	o.RefuseIPv6 = true
+	o.ExcludeLAN = true
+	o.DirectApps = []string{"music.exe"}
+	o.DNS.DirectSuffixes = []string{"ru"}
+	o.DNS.DirectIPv4Only = true // ignored: nothing IPv6 goes direct
+	o.DNS.DirectIPRuleSets = []RuleSet{{Tag: "geoip-ru", Path: "/rules/geoip-ru.srs"}}
+	cfg := render(t, o)
+
+	tun := list(cfg, "inbounds")[0].(map[string]any)
+	if !reflect.DeepEqual(tun["address"], []any{DefaultAddress.String(), DefaultAddress6.String()}) {
+		t.Errorf("the TUN must take IPv6 to refuse it: address %v", tun["address"])
+	}
+	// The local network keeps the system's routes, IPv6 too.
+	excluded := tun["route_exclude_address"].([]any)
+	for _, want := range []string{"fe80::/10", "fd00::/8", "ff00::/8", "192.168.0.0/16"} {
+		if !slices.Contains(excluded, any(want)) {
+			t.Errorf("%s routed into the TUN: %v", want, excluded)
+		}
+	}
+
+	rules := list(sub(cfg, "route"), "rules")
+	dns6 := map[string]any{"ip_version": float64(6), "port": float64(53), "action": "hijack-dns"}
+	reject6 := map[string]any{"ip_version": float64(6), "action": "reject", "no_drop": true}
+	if find(rules[:1], dns6) == nil || find(rules[1:2], reject6) == nil || find(rules[2:3], map[string]any{"action": "sniff"}) == nil {
+		t.Fatalf("IPv6 DNS must be answered and the rest refused ahead of sniffing: %v", rules[:3])
+	}
+	if r := rules[1].(map[string]any); len(r) != 3 {
+		t.Errorf("the refusal must match every IPv6 connection: %v", r)
+	}
+	for _, unwanted := range []map[string]any{
+		{"ip_cidr": []any{"2000::/3"}, "outbound": tagProxy},
+		{"ip_cidr": []any{"2000::/3"}, "action": "reject"},
+	} {
+		if find(rules, unwanted) != nil {
+			t.Errorf("IPv6 tunnel rule with IPv6 refused: %v", unwanted)
+		}
+	}
+	if find(rules, map[string]any{"action": "resolve", "strategy": "ipv4_only"}) == nil {
+		t.Error("geoip lookups must be IPv4-only")
+	}
+
+	dns := sub(cfg, "dns")
+	if dns["strategy"] != "ipv4_only" {
+		t.Errorf("DNS strategy %v, want ipv4_only", dns["strategy"])
+	}
+	if find(list(dns, "servers"), map[string]any{"type": "fakeip"})["inet6_range"] != nil {
+		t.Error("IPv6 fake addresses with IPv6 refused")
+	}
+	if find(list(dns, "rules"), map[string]any{"domain": toAny(ipv6Probes)}) == nil {
+		t.Error("Windows' IPv6 probes must be answered empty")
+	}
+	if find(list(dns, "rules"), map[string]any{"query_type": []any{"AAAA"}, "action": "predefined", "domain_suffix": []any{"ru"}}) != nil {
+		t.Error("ipv4_only already empties AAAA; no per-name rules needed")
+	}
+
+	// IPv6 on: nothing refused.
+	o.RefuseIPv6 = false
+	o.Address6 = DefaultAddress6
+	if ruleIndex(list(sub(render(t, o), "route"), "rules"), reject6) >= 0 {
+		t.Error("IPv6 refused with IPv6 on")
+	}
+}
+
+// Android's VpnService blocks a family the TUN has no address of, so with
+// IPv6 off the platform TUN stays IPv4-only and refuses nothing itself.
+func TestRefuseIPv6Platform(t *testing.T) {
+	o := baseOptions()
+	o.Platform = true
+	o.RefuseIPv6 = true
+	cfg := render(t, o)
+	if addr := list(cfg, "inbounds")[0].(map[string]any)["address"]; !reflect.DeepEqual(addr, []any{DefaultAddress.String()}) {
+		t.Errorf("platform TUN address %v, want IPv4 only", addr)
+	}
+	if ruleIndex(list(sub(cfg, "route"), "rules"), map[string]any{"ip_version": float64(6)}) >= 0 {
+		t.Error("IPv6 rules in a platform TUN")
+	}
+	if sub(cfg, "dns")["strategy"] != "ipv4_only" {
+		t.Error("platform TUN without IPv6 must resolve IPv4 only")
 	}
 }
 

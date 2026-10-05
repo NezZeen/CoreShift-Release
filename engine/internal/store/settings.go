@@ -24,8 +24,8 @@ type Settings struct {
 	// TUN routes all system traffic through the tunnel and guards DNS;
 	// without it only the local SOCKS port is served.
 	TUN bool `json:"tun"`
-	// IPv6 routes IPv6 traffic through the tunnel too, rather than letting
-	// it bypass the tunnel.
+	// IPv6 routes IPv6 traffic through the tunnel too. Off, IPv6 is
+	// refused while connected (apps use IPv4), never let around the tunnel.
 	IPv6 bool `json:"ipv6"`
 	// AutoConnect connects the selected node when the daemon starts.
 	AutoConnect bool           `json:"auto_connect"`
