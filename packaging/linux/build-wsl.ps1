@@ -51,7 +51,13 @@ $coresDir = if ($haveCores) { WslPath $cores } else { '/root/coreshift-cores/lin
 # Windows PowerShell through wsl.exe to bash.
 $script = @"
 set -euo pipefail
-work=/root/coreshift-release-build
+# wsl.exe starts in the Windows folder this runs from. In a worktree its
+# .git file names a Windows path, which git in WSL cannot follow and
+# then refuses every command there, "git config --global" too.
+cd /
+# One folder per build: two builds at once (two worktrees) must not
+# delete each other's clone.
+work=/root/coreshift-release-build-$PID
 rm -rf "`$work"
 # The repository on the Windows disk belongs to another user as WSL sees
 # it; git refuses to read it unless told it is safe.
