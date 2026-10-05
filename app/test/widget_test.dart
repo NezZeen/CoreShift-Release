@@ -1460,7 +1460,10 @@ void main() {
     for (final gone in ['Автосвап', 'Ядра', 'Очистить']) {
       expect(find.text(gone), findsNothing, reason: gone);
     }
-    // The demo's earlier session: a switch of cores and an error.
+    // The demo's earlier session: a switch of cores and an error. The page
+    // keeps to its end, and how far up this line sits depends on what
+    // else is in the journal by now: scroll up to it if need be.
+    await tester.scrollUntilVisible(find.textContaining('Xray-core → sing-box'), -300, scrollable: find.byType(Scrollable).last);
     expect(find.textContaining('Xray-core → sing-box'), findsOneWidget);
     // The cores' own output is kept for a search, not shown on the page.
     expect(find.text('Xray 26.3.27 started'), findsNothing);
