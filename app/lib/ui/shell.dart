@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../api/models.dart';
+import '../platform/api_access.dart' show windowsGroup;
 import '../platform/platform.dart' as platform;
 import '../state/app_state.dart';
 import 'pages/cores_page.dart';
@@ -493,6 +494,9 @@ class _OfflineState extends State<_Offline> {
   Widget build(BuildContext context) {
     final p = context.pal;
     final state = widget.state;
+    // Not in the group the service's token is for: waiting will not help,
+    // an administrator will (the reason says how).
+    final denied = platform.daemonAccessDenied(state.offlineReason);
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 520),
@@ -504,11 +508,16 @@ class _OfflineState extends State<_Offline> {
             children: [
               Row(
                 children: [
-                  SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: p.muted)),
+                  if (denied)
+                    const Icon(Icons.lock_outline, size: 20, color: errColor)
+                  else
+                    SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: p.muted)),
                   const SizedBox(width: 12),
                   Flexible(
                     child: Text(
-                      platform.isAndroid
+                      denied
+                          ? 'Нет доступа к службе'
+                          : platform.isAndroid
                           ? 'Запуск CoreShift…'
                           : state.daemonStarting
                           ? 'Запуск службы…'
@@ -519,13 +528,17 @@ class _OfflineState extends State<_Offline> {
                 ],
               ),
               const SizedBox(height: 12),
-              Text(
+              // Selectable: it holds the command to give the administrator.
+              SelectableText(
                 state.offlineReason.isEmpty ? (platform.isAndroid ? 'Запускаем движок' : 'Ищем службу CoreShift') : state.offlineReason,
                 style: TextStyle(color: p.muted),
               ),
               const SizedBox(height: 14),
               Text(
-                platform.isAndroid
+                denied
+                    ? 'Служба CoreShift управляет VPN всего компьютера, поэтому ею пользуются только администраторы и участники группы '
+                          '«${platform.isLinux ? 'coreshift' : windowsGroup}». Установщик добавляет в неё того, кто установил CoreShift.'
+                    : platform.isAndroid
                     ? 'Движок VPN работает внутри приложения и обычно запускается за секунду. '
                           'Если этот экран не пропадает, закройте CoreShift в списке недавних приложений и откройте снова.'
                     : platform.isLinux

@@ -186,7 +186,7 @@ func (a *api) putSettings(w http.ResponseWriter, r *http.Request, st *store.Stor
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&set); err != nil {
-		writeError(w, http.StatusBadRequest, fmt.Errorf("invalid settings: %w", err))
+		writeBodyError(w, "invalid settings", err)
 		return
 	}
 	saved, err := st.SetSettings(set)
@@ -464,7 +464,7 @@ func (a *api) testLatency(w http.ResponseWriter, r *http.Request, st *store.Stor
 // decode reads a JSON body; an empty body decodes as {}.
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 	if err := json.NewDecoder(r.Body).Decode(v); err != nil && !errors.Is(err, io.EOF) {
-		writeError(w, http.StatusBadRequest, fmt.Errorf("invalid request: %w", err))
+		writeBodyError(w, "invalid request", err)
 		return false
 	}
 	return true

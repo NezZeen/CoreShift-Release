@@ -340,7 +340,10 @@ class AppState extends ChangeNotifier {
     } catch (e) {
       // The service runs only while the app does: the app starts it.
       final now = DateTime.now();
-      if (e is DaemonOffline && daemonStarter != null && (_daemonStarted == null || now.difference(_daemonStarted!) > const Duration(seconds: 15))) {
+      // Without access to it, starting it would not help.
+      if (e is DaemonOffline && e.accessDenied) {
+        daemonStarting = false;
+      } else if (e is DaemonOffline && daemonStarter != null && (_daemonStarted == null || now.difference(_daemonStarted!) > const Duration(seconds: 15))) {
         _daemonStarted = now;
         final ok = daemonStarter!();
         daemonStarting = ok;
