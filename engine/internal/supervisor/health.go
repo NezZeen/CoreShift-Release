@@ -33,11 +33,18 @@ func healthURLs(primary string) []string {
 	return urls
 }
 
-// checkHealth fetches Health.URL and the fallbacks through the core's SOCKS
-// inbound, all at once, and succeeds as soon as one answers. The target host
-// name is sent to the proxy unresolved, so this exercises the whole path to
-// the server, not just the local port. The latency is the first answer's;
-// when none answers, the error names every address and why it failed.
+// healthFallbackAfter is how long Health.URL has to answer before the
+// fallbacks are asked too. A working connection then costs one request per
+// check rather than one per address: each is a connection to the server
+// and, on a phone, wakes its radio.
+var healthFallbackAfter = time.Second
+
+// checkHealth fetches Health.URL through the core's SOCKS inbound, and the
+// fallbacks too once it failed or is slow to answer (healthFallbackAfter);
+// it succeeds as soon as one answers. The target host name is sent to the
+// proxy unresolved, so this exercises the whole path to the server, not
+// just the local port. The latency is the first answer's; when none
+// answers, the error names every address and why it failed.
 func checkHealth(ctx context.Context, socks *url.URL, h Health) (time.Duration, error) {
 	ctx, cancel := context.WithTimeout(ctx, h.Timeout)
 	defer cancel()
@@ -48,17 +55,34 @@ func checkHealth(ctx context.Context, socks *url.URL, h Health) (time.Duration, 
 		err error
 	}
 	results := make(chan result, len(urls))
-	for i, u := range urls {
-		go func() {
-			lat, err := fetchThrough(ctx, socks, u)
-			results <- result{i, lat, err}
-		}()
+	started := 0
+	startNext := func(n int) {
+		for ; started < min(n, len(urls)); started++ {
+			u, i := urls[started], started
+			go func() {
+				lat, err := fetchThrough(ctx, socks, u)
+				results <- result{i, lat, err}
+			}()
+		}
 	}
+	startNext(1)
+	slow := time.NewTimer(healthFallbackAfter)
+	defer slow.Stop()
 	errs := make([]error, len(urls))
 	for range urls {
-		r := <-results
+		var r result
+		for {
+			select {
+			case <-slow.C:
+				startNext(len(urls))
+				continue
+			case r = <-results:
+			}
+			break
+		}
 		if r.err != nil {
 			errs[r.i] = r.err
+			startNext(len(urls)) // no use waiting for the rest
 			continue
 		}
 		if h.MaxLatency > 0 && r.lat > h.MaxLatency {

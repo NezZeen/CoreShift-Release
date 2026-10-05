@@ -27,6 +27,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"coreshift/engine/internal/core"
@@ -110,7 +111,11 @@ type Config struct {
 	// ReturnToPrimaryAfter is how long to run on a backup core before probing
 	// the primary again. Zero disables returning.
 	ReturnToPrimaryAfter time.Duration
-	LogLevel             string
+	// IdleHealthInterval is how often a healthy connection is checked while
+	// the device is idle (SetIdle), when Health.Interval is shorter; zero
+	// means a minute.
+	IdleHealthInterval time.Duration
+	LogLevel           string
 	// Fragment splits the TLS ClientHello to the server (core.Options).
 	Fragment bool
 
@@ -154,6 +159,9 @@ func (c Config) withDefaults() Config {
 	}
 	if c.StartTimeout == 0 {
 		c.StartTimeout = 10 * time.Second
+	}
+	if c.IdleHealthInterval == 0 {
+		c.IdleHealthInterval = time.Minute
 	}
 	if c.LogLevel == "" {
 		c.LogLevel = "warn"
@@ -215,6 +223,11 @@ type Supervisor struct {
 
 	// returnReq asks the monitor to move back to the primary core now.
 	returnReq chan chan error
+
+	// idle is set while the device is idle (SetIdle); awake tells the
+	// monitor it no longer is.
+	idle  atomic.Bool
+	awake chan struct{}
 }
 
 func New(cfg Config) (*Supervisor, error) {
@@ -243,7 +256,31 @@ func New(cfg Config) (*Supervisor, error) {
 	if err != nil {
 		return nil, fmt.Errorf("supervisor: %w", err)
 	}
-	return &Supervisor{cfg: cfg, group: g, status: Status{State: Idle}, returnReq: make(chan chan error)}, nil
+	return &Supervisor{cfg: cfg, group: g, status: Status{State: Idle}, returnReq: make(chan chan error), awake: make(chan struct{}, 1)}, nil
+}
+
+// SetIdle says whether the device is idle: a phone with its screen off.
+// Meanwhile a healthy connection is checked only every IdleHealthInterval:
+// each check is a request through the server, which keeps a phone's radio
+// awake. A check that fails is repeated as soon as ever, so a server that
+// stops answering is still left as quickly once that is seen; and when
+// the device is no longer idle the connection is checked at once.
+func (s *Supervisor) SetIdle(idle bool) {
+	if s.idle.Swap(idle) == idle || idle {
+		return
+	}
+	select {
+	case s.awake <- struct{}{}:
+	default:
+	}
+}
+
+// healthEvery is how long after a check that passed the next one comes.
+func (s *Supervisor) healthEvery() time.Duration {
+	if s.idle.Load() {
+		return max(s.cfg.Health.Interval, s.cfg.IdleHealthInterval)
+	}
+	return s.cfg.Health.Interval
 }
 
 // Connect starts serving n and returns once a core runs, or with an error
@@ -539,12 +576,15 @@ func (s *Supervisor) monitor(ctx context.Context, p *process, n node.Node, serve
 			return "", "", nil
 		case <-p.Exited():
 			return ReasonExited, "", p.ExitError()
+		case <-p.lost():
+			// Its port answers, but not with this core behind it.
+			return ReasonExited, "", errPortTaken(p.listen)
 		case <-check.C:
 			_, err := s.check(ctx, p)
 			if ctx.Err() != nil {
 				return "", "", nil
 			}
-			delay := s.cfg.Health.Interval
+			delay := s.healthEvery()
 			switch {
 			case err == nil:
 				fails, deaf = 0, 0
@@ -552,9 +592,13 @@ func (s *Supervisor) monitor(ctx context.Context, p *process, n node.Node, serve
 				// Without a network every check fails, whatever the core:
 				// swapping cores or restarting this one would not help, and
 				// counting these failures would swap right after the network
-				// returns. Checked often, to see it return.
+				// returns. Checked often, to see it return; with the screen
+				// off at the idle pace, as the service watches the network
+				// itself.
 				fails, deaf = 0, 0
-				delay = min(delay, failRetry)
+				if !s.idle.Load() {
+					delay = min(delay, failRetry)
+				}
 			default:
 				fails++
 				delay = min(delay, failRetry)
@@ -584,6 +628,10 @@ func (s *Supervisor) monitor(ctx context.Context, p *process, n node.Node, serve
 				}
 			}
 			check.Reset(delay)
+		case <-s.awake:
+			// The device is in use again: whatever happened to the server
+			// meanwhile is seen now, not a minute later.
+			check.Reset(0)
 		case <-back:
 			if s.probe(ctx, primary, n, serverAddr) == nil {
 				return ReasonReturn, "", nil
@@ -644,6 +692,8 @@ func (s *Supervisor) awaitHealthy(ctx context.Context, p *process) (time.Duratio
 			return 0, ctx.Err()
 		case <-p.Exited():
 			return 0, p.ExitError()
+		case <-p.lost():
+			return 0, errPortTaken(p.listen)
 		case <-time.After(min(s.cfg.Health.Interval, failRetry)):
 		}
 	}
@@ -687,26 +737,42 @@ func (s *Supervisor) launch(ctx context.Context, k core.Kind, n node.Node, serve
 		return nil, fmt.Errorf("listen address %s is already in use", listen)
 	}
 
+	watch := newPortWatch(listen)
 	pr, err := s.group.Start(proc.Spec{
-		Name:   string(k),
-		Path:   s.cfg.Binaries[k],
-		Args:   a.RunArgs(path, dir),
-		Dir:    dir,
-		OnLine: func(line string) { s.emit(Event{Kind: EventLog, Core: k, Line: line, Probe: probe}) },
+		Name: string(k),
+		Path: s.cfg.Binaries[k],
+		Args: a.RunArgs(path, dir),
+		Dir:  dir,
+		OnLine: func(line string) {
+			watch.line(line)
+			s.emit(Event{Kind: EventLog, Core: k, Line: line, Probe: probe})
+		},
 	})
 	if err != nil {
 		return nil, err
 	}
-	p := &process{Process: pr, kind: k, listen: listen, probe: probe, stats: o.Stats, secret: o.StatsSecret}
-	if err := pr.WaitFor(ctx, s.cfg.StartTimeout, "socks port "+listen.String(), func() bool { return proc.PortOpen(listen) }); err != nil {
+	p := &process{Process: pr, kind: k, listen: listen, probe: probe, stats: o.Stats, secret: o.StatsSecret, portLost: watch.ch}
+	// A core that could not open its port is done waiting for: the port
+	// answering then is someone else's.
+	ready := func() bool { return watch.failed() || proc.PortOpen(listen) }
+	if err := pr.WaitFor(ctx, s.cfg.StartTimeout, "socks port "+listen.String(), ready); err != nil {
 		p.stop()
 		return nil, err
+	}
+	if watch.failed() {
+		p.stop()
+		return nil, errPortTaken(listen)
 	}
 	return p, nil
 }
 
 // offline reports what Config.Offline says, false without it.
 func (s *Supervisor) offline() bool { return s.cfg.Offline != nil && s.cfg.Offline() }
+
+// errPortTaken is a core's failure to open its SOCKS port at addr.
+func errPortTaken(addr netip.AddrPort) error {
+	return fmt.Errorf("the core could not open its port %s: another program holds it", addr)
+}
 
 func (s *Supervisor) drop(failed map[core.Kind]error, k core.Kind, reason Reason, err error) {
 	failed[k] = err

@@ -144,6 +144,7 @@ type Config struct {
 	// else through the system resolver.
 	lookup       func(ctx context.Context, host string, server netip.AddrPort) (netip.Addr, error)
 	fetchRuleSet func(ctx context.Context, url string, proxy *url.URL) ([]byte, error)
+	coreVersion  func(ctx context.Context, k core.Kind, bin string) (string, error)
 	hostIPv6     func() bool
 	ipv6Off      func() bool // the system refuses IPv6 on new interfaces
 	physical     func() (ping.Bind, error)
@@ -154,8 +155,12 @@ type Config struct {
 	netPoll      time.Duration // how often a connection looks whether the network is there
 	netGrace     time.Duration // how long a returned network may take to carry the tunnel again
 	netEvidence  time.Duration // how often a wait for the network tries the server anyway
-	speedURL     string        // instead of speedServer
-	ookla        func(proxy *url.URL) ooklaTest
+	// trafficEvery and trafficIdleEvery stand in for trafficInterval and
+	// trafficIdleInterval.
+	trafficEvery     time.Duration
+	trafficIdleEvery time.Duration
+	speedURL         string // instead of speedServer
+	ookla            func(proxy *url.URL) ooklaTest
 	// leakBase and leakDomain stand in for bash.ws; leakHome for looking
 	// up the address outside the VPN.
 	leakBase   string

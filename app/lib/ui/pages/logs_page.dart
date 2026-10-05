@@ -36,9 +36,10 @@ class _LogsPageState extends State<LogsPage> {
     super.dispose();
   }
 
-  /// The cores' own output is left out of the page: it drowns the events.
-  /// A search finds it, and the copy for support has its warnings and
-  /// errors (AppState.journalForSupport).
+  /// Of the cores' own output the page shows the errors and warnings: the
+  /// service groups their repeats into one line and a count. The rest
+  /// drowns the events; a search finds it, and the copy for support has
+  /// what was printed around a failure (AppState.journalForSupport).
   bool _keep(LogLine l) {
     if (query.isNotEmpty && !'${l.source} ${l.message}'.toLowerCase().contains(query)) return false;
     final isCore = allCores.contains(l.source);
@@ -52,15 +53,40 @@ class _LogsPageState extends State<LogsPage> {
   // Core output lines are noisy; lifecycle messages are kept regardless.
   static bool _isEvent(LogLine l) => const {'запуск', 'работает', 'проверка связи'}.contains(l.message);
 
+  // The lines shown, filtered again only when the journal, the filter or
+  // the search changed: the page is rebuilt every second while connected
+  // (traffic), with up to AppState.logsKeep lines.
+  List<LogLine> _lines = const [];
+  (int, _Filter, String)? _linesFor;
+
+  List<LogLine> _shown() {
+    final key = (widget.state.logsRevision, filter, query);
+    if (key != _linesFor) {
+      _lines = widget.state.logs.where(_keep).toList();
+      _linesFor = key;
+    }
+    return _lines;
+  }
+
+  /// Scrolls to the newest line. The list only estimates the height of the
+  /// lines it has not laid out, so the end moves as it gets there: a few
+  /// frames follow it.
+  void _toEnd([int frames = 4]) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scroll.hasClients) return;
+      final end = _scroll.position.maxScrollExtent;
+      if (_scroll.position.pixels == end) return;
+      _scroll.jumpTo(end);
+      if (frames > 1) _toEnd(frames - 1);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = context.pal;
-    final lines = widget.state.logs.where(_keep).toList();
-    if (_follow) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
-      });
-    }
+    final before = _linesFor;
+    final lines = _shown();
+    if (_follow && before != _linesFor) _toEnd();
     final compact = isCompact(context);
     return Padding(
       padding: compact ? const EdgeInsets.fromLTRB(16, 16, 16, 12) : const EdgeInsets.fromLTRB(32, 28, 32, 24),
