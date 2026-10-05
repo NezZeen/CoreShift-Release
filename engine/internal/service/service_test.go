@@ -153,16 +153,22 @@ func (g *fakeGuard) active() *dnsguard.Config {
 type fakeTUN struct {
 	log      *callLog
 	startErr error
-	hang     bool // Start waits until cancelled
-	mu       sync.Mutex
-	opts     tunlayer.Options
-	inst     *fakeInstance
+	// refuseErr fails Start while IPv6 is refused, as a system that will
+	// not give the interface IPv6 does.
+	refuseErr error
+	hang      bool // Start waits until cancelled
+	mu        sync.Mutex
+	opts      tunlayer.Options
+	inst      *fakeInstance
 }
 
 func (f *fakeTUN) Start(ctx context.Context, o tunlayer.Options) (TUNInstance, error) {
 	f.log.add("tun.start")
 	if f.startErr != nil {
 		return nil, f.startErr
+	}
+	if f.refuseErr != nil && o.RefuseIPv6 {
+		return nil, f.refuseErr
 	}
 	if f.hang {
 		// Like an adapter Windows has not freed yet: only cancelling ends it.
@@ -614,14 +620,41 @@ func TestIPv6Tunnel(t *testing.T) {
 		h.svc.Disconnect()
 	}
 
-	h := newHarness(t, nil) // IPv6 off
+	// IPv6 off: the tunnel does not carry it, but takes it to refuse it,
+	// rather than letting it go around (on Windows it did, with the
+	// host's real address).
+	h := newHarness(t, func(c *Config) { c.ipv6Off = func() bool { return false } })
 	if err := h.connect(t, trojanLink); err != nil {
 		t.Fatal(err)
 	}
 	h.tun.mu.Lock()
 	defer h.tun.mu.Unlock()
-	if h.tun.opts.Address6.IsValid() {
-		t.Error("IPv6 off, yet the tunnel got an IPv6 address")
+	if o := h.tun.opts; o.Address6.IsValid() || !o.RefuseIPv6 {
+		t.Errorf("IPv6 off: address6 %v, refused %v", o.Address6, o.RefuseIPv6)
+	}
+}
+
+// A system that will not give the interface IPv6, though ipv6Off did not
+// see it, still connects: IPv4-only, as with IPv6 off in the system.
+func TestIPv6RefusedFallsBackToIPv4Only(t *testing.T) {
+	h := newHarness(t, func(c *Config) { c.ipv6Off = func() bool { return false } })
+	h.tun.refuseErr = errors.New("tun exited: FATAL start inbound/tun[tun-in]: configure tun interface: set ipv6 address: Element not found.")
+	if err := h.connect(t, trojanLink); err != nil {
+		t.Fatal(err)
+	}
+	h.tun.mu.Lock()
+	defer h.tun.mu.Unlock()
+	if o := h.tun.opts; o.Address6.IsValid() || o.RefuseIPv6 {
+		t.Errorf("after the refusal: address6 %v, refused %v", o.Address6, o.RefuseIPv6)
+	}
+	n := 0
+	for _, c := range h.log.get() {
+		if c == "tun.start" {
+			n++
+		}
+	}
+	if n != 2 {
+		t.Errorf("TUN started %d times, want 2", n)
 	}
 }
 
@@ -638,8 +671,8 @@ func TestIPv6TunnelSystemOff(t *testing.T) {
 	}
 	h.tun.mu.Lock()
 	defer h.tun.mu.Unlock()
-	if h.tun.opts.Address6.IsValid() {
-		t.Errorf("IPv6 off in the system, yet the tunnel got %v", h.tun.opts.Address6)
+	if h.tun.opts.Address6.IsValid() || h.tun.opts.RefuseIPv6 {
+		t.Errorf("IPv6 off in the system, yet the tunnel got %v (refused %v)", h.tun.opts.Address6, h.tun.opts.RefuseIPv6)
 	}
 }
 

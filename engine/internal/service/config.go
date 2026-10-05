@@ -56,7 +56,8 @@ type Options struct {
 	// Without it only the SOCKS port is served.
 	TUN bool
 	// IPv6 gives the tunnel an IPv6 address too, so IPv6 traffic goes
-	// through it instead of around it.
+	// through it. Without it the TUN refuses IPv6 (tunlayer RefuseIPv6),
+	// so it goes neither through the tunnel nor around it.
 	IPv6 bool
 	DNS  DNSSettings
 	// DirectApps are executable names whose traffic bypasses the tunnel.

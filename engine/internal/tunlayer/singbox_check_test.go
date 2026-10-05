@@ -90,6 +90,19 @@ func TestSingBoxAcceptsConfig(t *testing.T) {
 			o.DNS.DirectRuleSets = []RuleSet{{Tag: "geosite-ru", Path: geosite}}
 			o.DNS.DirectIPRuleSets = []RuleSet{{Tag: "geoip-ru", Path: geoip}}
 		},
+		"ipv6 refused": func(o *Options) {
+			o.RefuseIPv6 = true
+			o.ExcludeLAN = true
+			o.LANResolvers = []netip.Addr{netip.MustParseAddr("192.168.1.1")}
+			o.DirectApps = []string{"qbittorrent.exe"}
+			o.DNS.DirectSuffixes = []string{"ru"}
+			o.DNS.DirectIPRuleSets = []RuleSet{{Tag: "geoip-ru", Path: geoip}}
+		},
+		"ipv6 refused, selective": func(o *Options) {
+			o.RefuseIPv6 = true
+			o.Selective = true
+			o.DNS.ProxySuffixes = []string{"youtube.com"}
+		},
 		"remote hostname": func(o *Options) {
 			o.DNS.Remote = "tls://dns.example:853"
 		},

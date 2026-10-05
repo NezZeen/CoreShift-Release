@@ -83,8 +83,21 @@ type Options struct {
 	InterfaceName string
 	Address       netip.Prefix // IPv4 TUN address
 	Address6      netip.Prefix // optional; zero means IPv4-only
-	MTU           uint32
-	Stack         string // "mixed", "system" or "gvisor"
+	// RefuseIPv6 is IPv6 switched off by the user: the tunnel is IPv4-only,
+	// yet IPv6 must not leave by the host's own network either, where it
+	// would show the real address (sites reached through a browser's own
+	// DoH, WebRTC, addresses apps hold). The TUN still takes all of it,
+	// with Address6 (DefaultAddress6 if unset), and refuses it before a
+	// connection is made, so apps fall back to IPv4 at once; DNS sent over
+	// IPv6 is still answered. The local network stays out (ExcludeLAN).
+	// Needs a system that gives the interface IPv6; where it does not,
+	// leave it unset: strict_route then makes IPv6 unreachable (sing-tun:
+	// an unreachable rule on Linux, a WFP block on Windows). Ignored with
+	// Platform, whose TUN blocks a family it has no address of (Android's
+	// VpnService).
+	RefuseIPv6 bool
+	MTU        uint32
+	Stack      string // "mixed", "system" or "gvisor"
 	// StrictRoute makes sing-box block traffic that tries to bypass the TUN;
 	// on Windows this is what stops DNS leaking to physical adapters (WFP).
 	StrictRoute bool
@@ -235,6 +248,7 @@ func (o Options) withDefaults() Options {
 		o.BypassProcesses, o.DirectDNSProcesses, o.DirectApps, o.ProxyApps = nil, nil, nil, nil
 		o.BypassAddresses = nil
 		o.ExcludeLAN, o.LANResolvers = false, nil
+		o.RefuseIPv6 = false
 		// The system stack answers TCP from a kernel socket of this process,
 		// which Android keeps outside its own VPN: the answers leave by the
 		// physical network and every TCP connection hangs. gVisor answers
@@ -243,6 +257,12 @@ func (o Options) withDefaults() Options {
 	}
 	if o.InterfaceName == "" {
 		o.InterfaceName = DefaultInterface
+	}
+	if o.RefuseIPv6 {
+		if !o.Address6.IsValid() {
+			o.Address6 = DefaultAddress6
+		}
+		o.DNS.DirectIPv4Only = false // nothing IPv6 goes direct anyway
 	}
 	if !o.Address.IsValid() {
 		o.Address = DefaultAddress
@@ -259,11 +279,18 @@ func (o Options) withDefaults() Options {
 	if o.DNS.FakeIP && !o.DNS.FakeIPRange.IsValid() {
 		o.DNS.FakeIPRange = DefaultFakeIPRange
 	}
-	if o.DNS.FakeIP && o.Address6.IsValid() && !o.DNS.FakeIPRange6.IsValid() {
+	if o.DNS.FakeIP && o.ipv6() && !o.DNS.FakeIPRange6.IsValid() {
 		o.DNS.FakeIPRange6 = DefaultFakeIPRange6
+	}
+	if !o.ipv6() {
+		o.DNS.FakeIPRange6 = netip.Prefix{}
 	}
 	return o
 }
+
+// ipv6 reports whether IPv6 goes through the tunnel: it has an IPv6
+// address, and IPv6 is not refused there.
+func (o Options) ipv6() bool { return o.Address6.IsValid() && !o.RefuseIPv6 }
 
 func (o Options) validate() error {
 	if !o.Upstream.IsValid() || o.Upstream.Port() == 0 {
@@ -386,7 +413,7 @@ func buildDNS(o Options) (obj, error) {
 	if len(o.DNS.BlockSuffixes) > 0 {
 		rules = append(rules, obj{"domain_suffix": o.DNS.BlockSuffixes, "action": "predefined", "rcode": "NXDOMAIN"})
 	}
-	if !o.Address6.IsValid() {
+	if !o.ipv6() {
 		rules = append(rules, obj{"domain": ipv6Probes, "action": "predefined", "rcode": "NOERROR"})
 	}
 	if o.DNS.BlockBrowserDoH {
@@ -429,7 +456,7 @@ func buildDNS(o Options) (obj, error) {
 		if key != "" {
 			aaaa[key], to[key] = value, value
 		}
-		if o.DNS.DirectIPv4Only && o.Address6.IsValid() {
+		if o.DNS.DirectIPv4Only && o.ipv6() {
 			rules = append(rules, aaaa)
 		}
 		if key != "" {
@@ -462,17 +489,33 @@ func buildDNS(o Options) (obj, error) {
 	}
 
 	dns := obj{"servers": servers, "rules": rules, "final": final, "timeout": dnsTimeout}
-	if !o.Address6.IsValid() {
+	if !o.ipv6() {
 		dns["strategy"] = "ipv4_only"
 	}
 	return dns, nil
 }
 
 func buildRoute(o Options) obj {
-	rules := []any{
+	var rules []any
+	if o.RefuseIPv6 {
+		// First, ahead of sniffing: sing-box matches rules before a
+		// connection is made (PreMatch) only up to a sniff action, which
+		// waits for TCP data. Matched here, a TCP connection gets a reset
+		// instead of a handshake and a UDP packet an ICMP unreachable, so
+		// apps try IPv4 at once, rather than after a connection that
+		// seemed to work, or a timeout. DNS over IPv6 (Windows asks the
+		// TUN's IPv6 resolver too) is still answered, matched by port
+		// since nothing is sniffed yet. no_drop: refusing often must not
+		// turn into silently dropping, which would make apps wait.
+		rules = append(rules,
+			obj{"ip_version": 6, "port": 53, "action": "hijack-dns"},
+			obj{"ip_version": 6, "action": "reject", "no_drop": true},
+		)
+	}
+	rules = append(rules,
 		obj{"action": "sniff"},
 		obj{"protocol": "dns", "action": "hijack-dns"},
-	}
+	)
 	if len(o.BypassProcesses) > 0 {
 		rules = append(rules, obj{"process_path": o.BypassProcesses, "outbound": tagDirect})
 	}
@@ -480,7 +523,7 @@ func buildRoute(o Options) obj {
 		rules = append(rules, obj{"domain_suffix": o.DNS.BlockSuffixes, "action": "reject"})
 	}
 	if len(o.DirectApps) > 0 {
-		if o.DNS.DirectIPv4Only && o.Address6.IsValid() {
+		if o.DNS.DirectIPv4Only && o.ipv6() {
 			// Direct apps with real IPv6 addresses (from their own DNS)
 			// cannot reach them without IPv6 of the host's own. Refusing
 			// at once makes them fall back to IPv4, instead of every
@@ -522,7 +565,7 @@ func buildRoute(o Options) obj {
 	if len(o.DirectIPs) > 0 {
 		rules = append(rules, obj{"ip_cidr": prefixStrings(o.DirectIPs), "outbound": tagDirect})
 	}
-	if o.DNS.DirectIPv4Only && o.Address6.IsValid() {
+	if o.DNS.DirectIPv4Only && o.ipv6() {
 		// Apps can still hold real IPv6 addresses of direct sites, from
 		// caches filled before connecting or from their own DoH. Without
 		// IPv6 of its own the host cannot reach them; the tunnel can.
@@ -537,7 +580,7 @@ func buildRoute(o Options) obj {
 	if len(o.DNS.DirectIPRuleSets) > 0 {
 		// Through the tunnel's DNS, so looking up the address leaks nothing.
 		resolve := obj{"action": "resolve", "server": tagDNSRemote, "strategy": "ipv4_only"}
-		if o.Address6.IsValid() {
+		if o.ipv6() {
 			resolve["strategy"] = "prefer_ipv4"
 		}
 		rules = append(rules, resolve, obj{"rule_set": ruleSetTags(o.DNS.DirectIPRuleSets), "outbound": tagDirect})
