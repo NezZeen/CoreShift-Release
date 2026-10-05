@@ -12,6 +12,7 @@ import '../platform/platform.dart' as platform;
 import 'errors.dart';
 import 'import_link.dart';
 import 'leak.dart';
+import 'redact.dart';
 import '../version.dart';
 
 export 'import_link.dart' show ImportLink;
