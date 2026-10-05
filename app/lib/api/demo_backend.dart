@@ -4,10 +4,14 @@ import 'dart:math';
 
 import 'backend.dart';
 import 'models.dart';
+import 'punycode.dart';
 import '../version.dart';
 
 /// A simulated daemon for previewing the UI (`--dart-define=DEMO=true`, and
 /// always on the web). It answers the same endpoints as the real one.
+/// A panel's gigabyte (see formatQuota).
+const double _gib = 1024.0 * 1024 * 1024;
+
 class DemoBackend implements Backend {
   final _events = StreamController<Event>.broadcast();
   final _rand = Random(7);
@@ -81,6 +85,11 @@ class DemoBackend implements Backend {
   Json? _lastNode;
   bool _pending = false;
 
+  /// The settings the connection uses, as the service compares them: not
+  /// auto-connect, nor the updates.
+  String _connSettings = '';
+  String _connPart(Json s) => jsonEncode({...s}..removeWhere((k, _) => const {'auto_connect', 'updates', 'app_update'}.contains(k)));
+
   /// Traffic per day, oldest first, ending with today (GET /v1/stats).
   final List<List<int>> _history = [];
   int _todayUp = 0, _todayDown = 0;
@@ -135,8 +144,8 @@ class DemoBackend implements Backend {
           ['\u{1F1F0}\u{1F1FF} Almaty', 'shadowsocks', 'tcp', 'none', 'kz1.northlink.example'],
           ['\u{1F1EF}\u{1F1F5} Tokyo', 'anytls', 'tcp', 'tls', 'jp1.northlink.example'],
         ],
-        used: 142e9,
-        total: 500e9,
+        used: 142 * _gib,
+        total: 500 * _gib,
         expireDays: 47,
       ),
     );
@@ -150,8 +159,8 @@ class DemoBackend implements Backend {
           ['Riga', 'wireguard', 'udp', 'none', '203.0.113.22'],
         ],
         title: 'Резерв',
-        used: 18e9,
-        total: 100e9,
+        used: 18 * _gib,
+        total: 100 * _gib,
         expireDays: 7,
       ),
     );
@@ -274,6 +283,7 @@ class DemoBackend implements Backend {
     _stop(silent: true);
     _lastNode = node;
     _pending = false;
+    _connSettings = _connPart(_settings);
     final chain = _chain(node['protocol'], node['transport']);
     if (chain.isEmpty) throw const ApiError(502, 'no installed core supports this node');
     final tun = _settings['tun'] == true;
@@ -444,7 +454,8 @@ class DemoBackend implements Backend {
         List<String> names(String key) {
           final out = <String>[];
           for (final d in routing[key] as List? ?? const []) {
-            final v = '$d'.trim().toLowerCase().replaceAll(RegExp(r'^\.+|\.+$'), '');
+            // Like the daemon: a name in another script is kept in punycode.
+            final v = domainToAscii('$d'.trim().toLowerCase().replaceAll(RegExp(r'^\.+|\.+$'), ''));
             if (v.isEmpty) continue;
             if (!RegExp(r'^[a-z0-9_-]+(\.[a-z0-9_-]+)*$').hasMatch(v)) {
               problems.add('routing.$key: "$d" is not a domain');
@@ -494,7 +505,7 @@ class DemoBackend implements Backend {
         if (problems.isNotEmpty) throw ApiError(400, problems.join('\n'));
         _settings = jsonDecode(jsonEncode(b)) as Json;
         _settings['routing'].addAll(clean);
-        if (_status['state'] == 'connected') _pending = true;
+        if (_status['state'] == 'connected') _pending = _connPart(_settings) != _connSettings;
         _emit({'kind': 'store', 'reason': 'settings'});
         return jsonDecode(jsonEncode(_settings));
       case 'GET /subscriptions':

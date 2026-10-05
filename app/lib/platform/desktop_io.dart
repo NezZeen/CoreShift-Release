@@ -294,6 +294,27 @@ class _GlyphPainter extends CustomPainter {
 /// The tray icon: its picture and tooltip follow the connection, a click
 /// opens the window, and its menu connects, disconnects, switches servers
 /// and quits.
+/// The servers the tray's menu offers: the first [max] usable ones of the
+/// selected subscription (of all, with none selected), and a key that
+/// changes whenever the menu should.
+@visibleForTesting
+(List<(Subscription, NodeView)>, String) trayServers(AppState state, {int max = 10}) {
+  final sel = state.selection;
+  final list = [
+    for (final sub in state.subscriptions)
+      if (sub.id == sel.subscription || sel.isEmpty)
+        for (final n in sub.nodes)
+          if (n.cores.isNotEmpty) (sub, n),
+  ].take(max).toList();
+  String ms(Subscription sub, NodeView n) {
+    final l = state.latencyOf(sub.id, n.fingerprint);
+    return l == null || !l.ok ? '-' : '${l.ms}';
+  }
+
+  final key = [state.online && !state.busy, for (final (sub, n) in list) '${sub.id}/${n.fingerprint}/${state.isSelected(sub, n)}/${ms(sub, n)}'].join('|');
+  return (list, key);
+}
+
 class _Tray {
   final AppState state;
   final tray.TrayIcon icon;
@@ -390,15 +411,19 @@ class _Tray {
       ConnState.idle => ('idle', 'CoreShift — отключено'),
     };
     final key = '$image|$tip|${st.active}|${state.busy}|${state.online}';
-    if (key == _shown) return;
-    _shown = key;
-    icon.icon = tray.ImageAsset.fromAsset('assets/tray/$image.png');
-    icon.setTooltip(tip);
-    final label = st.active ? 'Отключить' : 'Подключить';
-    final enabled = state.online && !state.busy;
-    final menuChanged = toggle.label != label || toggle.isEnabled != enabled;
-    toggle.label = label;
-    toggle.isEnabled = enabled;
+    var menuChanged = false;
+    if (key != _shown) {
+      _shown = key;
+      icon.icon = tray.ImageAsset.fromAsset('assets/tray/$image.png');
+      icon.setTooltip(tip);
+      final label = st.active ? 'Отключить' : 'Подключить';
+      final enabled = state.online && !state.busy;
+      menuChanged = toggle.label != label || toggle.isEnabled != enabled;
+      toggle.label = label;
+      toggle.isEnabled = enabled;
+    }
+    // Not only with the icon: a subscription added, a server picked or
+    // pinged with the VPN off changes the list alone.
     if ((_updateServers() || menuChanged) && Platform.isLinux) {
       // The panel keeps its copy of the menu until told the layout changed,
       // which nativeapi does only when the menu is set again.
@@ -410,19 +435,7 @@ class _Tray {
   /// to it, or moves the running connection there. Returns whether the list
   /// changed.
   bool _updateServers() {
-    final sel = state.selection;
-    final all = [
-      for (final sub in state.subscriptions)
-        for (final n in sub.nodes)
-          if (n.cores.isNotEmpty) (sub, n),
-    ];
-    int ms((Subscription, NodeView) r) {
-      final l = state.latencyOf(r.$1.id, r.$2.fingerprint);
-      return l == null || !l.ok ? 1 << 30 : l.ms;
-    }
-
-    final list = all.where((r) => r.$1.id == sel.subscription || sel.isEmpty).take(_maxServers).toList();
-    final key = [state.online && !state.busy, for (final (sub, n) in list) '${sub.id}/${n.fingerprint}/${state.isSelected(sub, n)}/${ms((sub, n))}'].join('|');
+    final (list, key) = trayServers(state, max: _maxServers);
     if (key == _serversShown) return false;
     _serversShown = key;
     servers.clear();

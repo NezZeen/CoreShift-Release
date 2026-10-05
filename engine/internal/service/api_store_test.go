@@ -469,3 +469,40 @@ func TestAPICoresAndApps(t *testing.T) {
 	}
 	_ = h
 }
+
+// Settings the connection does not use (auto-connect, subscription and
+// app updates) do not ask for a reconnect, nor does a change undone.
+func TestAPISettingsPendingOnlyForTheConnection(t *testing.T) {
+	h, srv := newStoreAPI(t, nil)
+	if err := h.connect(t, trojanLink); err != nil {
+		t.Fatal(err)
+	}
+	var set store.Settings
+	callJSON(t, srv, "GET", "/v1/settings", nil, &set)
+	pending := func(what string, s store.Settings) bool {
+		t.Helper()
+		if code := callJSON(t, srv, "PUT", "/v1/settings", s, nil); code != http.StatusOK {
+			t.Fatalf("%s: put %d", what, code)
+		}
+		var st Status
+		callJSON(t, srv, "GET", "/v1/status", nil, &st)
+		return st.Pending
+	}
+
+	other := set
+	other.AutoConnect = !set.AutoConnect
+	other.Updates.Auto = !set.Updates.Auto
+	other.Updates.IntervalHours = set.Updates.IntervalHours + 5
+	other.AppUpdate.Auto = !set.AppUpdate.Auto
+	if pending("auto-connect and updates", other) {
+		t.Error("auto-connect and updates ask for a reconnect")
+	}
+	frag := other
+	frag.Cores.Fragment = !set.Cores.Fragment
+	if !pending("fragment", frag) {
+		t.Error("the fragment does not ask for a reconnect")
+	}
+	if pending("fragment undone", other) {
+		t.Error("a change undone still asks for a reconnect")
+	}
+}

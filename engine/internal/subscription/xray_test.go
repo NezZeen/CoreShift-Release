@@ -173,6 +173,35 @@ func TestSingBoxJSONStillParses(t *testing.T) {
 	}
 }
 
+// Remnawave's list with the automatic selection: a config holding every
+// server behind a balancer, its outbounds named by tag, then a config per
+// server named by its remarks. Each server is listed once, under its own
+// name, and the selection still finds them.
+func TestParseXrayAutoSelectionNextToItsServers(t *testing.T) {
+	out := func(tag, host string) string {
+		return `{"tag": "` + tag + `", "protocol": "trojan", "settings": {"servers": [{"address": "` + host + `", "port": 443, "password": "p"}]}, "streamSettings": {"security": "tls"}}`
+	}
+	res, err := Parse([]byte(`[
+	  {"remarks": "🎲 Автовыбор 🎲", "routing": {"balancers": [{"tag": "auto", "selector": ["proxy"]}]},
+	   "outbounds": [` + out("proxy-1", "a.example") + `, ` + out("proxy-2", "b.example") + `, {"tag": "direct", "protocol": "freedom"}]},
+	  {"remarks": "🇳🇱 Амстердам", "outbounds": [` + out("proxy", "a.example") + `]},
+	  {"remarks": "🇩🇪 Франкфурт", "outbounds": [` + out("proxy", "b.example") + `]},
+	  {"remarks": "🇫🇮 Хельсинки", "outbounds": [` + out("proxy", "c.example") + `]}]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, n := range res.Nodes {
+		names = append(names, n.Name)
+	}
+	if got := strings.Join(names, ","); got != "🇳🇱 Амстердам,🇩🇪 Франкфурт,🇫🇮 Хельсинки" {
+		t.Errorf("servers %q, want each once under its own name", got)
+	}
+	if len(res.Auto) != 2 || res.Auto[0] != res.Nodes[0].Fingerprint() || res.Auto[1] != res.Nodes[1].Fingerprint() {
+		t.Errorf("the automatic selection %v lost its servers", res.Auto)
+	}
+}
+
 // The panel's balancer names what it selects from by tag prefix: those servers
 // are the automatic selection, in the order listed; the others are not.
 func TestParseXrayBalancerGroup(t *testing.T) {

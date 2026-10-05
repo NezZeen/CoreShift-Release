@@ -169,19 +169,39 @@ func TestSettingsAreNormalizedAndPersisted(t *testing.T) {
 	}
 }
 
+// Names in Cyrillic are typed as they are, «Госуслуги.рф», and kept in the
+// punycode the cores match; they used to be refused with a request to type
+// the punycode by hand.
+func TestInternationalDomains(t *testing.T) {
+	s := newFixture(t).open(t)
+	set := s.Settings()
+	set.Routing.DirectDomains = []string{"Госуслуги.РФ", ".кремль.рф.", "рф", "xn--c1aapkosapc.xn--p1ai"}
+	set.Routing.BlockDomains = []string{"пример.испытание"}
+	saved, err := s.SetSettings(set)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"xn--c1aapkosapc.xn--p1ai", "xn--e1ajeds9e.xn--p1ai", "xn--p1ai"}; !slices.Equal(saved.Routing.DirectDomains, want) {
+		t.Errorf("direct domains %v, want %v", saved.Routing.DirectDomains, want)
+	}
+	if want := []string{"xn--e1afmkfd.xn--80akhbyknj4f"}; !slices.Equal(saved.Routing.BlockDomains, want) {
+		t.Errorf("blocked domains %v, want %v", saved.Routing.BlockDomains, want)
+	}
+}
+
 func TestInvalidSettingsAreRejected(t *testing.T) {
 	s := newFixture(t).open(t)
 	set := s.Settings()
 	set.Cores.Priority = []core.Kind{"v2ray"}
 	set.Cores.HealthIntervalS = 1
 	set.DNS.Remote = "ftp://dns.example"
-	set.Routing.DirectDomains = []string{"рф", "bad domain"}
+	set.Routing.DirectDomains = []string{"рф", "bad domain", "кремль..рф"}
 	set.Routing.DirectApps = []string{"what?.exe"}
 	_, err := s.SetSettings(set)
 	if err == nil {
 		t.Fatal("accepted invalid settings")
 	}
-	for _, want := range []string{"cores.priority", "health_interval_s", "dns.remote", "punycode", "bad domain", "what?.exe"} {
+	for _, want := range []string{"cores.priority", "health_interval_s", "dns.remote", "bad domain", "кремль..рф", "what?.exe"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error does not mention %s: %v", want, err)
 		}
