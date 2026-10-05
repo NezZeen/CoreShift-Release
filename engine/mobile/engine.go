@@ -49,8 +49,9 @@ type Platform interface {
 	InstallUpdate(path string) error
 	// StateChanged reports the connection for the notification and the
 	// quick settings tile: the state ("idle", "connecting", "connected",
-	// "disconnecting", "failed"), the server and when it connected (Unix
-	// milliseconds, 0 when not connected).
+	// "disconnecting", "failed", or "no-network": waiting for a network to
+	// connect, or with the VPN held until it returns), the server and when
+	// it connected (Unix milliseconds, 0 when not connected).
 	StateChanged(state, node string, sinceMillis int64)
 	// Traffic reports the speed every second while connected, in bytes
 	// per second.
@@ -193,6 +194,7 @@ func Start(dataDir, libDir, deviceID, osVersion, model string, p Platform) error
 		PhysicalBind:  func() (ping.Bind, error) { return ping.Bind{}, nil },
 		AppOutsideVPN: true,
 		HostIPv6:      currentNetwork.hasIPv6,
+		NetworkUp:     currentNetwork.up,
 		// Release builds look for new APKs; the user installs them.
 		SelfUpdate:    service.Version != "dev",
 		InstallUpdate: p.InstallUpdate,
@@ -205,6 +207,7 @@ func Start(dataDir, libDir, deviceID, osVersion, model string, p Platform) error
 		return err
 	}
 	tun.log = svc.Log
+	currentNetwork.onChange(svc.NetworkChanged)
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

@@ -63,10 +63,13 @@ class _ConnectButtonState extends State<_ConnectButton> with SingleTickerProvide
   Widget build(BuildContext context) {
     final p = context.pal;
     final on = widget.state == ConnState.connected;
-    final busy = widget.state == ConnState.connecting || widget.state == ConnState.disconnecting;
+    // Waiting for the network turns as connecting does.
+    final offline = widget.state == ConnState.noNetwork;
+    final busy = widget.state == ConnState.connecting || widget.state == ConnState.disconnecting || offline;
     final failed = widget.state == ConnState.failed;
-    // The lamp's colour: amber stands by, green is through, red failed.
-    final lamp = on ? okColor : (failed ? errColor : (widget.enabled || busy ? accent : p.border2));
+    // The lamp's colour: amber stands by, green is through, yellow waits
+    // for the network, red failed.
+    final lamp = on ? okColor : (failed ? errColor : (offline ? warnColor : (widget.enabled || busy ? accent : p.border2)));
     final glyph = on ? const Color(0xFF052A1D) : (failed ? errColor : (widget.enabled || busy ? p.accentInk : p.dim));
     return MouseRegion(
       cursor: widget.enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,

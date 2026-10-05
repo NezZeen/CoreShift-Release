@@ -515,12 +515,16 @@ class AppState extends ChangeNotifier {
           _healthStreak.clear();
         }
         if (e.state != 'connected') _serverProblem = null;
-        _log(
-          e.time,
-          'служба',
-          _stateText(e.state) + (e.error.isNotEmpty ? ': ${e.error}' : ''),
-          e.state == 'failed' ? LogLevel.err : (e.state == 'connected' ? LogLevel.ok : LogLevel.info),
-        );
+        // Without a network the "network" event beside it says what goes on.
+        if (e.state != 'no-network') {
+          _log(
+            e.time,
+            'служба',
+            _stateText(e.state) + (e.error.isNotEmpty ? ': ${journalError(e.error)}' : ''),
+            e.state == 'failed' ? LogLevel.err : (e.state == 'connected' ? LogLevel.ok : LogLevel.info),
+          );
+        }
+        _failedWith = e.state == 'failed' ? e.error : '';
         if (e.state == 'connecting') {
           latencies.clear();
           swaps = 0;
@@ -532,7 +536,10 @@ class AppState extends ChangeNotifier {
         if (e.state == 'idle') _statsSoon();
         // A core update found while connected waits for the VPN to be off.
         if (e.state == 'idle' && live && coreUpdatesWaiting.isNotEmpty) Timer(const Duration(seconds: 2), installCoreUpdates);
-        if (e.state == 'failed' && live) _alerts.add(Alert('VPN отключился', humanError(e.error)));
+        if (e.state == 'failed' && live) {
+          toast(humanError(e.error), ToastKind.err);
+          _alerts.add(Alert('VPN отключился', humanError(e.error)));
+        }
         _statusSoon();
       case 'core-state':
         // Stopping reports no core: the whole chain is stopped.
@@ -603,8 +610,12 @@ class AppState extends ChangeNotifier {
         _log(e.time, e.kind.toUpperCase(), e.error.isNotEmpty ? e.error : _layerText(e.kind, e.reason), e.error.isNotEmpty ? LogLevel.warn : LogLevel.info);
         if (live && e.reason == 'network-changed') toast('Сеть сменилась — CoreShift переподключается');
       case 'error':
-        _log(e.time, 'служба', e.error, LogLevel.err);
+        // Services before 0.7.2 sent a failure twice: in the state and here.
+        if (e.error == _failedWith) break;
+        _log(e.time, 'служба', journalError(e.error), LogLevel.err);
         if (live) toast(humanError(e.error), ToastKind.err);
+      case 'network':
+        _onNetworkEvent(e, live);
       case 'traffic':
         speed.add((e.upRate, e.downRate));
         if (speed.length > speedKeep) speed.removeRange(0, speed.length - speedKeep);
@@ -647,6 +658,25 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// The error of the last failed state, so the same failure sent again as
+  /// an "error" event (older services) is not told twice.
+  String _failedWith = '';
+
+  /// The device lost its network or got it back (engine/internal/service/
+  /// netwatch.go): the journal says so in words, a toast too as it happens.
+  void _onNetworkEvent(Event e, bool live) {
+    final (text, level, note) = switch (e.reason) {
+      'waiting' => ('сети нет: подключусь, как только она появится', LogLevel.warn, 'Нет сети — CoreShift подключится, когда она появится'),
+      'lost' => ('сеть пропала: VPN ждёт её, ядра и сервер не меняются', LogLevel.warn, 'Пропала сеть — VPN подождёт её'),
+      'back' => ('сеть вернулась', LogLevel.ok, 'Сеть вернулась'),
+      'reconnect' => ('сеть вернулась, но связь через сервер не восстановилась: переподключаюсь', LogLevel.swap, ''),
+      _ => (e.line.isNotEmpty ? e.line : e.reason, LogLevel.info, ''),
+    };
+    _log(e.time, 'сеть', text, level);
+    if (live && note.isNotEmpty) toast(note, level == LogLevel.ok ? ToastKind.ok : ToastKind.info);
+    _statusSoon();
+  }
+
   /// What the engine found when nothing got through: who is at fault
   /// (reason, see [Status.problem]), or that the server answers again.
   void _onServerEvent(Event e, bool live) {
@@ -679,6 +709,11 @@ class AppState extends ChangeNotifier {
         name.isEmpty ? 'VPN через сервер не работает' : 'VPN через «$name» не работает',
         'Сервер на связи, но соединение через него не проходит: его блокируют или изменились его настройки. Обновите подписку или выберите другой сервер.',
       ),
+      'unknown' => (
+        name.isEmpty ? 'Связь через сервер не проходит' : 'Связь через «$name» не проходит',
+        'Не удалось выяснить, виноват сервер или сеть. Проверьте интернет; если он работает — выберите другой сервер или переподключитесь.',
+      ),
+      // Checks fail, and the engine has not looked why yet.
       _ => ('$server не отвечает', 'Связь через него не проходит: он недоступен или заблокирован. Выберите другой сервер или переподключитесь.'),
     };
   }
@@ -709,6 +744,7 @@ class AppState extends ChangeNotifier {
 
   static String _stateText(String s) => switch (s) {
     'connecting' => 'подключение…',
+    'no-network' || 'noNetwork' => 'нет сети, жду её',
     'connected' => 'подключено',
     'disconnecting' => 'отключение…',
     'failed' => 'ошибка',
@@ -743,7 +779,7 @@ class AppState extends ChangeNotifier {
   };
 
   Future<void> _onAppUpdate(Event e, bool live) async {
-    if (e.error.isNotEmpty) _log(e.time, 'обновление', e.error, LogLevel.warn);
+    if (e.error.isNotEmpty) _log(e.time, 'обновление', journalError(e.error), LogLevel.warn);
     if (e.reason == 'installed') return; // the new app says so itself
     await _loadAppUpdate();
     if (live && e.reason == 'ready') {

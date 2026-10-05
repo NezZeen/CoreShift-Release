@@ -113,7 +113,7 @@ func subscriptionOf(subs []store.Subscription, selected, fingerprint string) (st
 // after checkReach found r. Whether its subscription asks for it, or the
 // user allows it, is seen when it is about to switch.
 func (s *Service) failoverSoon(r Reach) {
-	if s.cfg.Store == nil || r == ReachOffline {
+	if s.cfg.Store == nil || r == ReachOffline || s.offline() {
 		return // without internet another server would not answer either
 	}
 	s.mu.Lock()
@@ -177,7 +177,7 @@ func (s *Service) switchServer(gen int, r Reach) {
 			return group[n.Fingerprint()] && len(s.Compatible(&n)) > 0 && answers(n)
 		})
 		if !ok {
-			s.hub.publish(Event{Kind: "failover", From: from.Name, Error: "no other server of the subscription answers"})
+			s.hub.publish(Event{Kind: "failover", From: from.Name, Error: "ни один другой сервер подписки не отвечает"})
 			return
 		}
 		if _, err := st.Select(sub.ID, next.Fingerprint(), next.Name); err != nil {

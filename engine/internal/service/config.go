@@ -123,6 +123,10 @@ type Config struct {
 	PhysicalBind func() (ping.Bind, error)
 	// HostIPv6 reports whether the device has IPv6 of its own.
 	HostIPv6 func() bool
+	// NetworkUp reports whether the device has a network at all (see
+	// netwatch.go); on Android from ConnectivityManager. nil means a
+	// default route outside the tunnel (ping.HasDefaultRoute).
+	NetworkUp func() bool
 	// AppOutsideVPN: the platform keeps the app outside its VPN (Android),
 	// so the daemon's own lookups of servers go to the system's resolver
 	// even while connected; the TUN layer's is out of its reach.
@@ -147,6 +151,10 @@ type Config struct {
 	icmpPing     func(ctx context.Context, ip netip.Addr, b ping.Bind) (time.Duration, error)
 	tcpPing      func(ctx context.Context, ap netip.AddrPort, b ping.Bind) (time.Duration, error)
 	netInterval  time.Duration
+	netUp        func() bool
+	netPoll      time.Duration // how often a connection looks whether the network is there
+	netGrace     time.Duration // how long a returned network may take to carry the tunnel again
+	netEvidence  time.Duration // how often a wait for the network tries the server anyway
 	// trafficEvery and trafficIdleEvery stand in for trafficInterval and
 	// trafficIdleInterval.
 	trafficEvery     time.Duration

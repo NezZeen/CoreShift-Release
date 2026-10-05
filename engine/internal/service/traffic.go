@@ -29,6 +29,7 @@ func (s *Service) SetBackground(bg bool) {
 		case s.awake <- struct{}{}:
 		default:
 		}
+		s.kickNetwork() // the network watcher too (netwatch.go)
 	}
 }
 

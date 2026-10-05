@@ -1459,6 +1459,117 @@ void main() {
     expect(tester.takeException(), isNull);
     await tester.pump(const Duration(seconds: 6));
   });
+
+  testWidgets('without a network the home page waits for it, and the wait can be cancelled', (tester) async {
+    for (final size in [const Size(390, 844), const Size(1400, 900)]) {
+      final backend = _StatusBackend({'state': 'no-network', 'waiting': true, 'tun': true, 'node': 'Amsterdam'});
+      final state = await pumpApp(tester, size: size, custom: AppState(backend));
+      expect(state.status.state, ConnState.noNetwork);
+      expect(state.status.active, isTrue);
+      expect(find.text('Ждём сеть…'), findsWidgets, reason: 'the state at $size');
+      expect(find.text('Подключимся, как только появится сеть'), findsOneWidget);
+      expect(find.text('Нет сети'), findsOneWidget, reason: 'the banner at $size');
+      for (final wrong in ['Ошибка подключения', 'Подключено', 'не отвечает']) {
+        expect(find.textContaining(wrong), findsNothing, reason: '$wrong at $size');
+      }
+      expect(tester.takeException(), isNull);
+      await tester.ensureVisible(find.text('Отменить'));
+      await tester.tap(find.text('Отменить'));
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(backend.calls, contains('POST /v1/disconnect'));
+      await tester.pump(const Duration(seconds: 6));
+    }
+  });
+
+  testWidgets('a connection held without a network blames neither the server nor the cores', (tester) async {
+    for (final size in [const Size(390, 844), const Size(1400, 900)]) {
+      final backend = _StatusBackend({
+        'state': 'no-network',
+        'tun': true,
+        'node': 'Amsterdam',
+        'core': 'xray',
+        'chain': ['xray', 'sing-box', 'mihomo'],
+        'since': DateTime.now().toUtc().toIso8601String(),
+      });
+      final state = await pumpApp(tester, size: size, custom: AppState(backend));
+      // Every check fails without a network.
+      for (var i = 0; i < 3; i++) {
+        state.injectEvent(Event(time: DateTime.now(), kind: 'health', core: 'xray', error: 'context deadline exceeded'));
+      }
+      state.injectEvent(Event(time: DateTime.now(), kind: 'network', reason: 'lost'));
+      await tester.pump();
+      expect(state.serverUnresponsive, isFalse);
+      expect(find.text('Нет сети'), findsWidgets, reason: 'the state and the banner at $size');
+      expect(find.text('VPN продолжит работу, когда сеть вернётся'), findsOneWidget);
+      expect(find.text('Отключить VPN'), findsOneWidget);
+      expect(find.textContaining('не отвечает'), findsNothing, reason: 'no server blamed at $size');
+      expect(find.text('Другой сервер'), findsNothing);
+      expect(state.logs.last.message, 'сеть пропала: VPN ждёт её, ядра и сервер не меняются');
+      expect(tester.takeException(), isNull);
+      await tester.pump(const Duration(seconds: 6));
+    }
+  });
+
+  testWidgets('the journal tells the network in words, and a failure once', (tester) async {
+    final state = await pumpApp(tester);
+    final t = DateTime.now();
+    final before = state.logs.length;
+    // A second apart: the journal drops an exact repeat (same time, source
+    // and text) as a replay of the event stream.
+    final reasons = ['waiting', 'back', 'lost', 'back', 'reconnect'];
+    for (var i = 0; i < reasons.length; i++) {
+      state.injectEvent(
+        Event(
+          time: t.add(Duration(seconds: i)),
+          kind: 'network',
+          reason: reasons[i],
+        ),
+      );
+    }
+    final later = t.add(Duration(seconds: reasons.length));
+    // A service before 0.7.2 told a failure twice; this one once, in Russian.
+    const old = 'resolve server node.example: lookup node.example: no such host';
+    state.injectEvent(Event(time: later, kind: 'state', state: 'failed', error: old));
+    state.injectEvent(Event(time: later, kind: 'error', error: old));
+    const now = 'адрес сервера node.example не найден в DNS: имя неверное или сервер убран, обновите подписку';
+    state.injectEvent(Event(time: later, kind: 'state', state: 'failed', error: now));
+    state.injectEvent(Event(time: later, kind: 'state', state: 'no-network'));
+    final lines = state.logs.skip(before).map((l) => '${l.source}: ${l.message}').toList();
+    expect(lines, [
+      'сеть: сети нет: подключусь, как только она появится',
+      'сеть: сеть вернулась',
+      'сеть: сеть пропала: VPN ждёт её, ядра и сервер не меняются',
+      'сеть: сеть вернулась',
+      'сеть: сеть вернулась, но связь через сервер не восстановилась: переподключаюсь',
+      'служба: ошибка: Адрес сервера VPN не найден в DNS. Проверьте интернет; если он есть — обновите подписку.',
+      'служба: ошибка: $now',
+    ]);
+    expect(humanError(now), startsWith('Адрес сервера node.example не найден в DNS'));
+    expect(humanError(now), endsWith('.'));
+    // The cause a translation sends to the journal for is in the journal.
+    expect(
+      journalError('start TUN layer: wintun: access denied'),
+      'Не удалось создать сетевой адаптер VPN. Подробности: start TUN layer: wintun: access denied',
+    );
+    final (title, body) = AppState.serverProblemText('unknown', 'Финляндия');
+    expect(title, 'Связь через «Финляндия» не проходит');
+    expect(body, contains('виноват сервер или сеть'));
+    await tester.pump(const Duration(seconds: 6));
+  });
+}
+
+/// The demo, with a status of the test's own; it records the requests.
+class _StatusBackend extends DemoBackend {
+  final Json status;
+  final calls = <String>[];
+  _StatusBackend(this.status);
+
+  @override
+  Future<dynamic> call(String method, String path, [Object? body]) async {
+    calls.add('$method $path');
+    if (method == 'GET' && path == '/v1/status') return status;
+    return super.call(method, path, body);
+  }
 }
 
 /// A daemon that is not running.
