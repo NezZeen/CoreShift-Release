@@ -25,13 +25,18 @@ func isElevated() bool { return windows.GetCurrentProcessToken().IsElevated() }
 // manager starts; the rest are for installing and controlling it.
 func runService(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: coreshiftd service {install|uninstall|start|stop|run} [flags]")
+		return errors.New("usage: coreshiftd service {install|uninstall|remove-group|start|stop|run} [flags]")
 	}
 	switch args[0] {
 	case "install":
 		return installService(args[1:])
 	case "uninstall":
+		// Not the group: the installer of an update uninstalls the old
+		// service too, and its members must stay.
 		return uninstallService()
+	case "remove-group":
+		// Removing CoreShift.
+		return service.RemoveAPIGroup()
 	case "start", "stop":
 		return controlService(args[0])
 	case "run":
@@ -56,7 +61,8 @@ func installService(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if _, err := df.config(); err != nil {
+	cfg, err := df.config()
+	if err != nil {
 		return err
 	}
 	if !hasFlag(args, "cores-dir") {
@@ -99,6 +105,16 @@ func installService(args []string) error {
 	// works, so a failure is a warning.
 	if err := installRecoveryTask(exe); err != nil {
 		fmt.Fprintln(os.Stderr, "warning: the boot-time DNS recovery task was not created:", err)
+	}
+	// Who may use the service: the group, with the user who ran setup in
+	// it. Without it only administrators can, and the app says so; the
+	// service is there all the same.
+	added, err := service.SetupAPIGroup(cfg.DataDir)
+	for _, a := range added {
+		fmt.Printf("added %s to the group %q\n", a, service.APIGroupName)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: the group %q: %v\n", service.APIGroupName, err)
 	}
 	fmt.Printf("installed service %q running %s %s\n", serviceName, exe, strings.Join(append([]string{"service", "run"}, args...), " "))
 	return nil
@@ -253,6 +269,15 @@ func (w *winService) Execute(_ []string, requests <-chan svc.ChangeRequest, stat
 	}
 	if secErr != nil {
 		fmt.Fprintln(log, "warning: securing the data directory:", secErr)
+	}
+	// The installer made the group; should it be missing, it is made here,
+	// before api.json is written for its members.
+	added, groupErr := service.SetupAPIGroup(cfg.DataDir)
+	for _, a := range added {
+		fmt.Fprintf(log, "API group: added %s to %q\n", a, service.APIGroupName)
+	}
+	if groupErr != nil {
+		fmt.Fprintf(log, "warning: API group %q: %v\n", service.APIGroupName, groupErr)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
