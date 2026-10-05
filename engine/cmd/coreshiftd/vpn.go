@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"net/http"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -81,7 +80,7 @@ func runVPN(ctx context.Context, args []string) error {
 func runServe(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	df := addDaemonFlags(fs)
-	apiAddr := fs.String("api", "127.0.0.1:17900", "loopback address of the UI API")
+	apiAddr := fs.String("api", defaultAPIAddr, apiAddrUsage)
 	verbose := fs.Bool("v", false, "print core output and every health check")
 	withApp := fs.Bool("exit-without-app", false, "stop, disconnecting, once the app is closed")
 	fs.Parse(args)
@@ -91,6 +90,13 @@ func runServe(ctx context.Context, args []string) error {
 	}
 	return serve(ctx, cfg, *apiAddr, os.Stdout, *verbose, *withApp)
 }
+
+// The API listens on a loopback port the system picks at each start, which
+// nobody can take beforehand; api.json says which.
+const (
+	defaultAPIAddr = "127.0.0.1:0"
+	apiAddrUsage   = "loopback address of the UI API (port 0: any free port)"
+)
 
 // apiInfo is written to <data dir>/api.json for the UI to find the daemon.
 type apiInfo struct {
@@ -133,6 +139,14 @@ func serveWith(ctx context.Context, cfg service.Config, apiAddr string, log io.W
 	if err != nil || !addr.Addr().IsLoopback() {
 		return fmt.Errorf("-api must be a loopback address, got %q", apiAddr)
 	}
+	// The file of a run that crashed names a port someone else may hold
+	// by now: gone before anything else, so the app never trusts it while
+	// this run starts. (The app also checks that whoever answers knows the
+	// token: service.APIProof.)
+	infoPath := filepath.Join(cfg.DataDir, "api.json")
+	if err := os.Remove(infoPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		fmt.Fprintln(log, "warning: remove the API file of an earlier run:", err)
+	}
 	if !isElevated() {
 		cfg.TUNUnavailable = "TUN mode needs administrator rights, which the daemon does not have; turn TUN off in the settings or run the daemon elevated"
 		if runtime.GOOS == "linux" {
@@ -161,26 +175,19 @@ func serveWith(ctx context.Context, cfg service.Config, apiAddr string, log io.W
 		}
 	}()
 
-	ln, err := net.Listen("tcp", addr.String())
+	ln, bound, token, err := openAPI(addr, infoPath)
 	if err != nil {
 		return err
 	}
-	var raw [32]byte
-	rand.Read(raw[:])
-	token := hex.EncodeToString(raw[:])
-	info, _ := json.MarshalIndent(apiInfo{Address: "http://" + addr.String(), Token: token}, "", "  ")
-	infoPath := filepath.Join(cfg.DataDir, "api.json")
-	if err := service.WriteShared(infoPath, info); err != nil {
-		ln.Close()
-		return fmt.Errorf("write %s: %w", infoPath, err)
-	}
 	defer os.Remove(infoPath)
+	// Windows: members added to the API group later may read it too.
+	go service.KeepShared(ctx, infoPath)
 
-	srv := &http.Server{Handler: service.NewAPI(svc, token, addr), ReadHeaderTimeout: 10 * time.Second}
+	srv := service.NewAPIServer(service.NewAPI(svc, token, bound))
 	go srv.Serve(ln)
 	set := st.Settings()
 	fmt.Fprintf(log, "API listening on %s (token in %s); %d subscriptions, TUN %v\n",
-		addr, infoPath, len(st.Subscriptions()), set.TUN && cfg.TUNUnavailable == "")
+		bound, infoPath, len(st.Subscriptions()), set.TUN && cfg.TUNUnavailable == "")
 
 	if withApp {
 		var stop context.CancelFunc
@@ -228,6 +235,30 @@ func serveWith(ctx context.Context, cfg service.Config, apiAddr string, log io.W
 		srv.Close() // event streams never go idle
 	}
 	return nil
+}
+
+// openAPI listens on addr and publishes the address it got and a new token
+// in infoPath, for the app. With port 0 the system picks a free port:
+// nobody can take it beforehand, and only infoPath says which it is.
+func openAPI(addr netip.AddrPort, infoPath string) (net.Listener, netip.AddrPort, string, error) {
+	ln, err := net.Listen("tcp", addr.String())
+	if err != nil {
+		return nil, netip.AddrPort{}, "", err
+	}
+	bound, err := netip.ParseAddrPort(ln.Addr().String())
+	if err != nil {
+		ln.Close()
+		return nil, netip.AddrPort{}, "", err
+	}
+	var raw [32]byte
+	rand.Read(raw[:])
+	token := hex.EncodeToString(raw[:])
+	info, _ := json.MarshalIndent(apiInfo{Address: "http://" + bound.String(), Token: token}, "", "  ")
+	if err := service.WriteShared(infoPath, info); err != nil {
+		ln.Close()
+		return nil, netip.AddrPort{}, "", fmt.Errorf("write %s: %w", infoPath, err)
+	}
+	return ln, bound, token, nil
 }
 
 func parseAddrPort(s string) (netip.AddrPort, error) { return netip.ParseAddrPort(s) }
