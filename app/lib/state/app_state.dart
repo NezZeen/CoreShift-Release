@@ -121,7 +121,11 @@ class AppState extends ChangeNotifier {
   List<Subscription> subscriptions = [];
   Selection selection = const Selection();
 
+  /// The journal, oldest first.
   final List<LogLine> logs = [];
+
+  /// Changes whenever [logs] does: the journal page filters it again only then.
+  int logsRevision = 0;
   final List<int> latencies = []; // recent health checks, oldest first
   int swaps = 0;
 
@@ -580,7 +584,7 @@ class AppState extends ChangeNotifier {
           _notify();
         }
       case 'log':
-        _log(e.time, e.source, e.line, LogLevel.info, output: true);
+        _log(e.time, e.source, e.line, _outputLevel(e.line), output: true);
       case 'app-update':
         _onAppUpdate(e, live);
       case 'tun' when e.reason == 'retry':
@@ -672,13 +676,29 @@ class AppState extends ChangeNotifier {
     };
   }
 
-  /// Adds a line to the journal. The output of cores and of the TUN layer
-  /// comes in bursts, so it redraws only now and then.
+  /// Adds a line to the journal, in the order of time rather than of
+  /// arrival: the app's own first lines (the update notice) come before the
+  /// service's replay of what happened earlier. A line already there, the
+  /// same event replayed when the event stream reconnects, is not added
+  /// twice. The output of cores and of the TUN layer comes in bursts, so it
+  /// redraws only now and then.
   void _log(DateTime t, String source, String msg, LogLevel level, {bool output = false}) {
-    logs.add(LogLine(t, source, msg, level, output: output));
-    if (logs.length > 2000) logs.removeRange(0, logs.length - 2000);
-    if (!output || logs.length % 20 == 0) _notify();
+    // Nearly always the end: the walk back is over the few later lines.
+    var i = logs.length;
+    while (i > 0 && logs[i - 1].time.isAfter(t)) {
+      i--;
+    }
+    for (var j = i - 1; j >= 0 && logs[j].time.isAtSameMomentAs(t); j--) {
+      if (logs[j].source == source && logs[j].message == msg) return;
+    }
+    logs.insert(i, LogLine(t, source, msg, level, output: output));
+    if (logs.length > logsKeep) logs.removeRange(0, logs.length - logsKeep);
+    logsRevision++;
+    if (!output || logsRevision % 20 == 0) _notify();
   }
+
+  /// How many lines the journal keeps.
+  static const logsKeep = 2000;
 
   static String _stateText(String s) => switch (s) {
     'connecting' => 'подключение…',
@@ -886,6 +906,7 @@ class AppState extends ChangeNotifier {
 
   void clearLogs() {
     logs.clear();
+    logsRevision++;
     _notify();
   }
 
