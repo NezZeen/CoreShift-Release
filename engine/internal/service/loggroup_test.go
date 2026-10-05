@@ -1,10 +1,15 @@
 package service
 
 import (
+	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"coreshift/engine/internal/core"
+	"coreshift/engine/internal/supervisor"
 )
 
 // Lines as the TUN layer wrote them while no core could reach the server:
@@ -209,5 +214,181 @@ func TestDeadUpstreamLookupsAreOneLine(t *testing.T) {
 	got = c.get()
 	if len(got) < 4 || !strings.HasPrefix(got[3], "tun: "+upstreamDNSDead+" — ещё 7 раз") {
 		t.Fatalf("after a period: %q", got)
+	}
+}
+
+// Lines from a Windows journal of 0.7.0, 2026-10-04: the network was gone
+// and every core printed every failed connection, the health checks' among
+// them, in its own format. Xray's is its format with the same failure.
+const (
+	singboxNoIface = "+0300 2026-10-04 04:01:55 ERROR network: missing default interface"
+	singboxDial    = "+0300 2026-10-04 04:01:55 ERROR [902621915 4ms] connection: open connection to cp.cloudflare.com:80 using outbound/vless[proxy]: dial tcp 31.77.140.181:443: connectex: A socket operation was attempted to an unreachable host."
+	mihomoDial     = `time="2026-10-04T04:02:05.161704400+03:00" level=warning msg="[TCP] dial proxy (match Match/) 127.0.0.1:51790 --> cp.cloudflare.com:80 error: 31.77.140.181:443 connect error: dial tcp 31.77.140.181:443: connectex: A socket operation was attempted to an unreachable host."`
+	xrayDial       = "2026/10/04 04:02:05.161704 [Warning] [1286575286] app/proxyman/inbound: connection ends > proxy/vless/outbound: failed to find an available destination > common/retry: all retry attempts failed > transport/internet/tcp: failed to dial tcp:cp.cloudflare.com:80 via 31.77.140.181:443 > dial tcp 31.77.140.181:443: connectex: A socket operation was attempted to an unreachable host."
+)
+
+var coreDials = map[core.Kind]string{core.SingBox: singboxDial, core.Mihomo: mihomoDial, core.Xray: xrayDial}
+
+// The same failure of each core a moment later, for another app or check:
+// another id, port, age, rule and target.
+func againLater(line string) string {
+	return strings.NewReplacer(
+		"902621915 4ms", "1406313530 2.31s",
+		"1286575286", "3913461297",
+		"127.0.0.1:51790", "127.0.0.1:51811",
+		"cp.cloudflare.com:80", "www.gstatic.com:80",
+		"(match Match/)", "(match GeoIP/telegram)",
+		"04:01:55", "04:02:09", "04:02:05.161704", "04:02:09.004417",
+	).Replace(line)
+}
+
+func TestTidyReadsEachCoresFormat(t *testing.T) {
+	for in, want := range map[string]string{
+		singboxNoIface: "ERROR network: missing default interface",
+		singboxDial:    "ERROR [902621915 4ms] connection: open connection to cp.cloudflare.com:80 using outbound/vless[proxy]: dial tcp 31.77.140.181:443: connectex: A socket operation was attempted to an unreachable host.",
+		mihomoDial:     "WARN [TCP] dial proxy (match Match/) 127.0.0.1:51790 --> cp.cloudflare.com:80 error: 31.77.140.181:443 connect error: dial tcp 31.77.140.181:443: connectex: A socket operation was attempted to an unreachable host.",
+		xrayDial:       "WARN [1286575286] app/proxyman/inbound: connection ends > proxy/vless/outbound: failed to find an available destination > common/retry: all retry attempts failed > transport/internet/tcp: failed to dial tcp:cp.cloudflare.com:80 via 31.77.140.181:443 > dial tcp 31.77.140.181:443: connectex: A socket operation was attempted to an unreachable host.",
+		`time="2026-10-04T04:00:01.5+03:00" level=info msg="Start initial configuration in progress"`: "INFO Start initial configuration in progress",
+		`time="2026-10-04T04:00:01.5+03:00" level=error msg="say \"hi\""`:                             `ERROR say "hi"`,
+		"2026/10/03 12:25:51.212236 [Warning] core: Xray 26.3.27 started":                             "WARN core: Xray 26.3.27 started",
+		"2026/10/03 12:25:51.210168 [Info] infra/conf/serial: Reading config: x":                      "INFO infra/conf/serial: Reading config: x",
+		// The TUN layer on Android: no clock, its uptime after the level.
+		"ERROR[0237] [3308650319 10.0s] dns: lookup failed for a.example: x": "ERROR [3308650319 10.0s] dns: lookup failed for a.example: x",
+		"FATAL[0015] start service: x":                                       "FATAL start service: x",
+		"WARN [0012] x":                                                      "WARN x",
+		// What is in no known format stays as it is.
+		"Xray 26.3.27 (Xray, Penetrates Everything.) d2758a0": "Xray 26.3.27 (Xray, Penetrates Everything.) d2758a0",
+		`time="broken`:           `time="broken`,
+		"[TCP] 127.0.0.1:1 -> x": "[TCP] 127.0.0.1:1 -> x",
+		"":                       "",
+	} {
+		if got := tidy(in); got != want {
+			t.Errorf("tidy(%q)\n = %q\nwant %q", in, got, want)
+		}
+	}
+}
+
+func TestEachCoresFloodIsOneShape(t *testing.T) {
+	for k, line := range coreDials {
+		a, b := logShape(tidy(line)), logShape(tidy(againLater(line)))
+		if a == "" || a != b {
+			t.Errorf("%s: one failure, two shapes:\n%q\n%q", k, a, b)
+		}
+		for _, gone := range []string{"51790", "902621915", "1286575286", "cloudflare", "31.77.140.181", "Match/"} {
+			if strings.Contains(a, gone) {
+				t.Errorf("%s: %q is in the shape %q", k, gone, a)
+			}
+		}
+	}
+	if logShape(tidy(singboxNoIface)) == logShape(tidy(singboxDial)) {
+		t.Error("another cause is another line")
+	}
+}
+
+// The health checks go through the core every few seconds and fail as
+// every app does: the first is shown, the rest are a count every period.
+func TestCoreOutputIsGroupedForEveryCore(t *testing.T) {
+	var c collected
+	s := &Service{logs: newLogGrouper(60*time.Millisecond, c.emit)}
+	for k, line := range coreDials {
+		for i := range 40 {
+			l := line
+			if i%2 == 1 {
+				l = againLater(line)
+			}
+			s.onCoreEvent(supervisor.Event{Kind: supervisor.EventLog, Core: k, Line: l})
+		}
+	}
+	s.onCoreEvent(supervisor.Event{Kind: supervisor.EventLog, Core: core.SingBox, Line: singboxNoIface})
+	got := c.get()
+	if len(got) != 4 {
+		t.Fatalf("right away %d lines, want the first of each core and the other cause:\n%s", len(got), strings.Join(got, "\n"))
+	}
+	for _, want := range []string{
+		"sing-box: ERROR [902621915 4ms] connection: open connection to cp.cloudflare.com:80",
+		"mihomo: WARN [TCP] dial proxy (match Match/) 127.0.0.1:51790 --> cp.cloudflare.com:80",
+		"xray: WARN [1286575286] app/proxyman/inbound",
+		"sing-box: ERROR network: missing default interface",
+	} {
+		if !slices.ContainsFunc(got, func(l string) bool { return strings.HasPrefix(l, want) }) {
+			t.Errorf("no line %q in\n%s", want, strings.Join(got, "\n"))
+		}
+	}
+	time.Sleep(200 * time.Millisecond)
+	got = c.get()
+	sums := 0
+	for _, l := range got[4:] {
+		if strings.Contains(l, "— ещё 39 раз за") {
+			sums++
+		}
+	}
+	if sums != 3 || len(got) != 7 {
+		t.Fatalf("after a period, want one count of 39 for each core:\n%s", strings.Join(got, "\n"))
+	}
+}
+
+// On Android the TUN layer prints its uptime after the level, and every
+// failed lookup twice under one request id: "dns: lookup failed for X"
+// and "router: lookup X" (the user's journal of 0.7.0).
+func TestAndroidLookupIsOneLine(t *testing.T) {
+	const (
+		dnsLine    = "ERROR[0237] [3308650319 10.0s] dns: lookup failed for ru-comort-stsdk.vivoglobal.com: (exchange4: context deadline exceeded | exchange6: context deadline exceeded)"
+		routerLine = "ERROR[0237] [3308650319 10.0s] router: lookup ru-comort-stsdk.vivoglobal.com: (exchange4: context deadline exceeded | exchange6: context deadline exceeded)"
+		otherID    = "ERROR[0238] [12345 1.0s] router: lookup ru-comort-stsdk.vivoglobal.com: (exchange4: context deadline exceeded | exchange6: context deadline exceeded)"
+	)
+	var c collected
+	s := &Service{logs: newLogGrouper(time.Minute, c.emit)}
+	s.Log("tun", dnsLine)
+	s.Log("tun", routerLine)
+	got := c.get()
+	if len(got) != 1 || got[0] != "tun: ERROR [3308650319 10.0s] dns: lookup failed for ru-comort-stsdk.vivoglobal.com: (exchange4: context deadline exceeded | exchange6: context deadline exceeded)" {
+		t.Fatalf("one lookup, one line without the uptime: %q", got)
+	}
+	// Another request is another failure, shown, not dropped.
+	s.Log("tun", otherID)
+	if got := c.get(); len(got) != 2 || !strings.Contains(got[1], "router: lookup") {
+		t.Fatalf("another request: %q", got)
+	}
+	// Either order.
+	var c2 collected
+	s2 := &Service{logs: newLogGrouper(time.Minute, c2.emit)}
+	s2.Log("tun", routerLine)
+	s2.Log("tun", dnsLine)
+	if got := c2.get(); len(got) != 1 || !strings.Contains(got[0], "router: lookup") {
+		t.Fatalf("router first: %q", got)
+	}
+	// While the server is down both are the one line that says so.
+	var c3 collected
+	s3 := &Service{logs: newLogGrouper(time.Minute, c3.emit)}
+	s3.healthFails.Store(upstreamDeadChecks)
+	s3.Log("tun", dnsLine)
+	s3.Log("tun", routerLine)
+	s3.Log("tun", otherID)
+	s3.logs.mu.Lock()
+	n := s3.logs.groups["tun\x00"+upstreamDNSDead].repeats
+	s3.logs.mu.Unlock()
+	if got := c3.get(); len(got) != 1 || got[0] != "tun: "+upstreamDNSDead || n != 1 {
+		t.Fatalf("server down: %q, %d repeats (want 1: the other request)", got, n)
+	}
+}
+
+func TestLookupTwinsAreBounded(t *testing.T) {
+	g := newLogGrouper(time.Minute, func(string, string) {})
+	for i := range 3 * maxLookupTwins {
+		g.twin(fmt.Sprintf("ERROR [%d 1.0s] dns: lookup failed for a%d.example: x", i, i))
+	}
+	if len(g.twins) > maxLookupTwins || len(g.twinOrder) > maxLookupTwins {
+		t.Errorf("%d twins kept, limit %d", len(g.twins), maxLookupTwins)
+	}
+}
+
+// Every line the grouper takes goes through tidy and, for errors, logShape:
+// both have to stay cheap next to a flood.
+func BenchmarkLogFlood(b *testing.B) {
+	g := newLogGrouper(time.Minute, func(string, string) {})
+	lines := []string{singboxDial, mihomoDial, xrayDial, againLater(mihomoDial), "INFO ordinary line"}
+	b.ReportAllocs()
+	for i := 0; b.Loop(); i++ {
+		g.add("core", lines[i%len(lines)])
 	}
 }
