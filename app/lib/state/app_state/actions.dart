@@ -23,6 +23,19 @@ final _startupRes = [
 ];
 bool _startupLine(String line) => _startupRes.any((re) => re.hasMatch(line));
 
+/// The level of a line a core or the TUN layer printed. The service spells
+/// it as sing-box does at the start of the line, "ERROR …", "WARN …", for
+/// every core; an older service passed Xray's "[Warning]" and
+/// mihomo's "level=warning" on as printed. Start-up lines are no news, even
+/// the one Xray prints as a warning.
+final _outputErrRe = RegExp(r'^(ERROR|FATAL|PANIC)\b|^panic:|\[Error\]|level=(error|fatal|panic)\b');
+final _outputWarnLevelRe = RegExp(r'^WARN\b|\[Warning\]|level=warn(ing)?\b');
+LogLevel _outputLevel(String line) {
+  if (_outputErrRe.hasMatch(line)) return LogLevel.err;
+  if (_outputWarnLevelRe.hasMatch(line)) return _startupLine(line) ? LogLevel.info : LogLevel.warn;
+  return LogLevel.info;
+}
+
 /// What the app does on the user's behalf: connecting, subscriptions, settings,
 /// cores, the leak test. Kept apart from the state it works on.
 extension AppStateActions on AppState {
@@ -60,7 +73,16 @@ extension AppStateActions on AppState {
       for (final l in logs)
         if (!l.output && (l.level == LogLevel.err || l.level == LogLevel.swap)) l.time,
     ];
-    bool nearFailure(DateTime t) => failures.any((f) => !t.isBefore(f.subtract(_nearFailureBefore)) && !t.isAfter(f.add(_nearFailureAfter)));
+    // The journal is in time order: the failures are looked at from the
+    // first that has not ended its window yet, not from the start each time.
+    var next = 0;
+    bool nearFailure(DateTime t) {
+      while (next < failures.length && t.isAfter(failures[next].add(_nearFailureAfter))) {
+        next++;
+      }
+      return next < failures.length && !t.isBefore(failures[next].subtract(_nearFailureBefore));
+    }
+
     String two(int n) => n.toString().padLeft(2, '0');
     String time(DateTime t) => '${two(t.hour)}:${two(t.minute)}:${two(t.second)}';
 
