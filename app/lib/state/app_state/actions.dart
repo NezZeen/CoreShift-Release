@@ -89,7 +89,8 @@ extension AppStateActions on AppState {
     return [
       ...diagnosticsHeader(),
       for (final l in logs)
-        if (!l.output || (!_startupLine(l.message) && (_outputWarns(l.message) || nearFailure(l.time)))) '${time(l.time)}  ${l.source}  ${l.message}',
+        if (!l.output || (!_startupLine(l.message) && (_outputWarns(l.message) || nearFailure(l.time))))
+          '${time(l.time)}  ${l.source}  ${redactForSupport(l.message)}',
     ];
   }
 
