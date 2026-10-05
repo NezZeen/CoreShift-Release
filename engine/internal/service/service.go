@@ -273,7 +273,7 @@ func New(cfg Config) (*Service, error) {
 		Health:               p.Health,
 		ReturnToPrimaryAfter: p.ReturnToPrimaryAfter,
 		Fragment:             p.Fragment,
-		OnEvent:              s.onSupervisorEvent,
+		OnEvent:              s.onCoreEvent,
 	})
 	if err != nil {
 		return nil, err
