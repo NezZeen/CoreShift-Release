@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -9,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -22,6 +24,7 @@ import (
 	"coreshift/engine/internal/dnsguard"
 	"coreshift/engine/internal/ping"
 	"coreshift/engine/internal/proc"
+	"coreshift/engine/internal/ruleset"
 	"coreshift/engine/internal/store"
 	"coreshift/engine/internal/subscription"
 	"coreshift/engine/internal/supervisor"
@@ -517,12 +520,57 @@ func TestAdapterRaceIsRecognised(t *testing.T) {
 	}
 }
 
+// upstreamSet stands for SagerNet's copy of the set at rawURL: the
+// built-in one.
+func upstreamSet(rawURL string) ([]byte, error) {
+	b, _, ok := ruleset.Baseline(strings.TrimSuffix(path.Base(rawURL), ".srs"))
+	if !ok {
+		return nil, errors.New("no such set")
+	}
+	return b, nil
+}
+
+func noBaseline(string) ([]byte, time.Time, bool) { return nil, time.Time{}, false }
+
+func TestRussiaDirectUsesBuiltInRuleSets(t *testing.T) {
+	fetched := false
+	h := newHarness(t, func(c *Config) {
+		c.DNS.RussiaDirect = true
+		c.ruleSetBaseline = func(tag string) ([]byte, time.Time, bool) {
+			b, _, ok := ruleset.Baseline(tag)
+			return b, time.Now().Add(-time.Hour), ok
+		}
+		c.fetchRuleSet = func(context.Context, string, *url.URL) ([]byte, error) {
+			fetched = true
+			return nil, errors.New("offline")
+		}
+	})
+	if err := h.connect(t, trojanLink); err != nil {
+		t.Fatal(err)
+	}
+	h.tun.mu.Lock()
+	o := h.tun.opts
+	h.tun.mu.Unlock()
+	if len(o.DNS.DirectRuleSets) != 1 || len(o.DNS.DirectIPRuleSets) != 1 || len(o.DNS.ProxyRuleSets) != 2 {
+		t.Fatalf("dns options = %+v", o.DNS)
+	}
+	got, err := os.ReadFile(o.DNS.DirectIPRuleSets[0].Path)
+	want, _, _ := ruleset.Baseline("geoip-ru")
+	if err != nil || !bytes.Equal(got, want) {
+		t.Errorf("geoip-ru on disk is not the built-in copy: %v", err)
+	}
+	if fetched {
+		t.Error("a fresh built-in copy was downloaded again")
+	}
+}
+
 func TestRussiaDirectDownloadsRuleSets(t *testing.T) {
 	var mu sync.Mutex
 	var via []string
 	h := newHarness(t, func(c *Config) {
 		c.DNS.RussiaDirect = true
-		c.fetchRuleSet = func(_ context.Context, _ string, proxy *url.URL) ([]byte, error) {
+		c.ruleSetBaseline = noBaseline
+		c.fetchRuleSet = func(_ context.Context, rawURL string, proxy *url.URL) ([]byte, error) {
 			mu.Lock()
 			if proxy == nil {
 				via = append(via, "direct")
@@ -537,7 +585,7 @@ func TestRussiaDirectDownloadsRuleSets(t *testing.T) {
 			if proxy == nil {
 				return nil, errors.New("blocked")
 			}
-			return []byte("SRS\x02fake"), nil
+			return upstreamSet(rawURL)
 		}
 	})
 	if err := h.connect(t, trojanLink); err != nil {
@@ -571,6 +619,7 @@ func TestRussiaDirectDownloadsRuleSets(t *testing.T) {
 func TestRussiaDirectWithoutRuleSetsStillConnects(t *testing.T) {
 	h := newHarness(t, func(c *Config) {
 		c.DNS.RussiaDirect = true
+		c.ruleSetBaseline = noBaseline
 		c.fetchRuleSet = func(context.Context, string, *url.URL) ([]byte, error) {
 			return []byte("<html>blocked</html>"), nil
 		}
