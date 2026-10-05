@@ -19,6 +19,15 @@ void main() {
     expect(formatQuota(0), '0 КБ');
   });
 
+  test('days left are counted up, as on the card so in the warning', () {
+    final now = DateTime(2026, 10, 5, 20, 55);
+    expect(subscriptionDaysLeft(now.add(const Duration(days: 2)).subtract(const Duration(minutes: 1)), now), 2);
+    expect(subscriptionDaysLeft(now.add(const Duration(days: 30)), now), 30);
+    expect(subscriptionDaysLeft(now.add(const Duration(hours: 25)), now), 2);
+    expect(subscriptionDaysLeft(now.add(const Duration(hours: 23)), now), 0);
+    expect(subscriptionDaysLeft(now.subtract(const Duration(hours: 1)), now), 0);
+  });
+
   Subscription sub({int used = 0, int total = 0, DateTime? expire}) => Subscription.fromJson({
     'id': 's1',
     'display_name': 'Тест',
