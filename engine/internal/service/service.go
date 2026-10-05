@@ -85,7 +85,11 @@ type Service struct {
 	fo      failover
 	// healthFails counts the active core's failed checks in a row.
 	healthFails atomic.Int32
-	speedMu     sync.Mutex // one speed test at a time
+	// bg is set while the device is idle (SetBackground); awake tells the
+	// traffic watcher it no longer is.
+	bg      atomic.Bool
+	awake   chan struct{}
+	speedMu sync.Mutex // one speed test at a time
 	// socks are the credentials of the cores' SOCKS inbound, new each
 	// start; only the TUN layer and the service's own clients know them.
 	socks core.SOCKSAuth
@@ -178,6 +182,12 @@ func New(cfg Config) (*Service, error) {
 	if cfg.netInterval == 0 {
 		cfg.netInterval = networkCheckInterval
 	}
+	if cfg.trafficEvery == 0 {
+		cfg.trafficEvery = trafficInterval
+	}
+	if cfg.trafficIdleEvery == 0 {
+		cfg.trafficIdleEvery = trafficIdleInterval
+	}
 	if cfg.checkRelease == nil {
 		cfg.checkRelease = func(ctx context.Context, c *http.Client, src selfupdate.Source) (selfupdate.Release, error) {
 			return selfupdate.Check(ctx, c, src, selfupdate.ManifestFor(runtime.GOOS), selfupdate.PublicKeys)
@@ -232,7 +242,8 @@ func New(cfg Config) (*Service, error) {
 		}
 	}
 
-	s := &Service{cfg: cfg, hub: newHub(), opts: cfg.Options, status: Status{State: Idle, TUN: cfg.TUN}, socks: core.NewSOCKSAuth()}
+	s := &Service{cfg: cfg, hub: newHub(), opts: cfg.Options, status: Status{State: Idle, TUN: cfg.TUN}, socks: core.NewSOCKSAuth(),
+		awake: make(chan struct{}, 1)}
 	s.logs = newLogGrouper(logGroupEvery, func(source, line string) {
 		s.hub.publish(Event{Kind: "log", Source: source, Line: line})
 	})
