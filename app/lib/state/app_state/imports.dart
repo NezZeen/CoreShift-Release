@@ -15,7 +15,7 @@ extension AppStateImports on AppState {
   /// Offers to add what [text] links to. From the clipboard only links that
   /// look like subscriptions count, each offered once, and nothing is said
   /// about the rest; elsewhere a link that is no subscription says so.
-  void offerImport(String text, ImportFrom from) {
+  Future<void> offerImport(String text, ImportFrom from) async {
     final quiet = from == ImportFrom.clipboard;
     final link = parseImportLink(text, strict: quiet);
     if (link == null) {
@@ -26,9 +26,15 @@ extension AppStateImports on AppState {
       if (!quiet) toast(link.error, ToastKind.err);
       return;
     }
-    if (link.url.isNotEmpty && subscriptions.any((s) => s.url == link.url || s.url == maskedUrl(link.url))) {
-      if (!quiet) toast('Эта подписка уже добавлена');
-      return;
+    if (link.url.isNotEmpty) {
+      // The list has the links without their tokens, and two links of one
+      // panel can look alike that way (a short path, the same last four
+      // characters): a look-alike is compared whole before saying so.
+      final lookAlikes = subscriptions.where((s) => s.url == maskedUrl(link.url)).toList();
+      if (subscriptions.any((s) => s.url == link.url) || (lookAlikes.isNotEmpty && await _addedAs(lookAlikes, link.url))) {
+        if (!quiet) toast('Эта подписка уже добавлена');
+        return;
+      }
     }
     if (quiet) {
       // Only a fingerprint: the link itself carries an access token.
@@ -39,6 +45,20 @@ extension AppStateImports on AppState {
     pendingImport = link;
     importFrom = from;
     _notify();
+  }
+
+  /// Whether one of [subs], whose links look like [url] without their
+  /// tokens, has [url] itself; the service tells their whole links. One it
+  /// cannot tell (an older service) counts as the same, as before.
+  Future<bool> _addedAs(List<Subscription> subs, String url) async {
+    for (final s in subs) {
+      try {
+        if ((await backend.call('GET', '/v1/subscriptions/${s.id}/url') as Json)['url'] == url) return true;
+      } catch (_) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /// Adds the offered subscription; returns the error, if any, for the
@@ -68,7 +88,7 @@ extension AppStateImports on AppState {
     if (!loaded || !online || !clipboardImport || pendingImport != null || backend is DemoBackend) return;
     try {
       final text = (await Clipboard.getData(Clipboard.kTextPlain))?.text;
-      if (text != null) offerImport(text, ImportFrom.clipboard);
+      if (text != null) await offerImport(text, ImportFrom.clipboard);
     } catch (_) {
       // No access to the clipboard right now; next time.
     }
@@ -78,7 +98,7 @@ extension AppStateImports on AppState {
   Future<void> scanQr() async {
     try {
       final text = await platform.scanQr();
-      if (text != null) offerImport(text, ImportFrom.qr);
+      if (text != null) await offerImport(text, ImportFrom.qr);
     } catch (e) {
       toast(platform.scanQrError(e), ToastKind.err);
     }

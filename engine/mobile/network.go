@@ -61,6 +61,11 @@ var currentNetwork = &networkState{}
 
 func (n *networkState) set(name string, index int, addrs []netip.Prefix, dns []netip.Addr) {
 	n.mu.Lock()
+	if ownVPN(name, addrs, n.mine) {
+		// The phone's network is still the one reported before.
+		n.mu.Unlock()
+		return
+	}
 	var iface *control.Interface
 	if name != "" {
 		iface = &control.Interface{Index: index, MTU: 1500, Name: name, Addresses: addrs, Flags: net.FlagUp | net.FlagRunning}

@@ -317,8 +317,11 @@ func (s *Service) pingLatency(ctx context.Context, nodes []node.Node, report fun
 }
 
 // bindFor returns b when it can carry probes to ip; the zero Bind otherwise.
+// A server on this computer (127.0.0.1, a local proxy chain) is reached by
+// loopback only: bound to the physical interface, every probe timed out,
+// so its latency failed and switching servers took it for dead.
 func bindFor(b ping.Bind, ip netip.Addr) ping.Bind {
-	if !b.Source.IsValid() || b.Source.Is4() != ip.Unmap().Is4() {
+	if !b.Source.IsValid() || b.Source.Is4() != ip.Unmap().Is4() || ip.Unmap().IsLoopback() {
 		return ping.Bind{}
 	}
 	return b

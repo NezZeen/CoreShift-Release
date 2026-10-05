@@ -70,9 +70,9 @@ class _SubCard extends StatelessWidget {
     final p = context.pal;
     final i = sub.info;
     final refreshing = state.refreshing.contains(sub.id);
-    final daysLeft = i.expire?.difference(DateTime.now()).inDays;
+    final daysLeft = i.expire == null ? null : subscriptionDaysLeft(i.expire!);
     final expired = i.expire != null && i.expire!.isBefore(DateTime.now());
-    final expiresSoon = daysLeft != null && daysLeft < 7;
+    final expiresSoon = daysLeft != null && daysLeft <= 7;
     final compact = isCompact(context);
     return Panel(
       padding: compact ? const EdgeInsets.fromLTRB(14, 4, 4, 12) : const EdgeInsets.fromLTRB(16, 12, 8, 14),
@@ -143,8 +143,8 @@ class _SubCard extends StatelessWidget {
                       flex: 3,
                       child: _Fact(
                         label: i.total > 0 ? 'Трафик' : (i.used > 0 ? 'Израсходовано' : 'Серверы'),
-                        value: i.total > 0 || i.used > 0 ? formatBytes(i.used) : '${sub.nodes.length}',
-                        note: i.total > 0 ? 'из ${formatBytes(i.total)}' : (i.used > 0 ? 'без лимита' : ''),
+                        value: i.total > 0 || i.used > 0 ? formatQuota(i.used) : '${sub.nodes.length}',
+                        note: i.total > 0 ? 'из ${formatQuota(i.total)}' : (i.used > 0 ? 'без лимита' : ''),
                         color: i.total > 0 && i.used / i.total > .9 ? errColor : null,
                         progress: i.total > 0 ? (i.used / i.total).clamp(0, 1).toDouble() : null,
                       ),

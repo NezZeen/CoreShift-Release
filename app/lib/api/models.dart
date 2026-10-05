@@ -239,6 +239,31 @@ class SubInfo {
   int get used => upload + download;
 }
 
+/// Whole days a subscription has left, counted up as panels count them: a
+/// 30-day plan bought a minute ago has 30 days, not 29, and one ending in
+/// 47 hours has 2. 0 within the last day (and after it).
+int subscriptionDaysLeft(DateTime expire, [DateTime? now]) {
+  final left = expire.difference(now ?? DateTime.now());
+  if (left.inHours < 24) return 0;
+  return (left.inMinutes / (24 * 60)).ceil();
+}
+
+/// A panel's traffic figure (limit, used, left). Panels (Remnawave, Marzban,
+/// 3x-ui) count a gigabyte as 1024³ bytes: a "100 GB" plan has a limit of
+/// 107 374 182 400 bytes, which must read «100 ГБ», not «107 ГБ».
+String formatQuota(num b) {
+  const k = 1024.0;
+  String n(double v) {
+    final s = v.toStringAsFixed(v >= 100 ? 0 : 1);
+    return s.endsWith('.0') ? s.substring(0, s.length - 2) : s;
+  }
+
+  if (b >= k * k * k * k) return '${n(b / (k * k * k * k))} ТБ';
+  if (b >= k * k * k) return '${n(b / (k * k * k))} ГБ';
+  if (b >= k * k) return '${(b / (k * k)).toStringAsFixed(0)} МБ';
+  return '${(b / k).toStringAsFixed(0)} КБ';
+}
+
 /// A subscription link as the daemon shows it (maskURL in
 /// engine/internal/service/api_store.go): scheme and host, then "/…" and the
 /// last four characters, without the access token. Links are compared in

@@ -41,9 +41,38 @@ func personUID(uid, self int) bool {
 // hand. Applications under /usr/lib (firefox-esr) or /opt stay listed.
 var linuxSystemDirs = []string{"/usr/libexec/", "/usr/lib/systemd/", "/lib/systemd/", "/usr/sbin/", "/sbin/", "/usr/lib/xorg/"}
 
+// linuxSessionPrograms run in every desktop session from /usr/bin: the
+// session's own plumbing (message bus, sound, the compositor and the
+// shell, input methods, key agents) and the shells of terminals. They are
+// a person's processes but not programs anyone routes by hand; listed,
+// they buried the few that matter under "dbus-daemon" and "pipewire".
+var linuxSessionPrograms = map[string]bool{
+	"dbus-daemon": true, "dbus-broker": true, "dbus-broker-launch": true, "dbus-launch": true,
+	"pipewire": true, "pipewire-pulse": true, "wireplumber": true, "pulseaudio": true,
+	"Xwayland": true, "Xorg": true, "X": true,
+	"gnome-shell": true, "gnome-session-binary": true, "gnome-keyring-daemon": true,
+	"kwin_x11": true, "kwin_wayland": true, "kwin_wayland_wrapper": true, "plasmashell": true, "ksmserver": true,
+	"kded5": true, "kded6": true, "kglobalaccel5": true, "kglobalaccel": true, "kactivitymanagerd": true,
+	"xfce4-session": true, "xfwm4": true, "xfce4-panel": true, "xfdesktop": true, "cinnamon": true, "mate-session": true,
+	"ssh-agent": true, "gpg-agent": true, "systemd": true,
+	"bash": true, "sh": true, "dash": true, "zsh": true, "fish": true,
+}
+
+// linuxSessionPrefixes are families of session helpers.
+var linuxSessionPrefixes = []string{"ibus-", "fcitx", "at-spi", "xdg-", "gvfs", "tracker-", "gsd-", "evolution-"}
+
 func linuxSystemPath(path string) bool {
 	for _, dir := range linuxSystemDirs {
 		if strings.HasPrefix(path, dir) {
+			return true
+		}
+	}
+	name := path[strings.LastIndexByte(path, '/')+1:]
+	if linuxSessionPrograms[name] {
+		return true
+	}
+	for _, p := range linuxSessionPrefixes {
+		if strings.HasPrefix(name, p) {
 			return true
 		}
 	}

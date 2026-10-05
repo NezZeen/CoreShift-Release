@@ -226,9 +226,9 @@ class SettingsPage extends StatelessWidget {
           if (!platform.isAndroid && state.versionMismatch)
             SettingRow(
               title: 'Версия службы',
-              description: 'Отличается от приложения: одно из них обновилось без другого. Переустановите CoreShift целиком.',
+              description: state.versionMismatchAdvice,
               trailing: SelectableText(
-                info.buildVersion.label,
+                state.serviceVersionLabel,
                 style: TextStyle(color: p.warnInk, fontFamily: monoFont),
               ),
             ),

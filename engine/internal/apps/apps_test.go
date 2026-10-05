@@ -36,3 +36,16 @@ func TestRunningIncludesThisTest(t *testing.T) {
 		t.Errorf("%s not among %d programs", filepath.Base(self), len(list))
 	}
 }
+
+// CoreShift's own window and service are not offered.
+func TestTidyLeavesOutCoreShift(t *testing.T) {
+	got := tidy([]App{
+		{Name: "CoreShift.exe", Path: `C:\Program Files\CoreShift\CoreShift.exe`},
+		{Name: "coreshift", Path: "/usr/lib/coreshift/coreshift"},
+		{Name: "coreshiftd", Path: "/usr/bin/coreshiftd"},
+		{Name: "qbittorrent", Path: "/usr/bin/qbittorrent"},
+	})
+	if len(got) != 1 || got[0].Name != "qbittorrent" {
+		t.Errorf("tidy = %+v", got)
+	}
+}

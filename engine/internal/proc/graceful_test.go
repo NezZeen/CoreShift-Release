@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -82,10 +83,25 @@ func TestSingBoxStopsGracefully(t *testing.T) {
 	dir := t.TempDir()
 	cfg := filepath.Join(dir, "config.json")
 	os.WriteFile(cfg, []byte(fmt.Sprintf(`{"inbounds":[{"type":"mixed","listen":"127.0.0.1","listen_port":%d}]}`, port)), 0o644)
-	var lines []string
+	var (
+		mu      sync.Mutex
+		lines   []string
+		started bool
+	)
+	// Ready once sing-box says so: its port opens before the start is over,
+	// and a stop in between ends it with "start service: context canceled".
 	p := startGraceful(t, Spec{Name: "sing-box", Path: bin, Args: []string{"run", "-c", cfg}, Dir: dir,
-		OnLine: func(l string) { lines = append(lines, l) }},
-		func() bool { return PortOpen(netip.MustParseAddrPort(fmt.Sprintf("127.0.0.1:%d", port))) })
+		OnLine: func(l string) {
+			mu.Lock()
+			defer mu.Unlock()
+			lines = append(lines, l)
+			started = started || strings.Contains(l, "sing-box started")
+		}},
+		func() bool {
+			mu.Lock()
+			defer mu.Unlock()
+			return started && PortOpen(netip.MustParseAddrPort(fmt.Sprintf("127.0.0.1:%d", port)))
+		})
 	start := time.Now()
 	p.Stop()
 	if p.err != nil || time.Since(start) >= gracefulTimeout {
