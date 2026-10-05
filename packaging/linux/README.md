@@ -20,7 +20,7 @@
 | Что | Где (пакеты / `install.sh`) | Права |
 | --- | --- | --- |
 | Приложение (Flutter) | `/usr/lib/coreshift/coreshift`, ярлык `/usr/bin/coreshift` / `/usr/local/...` | пользователь |
-| Служба `coreshiftd` | `/usr/bin/coreshiftd` / `/usr/local/bin/coreshiftd` | root, с урезанным набором capabilities |
+| Служба `coreshiftd` | `/usr/bin/coreshiftd` / `/usr/local/bin/coreshiftd` | root в песочнице systemd (см. «Ограничения службы») |
 | Ядра xray, sing-box, mihomo | `/usr/lib/coreshift/cores` / `/usr/local/lib/coreshift/cores` | root; обновляются сами |
 | Настройки, подписки, журнал DNS | `/var/lib/coreshift` | root (только данные, ничего исполняемого) |
 
@@ -35,6 +35,16 @@
 
   Пакет создаёт группу и добавляет в неё того, кто его ставил (через `sudo`, `doas` или центр приложений). Других пользователей добавляют командой `sudo usermod -aG coreshift <имя>`, после чего нужно **выйти из системы и войти снова**. Без группы приложение показывает эту же подсказку. При каждом старте служба проверяет каталог (`SecureDataDir`): ссылка или файл на месте каталога удаляется, всё чужое возвращается root или удаляется.
 - **Обновления CoreShift** ставит пакетный менеджер, сама служба ничего не устанавливает. Пакет при обновлении перезапускает службу; если VPN был включён, служба подключается снова (файл `/var/lib/coreshift/resume`, только в той же загрузке системы и не позже чем через 10 минут). После сбоя службы и после перезагрузки VPN остаётся выключенным, пока его не включат или не сработает «Автозапуск». Раз в день она читает подписанный `latest-linux.json` из публичного репозитория `NezZeen/CoreShift-Release` (токена в Linux-сборке нет) и проверяет подпись теми же ключами, что на Windows. Если вышла новая версия, приложение пишет «Доступна новая версия X», а кнопка «Скачать» открывает страницу релиза. Источник меняется настройкой `app_update.source`: `github-public:OWNER/REPO` или папка. Ядра обновляются сами, как на Windows.
+
+### Ограничения службы
+
+Юнит systemd (`coreshift.service`) запускает службу, ядра, TUN-слой и программы DNS (`resolvectl`, `resolvconf`, `netconfig`, `nmcli`, `firewall-cmd`, `restorecon`) в одной песочнице. `systemd-analyze security coreshift` даёт 3.2 «OK» (до октября 2026 было 6.7 «MEDIUM»).
+
+- **Capabilities** (`CapabilityBoundingSet`): только `CAP_NET_ADMIN` (TUN, маршруты, правила, DNS интерфейса в resolved), `CAP_NET_RAW` (привязка сокетов к физическому интерфейсу, ping), `CAP_SYS_PTRACE` и `CAP_DAC_READ_SEARCH` (`/proc/<pid>/exe` и `fd` чужих процессов для правил по приложениям), `CAP_CHOWN` и `CAP_FOWNER` (права на `/var/lib/coreshift`, `SecureDataDir`). Без `CAP_DAC_OVERRIDE`, `CAP_KILL` и `CAP_NET_BIND_SERVICE`: все файлы службы принадлежат root, сигналы она шлёт только своим процессам, порты ниже 1024 не открывает.
+- **Файлы** (`ProtectSystem=strict`): всё только для чтения, кроме `/var/lib/coreshift`, каталога ядер (они обновляются сами), `/etc` (`/etc/resolv.conf` заменяется атомарно, через временный файл рядом), `/run/resolvconf`, `/run/netconfig` и `/var/adm/netconfig`, если они есть, и `/proc/sys/net/ipv4/conf` (sing-box ставит `rp_filter` своему интерфейсу). `/home` только для чтения, `/tmp` свой. Каталог `/var/lib/coreshift` юнит создаёт сам (`ExecStartPre=+mkdir`), если его удалили.
+- **Остальное**: из устройств только `/dev/net/tun`; ядро, его модули, журнал, часы, имя хоста и cgroups не трогаются; сокеты только `AF_UNIX`, `AF_INET`, `AF_INET6`, `AF_NETLINK`; без новых пространств имён, исполняемой записываемой памяти (`MemoryDenyWriteExecute`) и чужих ABI; системные вызовы — `@system-service`.
+
+Проверено в WSL: подключение с каждым ядром (xray, sing-box, mihomo) через TUN, DNS и откат после `kill -9` на Ubuntu 24.04; `dns apply`/`revert` в той же песочнице на Ubuntu (resolved, файл), Fedora 44 (файл и resolved, firewalld, NetworkManager), openSUSE Tumbleweed (netconfig, файл), Debian 13 и Arch (файл). resolvconf Debian и openresolv в октябре 2026 с новым юнитом не проверялись: в WSL их не было.
 
 ### Системы инициализации
 
@@ -148,4 +158,4 @@ amd64 и arm64. Служба и ядра собираются для обеих 
 9. Автозапуск: включить, выйти из сеанса и войти — CoreShift в трее (без трея — окно), VPN подключается.
 10. Удаление: `apt remove`, `dnf remove`, `zypper rm`, `pacman -R` или `./uninstall.sh` останавливают службу и восстанавливают DNS. Подписки остаются; `apt purge` или `uninstall.sh --purge` удаляют и их.
 
-Если что-то не работает, пришлите `journalctl -u coreshift -b` (OpenRC: `/var/log/coreshift.log`) и `sudo cat /var/lib/coreshift/coreshiftd.log`. URL подписок туда не пишутся. Если служба не стартует из-за ограничений юнита (`CapabilityBoundingSet`, `ProtectSystem`), можно временно закомментировать их (`sudo systemctl edit --full coreshift`) и сообщить, какая строка мешала.
+Если что-то не работает, пришлите `journalctl -u coreshift -b` (OpenRC: `/var/log/coreshift.log`) и `sudo cat /var/lib/coreshift/coreshiftd.log`. URL подписок туда не пишутся. Если служба не стартует или что-то не работает из-за ограничений юнита (`CapabilityBoundingSet`, `ProtectSystem` и `ReadWritePaths`, `SystemCallFilter`, `MemoryDenyWriteExecute`, `DevicePolicy`), можно временно закомментировать их (`sudo systemctl edit --full coreshift`) и сообщить, какая строка мешала.
