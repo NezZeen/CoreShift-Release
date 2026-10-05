@@ -660,9 +660,23 @@ void main() {
     await tester.pump();
     await tester.ensureVisible(find.text('Версия службы'));
     expect(find.text('0.2.0'), findsWidgets);
+    // Two builds of one version: not «0.2.0» against «0.2.0».
+    expect(find.text('другая сборка'), findsOneWidget);
     expect(find.textContaining('Переустановите CoreShift целиком'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pump(const Duration(seconds: 6));
+  });
+
+  test('a service newer than the window asks to restart the window', () {
+    // The demo service reports 0.2.0; the window is still 0.1.9, as after a
+    // package upgrade on Linux with the window open.
+    final state = AppState(DemoBackend(), version: const BuildVersion('0.1.9', 12, 'abc1234'))..info = DaemonInfo.fromJson({'version': '0.2.0', 'build': 15});
+    expect(state.versionMismatch, isTrue);
+    expect(state.serviceVersionLabel, '0.2.0');
+    expect(state.versionMismatchAdvice, contains('Перезапустите CoreShift'));
+    state.info = DaemonInfo.fromJson({'version': '0.1.9', 'build': 10});
+    expect(state.serviceVersionLabel, 'другая сборка');
+    expect(state.versionMismatchAdvice, contains('Переустановите CoreShift целиком'));
   });
 
   testWidgets('finds, offers and installs an update of CoreShift', (tester) async {
