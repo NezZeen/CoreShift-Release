@@ -22,7 +22,10 @@ type Event struct {
 	// server's latency (LatencyMS and Method, or Error), every few seconds;
 	// "traffic" every second while connected (Up, Down and rates); "cores"
 	// when a core was updated (Core, Line is the new version); "speedtest"
-	// while a speed test runs (see Service.SpeedTest).
+	// while a speed test runs (see Service.SpeedTest); "rules" for the rule
+	// sets of the Russian preset (Reason is the set; Line "builtin",
+	// "downloaded" or "updated", or an Error: Line "kept" when the previous
+	// copy stays in use, "damaged" when the one on disk was thrown away).
 	Kind      string `json:"kind"`
 	State     State  `json:"state,omitempty"`
 	Core      string `json:"core,omitempty"`

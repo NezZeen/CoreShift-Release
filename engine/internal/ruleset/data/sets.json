@@ -1,0 +1,21 @@
+{
+  "fetched": "2026-10-05T19:55:22Z",
+  "sets": {
+    "geoip-ru": {
+      "sha256": "6e23f5580dd443e2f9c4895adafee8d199c1a3487182ad5f0a2256cf59c7e53a",
+      "size": 50107
+    },
+    "geosite-category-media-ru-blocked": {
+      "sha256": "9c7f2e98d2db22fd240bffec79a0317f2c8934ac96b68d03055dc93796618c08",
+      "size": 1248
+    },
+    "geosite-category-ru": {
+      "sha256": "91cac7d9735f43d54d26102015f17c8a90cb740086e1bde290e2c03a4eb003a9",
+      "size": 8576
+    },
+    "geosite-google": {
+      "sha256": "952d89c656fdb147d4f5d04541dd942b33dcce0dae906a8416e24cbc1161402a",
+      "size": 7752
+    }
+  }
+}
