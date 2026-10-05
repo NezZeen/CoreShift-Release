@@ -207,6 +207,7 @@ func Start(dataDir, libDir, deviceID, osVersion, model string, p Platform) error
 		return err
 	}
 	tun.log = svc.Log
+	currentNetwork.onChange(svc.NetworkChanged)
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

@@ -210,6 +210,23 @@ func TestLostNetworkHoldsTheConnection(t *testing.T) {
 	}
 }
 
+// With the screen off the network is looked at seldom, but a change the
+// platform reports (Android) is seen at once, and confirmed within a second.
+func TestNetworkChangeIsSeenWhileIdle(t *testing.T) {
+	h, nw := newNetRig(t, func(c *Config) { c.netPoll = time.Millisecond }) // idle pace: netPollIdle
+	if err := h.connect(t, trojanLink); err != nil {
+		t.Fatal(err)
+	}
+	h.svc.SetBackground(true)
+	time.Sleep(50 * time.Millisecond) // the watcher is on the idle pace now
+	nw.down(t)
+	h.svc.NetworkChanged()
+	h.waitState(t, NoNetwork, 3*time.Second)
+	nw.up()
+	h.svc.NetworkChanged()
+	h.waitState(t, Connected, 3*time.Second)
+}
+
 // The network is back but nothing gets through the tunnel: after the grace
 // the connection is made anew.
 func TestHeldConnectionIsMadeAnewWhenNothingGetsThrough(t *testing.T) {
