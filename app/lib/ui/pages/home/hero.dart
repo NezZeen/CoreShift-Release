@@ -1,11 +1,12 @@
 part of '../home_page.dart';
 
 /// The state in words and the colour of its lamp.
-(String, Color) _stateTitle(BuildContext context, ConnState st) => switch (st) {
+(String, Color) _stateTitle(BuildContext context, Status st) => switch (st.state) {
   ConnState.connected => ('Подключено', context.pal.okInk),
   ConnState.connecting => ('Подключение…', context.pal.accentInk),
   ConnState.disconnecting => ('Отключение…', context.pal.muted),
   ConnState.failed => ('Ошибка подключения', context.pal.errInk),
+  ConnState.noNetwork => (st.waiting ? 'Ждём сеть…' : 'Нет сети', context.pal.warnInk),
   ConnState.idle => ('Отключено', context.pal.text),
 };
 
@@ -21,7 +22,7 @@ class _Hero extends StatelessWidget {
     final p = context.pal;
     final st = state.status;
     final sel = state.selection;
-    final (title, color) = _stateTitle(context, st.state);
+    final (title, color) = _stateTitle(context, st);
     final canConnect = state.online && (st.active || (sel.available && !state.busy));
     final muted = TextStyle(color: p.muted, fontSize: 13.5);
     final Widget line = switch (st.state) {
@@ -37,6 +38,11 @@ class _Hero extends StatelessWidget {
         style: TextStyle(color: p.warnInk, fontSize: 13.5),
       ),
       ConnState.idle => Text('Нажмите, чтобы подключиться', style: muted),
+      ConnState.noNetwork => Text(
+        st.waiting ? 'Подключимся, как только появится сеть' : 'VPN продолжит работу, когда сеть вернётся',
+        textAlign: TextAlign.center,
+        style: muted,
+      ),
       _ => const SizedBox(),
     };
     return Column(
@@ -305,6 +311,28 @@ class _UnresponsiveBanner extends StatelessWidget {
           ),
         Btn(label: 'Переподключить', small: true, onPressed: state.busy ? null : state.reconnect),
       ],
+    );
+  }
+}
+
+/// The device has no network: CoreShift waits for it, and says so rather
+/// than "Подключено" or an error. While it waits the user can cancel, or
+/// turn a held VPN off to use the network without it once it is back.
+class _NoNetworkBanner extends StatelessWidget {
+  final AppState state;
+  const _NoNetworkBanner({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final waiting = state.status.waiting;
+    return _Notice(
+      color: warnColor,
+      icon: Icons.wifi_off_outlined,
+      title: 'Нет сети',
+      text: waiting
+          ? 'Устройство сейчас не в сети. CoreShift подключится сам, как только она появится. Проверьте Wi-Fi, кабель или мобильный интернет.'
+          : 'Связь пропала у самого устройства, сервер и ядра ни при чём. VPN остаётся включённым и продолжит работу, когда сеть вернётся.',
+      actions: [Btn(label: waiting ? 'Отменить' : 'Отключить VPN', small: true, onPressed: state.busy ? null : state.disconnect)],
     );
   }
 }

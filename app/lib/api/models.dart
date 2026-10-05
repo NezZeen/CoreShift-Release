@@ -14,10 +14,13 @@ DateTime? _time(dynamic v) {
 
 List<String> _strings(dynamic v) => v is List ? v.map((e) => '$e').toList() : const [];
 
-enum ConnState { idle, connecting, connected, disconnecting, failed }
+/// [noNetwork]: the device has no network. A connection either waits for one
+/// to start ([Status.waiting]) or is held as it is until it returns.
+enum ConnState { idle, connecting, connected, disconnecting, failed, noNetwork }
 
 ConnState _connState(dynamic v) => switch (v) {
   'connecting' => ConnState.connecting,
+  'no-network' => ConnState.noNetwork,
   'connected' => ConnState.connected,
   'disconnecting' => ConnState.disconnecting,
   'failed' => ConnState.failed,
@@ -43,6 +46,10 @@ class Status {
   /// "unknown". Empty while the server answers.
   final String problem;
 
+  /// With [ConnState.noNetwork]: nothing is up yet, the connection starts
+  /// once there is a network. Without it the connection is held.
+  final bool waiting;
+
   const Status({
     this.state = ConnState.idle,
     this.node = '',
@@ -55,6 +62,7 @@ class Status {
     this.error = '',
     this.settingsPending = false,
     this.problem = '',
+    this.waiting = false,
   });
 
   factory Status.fromJson(Json j) => Status(
@@ -69,9 +77,12 @@ class Status {
     error: j['error'] ?? '',
     settingsPending: j['settings_pending'] == true,
     problem: j['problem'] ?? '',
+    waiting: j['waiting'] == true,
   );
 
-  bool get active => state == ConnState.connected || state == ConnState.connecting;
+  /// On, coming up, or waiting for the network to do either: the button
+  /// then disconnects (or cancels).
+  bool get active => state == ConnState.connected || state == ConnState.connecting || state == ConnState.noNetwork;
 }
 
 class Event {

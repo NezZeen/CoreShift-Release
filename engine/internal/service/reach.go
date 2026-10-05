@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/netip"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -105,13 +108,48 @@ func (s *Service) checkReach(ctx context.Context, n node.Node, ip netip.Addr) (r
 	where := fmt.Sprintf("%s:%d", ip, n.Port)
 	switch {
 	case serverKnown && serverErr == nil:
-		return ReachServerUp, fmt.Sprintf("the server %s answers directly, but nothing gets through it", where)
+		return ReachServerUp, fmt.Sprintf("сервер %s отвечает напрямую, но соединение через него не проходит", where)
 	case netKnown && !online:
-		return ReachOffline, fmt.Sprintf("no well-known host answers either: %v", errors.Join(netErrs...))
+		return ReachOffline, fmt.Sprintf("не отвечают ни сервер, ни известные узлы: %s", netErrsText(netErrs))
 	case serverKnown && online:
-		return ReachServerDown, fmt.Sprintf("the server %s does not answer directly (%v), while the internet does", where, serverErr)
+		return ReachServerDown, fmt.Sprintf("сервер %s не отвечает напрямую (%s), а интернет работает", where, netErrText(serverErr))
+	case !netKnown:
+		return ReachUnknown, "не удалось проверить, сервер виноват или сеть: не найден сетевой интерфейс в обход туннеля"
+	case overUDP(&n):
+		return ReachUnknown, "интернет работает, а сервер по UDP на ping не отвечает: жив ли он, не понять"
 	}
-	return ReachUnknown, "it could not be told whether the server or the network is at fault"
+	return ReachUnknown, "интернет работает, а проверить сервер напрямую не удалось"
+}
+
+// netErrText says in a few words why a probe failed.
+func netErrText(err error) string {
+	var ne net.Error
+	msg := strings.ToLower(fmt.Sprint(err))
+	switch {
+	case err == nil:
+		return "нет ответа"
+	case errors.Is(err, context.DeadlineExceeded), errors.As(err, &ne) && ne.Timeout(), strings.Contains(msg, "timeout"), strings.Contains(msg, "timed out"):
+		return "нет ответа"
+	case strings.Contains(msg, "refused"):
+		return "соединение отклонено"
+	case strings.Contains(msg, "unreachable"), strings.Contains(msg, "no route"):
+		return "адрес недоступен"
+	case strings.Contains(msg, "reset"), strings.Contains(msg, "forcibly closed"):
+		return "соединение сброшено"
+	}
+	return fmt.Sprint(err)
+}
+
+// netErrsText says why each well-known host failed, "1.1.1.1:443 — нет
+// ответа; …". The errors start with the host (checkReach).
+func netErrsText(errs []error) string {
+	parts := make([]string, 0, len(errs))
+	for _, e := range errs {
+		host, _, _ := strings.Cut(e.Error(), ": ")
+		parts = append(parts, host+" — "+netErrText(errors.Unwrap(e)))
+	}
+	slices.Sort(parts)
+	return strings.Join(parts, "; ")
 }
 
 // diagnose runs checkReach for connection gen when every core failed,
@@ -129,6 +167,15 @@ func (s *Service) diagnose(gen int) {
 	if !current || busy {
 		return
 	}
+	if s.noNetwork() {
+		// No network at all: the watcher holds the connection, neither the
+		// server nor the network beyond is to blame.
+		s.mu.Lock()
+		s.diagnosing = false
+		s.mu.Unlock()
+		s.kickNetwork()
+		return
+	}
 	go func() {
 		defer func() {
 			s.mu.Lock()
@@ -136,6 +183,10 @@ func (s *Service) diagnose(gen int) {
 			s.mu.Unlock()
 		}()
 		r, detail := s.checkReach(context.Background(), n, ip)
+		if (r == ReachOffline || r == ReachUnknown) && s.noNetwork() {
+			s.kickNetwork() // the network went away meanwhile
+			return
+		}
 		s.mu.Lock()
 		if gen != s.gen || s.status.State != Connected {
 			s.mu.Unlock()

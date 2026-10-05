@@ -80,6 +80,12 @@ func (s *Service) connectOp(ctx context.Context, n node.Node) error {
 	s.lastNode, s.hasLast = n, true
 	s.mu.Unlock()
 	s.sup.SetPolicy(opts.policy())
+	if s.noNetwork() {
+		// Nothing would come of it, and the server's name would not even
+		// resolve: the connection is made once there is a network.
+		s.waitNetwork(n, opts)
+		return nil
+	}
 	s.setStatus(Status{State: Connecting, Node: n.Name, Protocol: string(n.Protocol), TUN: opts.TUN, Since: time.Now()})
 
 	serverIP, err := s.connectLocked(ctx, n, gen, opts)
@@ -97,6 +103,11 @@ func (s *Service) connectOp(ctx context.Context, n node.Node) error {
 			s.setStatus(Status{State: Idle, TUN: s.Options().TUN})
 			return ErrDisconnected
 		}
+		if errors.Is(err, errResolve) && s.noNetwork() {
+			// The network went away while connecting.
+			s.waitNetwork(n, opts)
+			return nil
+		}
 		s.fail(err)
 		return err
 	}
@@ -107,6 +118,7 @@ func (s *Service) connectOp(ctx context.Context, n node.Node) error {
 	pingCtx, stop := context.WithCancel(context.Background())
 	s.stopPing = stop
 	go s.watchTraffic(pingCtx)
+	go s.watchNet(pingCtx, gen)
 	s.mu.Lock()
 	autoDNS := s.autoDNS
 	s.mu.Unlock()
@@ -140,7 +152,7 @@ func (s *Service) keepDNS(ctx context.Context, k dnsguard.Keeper) {
 		}
 		if ctx.Err() == nil {
 			if err := k.Keep(ctx); err != nil {
-				s.hub.publish(Event{Kind: "dns", Error: "keep system DNS redirected: " + err.Error()})
+				s.hub.publish(Event{Kind: "dns", Error: "не удалось снова направить системный DNS в туннель: " + err.Error()})
 			}
 		}
 		s.op.Unlock()
@@ -176,7 +188,7 @@ func (s *Service) watchNetwork(ctx context.Context, gen int, direct netip.Addr) 
 			continue
 		}
 		s.hub.publish(Event{Kind: "dns", Reason: "network-changed",
-			Line: fmt.Sprintf("the network changed: resolver %s is gone, the system now uses %s; reconnecting", direct, addrs[0])})
+			Line: fmt.Sprintf("сеть сменилась: DNS %s больше нет, теперь система спрашивает %s; переподключаюсь", direct, addrs[0])})
 		s.reconnectGen(gen)
 		return
 	}
@@ -184,11 +196,13 @@ func (s *Service) watchNetwork(ctx context.Context, gen int, direct netip.Addr) 
 
 // reconnectGen reconnects the last node unless connection gen has ended
 // meanwhile, e.g. the user disconnected. A failure is reported by Connect.
+// A connection held for want of a network counts as going on.
 func (s *Service) reconnectGen(gen int) {
 	ctx, end := s.beginOp(context.Background())
 	defer end()
 	s.mu.Lock()
-	n, current := s.lastNode, gen == s.gen && s.status.State == Connected
+	st := s.status
+	n, current := s.lastNode, gen == s.gen && (st.State == Connected || st.State == NoNetwork && !st.Waiting)
 	s.mu.Unlock()
 	if current {
 		_ = s.connectOp(ctx, n)
@@ -266,7 +280,11 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 			addrs := resolvers
 			if err != nil || len(addrs) == 0 {
 				direct = "1.1.1.1"
-				s.hub.publish(Event{Kind: "dns", Error: fmt.Sprintf("no system resolver found (%v); using %s for direct names", err, direct)})
+				why := "система не назвала ни одного"
+				if err != nil {
+					why = err.Error()
+				}
+				s.hub.publish(Event{Kind: "dns", Error: fmt.Sprintf("системный DNS не найден (%s): прямые адреса узнаю через %s", why, direct)})
 			} else {
 				direct = addrs[0].String()
 				s.mu.Lock()
@@ -275,7 +293,7 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 			}
 		}
 	}
-	serverIP, err := s.serverAddr(ctx, n.Server)
+	serverIP, err := s.resolveServer(ctx, n.Server)
 	if err != nil {
 		return netip.Addr{}, err
 	}
@@ -423,14 +441,19 @@ func (s *Service) stopLocked() {
 	s.gen++ // turns pending teardowns for this connection into no-ops
 	s.tunDNS = netip.AddrPort{}
 	s.autoDNS = netip.Addr{}
+	if s.waitCancel != nil {
+		s.waitCancel() // a wait for the network ends with its connection
+		s.waitCancel = nil
+	}
 	s.mu.Unlock()
+	s.netDown.Store(false)
 	if s.stopPing != nil {
 		s.stopPing()
 		s.stopPing = nil
 	}
 	s.hub.clearTraffic()
 	if err := s.cfg.guard.Revert(context.Background()); err != nil {
-		s.hub.publish(Event{Kind: "dns", Error: "restore system DNS: " + err.Error()})
+		s.hub.publish(Event{Kind: "dns", Error: "не удалось восстановить системный DNS: " + err.Error()})
 	} else if s.tun != nil {
 		// Said aloud, so a journal shows the system got its DNS back.
 		s.hub.publish(Event{Kind: "dns", Reason: "reverted"})
@@ -468,9 +491,12 @@ func (s *Service) watchTUN(t TUNInstance, gen int) {
 
 func (s *Service) onSupervisorEvent(e supervisor.Event) {
 	s.hub.publish(fromSupervisor(e))
+	if e.Kind == supervisor.EventLog && netHint(e.Line) {
+		s.kickNetwork()
+	}
 	if e.Kind == supervisor.EventState && e.State == supervisor.Failed {
 		s.mu.Lock()
-		gen, connected := s.gen, s.status.State == Connected
+		gen, connected := s.gen, s.status.State == Connected || s.status.State == NoNetwork
 		s.mu.Unlock()
 		// While connecting, Connect itself reports the failure.
 		if connected {
@@ -487,6 +513,12 @@ func (s *Service) onSupervisorEvent(e supervisor.Event) {
 	case e.Kind == supervisor.EventHealth && e.Err == nil && !e.Probe:
 		// The server answers: a later failure starts a fresh round.
 		s.healthFails.Store(0)
+		s.healthOK.Store(time.Now().UnixNano())
+		if s.netDown.Load() {
+			// Through the tunnel, so there is a network after all.
+			s.netSeen.Store(true)
+			s.kickNetwork()
+		}
 		s.fo.reset()
 		s.clearProblem()
 	case e.Kind == supervisor.EventHealth && !e.Probe:
@@ -494,9 +526,10 @@ func (s *Service) onSupervisorEvent(e supervisor.Event) {
 	}
 }
 
+// fail reports a connection that failed. The state event carries the
+// error: a second event with it made the journal say it twice.
 func (s *Service) fail(err error) {
 	s.setStatus(Status{State: Failed, TUN: s.Options().TUN, Error: err.Error(), Since: time.Now()})
-	s.hub.publish(Event{Kind: "error", Error: err.Error()})
 }
 
 func (s *Service) setStatus(st Status) {
