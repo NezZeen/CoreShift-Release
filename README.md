@@ -11,6 +11,7 @@
 
 [![Последняя версия](https://img.shields.io/github/v/release/NezZeen/CoreShift-Release?label=версия&color=6D8CFF)](https://github.com/NezZeen/CoreShift-Release/releases/latest)
 [![Загрузки](https://img.shields.io/github/downloads/NezZeen/CoreShift-Release/total?label=загрузки&color=34D399)](https://github.com/NezZeen/CoreShift-Release/releases)
+[![Чат в Telegram](https://img.shields.io/badge/Telegram-чат-26A5E4?logo=telegram&logoColor=white)](https://t.me/CoreShift_app)
 
 <img src="assets/desktop-home.png" alt="CoreShift на Windows" width="760">
 
@@ -75,6 +76,10 @@
 3. Нажмите кнопку подключения.
 
 Все версии и что в них нового — на странице [Releases](https://github.com/NezZeen/CoreShift-Release/releases).
+
+## Чат
+
+Новости, вопросы и помощь с настройкой — в Telegram: [t.me/CoreShift_app](https://t.me/CoreShift_app).
 
 ## Linux
 
