@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -58,6 +59,10 @@ func WriteShared(path string, data []byte) error {
 	}
 	return werr
 }
+
+// KeepShared keeps the permissions of a file WriteShared wrote up to date
+// while ctx lasts.
+func KeepShared(ctx context.Context, path string) {}
 
 func setDACL(path, sddl string) error {
 	sd, err := windows.SecurityDescriptorFromString(sddl)

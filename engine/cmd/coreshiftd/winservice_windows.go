@@ -51,7 +51,7 @@ func installService(args []string) error {
 	// Validate the flags now rather than at every service start.
 	fs := flag.NewFlagSet("service install", flag.ContinueOnError)
 	df := addDaemonFlags(fs)
-	fs.String("api", "127.0.0.1:17900", "loopback address of the UI API")
+	fs.String("api", defaultAPIAddr, apiAddrUsage)
 	fs.Bool("exit-without-app", true, "stop, disconnecting, once the app is closed")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -227,7 +227,7 @@ func (w *winService) Execute(_ []string, requests <-chan svc.ChangeRequest, stat
 
 	fs := flag.NewFlagSet("service run", flag.ContinueOnError)
 	df := addDaemonFlags(fs)
-	apiAddr := fs.String("api", "127.0.0.1:17900", "loopback address of the UI API")
+	apiAddr := fs.String("api", defaultAPIAddr, apiAddrUsage)
 	withApp := fs.Bool("exit-without-app", false, "stop, disconnecting, once the app is closed")
 	if err := fs.Parse(w.args); err != nil {
 		return true, 1
