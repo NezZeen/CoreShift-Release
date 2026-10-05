@@ -491,9 +491,6 @@ func (s *Service) watchTUN(t TUNInstance, gen int) {
 
 func (s *Service) onSupervisorEvent(e supervisor.Event) {
 	s.hub.publish(fromSupervisor(e))
-	if e.Kind == supervisor.EventLog && netHint(e.Line) {
-		s.kickNetwork()
-	}
 	if e.Kind == supervisor.EventState && e.State == supervisor.Failed {
 		s.mu.Lock()
 		gen, connected := s.gen, s.status.State == Connected || s.status.State == NoNetwork

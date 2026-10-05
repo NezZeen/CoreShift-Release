@@ -88,6 +88,24 @@ func (s *Service) noNetwork() bool {
 // network right now.
 func (s *Service) offline() bool { return s.netDown.Load() || s.noNetwork() }
 
+// NetworkChanged tells the service that the device's network came or went
+// (Android's ConnectivityManager): it looks at once rather than at its next
+// look, which with the screen off may be a while.
+func (s *Service) NetworkChanged() { s.kickNetwork() }
+
+// netPollIdle is how often the network is looked at while the device is
+// idle (SetBackground): every wakeup costs a phone's battery, and Android
+// tells of changes anyway (NetworkChanged).
+const netPollIdle = 15 * time.Second
+
+// netEvery is how long until the watcher looks next.
+func (s *Service) netEvery() time.Duration {
+	if s.bg.Load() {
+		return max(s.cfg.netPoll, netPollIdle)
+	}
+	return s.cfg.netPoll
+}
+
 // kickNetwork makes the watcher look now.
 func (s *Service) kickNetwork() {
 	select {
@@ -107,7 +125,7 @@ func netHint(line string) bool {
 // network returns, and makes it anew when nothing gets through for
 // netBackGrace after that.
 func (s *Service) watchNet(ctx context.Context, gen int) {
-	t := time.NewTicker(s.cfg.netPoll)
+	t := time.NewTimer(s.netEvery())
 	defer t.Stop()
 	gone := 0
 	var back time.Time // when the network last came back
@@ -117,7 +135,9 @@ func (s *Service) watchNet(ctx context.Context, gen int) {
 			return
 		case <-t.C:
 		case <-s.netKick:
+			t.Stop()
 		}
+		t.Reset(s.netEvery())
 		raw := s.cfg.netUp()
 		if raw {
 			s.netBlind.Store(false)
@@ -134,6 +154,9 @@ func (s *Service) watchNet(ctx context.Context, gen int) {
 		case !up:
 			if gone++; gone >= netConfirm && s.holdForNetwork(gen) {
 				back = time.Time{}
+			} else if gone < netConfirm {
+				// Confirmed soon, even at the idle pace.
+				t.Reset(min(s.netEvery(), time.Second))
 			}
 		default:
 			gone = 0
@@ -220,7 +243,7 @@ func (s *Service) waitNetwork(n node.Node, o Options) {
 // connection gen, until ctx is cancelled (stopLocked: a disconnect, another
 // connection).
 func (s *Service) awaitNetwork(ctx context.Context, gen int, n node.Node) {
-	t := time.NewTicker(s.cfg.netPoll)
+	t := time.NewTimer(s.netEvery())
 	defer t.Stop()
 	tried := time.Now()
 	for !s.netReady(ctx, n, &tried) {
@@ -229,7 +252,9 @@ func (s *Service) awaitNetwork(ctx context.Context, gen int, n node.Node) {
 			return
 		case <-t.C:
 		case <-s.netKick:
+			t.Stop()
 		}
+		t.Reset(s.netEvery())
 	}
 	opCtx, end := s.beginOp(context.Background())
 	defer end()
