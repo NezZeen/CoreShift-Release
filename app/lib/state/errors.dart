@@ -103,7 +103,11 @@ String humanError(String raw) {
   if (has('tun layer stopped')) return 'Сетевой адаптер VPN неожиданно остановился.';
   if (has('start tun layer')) return 'Не удалось создать сетевой адаптер VPN. Подробности в журнале.';
   if (has('redirect system dns')) return 'Не удалось перенастроить DNS ${platform.isLinux ? 'системы' : 'Windows'}. Подробности в журнале.';
-  if (has('resolve server')) return 'Не удалось узнать адрес сервера VPN: DNS не отвечает.';
+  // Services before 0.7.2; later ones say it in Russian themselves.
+  if (has('resolve server')) {
+    if (has('no such host')) return 'Адрес сервера VPN не найден в DNS. Проверьте интернет; если он есть — обновите подписку.';
+    return 'Не удалось узнать адрес сервера VPN: DNS не отвечает.';
+  }
 
   // Cores: returning to the primary, updates.
   if (has('already on the primary')) return 'Уже работает основное ядро.';
@@ -127,7 +131,23 @@ String humanError(String raw) {
   }
   if (has('download:')) return 'Не удалось скачать обновление ядра: нет связи с GitHub.';
   if (has('no release build for')) return 'Для этой системы нет готовой сборки ядра.';
+  // Said in Russian by the service, as a line of its journal: a sentence here.
+  if (_russianLine.hasMatch(e)) return '${e[0].toUpperCase()}${e.substring(1)}${e.endsWith('.') ? '' : '.'}';
   return e;
+}
+
+final _russianLine = RegExp('^[а-яё]');
+
+/// A service's error as the journal shows it: in Russian where [humanError]
+/// knows it, the service's own Russian as it is. Where the translation sends
+/// to the journal for the cause, the original follows it.
+String journalError(String raw) {
+  final e = raw.trim();
+  if (_russianLine.hasMatch(e)) return e;
+  final human = humanError(e);
+  const more = ' Подробности в журнале.';
+  if (human != e && human.endsWith(more)) return '${human.substring(0, human.length - more.length)} Подробности: $e';
+  return human;
 }
 
 /// Whether a core's update check failed for a reason that passes: no

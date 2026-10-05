@@ -11,6 +11,9 @@ const logGroupEvery = 30 * time.Second
 // Log adds a line of output to the event stream, as the TUN layer reports
 // it (a separate process on the desktop, part of the app on Android).
 func (s *Service) Log(source, line string) {
+	if netHint(line) {
+		s.kickNetwork() // see netwatch.go
+	}
 	switch {
 	case noiseLine(line):
 	case s.healthFails.Load() >= upstreamDeadChecks && lookupTimeout(line):

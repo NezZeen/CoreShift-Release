@@ -161,7 +161,7 @@ func (s *Service) UpdateCore(ctx context.Context, k core.Kind) (string, error) {
 	s.cores.mu.Unlock()
 
 	s.mu.Lock()
-	active := s.status.State == Connected || s.status.State == Connecting
+	active := s.status.State.active()
 	s.pending = s.pending || active
 	s.mu.Unlock()
 	s.hub.publish(Event{Kind: "cores", Core: string(k), Reason: "updated", Line: v})

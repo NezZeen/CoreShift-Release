@@ -114,6 +114,14 @@ type Config struct {
 	// Fragment splits the TLS ClientHello to the server (core.Options).
 	Fragment bool
 
+	// Offline, if set, reports that the device has no network at all (no
+	// default route). Failed checks then prove nothing about the core or
+	// the server: they are not counted, no other core is tried and a core
+	// is not taken for hung, so the connection waits as it is for the
+	// network to come back. It is called on every failed check and must be
+	// quick.
+	Offline func() bool
+
 	// OnEvent receives every event. It is called synchronously from the
 	// supervisor's goroutine and must not block.
 	OnEvent func(Event)
@@ -537,9 +545,17 @@ func (s *Supervisor) monitor(ctx context.Context, p *process, n node.Node, serve
 				return "", "", nil
 			}
 			delay := s.cfg.Health.Interval
-			if err == nil {
+			switch {
+			case err == nil:
 				fails, deaf = 0, 0
-			} else {
+			case s.offline():
+				// Without a network every check fails, whatever the core:
+				// swapping cores or restarting this one would not help, and
+				// counting these failures would swap right after the network
+				// returns. Checked often, to see it return.
+				fails, deaf = 0, 0
+				delay = min(delay, failRetry)
+			default:
 				fails++
 				delay = min(delay, failRetry)
 				// A core that no longer takes connections on its own port
@@ -560,8 +576,11 @@ func (s *Supervisor) monitor(ctx context.Context, p *process, n node.Node, serve
 							return "", "", nil
 						}
 					}
-					// No core does better: the connection stays.
-					s.emit(Event{Kind: EventNoBetter, Core: p.kind, Err: err})
+					// No core does better: the connection stays. Unless the
+					// network went away during the search, which explains it.
+					if !s.offline() {
+						s.emit(Event{Kind: EventNoBetter, Core: p.kind, Err: err})
+					}
 				}
 			}
 			check.Reset(delay)
@@ -685,6 +704,9 @@ func (s *Supervisor) launch(ctx context.Context, k core.Kind, n node.Node, serve
 	}
 	return p, nil
 }
+
+// offline reports what Config.Offline says, false without it.
+func (s *Supervisor) offline() bool { return s.cfg.Offline != nil && s.cfg.Offline() }
 
 func (s *Supervisor) drop(failed map[core.Kind]error, k core.Kind, reason Reason, err error) {
 	failed[k] = err
