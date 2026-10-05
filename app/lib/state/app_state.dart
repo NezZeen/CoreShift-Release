@@ -111,6 +111,17 @@ class AppState extends ChangeNotifier {
   /// updated without the other.
   bool get versionMismatch => version.known && info.version.isNotEmpty && !version.same(info.buildVersion);
 
+  /// The service's version for [versionMismatch]: two builds of one version
+  /// would read «0.7.1» against «0.7.1», and the build number is not shown.
+  String get serviceVersionLabel => info.version == version.version ? 'другая сборка' : info.buildVersion.label;
+
+  /// What to do about [versionMismatch]. A service newer than the window is
+  /// the usual case after an update with the window left open (a Linux
+  /// package restarts only the service): restarting the window is enough.
+  String get versionMismatchAdvice => info.buildVersion.compareTo(version) > 0
+      ? 'Служба уже обновлена, а окно CoreShift открыто со старой сборки. Перезапустите CoreShift: «Выход» в меню значка, затем откройте снова.'
+      : 'Служба не обновилась вместе с приложением. Переустановите CoreShift целиком.';
+
   bool online = false;
   bool loaded = false;
   String offlineReason = '';
