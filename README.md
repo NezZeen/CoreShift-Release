@@ -1,4 +1,16 @@
+<div align="center">
+
 # CoreShift
+
+[![Скачать для Windows](https://img.shields.io/badge/Windows-скачать-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/NezZeen/CoreShift-Release/releases/latest/download/CoreShift-Setup.exe)
+[![Скачать для Linux](https://img.shields.io/badge/Linux-скачать-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://github.com/NezZeen/CoreShift-Release#linux)
+[![Скачать для Android](https://img.shields.io/badge/Android-скачать%20APK-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/NezZeen/CoreShift-Release/releases/latest/download/CoreShift.apk)
+
+[![Последняя версия](https://img.shields.io/github/v/release/NezZeen/CoreShift-Release?label=версия&color=6D8CFF)](https://github.com/NezZeen/CoreShift-Release/releases/latest)
+[![Загрузки](https://img.shields.io/github/downloads/NezZeen/CoreShift-Release/total?label=загрузки&color=34D399)](https://github.com/NezZeen/CoreShift-Release/releases)
+[![Чат в Telegram](https://img.shields.io/badge/Telegram-чат-26A5E4?logo=telegram&logoColor=white)](https://t.me/CoreShift_app)
+
+</div>
 
 VPN-клиент для подписок на Windows, Linux и Android. Он сам держит соединение: следит за ядром, сервером и сетью и чинит то, что сломалось, без участия пользователя.
 
