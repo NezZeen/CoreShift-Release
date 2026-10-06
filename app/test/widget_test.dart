@@ -719,6 +719,7 @@ void main() {
   test('update errors are explained', () {
     expect(humanError('check for updates: the releases token is invalid or expired (401)'), contains('Доступ к обновлениям истёк'));
     expect(humanError('update signature does not match the release key'), contains('подпись'));
+    expect(humanError('check for updates: GitHub rate limit, try again later'), contains('ограничил'));
     expect(humanError('check for updates: dial tcp: i/o timeout'), contains('нет связи с GitHub'));
   });
 

@@ -19,9 +19,10 @@ import (
 // APIBase is GitHub's API; tests point it at a local server.
 var APIBase = "https://api.github.com"
 
-// token reads the releases of the private repository. Release builds set it
-// in a generated, ignored file (token_gen.go, see packaging/windows/
-// build.ps1); without it only folder sources work.
+// token reads the releases of a private repository, a "github:" source.
+// Builds before 0.8.1 set it in a generated, ignored file (token_gen.go);
+// releases now come from the public repository and builds carry none, so
+// only "github-public:" and folder sources work without it.
 var token string
 
 // HasToken reports whether this build can read the private releases.
@@ -265,6 +266,14 @@ func statusError(resp *http.Response) error {
 	case http.StatusNotFound:
 		// A private repository the token cannot see looks missing.
 		return errors.New("check for updates: no release found, or the token has no access (404)")
+	case http.StatusTooManyRequests:
+		return errors.New("check for updates: GitHub rate limit, try again later")
+	case http.StatusForbidden:
+		// GitHub answers 403 when an address has used up its requests
+		// without a token (60 an hour).
+		if resp.Header.Get("X-RateLimit-Remaining") == "0" {
+			return errors.New("check for updates: GitHub rate limit, try again later")
+		}
 	}
 	return fmt.Errorf("check for updates: server returned %s", resp.Status)
 }
