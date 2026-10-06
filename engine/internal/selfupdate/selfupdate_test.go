@@ -102,7 +102,7 @@ func TestNewer(t *testing.T) {
 }
 
 func TestParseSource(t *testing.T) {
-	if s, err := ParseSource(DefaultSource); err != nil || s.Repo != "NezZeen/coreshift-releases" {
+	if s, err := ParseSource("github:NezZeen/coreshift-releases"); err != nil || s.Repo != "NezZeen/coreshift-releases" || s.Public {
 		t.Errorf("default = %+v, %v", s, err)
 	}
 	dir := t.TempDir()
@@ -262,11 +262,14 @@ func TestPublicSource(t *testing.T) {
 	if err != nil || !s.Public || s.Repo != "NezZeen/CoreShift-Release" || s.String() != PublicSource {
 		t.Fatalf("public = %+v, %v", s, err)
 	}
-	if s, _ := ParseSource(DefaultSource); s.Public {
+	if s, _ := ParseSource("github:NezZeen/coreshift-releases"); s.Public {
 		t.Error("the private repository taken for a public one")
 	}
-	if DefaultSourceFor("linux") != PublicSource || DefaultSourceFor("windows") != DefaultSource || DefaultSourceFor("android") != DefaultSource {
-		t.Error("default sources per platform changed")
+	// Every platform reads the public repository: builds carry no token.
+	for _, goos := range []string{"linux", "windows", "android"} {
+		if DefaultSourceFor(goos) != PublicSource {
+			t.Errorf("default source for %s = %s", goos, DefaultSourceFor(goos))
+		}
 	}
 	if _, err := ParseSource("github-public:owner"); err == nil {
 		t.Error("github-public:owner accepted")
@@ -340,5 +343,21 @@ func TestPublicGitHubSource(t *testing.T) {
 	}
 	if _, err := Check(context.Background(), http.DefaultClient, src, ManifestFor("linux"), []string{newKey(t).pub}); err == nil {
 		t.Error("a manifest signed with another key accepted")
+	}
+}
+
+func TestRateLimit(t *testing.T) {
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-RateLimit-Remaining", "0")
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer api.Close()
+	oldBase := APIBase
+	APIBase = api.URL
+	defer func() { APIBase = oldBase }()
+
+	src, _ := ParseSource(PublicSource)
+	if _, err := Check(context.Background(), http.DefaultClient, src, ManifestName, []string{newKey(t).pub}); err == nil || !strings.Contains(err.Error(), "rate limit") {
+		t.Errorf("rate limited: %v", err)
 	}
 }
