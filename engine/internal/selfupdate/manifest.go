@@ -5,19 +5,16 @@
 // installer, latest.json describing it and latest.json.sig, an Ed25519
 // signature of latest.json's exact bytes; for Android they are the APK,
 // latest-android.json and latest-android.json.sig. They are the assets of a
-// release of a private GitHub repository, read through the API with a
-// read-only token built into the service, or files in a folder (for
-// testing). A release may carry one platform only: each platform takes the
-// newest release that has its files.
+// release of the public GitHub repository of downloads, read through the
+// API without a token, or files in a folder (for testing). A release may
+// carry one platform only: each platform takes the newest release that has
+// its files.
 //
 // The installer runs as SYSTEM, so nothing is trusted that the release key
 // did not sign: the manifest's signature is checked against the public keys
-// built in here, and the installer against the manifest's SHA-256. The
-// token only grants reading the releases; whoever extracts it from the
-// binary gets the installers, nothing more.
+// built in here, and the installer against the manifest's SHA-256.
 //
-// Neither the private key nor the token enters the repository; see
-// packaging/README.md.
+// The private key never enters the repository; see packaging/README.md.
 package selfupdate
 
 import (
@@ -32,26 +29,21 @@ import (
 	"time"
 )
 
-// DefaultSource is where releases are published: "github:OWNER/REPO", or
-// a folder holding the three files.
-const DefaultSource = "github:NezZeen/coreshift-releases"
-
-// PublicSource is where Linux looks for new versions: the public
-// repository of downloads (packaging/linux/README.md). Linux builds carry no
-// releases token, and they only tell the user about a new version, whose
-// page is then opened in the browser; nothing is installed. The manifest is
-// verified with the same keys all the same, so a release in it must have
-// been signed by us.
+// PublicSource is where releases are published: the public repository of
+// downloads, read without a token. Since 0.8.1 every platform looks for new
+// versions there; before, Windows and Android read the private
+// NezZeen/coreshift-releases with a token built in. The manifest is verified
+// with the release keys all the same, so a release in it must have been
+// signed by us.
 const PublicSource = "github-public:NezZeen/CoreShift-Release"
 
+// DefaultSource is where releases are looked for when the settings name no
+// source.
+const DefaultSource = PublicSource
+
 // DefaultSourceFor is where releases for goos are looked for when the
-// settings name no source.
-func DefaultSourceFor(goos string) string {
-	if goos == "linux" {
-		return PublicSource
-	}
-	return DefaultSource
-}
+// settings name no source: the same public repository for every platform.
+func DefaultSourceFor(goos string) string { return DefaultSource }
 
 // ManifestName and SignatureName are the published file names of the
 // Windows release; AndroidManifestName is the Android one's manifest.

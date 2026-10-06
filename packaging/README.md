@@ -54,25 +54,17 @@ git branch --list release/*
 
 ## Самообновление
 
-Установленная служба CoreShift раз в день ищет новую версию в **приватном** репозитории `NezZeen/coreshift-releases`. В нём лежат только релизы, без исходников. Найдя новую версию, служба её скачивает и проверяет, а затем ставит сама, пока VPN выключен. Если VPN включён, установка ждёт, но её можно запустить кнопкой «Установить сейчас» в настройках. После установки служба снова открывает приложение (свёрнутым в трей) и восстанавливает подключение, если установка его прервала.
+Установленная служба CoreShift раз в день ищет новую версию в **публичном** репозитории `NezZeen/CoreShift-Release` (с 0.8.1, на всех системах), тем же, откуда CoreShift скачивают. Найдя новую версию, служба её скачивает и проверяет, а затем ставит сама, пока VPN выключен. Если VPN включён, установка ждёт, но её можно запустить кнопкой «Установить сейчас» в настройках. После установки служба снова открывает приложение (свёрнутым в трей) и восстанавливает подключение, если установка его прервала.
 
 Защита:
 
 - **Подпись.** Файл `latest.json` подписан ключом Ed25519. Служба сверяет подпись с открытыми ключами из `engine/internal/selfupdate/keys.go`, а установщик — с SHA-256 из `latest.json`. Подменённый установщик не запустится, даже если кто-то получит доступ к репозиторию.
-- **Токен.** Приватный репозиторий служба читает токеном только на чтение, который зашит в `coreshiftd.exe`. Его можно достать из файла программы, но он даёт только скачивание установщиков.
+- **Без токена.** Публичный репозиторий читается без токена, и в сборках его нет: `build.ps1` останавливается, если остался старый `engine/internal/selfupdate/token_gen.go`. Без токена GitHub даёт одному адресу 60 запросов в час; проверка тратит около четырёх, а при исчерпании лимита приложение пишет, что проверит позже.
+- **Переход с приватного репозитория.** Копии до 0.8.0 включительно на Windows и Android читают приватный `NezZeen/coreshift-releases` токеном. Поэтому 0.8.1, которая переводит их на публичный, выложена и туда (`publish.ps1 -Repo NezZeen/coreshift-releases`). Следующие версии идут только в публичный. Кто не обновился до 0.8.1, ставит новую версию вручную.
 
 ### Один раз настроить
 
-1. Создать приватный репозиторий для релизов:
-   ```
-   gh repo create NezZeen/coreshift-releases --private --add-readme
-   ```
-2. Создать токен: GitHub → Settings → Developer settings → Fine-grained tokens → Generate new token.
-   - Repository access: *Only select repositories* → `coreshift-releases`.
-   - Permissions → Repository → **Contents: Read-only**. Больше ничего не нужно.
-   - Expiration: как можно дольше. **Когда токен истечёт, установленные копии перестанут видеть обновления**, поэтому новый токен нужно выпустить в очередной версии заранее.
-3. Сохранить токен в файл `%USERPROFILE%\.coreshift\releases-token` (одна строка). `build.ps1` зашивает его в службу на время сборки и в git не кладёт.
-4. Сделать резервную копию ключа подписи `%USERPROFILE%\.coreshift\update-signing.key` (например, в менеджер паролей). **Без ключа новые версии не смогут обновить уже установленные копии**, их придётся переставлять вручную. Ключ не должен попадать в git и чужие руки: кто им владеет, может запустить свой установщик на всех компьютерах с CoreShift.
+1. Сделать резервную копию ключа подписи `%USERPROFILE%\.coreshift\update-signing.key` (например, в менеджер паролей). **Без ключа новые версии не смогут обновить уже установленные копии**, их придётся переставлять вручную. Ключ не должен попадать в git и чужие руки: кто им владеет, может запустить свой установщик на всех компьютерах с CoreShift.
 
 ### Выпустить обновление
 
@@ -81,7 +73,7 @@ powershell -ExecutionPolicy Bypass -File packaging\release.ps1 -Version 0.3.0
 powershell -ExecutionPolicy Bypass -File packaging\publish.ps1 -Version 0.3.0
 ```
 
-`release.ps1` собирает установщик для Windows и APK для Android и кладёт в `dist\release\0.3.0\` по три файла на систему: установщик, `latest.json` и `latest.json.sig`, а для Android — APK, `latest-android.json` и `latest-android.json.sig`. `publish.ps1` создаёт из них релиз `v0.3.0` в `coreshift-releases`.
+`release.ps1` собирает установщик для Windows и APK для Android и кладёт в `dist\release\0.3.0\` по три файла на систему: установщик, `latest.json` и `latest.json.sig`, а для Android — APK, `latest-android.json` и `latest-android.json.sig`. `publish.ps1` создаёт из них релиз `v0.3.0` в `NezZeen/CoreShift-Release` и добавляет копии установщика и APK под постоянными именами `CoreShift-Setup.exe` и `CoreShift.apk`, на которые ссылается README публичного репозитория. Сам README там обновляется отдельно.
 
 ### Базы правил
 
@@ -114,9 +106,9 @@ powershell -ExecutionPolicy Bypass -File packaging\publish.ps1 -Version 0.3.0
 | `coreshift-<версия>-1-x86_64.pkg.tar.zst` | `CoreShift-x86_64.pkg.tar.zst` | Arch, Manjaro, EndeavourOS |
 | `coreshift-<версия>-linux-amd64.tar.gz` | `CoreShift-linux-amd64.tar.gz` | остальные, OpenRC и runit (`install.sh`) |
 
-Рядом лежат `latest-linux.json` и `latest-linux.json.sig`: манифест подписан тем же ключом, что Windows и Android, и называет `CoreShift-amd64.deb`. `publish.ps1` выкладывает всё это вместе с файлами Windows и Android в `coreshift-releases`.
+Рядом лежат `latest-linux.json` и `latest-linux.json.sig`: манифест подписан тем же ключом, что Windows и Android, и называет `CoreShift-amd64.deb`. `publish.ps1` выкладывает всё это вместе с файлами Windows и Android в `NezZeen/CoreShift-Release`.
 
-Linux сам ничего не устанавливает: он только сообщает о новой версии. Токена в Linux-сборке нет, поэтому манифест служба читает из **публичного** `NezZeen/CoreShift-Release` (`github-public:NezZeen/CoreShift-Release`, источник меняется настройкой `app_update.source`). Значит, в релиз `v<версия>` публичного репозитория нужно положить шесть файлов: четыре пакета под постоянными именами, `latest-linux.json` и `latest-linux.json.sig`. Это можно сделать вручную или командой `publish.ps1 -Version <версия> -Repo NezZeen/CoreShift-Release`. Служба проверяет подпись манифеста и размер `.deb` в том же релизе. Страница, которая открывается по кнопке «Скачать», — страница этого релиза.
+Linux сам ничего не устанавливает: он только сообщает о новой версии. Манифест служба читает из того же публичного репозитория (`github-public:NezZeen/CoreShift-Release`, источник меняется настройкой `app_update.source`). Служба проверяет подпись манифеста и размер `.deb` в том же релизе. Страница, которая открывается по кнопке «Скачать», — страница этого релиза.
 
 Что увидит Linux (ничего не устанавливает): `coreshiftd update check -platform linux`.
 
