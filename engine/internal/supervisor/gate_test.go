@@ -128,6 +128,39 @@ func TestConnectionDuringSwapReachesTheNextCore(t *testing.T) {
 	}
 }
 
+// The traffic is counted at the SOCKS port: it grows with what passes,
+// goes on across a swap, and starts from zero with the next connection.
+func TestTrafficCountedAtThePort(t *testing.T) {
+	t.Setenv("FAKECORE_XRAY", "crash-after:1s")
+	h := newHarness(t, nil)
+	if _, _, err := h.s.Traffic(); err != ErrNotConnected {
+		t.Fatalf("before Connect: %v", err)
+	}
+	connect(t, h, trojanLink)
+	proxy := h.s.SOCKSAuth().ProxyURL(h.listen)
+	if err := getThrough(proxy); err != nil {
+		t.Fatal(err)
+	}
+	first, run, err := h.s.Traffic()
+	if err != nil || first.Up <= 0 || first.Down <= 0 {
+		t.Fatalf("after a request: %+v %v", first, err)
+	}
+	h.waitFor(t, "swap to sing-box", 10*time.Second, isSwap(core.SingBox, ReasonExited))
+	if err := getThrough(proxy); err != nil {
+		t.Fatal(err)
+	}
+	second, run2, _ := h.s.Traffic()
+	if run2 != run || second.Up <= first.Up || second.Down <= first.Down {
+		t.Errorf("after the swap: %+v (run %d), before %+v (run %d)", second, run2, first, run)
+	}
+	h.s.Disconnect()
+	connect(t, h, trojanLink)
+	third, run3, _ := h.s.Traffic()
+	if run3 == run || third != (core.Traffic{}) {
+		t.Errorf("the next connection: %+v (run %d)", third, run3)
+	}
+}
+
 // Connect fails, and leaves the port alone, when another program holds it.
 func TestConnectFailureFreesThePort(t *testing.T) {
 	t.Setenv("FAKECORE_XRAY", "crash-start")

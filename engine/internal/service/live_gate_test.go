@@ -105,8 +105,13 @@ func TestLiveSOCKSPort(t *testing.T) {
 			if err := l.fetch(t); err != nil {
 				t.Errorf("%s: a page: %v", name, err)
 			}
+			before, _, _ := l.svc.sup.Traffic()
 			if err := udpThrough(l.listen, auth, echo); err != nil {
 				t.Errorf("%s: UDP with the credentials: %v", name, err)
+			}
+			// The datagrams are counted: 3 × "datagram N" up, "echo:" more down.
+			if after, _, _ := l.svc.sup.Traffic(); after.Up-before.Up < 30 || after.Down-before.Down < 45 {
+				t.Errorf("%s: UDP traffic %+v → %+v", name, before, after)
 			}
 			err := udpThrough(l.listen, core.SOCKSAuth{}, echo)
 			if android && err == nil {

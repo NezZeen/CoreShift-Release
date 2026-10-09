@@ -62,3 +62,23 @@ func TestSOCKSAuthStaysOutOfPrints(t *testing.T) {
 		t.Error("credentials without any")
 	}
 }
+
+// No core opens an API of its own: Xray's stats service takes no secret,
+// and any program on the device could read it. The traffic is counted in
+// front of the cores (socksgate).
+func TestCoresOpenNoAPI(t *testing.T) {
+	o := Options{Listen: netip.MustParseAddrPort("127.0.0.1:23456"), Auth: NewSOCKSAuth()}
+	for name, n := range fixtures(t) {
+		for _, a := range Adapters() {
+			if a.Supports(&n) != nil {
+				continue
+			}
+			cfg := string(render(t, a, n, o))
+			for _, key := range []string{`"api"`, `"stats"`, "clash_api", "external-controller", "external_controller"} {
+				if strings.Contains(cfg, key) {
+					t.Errorf("%s, %s: %s in the config", name, a.Kind(), key)
+				}
+			}
+		}
+	}
+}

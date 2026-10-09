@@ -23,9 +23,7 @@
 //
 // The SOCKS port, and the credentials it then requires, are read from the
 // config the supervisor generated, so the real adapters and config files
-// are exercised. With a Clash API address in
-// the config (sing-box, mihomo) it also answers /connections with traffic
-// that grows on every call. "version" and "-v" print a version.
+// are exercised. "version" and "-v" print a version.
 package main
 
 import (
@@ -55,7 +53,6 @@ func main() {
 		impostor(port)
 		return
 	}
-	go serveStats()
 	mode := os.Getenv("FAKECORE_" + strings.ToUpper(strings.ReplaceAll(name, "-", "_")))
 	port, err := configPort()
 	if err != nil {
@@ -180,25 +177,6 @@ func readCreds() {
 			return
 		}
 	}
-}
-
-var statsRE = regexp.MustCompile(`"?external[-_]controller"?\s*:\s*"?([0-9.]+:[0-9]+)`)
-
-// serveStats imitates the Clash API's traffic totals.
-func serveStats() {
-	b, err := os.ReadFile(configPath())
-	if err != nil {
-		return
-	}
-	m := statsRE.FindSubmatch(b)
-	if m == nil {
-		return
-	}
-	calls := 0
-	http.ListenAndServe(string(m[1]), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls++
-		fmt.Fprintf(w, `{"uploadTotal":%d,"downloadTotal":%d,"connections":[]}`, calls*100, calls*1000)
-	}))
 }
 
 func configPath() string {

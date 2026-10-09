@@ -17,10 +17,6 @@ type process struct {
 	// auth is what its SOCKS inbound requires, made for this start.
 	auth  core.SOCKSAuth
 	probe bool
-	// stats is where the core reports traffic (see core.ReadTraffic);
-	// invalid for probes.
-	stats  netip.AddrPort
-	secret string
 	// portLost is closed when the core reports that it could not open its
 	// SOCKS port (portWatch).
 	portLost <-chan struct{}

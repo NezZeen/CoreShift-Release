@@ -19,12 +19,12 @@
 // layer in front never notices more than a short gap: connections made
 // meanwhile wait for the next core. A core's random port is used only once
 // the system confirms that the core itself listens there (coreListens).
+// The traffic is counted there too (Traffic), so the cores run without an
+// API of their own.
 package supervisor
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"maps"
@@ -228,11 +228,12 @@ type Supervisor struct {
 	status Status
 	cancel context.CancelFunc
 	done   chan struct{}
-	// active is the core serving Listen; runs counts cores that got there.
+	// active is the core serving Listen.
 	active *process
-	runs   int
-	// gate holds Listen while connected and relays it to active.
-	gate *socksgate.Gate
+	// gate holds Listen while connected and relays it to active; gates
+	// counts the connections it was opened for.
+	gate  *socksgate.Gate
+	gates int
 
 	// returnReq asks the monitor to move back to the primary core now.
 	returnReq chan chan error
@@ -316,6 +317,7 @@ func (s *Supervisor) Connect(ctx context.Context, n node.Node, serverAddr string
 	done := make(chan struct{})
 	s.mu.Lock()
 	s.cancel, s.done, s.gate = cancel, done, gate
+	s.gates++
 	s.status = Status{State: Connecting, Node: n.Name, Chain: chain, Failed: map[core.Kind]string{}, Since: time.Now()}
 	s.mu.Unlock()
 
@@ -410,9 +412,6 @@ func (s *Supervisor) serve(p *process) {
 	s.mu.Lock()
 	gate := s.gate
 	s.active = p
-	if p != nil {
-		s.runs++
-	}
 	s.mu.Unlock()
 	if gate == nil {
 		return
@@ -433,17 +432,17 @@ func (s *Supervisor) Status() Status {
 	return st
 }
 
-// Traffic returns the active core's byte counters and which run of a core
-// they belong to: counters restart from zero whenever run changes.
-func (s *Supervisor) Traffic(ctx context.Context) (t core.Traffic, run int, err error) {
+// Traffic returns the byte counters of the connection, which the SOCKS
+// port counts whatever core runs behind it, and which connection they
+// belong to: they restart from zero whenever run changes.
+func (s *Supervisor) Traffic() (t core.Traffic, run int, err error) {
 	s.mu.Lock()
-	p, run := s.active, s.runs
+	gate, run := s.gate, s.gates
 	s.mu.Unlock()
-	if p == nil || !p.stats.IsValid() {
+	if gate == nil {
 		return core.Traffic{}, run, ErrNotConnected
 	}
-	t, err = core.ReadTraffic(ctx, p.kind, p.stats, p.secret)
-	return t, run, err
+	return gate.Traffic(), run, nil
 }
 
 // ReturnToPrimary moves back to the primary core now instead of waiting for
@@ -845,13 +844,6 @@ func (s *Supervisor) launchOn(ctx context.Context, k core.Kind, n node.Node, ser
 	// nor any other program, is given them.
 	auth := core.NewSOCKSAuth()
 	o := core.Options{Listen: listen, Auth: auth, LogLevel: s.cfg.LogLevel, ServerAddr: serverAddr, Fragment: s.cfg.Fragment}
-	if !probe {
-		// Traffic counters for the UI. Losing them is not worth failing
-		// the core over, so any trouble here just leaves them off.
-		if ap, err := freeLoopbackPort(); err == nil {
-			o.Stats, o.StatsSecret = ap, randomSecret()
-		}
-	}
 	cfg, err := a.Render(&n, o)
 	if err != nil {
 		return nil, err
@@ -878,7 +870,7 @@ func (s *Supervisor) launchOn(ctx context.Context, k core.Kind, n node.Node, ser
 	if err != nil {
 		return nil, err
 	}
-	p := &process{Process: pr, kind: k, listen: listen, auth: auth, probe: probe, stats: o.Stats, secret: o.StatsSecret, portLost: watch.ch}
+	p := &process{Process: pr, kind: k, listen: listen, auth: auth, probe: probe, portLost: watch.ch}
 	// A core that could not open its port is done waiting for: the port
 	// answering then is someone else's.
 	ready := func() bool { return watch.failed() || proc.PortOpen(listen) }
@@ -934,12 +926,6 @@ func (s *Supervisor) emit(e Event) {
 		e.Time = time.Now()
 		s.cfg.OnEvent(e)
 	}
-}
-
-func randomSecret() string {
-	b := make([]byte, 16)
-	_, _ = rand.Read(b)
-	return hex.EncodeToString(b)
 }
 
 func firstNotFailed(chain []core.Kind, failed map[core.Kind]error) (core.Kind, bool) {

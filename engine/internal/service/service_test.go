@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"io"
 	"net"
+	"net/http"
 	"net/netip"
 	"net/url"
 	"os"
@@ -286,6 +288,37 @@ func (h *harness) connect(t *testing.T, link string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	return h.svc.Connect(ctx, n)
+}
+
+// browse sends requests through the SOCKS port, as the TUN layer would
+// the device's, until the test ends: traffic for the counters.
+func (h *harness) browse(t *testing.T) {
+	t.Helper()
+	done := make(chan struct{})
+	stopped := make(chan struct{})
+	t.Cleanup(func() {
+		close(done)
+		<-stopped
+	})
+	c := &http.Client{Timeout: 2 * time.Second, Transport: &http.Transport{
+		Proxy: http.ProxyURL(h.svc.sup.SOCKSAuth().ProxyURL(h.listen)), DisableKeepAlives: true,
+	}}
+	go func() {
+		defer close(stopped)
+		for {
+			select {
+			case <-done:
+				return
+			default:
+			}
+			if resp, err := c.Get("http://health.test/generate_204"); err == nil {
+				io.Copy(io.Discard, resp.Body)
+				resp.Body.Close()
+			} else {
+				time.Sleep(10 * time.Millisecond)
+			}
+		}
+	}()
 }
 
 func (h *harness) waitState(t *testing.T, want State, timeout time.Duration) Status {
@@ -732,10 +765,10 @@ func TestIPv6TunnelSystemOff(t *testing.T) {
 
 func TestTrafficEvents(t *testing.T) {
 	h := newHarness(t, nil)
-	// Xray cannot run hy2Link, sing-box can; the fake core answers its Clash API.
 	if err := h.connect(t, hy2Link); err != nil {
 		t.Fatal(err)
 	}
+	h.browse(t)
 	var last Event
 	deadline := time.After(10 * time.Second)
 	for last.Down < 2000 {

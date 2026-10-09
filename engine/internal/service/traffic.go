@@ -70,12 +70,12 @@ func (s *Service) watchTraffic(ctx context.Context) {
 			// The screen came on: the speed it shows is up to date at once.
 		}
 		tick.Reset(s.trafficEvery())
-		now, run, err := s.sup.Traffic(ctx)
+		now, run, err := s.sup.Traffic()
 		if err != nil {
-			continue // swapping, or a core without counters; the next sample makes up
+			continue // disconnecting
 		}
 		if run != lastRun {
-			// A new core counts from zero.
+			// A new connection counts from zero.
 			last, lastRun = core.Traffic{}, run
 		}
 		d := core.Traffic{Up: now.Up - last.Up, Down: now.Down - last.Down}

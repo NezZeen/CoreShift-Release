@@ -65,10 +65,6 @@ func (m mihomo) Render(n *node.Node, o Options) ([]byte, error) {
 	} else {
 		cfg["socks-port"], cfg["bind-address"] = o.Listen.Port(), o.Listen.Addr().String()
 	}
-	if o.Stats.IsValid() {
-		cfg["external-controller"] = o.Stats.String()
-		cfg["secret"] = o.StatsSecret
-	}
 	return yaml.Marshal(cfg)
 }
 

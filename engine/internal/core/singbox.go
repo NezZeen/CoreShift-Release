@@ -54,9 +54,6 @@ func (s singBox) Render(n *node.Node, o Options) ([]byte, error) {
 		"inbounds": []any{in},
 		"route":    obj{"final": "proxy"},
 	}
-	if o.Stats.IsValid() {
-		cfg["experimental"] = obj{"clash_api": obj{"external_controller": o.Stats.String(), "secret": o.StatsSecret}}
-	}
 	direct := obj{"type": "direct", "tag": "direct"}
 	if n.Protocol == node.WireGuard {
 		ep, err := singBoxWireGuard(n, o)

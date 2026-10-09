@@ -73,11 +73,11 @@ func startCore(t *testing.T, bin string, args []string, dir string) {
 	})
 }
 
-// TestTrafficCounters runs each core against a local Shadowsocks server
-// (sing-box) and checks that ReadTraffic sees a download through it, and
-// that the SOCKS inbound takes only its credentials. Needs
-// XRAY_BIN, SINGBOX_BIN and MIHOMO_BIN, like TestCoresAcceptConfigs.
-func TestTrafficCounters(t *testing.T) {
+// TestSOCKSInboundLive runs each core against a local Shadowsocks server
+// (sing-box) and checks that a download gets through its SOCKS inbound,
+// which takes only its credentials. Needs XRAY_BIN, SINGBOX_BIN and
+// MIHOMO_BIN, like TestCoresAcceptConfigs.
+func TestSOCKSInboundLive(t *testing.T) {
 	bins := map[Kind]string{Xray: os.Getenv("XRAY_BIN"), SingBox: os.Getenv("SINGBOX_BIN"), Mihomo: os.Getenv("MIHOMO_BIN")}
 	if bins[SingBox] == "" {
 		t.Skip("SINGBOX_BIN not set")
@@ -116,7 +116,7 @@ func TestTrafficCounters(t *testing.T) {
 			t.Logf("version %s", v)
 
 			dir := t.TempDir()
-			o := Options{Listen: freePort(t), Stats: freePort(t), StatsSecret: "s3cret", Auth: NewSOCKSAuth()}
+			o := Options{Listen: freePort(t), Auth: NewSOCKSAuth()}
 			cfg, err := a.Render(&n, o)
 			if err != nil {
 				t.Fatal(err)
@@ -127,12 +127,6 @@ func TestTrafficCounters(t *testing.T) {
 			}
 			startCore(t, bin, a.RunArgs(path, dir), dir)
 			waitPort(t, o.Listen)
-			waitPort(t, o.Stats)
-
-			before, err := ReadTraffic(context.Background(), a.Kind(), o.Stats, o.StatsSecret)
-			if err != nil {
-				t.Fatalf("ReadTraffic before: %v", err)
-			}
 			// Without the credentials the inbound refuses.
 			open := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{
 				Proxy: http.ProxyURL(&url.URL{Scheme: "socks5", Host: o.Listen.String()}),
@@ -157,24 +151,6 @@ func TestTrafficCounters(t *testing.T) {
 			resp.Body.Close()
 			if got != size {
 				t.Fatalf("downloaded %d bytes", got)
-			}
-			var after Traffic
-			for i := 0; i < 30; i++ {
-				if after, err = ReadTraffic(context.Background(), a.Kind(), o.Stats, o.StatsSecret); err == nil && after.Down-before.Down >= size {
-					break
-				}
-				time.Sleep(100 * time.Millisecond)
-			}
-			if err != nil || after.Down-before.Down < size || after.Up <= before.Up {
-				t.Fatalf("traffic %+v → %+v (%v), want at least %d down", before, after, err, size)
-			}
-			t.Logf("traffic %+v", after)
-
-			if a.Kind() != Xray {
-				// The secret must be required.
-				if _, err := ReadTraffic(context.Background(), a.Kind(), o.Stats, "wrong"); err == nil {
-					t.Error("stats readable with a wrong secret")
-				}
 			}
 		})
 	}

@@ -116,7 +116,7 @@ func (f *fakeCore) serve(c net.Conn) {
 		la := up.LocalAddr().(*net.TCPAddr)
 		reply := append([]byte{5, 0, 0, 1}, la.IP.To4()...)
 		c.Write(binary.BigEndian.AppendUint16(reply, uint16(la.Port)))
-		relay(c, up)
+		relay(c, up, new(atomic.Int64), new(atomic.Int64))
 	case 3: // UDP ASSOCIATE
 		pc, err := net.ListenPacket("udp", "127.0.0.1:0")
 		if err != nil {

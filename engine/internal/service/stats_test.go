@@ -53,6 +53,7 @@ func TestTrafficIsCountedPerDay(t *testing.T) {
 	if err := h.connect(t, hy2Link); err != nil {
 		t.Fatal(err)
 	}
+	h.browse(t)
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		if d := h.svc.Stats(7).Days; d[len(d)-1].Down > 0 {

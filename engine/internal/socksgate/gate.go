@@ -5,12 +5,16 @@
 // Each core listens on a loopback port of its own, a new one on every
 // start, and requires credentials only the engine knows. The gate checks
 // the client's credentials (or lets it in, as the open proxy without the
-// TUN layer), connects to the current core, authenticates there and from
-// then on relays the bytes unchanged: the client's request, the core's
-// reply and the data. Every SOCKS command therefore works the way the core
-// implements it. The reply to UDP ASSOCIATE names the core's own UDP relay,
-// which the client then talks to directly, so datagrams never take the
-// extra hop.
+// TUN layer), connects to the current core, authenticates there, passes
+// the client's request on and the core's reply back, and from then on
+// relays the bytes unchanged. Every SOCKS command therefore works the way
+// the core implements it. UDP ASSOCIATE gets a UDP relay of the gate's
+// own, in front of the core's, so that datagrams too pass the gate.
+//
+// Everything the user's traffic sends and receives through the node thus
+// passes the gate, which counts it (Traffic): the cores need no API of
+// their own for that, one more port another program on the device could
+// read.
 //
 // Swapping cores never closes the gate's port: no other program can take
 // it in between, as it could when each core opened the port itself.
@@ -25,6 +29,7 @@ import (
 	"net"
 	"net/netip"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"coreshift/engine/internal/core"
@@ -58,8 +63,13 @@ type Config struct {
 // connects in the meantime goes to the new core rather than failing.
 const DefaultWait = 10 * time.Second
 
-// handshakeTimeout bounds the SOCKS greeting on either side.
-const handshakeTimeout = 10 * time.Second
+// handshakeTimeout bounds the SOCKS greeting on either side, and
+// replyTimeout the core's answer to a request, which may come only once
+// the core has reached the destination through the server.
+const (
+	handshakeTimeout = 10 * time.Second
+	replyTimeout     = time.Minute
+)
 
 // Gate is a listening gate. Its methods are safe for concurrent use.
 type Gate struct {
@@ -67,6 +77,10 @@ type Gate struct {
 	auth core.SOCKSAuth
 	open bool
 	wait time.Duration
+
+	// up and down count the bytes clients sent through the cores and got
+	// back, TCP and UDP payload alike.
+	up, down atomic.Int64
 
 	mu      sync.Mutex
 	target  Target
@@ -78,9 +92,10 @@ type Gate struct {
 }
 
 // session is one client connection and, once relayed, its connection to
-// the core.
+// the core and, for UDP ASSOCIATE, the gate's UDP relay.
 type session struct {
 	client, core net.Conn
+	udp          net.PacketConn
 	gen          uint64 // the target core was dialled for
 }
 
@@ -88,6 +103,9 @@ func (s *session) close() {
 	s.client.Close()
 	if s.core != nil {
 		s.core.Close()
+	}
+	if s.udp != nil {
+		s.udp.Close()
 	}
 }
 
@@ -113,6 +131,13 @@ func Listen(cfg Config) (*Gate, error) {
 // Addr is where the gate listens.
 func (g *Gate) Addr() netip.AddrPort {
 	return netip.MustParseAddrPort(g.ln.Addr().String())
+}
+
+// Traffic is what clients have sent (Up) through the cores and received
+// (Down) since the gate opened, in bytes: the payload of TCP connections
+// and UDP datagrams, without SOCKS's own messages and headers.
+func (g *Gate) Traffic() core.Traffic {
+	return core.Traffic{Up: g.up.Load(), Down: g.down.Load()}
 }
 
 // SetTarget makes t the core new connections go to; the zero Target
@@ -215,20 +240,46 @@ func (g *Gate) handle(s *session) {
 		up, err := g.dialCore(ctx, s)
 		ch <- dialed{up, err}
 	}()
-	if err := g.greet(c); err != nil {
+	var req request
+	err := g.greet(c)
+	if err == nil {
+		req, err = readRequest(c)
+	}
+	if err != nil {
 		cancel()
 		if d := <-ch; d.up != nil {
 			d.up.Close()
 		}
 		return
 	}
+	// The core may take a while to start (DefaultWait), and then to reach
+	// the destination (replyTimeout).
+	c.SetDeadline(time.Time{})
 	d := <-ch
 	if d.err != nil {
-		failRequest(c)
+		c.Write(reply(repFailure, netip.AddrPort{}))
 		return
 	}
-	c.SetDeadline(time.Time{})
-	relay(c, d.up)
+	up := d.up
+	if req.cmd == cmdUDPAssociate {
+		g.associate(s, up, req)
+		return
+	}
+	up.SetDeadline(time.Now().Add(replyTimeout))
+	if _, err := up.Write(req.raw); err != nil {
+		c.Write(reply(repFailure, netip.AddrPort{}))
+		return
+	}
+	rep, err := readReply(up)
+	if err != nil {
+		c.Write(reply(repFailure, netip.AddrPort{}))
+		return
+	}
+	if _, err := c.Write(rep.raw); err != nil || rep.code != 0 {
+		return
+	}
+	up.SetDeadline(time.Time{})
+	relay(c, up, &g.up, &g.down)
 }
 
 var (
@@ -383,46 +434,21 @@ func dialSOCKS(ctx context.Context, t Target) (net.Conn, error) {
 	return up, nil
 }
 
-// failRequest answers the client's request with a general failure, read
-// first so that closing does not reset the connection before the client
-// sees the answer.
-func failRequest(c net.Conn) {
-	var hdr [5]byte
-	if _, err := io.ReadFull(c, hdr[:]); err != nil {
-		return
-	}
-	var rest int
-	switch hdr[3] {
-	case 1:
-		rest = 4 - 1 + 2
-	case 4:
-		rest = 16 - 1 + 2
-	case 3:
-		rest = int(hdr[4]) + 2
-	default:
-		return
-	}
-	if _, err := io.ReadFull(c, make([]byte, rest)); err != nil {
-		return
-	}
-	c.Write([]byte{5, 1, 0, 1, 0, 0, 0, 0, 0, 0})
-}
-
-// relay copies between the client and the core until both sides are done.
-// A side that finishes writing is half-closed on the other; an error on
-// either closes both.
-func relay(c, up net.Conn) {
+// relay copies between the client and the core until both sides are done,
+// counting what goes up and down. A side that finishes writing is
+// half-closed on the other; an error on either closes both.
+func relay(c, up net.Conn, sent, received *atomic.Int64) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		pipe(up, c)
+		pipe(up, c, sent)
 	}()
-	pipe(c, up)
+	pipe(c, up, received)
 	<-done
 }
 
-func pipe(dst, src net.Conn) {
-	if _, err := io.Copy(dst, src); err != nil {
+func pipe(dst, src net.Conn, n *atomic.Int64) {
+	if _, err := io.Copy(counter{dst, n}, src); err != nil {
 		dst.Close()
 		src.Close()
 		return
@@ -432,4 +458,17 @@ func pipe(dst, src net.Conn) {
 	} else {
 		dst.Close()
 	}
+}
+
+// counter adds what is written through it to n as it goes, so that the
+// rate is seen while a long download lasts.
+type counter struct {
+	w io.Writer
+	n *atomic.Int64
+}
+
+func (c counter) Write(b []byte) (int, error) {
+	n, err := c.w.Write(b)
+	c.n.Add(int64(n))
+	return n, err
 }
