@@ -34,7 +34,10 @@ import (
 //	POST /v1/reconnect           the last node again, applying changed settings
 //	POST /v1/disconnect
 //	GET  /v1/events[?replay=1]   server-sent events; with app=1 the stream
-//	                             is the app's (Service.AttachApp)
+//	                             is the app's (Service.AttachApp); with
+//	                             view=<id> it is a window's (AttachView)
+//	POST /v1/view                {"view": id, "hidden": true}: the window is
+//	                             in the tray or minimized (SetViewHidden)
 //	POST /v1/subscription/parse  {"url": "…"} or {"content": "…"}, without saving
 //	GET  /v1/ip                  the address sites see (IPInfo)
 //	GET  /v1/stats?days=30       traffic per day through the VPN (Stats)
@@ -62,6 +65,7 @@ func NewAPI(svc *Service, token string, listen netip.AddrPort) http.Handler {
 	mux.HandleFunc("POST /v1/reconnect", a.reconnect)
 	mux.HandleFunc("POST /v1/disconnect", a.disconnect)
 	mux.HandleFunc("GET /v1/events", a.events)
+	mux.HandleFunc("POST /v1/view", a.view)
 	mux.HandleFunc("POST /v1/subscription/parse", a.parse)
 	mux.HandleFunc("GET /v1/ip", a.publicIP)
 	mux.HandleFunc("GET /v1/stats", a.stats)
@@ -360,6 +364,9 @@ func (a *api) events(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("app") == "1" {
 		defer a.svc.AttachApp()()
 	}
+	if v := r.URL.Query().Get("view"); validView(v) {
+		defer a.svc.AttachView(v)()
+	}
 	ping := time.NewTicker(15 * time.Second)
 	defer ping.Stop()
 	for {
@@ -379,6 +386,22 @@ func (a *api) events(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+}
+
+func (a *api) view(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		View   string `json:"view"`
+		Hidden bool   `json:"hidden"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeBodyError(w, "invalid request", err)
+		return
+	}
+	if err := a.svc.SetViewHidden(req.View, req.Hidden); err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // parsedNode is a node plus what the UI shows next to it.

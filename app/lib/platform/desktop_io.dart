@@ -62,6 +62,8 @@ class _DesktopFrameState extends State<DesktopFrame> with WindowListener {
     if (!_enabled) return;
     windowManager.addListener(this);
     windowManager.isMaximized().then((v) => mounted ? setState(() => _maximized = v) : null);
+    // Started in the tray (--tray), the window is hidden from the start.
+    _syncShown();
     _tray = _Tray.create(widget.state, onOpen: _show, onExit: _exit);
     _alerts = widget.state.alerts.listen(_notify);
   }
@@ -152,6 +154,29 @@ class _DesktopFrameState extends State<DesktopFrame> with WindowListener {
     }
   }
 
+  /// Whether the window is on screen, for [AppState.setShown]: hidden in
+  /// the tray or minimized it draws nothing.
+  Future<void> _syncShown() async {
+    try {
+      final shown = await windowManager.isVisible() && !await windowManager.isMinimized();
+      if (mounted) widget.state.setShown(shown);
+    } catch (_) {
+      // Unsure: it stays as it was.
+    }
+  }
+
+  @override
+  void onWindowEvent(String eventName) {
+    switch (eventName) {
+      case 'hide' || 'minimize':
+        widget.state.setShown(false);
+      case 'show' || 'restore':
+        // Shown while minimized, or restored while hidden, it is still
+        // not on screen: asked rather than assumed.
+        _syncShown();
+    }
+  }
+
   @override
   void onWindowMaximize() => setState(() => _maximized = true);
 
@@ -160,11 +185,17 @@ class _DesktopFrameState extends State<DesktopFrame> with WindowListener {
 
   @override
   Widget build(BuildContext context) {
-    if (!_enabled) return widget.child;
+    // A hidden window's animations stop: they would draw frames nobody sees.
+    final app = ValueListenableBuilder<bool>(
+      valueListenable: widget.state.shown,
+      builder: (context, shown, child) => TickerMode(enabled: shown, child: child!),
+      child: widget.child,
+    );
+    if (!_enabled) return app;
     return Column(
       children: [
         _TitleBar(maximized: _maximized),
-        Expanded(child: widget.child),
+        Expanded(child: app),
       ],
     );
   }
@@ -324,6 +355,8 @@ class _Tray {
   final tray.Menu servers;
   final List<tray.MenuItem> _serverItems = [];
   String _shown = '';
+  String _image = '';
+  String _tip = '';
   String _serversShown = '';
 
   final VoidCallback onOpen;
@@ -382,8 +415,8 @@ class _Tray {
     t._update();
     icon.setVisible(true);
     state.addListener(t._update);
-    // The tooltip's speed.
-    state.traffic.addListener(t._update);
+    // The tooltip's speed, the window shown or not.
+    state.speedNow.addListener(t._update);
     return t;
   }
 
@@ -410,12 +443,21 @@ class _Tray {
       ConnState.noNetwork => ('busy', 'CoreShift — нет сети, ждём её${st.node.isEmpty ? '' : ': ${st.node}'}'),
       ConnState.idle => ('idle', 'CoreShift — отключено'),
     };
-    final key = '$image|$tip|${st.active}|${state.busy}|${state.online}';
+    // The picture is loaded again only when it changes: the tooltip's speed
+    // changes with every traffic sample, and loading the image each time
+    // kept the app (and the panel) busy for nothing.
+    if (image != _image) {
+      _image = image;
+      icon.icon = tray.ImageAsset.fromAsset('assets/tray/$image.png');
+    }
+    if (tip != _tip) {
+      _tip = tip;
+      icon.setTooltip(tip);
+    }
+    final key = '$image|${st.active}|${state.busy}|${state.online}';
     var menuChanged = false;
     if (key != _shown) {
       _shown = key;
-      icon.icon = tray.ImageAsset.fromAsset('assets/tray/$image.png');
-      icon.setTooltip(tip);
       final label = st.active ? 'Отключить' : 'Подключить';
       final enabled = state.online && !state.busy;
       menuChanged = toggle.label != label || toggle.isEnabled != enabled;
@@ -480,7 +522,7 @@ class _Tray {
 
   void dispose() {
     state.removeListener(_update);
-    state.traffic.removeListener(_update);
+    state.speedNow.removeListener(_update);
     icon.dispose();
   }
 }

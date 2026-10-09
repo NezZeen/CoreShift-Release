@@ -171,6 +171,9 @@ class DemoBackend implements Backend {
   @override
   String get description => 'демо-режим';
 
+  @override
+  String get view => '';
+
   List<String> _chain(String protocol, String transport) {
     final net = transport.split(RegExp(r'[ /]')).first;
     final prio = _settings['cores']['mode'] == 'manual'
@@ -338,6 +341,15 @@ class DemoBackend implements Backend {
         _emit({'kind': 'core-state', 'core': to, 'reason': 'connected'});
       });
     }
+  }
+
+  /// Stops the connected demo's health checks, traffic and pretend crash,
+  /// the connection itself staying up: a test that watches what an idle
+  /// window does gets no events it did not send.
+  void quiet() {
+    _health?.cancel();
+    _crash?.cancel();
+    _traffic?.cancel();
   }
 
   void _stop({bool silent = false}) {

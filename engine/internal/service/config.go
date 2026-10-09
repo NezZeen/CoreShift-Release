@@ -160,12 +160,13 @@ type Config struct {
 	netSettle       time.Duration // how long a connection that finds no network looks again before waiting
 	netGrace        time.Duration // how long a returned network may take to carry the tunnel again
 	netEvidence     time.Duration // how often a wait for the network tries the server anyway
-	// trafficEvery and trafficIdleEvery stand in for trafficInterval and
-	// trafficIdleInterval.
-	trafficEvery     time.Duration
-	trafficIdleEvery time.Duration
-	speedURL         string // instead of speedServer
-	ookla            func(proxy *url.URL) ooklaTest
+	// trafficEvery, trafficIdleEvery and trafficHiddenEvery stand in for
+	// trafficInterval, trafficIdleInterval and trafficHiddenInterval.
+	trafficEvery       time.Duration
+	trafficIdleEvery   time.Duration
+	trafficHiddenEvery time.Duration
+	speedURL           string // instead of speedServer
+	ookla              func(proxy *url.URL) ooklaTest
 	// leakBase and leakDomain stand in for bash.ws; leakHome for looking
 	// up the address outside the VPN.
 	leakBase   string

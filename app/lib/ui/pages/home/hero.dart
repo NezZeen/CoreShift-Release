@@ -49,7 +49,7 @@ class _Hero extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Center(
-          child: _ConnectButton(state: st.state, enabled: canConnect, onTap: state.toggleConnect, size: size),
+          child: ConnectButton(state: st.state, enabled: canConnect, onTap: state.toggleConnect, size: size),
         ),
         const SizedBox(height: 14),
         Text(

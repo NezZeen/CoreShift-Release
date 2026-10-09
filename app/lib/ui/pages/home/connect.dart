@@ -28,9 +28,12 @@ class _ConnectedTimeState extends State<ConnectedTime> {
   Timer? _noteOff;
   bool _reconnected = false;
 
-  /// Hidden (Android in the background, a hidden window) nothing is drawn,
-  /// so the time does not tick until the app shows again.
-  bool _shown = true;
+  /// Hidden (Android in the background, a window in the tray or minimized:
+  /// its tickers are off, see DesktopFrame) nothing is drawn, so the time
+  /// does not tick until the app shows again.
+  bool _appShown = true;
+  bool _tickers = true;
+  bool get _shown => _appShown && _tickers;
   late final AppLifecycleListener _lifecycle;
 
   @override
@@ -38,14 +41,22 @@ class _ConnectedTimeState extends State<ConnectedTime> {
     super.initState();
     _lifecycle = AppLifecycleListener(
       onHide: () {
-        _shown = false;
+        _appShown = false;
         _tick?.cancel();
       },
       onShow: () {
-        _shown = true;
+        _appShown = true;
         if (mounted) setState(_schedule);
       },
     );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final on = TickerMode.valuesOf(context).enabled;
+    if (on == _tickers && _tick != null) return;
+    _tickers = on;
     _schedule();
   }
 
@@ -111,20 +122,68 @@ class _ConnectedTimeState extends State<ConnectedTime> {
   }
 }
 
-class _ConnectButton extends StatefulWidget {
+/// The big round button: connects and disconnects, and its rings say how
+/// the connection goes.
+@visibleForTesting
+class ConnectButton extends StatefulWidget {
   final ConnState state;
   final bool enabled;
   final VoidCallback onTap;
   final double size;
-  const _ConnectButton({required this.state, required this.enabled, required this.onTap, this.size = 176});
+  const ConnectButton({super.key, required this.state, required this.enabled, required this.onTap, this.size = 176});
+
+  /// How many ripples go out once connected before the rings rest. An
+  /// animation draws a frame for every refresh of the screen: one going
+  /// for as long as the VPN was on kept an idle window busy all along.
+  static const ripples = 3;
 
   @override
-  State<_ConnectButton> createState() => _ConnectButtonState();
+  State<ConnectButton> createState() => _ConnectButtonState();
 }
 
-class _ConnectButtonState extends State<_ConnectButton> with SingleTickerProviderStateMixin {
-  late final AnimationController _anim = AnimationController(vsync: this, duration: const Duration(milliseconds: 2400))..repeat();
+class _ConnectButtonState extends State<ConnectButton> with SingleTickerProviderStateMixin {
+  late final AnimationController _anim = AnimationController(vsync: this, duration: const Duration(milliseconds: 2400))..addStatusListener(_rippled);
   bool hover = false;
+
+  int _ripplesLeft = 0;
+
+  static bool _busy(ConnState s) => s == ConnState.connecting || s == ConnState.disconnecting || s == ConnState.noNetwork;
+
+  @override
+  void initState() {
+    super.initState();
+    _animate(null);
+  }
+
+  @override
+  void didUpdateWidget(ConnectButton old) {
+    super.didUpdateWidget(old);
+    if (old.state != widget.state) _animate(old.state);
+  }
+
+  /// The arc turns for as long as the connection is under way; connected,
+  /// a few ripples go out; otherwise nothing moves.
+  void _animate(ConnState? was) {
+    final s = widget.state;
+    if (_busy(s)) {
+      _ripplesLeft = 0;
+      if (!_anim.isAnimating) _anim.repeat();
+    } else if (s == ConnState.connected) {
+      if (was == ConnState.connected) return;
+      _ripplesLeft = ConnectButton.ripples - 1;
+      _anim.forward(from: 0);
+    } else {
+      _ripplesLeft = 0;
+      _anim.stop();
+    }
+  }
+
+  void _rippled(AnimationStatus status) {
+    // At the end of a ripple (t = 1) it has faded out entirely.
+    if (status != AnimationStatus.completed || _ripplesLeft <= 0) return;
+    _ripplesLeft--;
+    _anim.forward(from: 0);
+  }
 
   @override
   void dispose() {
