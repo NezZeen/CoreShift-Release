@@ -15,8 +15,9 @@ import (
 )
 
 // MaxDatSize bounds a geosite.dat or geoip.dat file: the lists of every
-// category, where a rule set is one.
-const MaxDatSize = maxUnpacked
+// category, where a rule set is one. runetfreedom's geosite.dat, with
+// ru-blocked-all's 700 000 names, was already 74 MB in October 2026.
+const MaxDatSize = 192 << 20
 
 // The v2ray lists (v2fly's and Xray's geosite.dat and geoip.dat), as
 // protobuf:

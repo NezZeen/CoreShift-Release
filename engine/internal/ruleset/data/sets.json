@@ -1,9 +1,13 @@
 {
-  "fetched": "2026-10-06T15:51:30Z",
+  "fetched": "2026-10-09T20:06:31Z",
   "sets": {
     "geoip-ru": {
       "sha256": "6e23f5580dd443e2f9c4895adafee8d199c1a3487182ad5f0a2256cf59c7e53a",
       "size": 50107
+    },
+    "geosite-category-ads-all": {
+      "sha256": "367e65c2ac7d27971cef6bcc8de751909a709443d5f086e87e7a10e05acc684e",
+      "size": 1296252
     },
     "geosite-category-media-ru-blocked": {
       "sha256": "9c7f2e98d2db22fd240bffec79a0317f2c8934ac96b68d03055dc93796618c08",
@@ -16,6 +20,10 @@
     "geosite-google": {
       "sha256": "952d89c656fdb147d4f5d04541dd942b33dcce0dae906a8416e24cbc1161402a",
       "size": 7752
+    },
+    "geosite-ru-blocked": {
+      "sha256": "b4678614052b16642d0dbd8713c693e00f6878b7c429b53b73e78023aafd8d10",
+      "size": 483164
     }
   }
 }
