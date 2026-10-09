@@ -85,7 +85,7 @@ GitHub (`api.github.com`, загрузки релизов, `raw.githubuserconten
 
 Базы правил с ветки `rulesets` берутся по очереди с GitHub raw, jsDelivr и GitLab (`https://gitlab.com/NezZeen/coreshift/-/raw/rulesets/<имя>`), так же и `rulesets.json`.
 
-**Как выкладывается.** После релиза на GitHub `publish.ps1` загружает каждый файл выпуска в Generic Package Registry проекта (`PUT /projects/:id/packages/generic/coreshift/<версия>/<файл>`) и создаёт релиз `v<версия>` (тег от `main`, название «CoreShift <версия>», описание — те же заметки на русском), где у каждого файла есть ссылка типа `package` и `direct_asset_path: /<файл>`. Поэтому постоянные ссылки на последнюю версию такие:
+**Как выкладывается.** После релиза на GitHub `publish.ps1` загружает каждый файл выпуска в Generic Package Registry проекта (`PUT /projects/:id/packages/generic/coreshift/<версия>/<файл>`) и создаёт релиз `v<версия>` (тег от ветки проекта по умолчанию, название «CoreShift <версия>», описание — те же заметки на русском), где у каждого файла есть ссылка типа `package` и `direct_asset_path: /<файл>`. Поэтому постоянные ссылки на последнюю версию такие:
 
 - `https://gitlab.com/NezZeen/coreshift/-/releases/permalink/latest/downloads/CoreShift-Setup.exe`
 - `https://gitlab.com/NezZeen/coreshift/-/releases/permalink/latest/downloads/CoreShift.apk`
@@ -94,7 +94,7 @@ GitHub (`api.github.com`, загрузки релизов, `raw.githubuserconten
 
 **Один раз настроить (владелец):**
 
-1. Проект на gitlab.com: `NezZeen/coreshift`, публичный (Public), с веткой `main` (например, создать с README). Реестр пакетов должен быть доступен всем: Settings → General → Visibility → Package registry — Everyone (так по умолчанию у публичного проекта). Если путь проекта другой, его нужно поменять в `selfupdate.MirrorSource`, `ruleset.PublishedGitLab`, в `publish.ps1 -GitLabProject` по умолчанию, в workflow и README.
+1. Проект на gitlab.com: `NezZeen/coreshift`, публичный (Public), с хотя бы одной веткой (например, создать с README; у `NezZeen/coreshift` это `master`). Реестр пакетов должен быть доступен всем: Settings → General → Visibility → Package registry — Everyone (так по умолчанию у публичного проекта). Если путь проекта другой, его нужно поменять в `selfupdate.MirrorSource`, `ruleset.PublishedGitLab`, в `publish.ps1 -GitLabProject` по умолчанию, в workflow и README.
 2. Токен для `publish.ps1`: fine-grained personal access token, ограниченный этим проектом, с правом записи в релизы, реестр пакетов и репозиторий/теги (тег `v<версия>` создаётся вместе с релизом), либо классический токен (project access token или PAT) с областью `api` и ролью Developer/Maintainer. Сохранить его в `%USERPROFILE%\.coreshift\gitlab-token` или `%USERPROFILE%\.coreshift\gitlab-token.txt` (Блокнот добавляет `.txt` — так тоже можно; пробелы, перевод строки и BOM отбрасываются). Токен не печатается и в репозиторий не попадает. Без файла `publish.ps1` останавливается ещё до публикации на GitHub и подсказывает, что сделать (или запустите с `-NoGitLab`). Срок действия токена ограничен — заранее обновите файл.
 3. Необязательно, для баз правил: в публичном `NezZeen/CoreShift-Release` на GitHub добавить секрет `GITLAB_TOKEN` (Settings → Secrets and variables → Actions) — токен проекта GitLab с правом push в репозиторий (`write_repository` или fine-grained с записью в репозиторий). Тогда workflow `rulesets.yml` после публикации на GitHub отправляет ветку `rulesets` и в GitLab. Без секрета этот шаг тихо пропускается.
 

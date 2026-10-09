@@ -188,7 +188,9 @@ if ($toGitLab) {
     try {
         Invoke-GitLab POST "/projects/$id/releases" @{
             tag_name    = $tag
-            ref         = 'main'
+            # The tag goes on the project's default branch, whatever it is
+            # called (a project made on gitlab.com starts with "master").
+            ref         = $project.default_branch
             name        = "CoreShift $Version"
             description = $description
             assets      = @{ links = $links }
