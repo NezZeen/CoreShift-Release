@@ -66,10 +66,7 @@ class AndroidAppsPanel extends StatelessWidget {
                   icon: Icons.apps,
                   small: true,
                   onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      fullscreenDialog: true,
-                      builder: (_) => _AppPicker(state: state, only: mode == 'only'),
-                    ),
+                    MaterialPageRoute<void>(fullscreenDialog: true, builder: (_) => _AppPicker(state: state, only: mode == 'only')),
                   ),
                 ),
               ],
@@ -168,9 +165,7 @@ class _AppPickerState extends State<_AppPicker> {
             child: shown == null
                 ? const Center(child: CircularProgressIndicator())
                 : shown.isEmpty
-                ? Center(
-                    child: Text('Ничего не найдено', style: TextStyle(color: p.dim)),
-                  )
+                ? Center(child: Text('Ничего не найдено', style: TextStyle(color: p.dim)))
                 : ListView.builder(
                     itemCount: shown.length,
                     itemBuilder: (context, i) {
@@ -184,8 +179,9 @@ class _AppPickerState extends State<_AppPicker> {
                           height: 36,
                           child: FutureBuilder<Uint8List?>(
                             future: _icon(a.package),
-                            builder: (context, snap) =>
-                                snap.data == null ? Icon(Icons.android, color: p.dim) : Image.memory(snap.data!, width: 36, height: 36, gaplessPlayback: true),
+                            builder: (context, snap) => snap.data == null
+                                ? Icon(Icons.android, color: p.dim)
+                                : Image.memory(snap.data!, width: 36, height: 36, gaplessPlayback: true),
                           ),
                         ),
                         title: Text(a.label, maxLines: 1, overflow: TextOverflow.ellipsis),
