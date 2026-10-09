@@ -87,7 +87,7 @@ type Routing struct {
 	RussiaDirect bool `json:"russia_direct"`
 	// RussiaAbroad sends RussiaDirect's sites direct only where their
 	// servers are in Russia (geoip-ru): one hosted abroad goes through the
-	// VPN. On by default, also for settings saved before it existed.
+	// VPN. Off by default: the preset's sites go direct wherever they are.
 	RussiaAbroad bool `json:"russia_abroad"`
 	// BlockAds refuses ads and trackers (geosite-category-ads-all), in both
 	// modes, ahead of every list but the user's Rules. On by default, also
@@ -219,7 +219,6 @@ func Defaults() Settings {
 		Routing: Routing{
 			Mode:          RouteAll,
 			BlockAds:      true,
-			RussiaAbroad:  true,
 			DirectDomains: []string{}, DirectApps: []string{}, DirectIPs: []string{},
 			ProxyDomains: []string{}, ProxyIPs: []string{}, ProxyApps: []string{},
 			AppFilter: AppsAll, FilterApps: []string{},

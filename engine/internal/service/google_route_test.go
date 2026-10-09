@@ -243,6 +243,8 @@ func checkRoutes(t *testing.T, what string, r *router, cases []routeCase) {
 func russianPreset(mutate func(*store.Settings)) store.Settings {
 	set := store.Defaults()
 	set.Routing.RussiaDirect = true
+	// The switch is off by default; these tests are about it on.
+	set.Routing.RussiaAbroad = true
 	if mutate != nil {
 		mutate(&set)
 	}

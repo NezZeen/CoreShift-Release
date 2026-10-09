@@ -41,12 +41,7 @@ func TestAutoConnect(t *testing.T) {
 		}
 		h := newHarness(t, func(c *Config) { c.Store = st })
 		// No network at first: the TUN layer cannot start.
-		h.tun.startErr = errors.New("network is unreachable")
-		time.AfterFunc(time.Second, func() {
-			h.tun.mu.Lock()
-			h.tun.startErr = nil
-			h.tun.mu.Unlock()
-		})
+		h.tun.startErr, h.tun.failStarts = errors.New("network is unreachable"), 1
 		if err := h.svc.AutoConnect(context.Background()); err != nil {
 			t.Fatalf("on=%v: %v", on, err)
 		}

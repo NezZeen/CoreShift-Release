@@ -53,7 +53,7 @@ class DemoBackend implements Backend {
       'filter_apps': <String>[],
       'block_domains': <String>[],
       'block_ads': true,
-      'russia_abroad': true,
+      'russia_abroad': false,
       'rules': <Map<String, dynamic>>[],
       'geo': {'source': 'sagernet', 'geosite_url': '', 'geoip_url': '', 'presets': false},
     },

@@ -68,7 +68,7 @@ func TestRuleParse(t *testing.T) {
 
 func TestRoutingRulesSettings(t *testing.T) {
 	set := Defaults()
-	if !set.Routing.BlockAds || !set.Routing.RussiaAbroad || set.Routing.Geo.Source != GeoSagerNet || set.Routing.Rules == nil {
+	if !set.Routing.BlockAds || set.Routing.RussiaAbroad || set.Routing.Geo.Source != GeoSagerNet || set.Routing.Rules == nil {
 		t.Fatalf("defaults: %+v", set.Routing)
 	}
 	set.Routing.Rules = []Rule{
@@ -135,7 +135,7 @@ func TestRoutingRulesStored(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := st.Settings().Routing
-	if !r.BlockAds || !r.RussiaAbroad || r.Geo.Source != GeoSagerNet || len(r.Rules) != 0 {
+	if !r.BlockAds || r.RussiaAbroad || r.Geo.Source != GeoSagerNet || len(r.Rules) != 0 {
 		t.Errorf("old settings: %+v", r)
 	}
 	set := st.Settings()

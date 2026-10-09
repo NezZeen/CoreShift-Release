@@ -41,8 +41,10 @@ Builds for Windows, Linux and Android are on the [Releases](https://github.com/N
 ### Routing
 
 - Everything through the VPN except exceptions, or only what you choose.
-- «Russian sites direct» with one switch, while Google and YouTube always go through the VPN. The site databases are built into the app and update themselves; a new copy is accepted only if it passes checks.
+- «Russian sites direct» with one switch, while Google, YouTube and sites blocked in Russia go through the VPN; a separate switch can send Russian sites hosted abroad through the VPN too. The site databases are built into the app and update themselves; a new copy is accepted only if it passes checks.
+- Ad blocking (runetfreedom's list: v2fly, AdGuard DNS filter, Peter Lowe), on by default.
 - Ready-made sets for popular services, your own sites (through the VPN, around it, or blocked), internationalized domain names.
+- Your own rules such as `geosite:category-ads-all` → block, `geosite:youtube` → through the VPN, `geoip:ru` → direct; categories come from SagerNet, runetfreedom or your own link (`.srs` or a v2ray `geosite.dat`/`geoip.dat`).
 - Individual programs on Windows and Linux and apps on Android — through the VPN or around it.
 - Proxy mode without TUN when «All apps through the VPN» is off.
 - The local network (router, printers, virtual machines) keeps working with the VPN on.

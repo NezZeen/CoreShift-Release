@@ -289,7 +289,7 @@ class RoutingPage extends StatelessWidget {
               description:
                   'Сайт на .ru за Cloudflare или у зарубежного хостинга пойдёт через VPN: напрямую такие часто тормозят. '
                   'Если сервис не пускает из-за границы, добавьте его в «Сайты и адреса без VPN».',
-              trailing: Switch(value: s.setting('routing.russia_abroad', true), onChanged: (v) => set('russia_abroad', v)),
+              trailing: Switch(value: s.setting('routing.russia_abroad', false), onChanged: (v) => set('russia_abroad', v)),
             ),
           if (s.hasSetting('routing.block_ads'))
             SettingRow(

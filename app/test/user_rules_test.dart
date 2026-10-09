@@ -59,7 +59,7 @@ void main() {
     final b = DemoBackend();
     final set = await b.call('GET', '/v1/settings') as Map;
     expect(set['routing']['block_ads'], true);
-    expect(set['routing']['russia_abroad'], true);
+    expect(set['routing']['russia_abroad'], false);
     expect(set['routing']['geo']['source'], 'sagernet');
     set['routing']['rules'] = [
       {'match': 'GeoSite:YouTube', 'action': 'proxy'},

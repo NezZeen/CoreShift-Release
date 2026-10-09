@@ -156,6 +156,10 @@ func (g *fakeGuard) active() *dnsguard.Config {
 type fakeTUN struct {
 	log      *callLog
 	startErr error
+	// failStarts, when set, fails only that many Starts with startErr and
+	// then lets them through: an outage that ends after the first attempt,
+	// however long that attempt takes.
+	failStarts int
 	// refuseErr fails Start while IPv6 is refused, as a system that will
 	// not give the interface IPv6 does.
 	refuseErr error
@@ -167,8 +171,16 @@ type fakeTUN struct {
 
 func (f *fakeTUN) Start(ctx context.Context, o tunlayer.Options) (TUNInstance, error) {
 	f.log.add("tun.start")
-	if f.startErr != nil {
-		return nil, f.startErr
+	f.mu.Lock()
+	err := f.startErr
+	if err != nil && f.failStarts > 0 {
+		if f.failStarts--; f.failStarts == 0 {
+			f.startErr = nil
+		}
+	}
+	f.mu.Unlock()
+	if err != nil {
+		return nil, err
 	}
 	if f.refuseErr != nil && o.RefuseIPv6 {
 		return nil, f.refuseErr
