@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../api/rules.dart';
 import '../../platform/platform.dart' as platform;
 import '../../state/app_state.dart';
 import '../theme.dart';
@@ -7,6 +8,7 @@ import '../widgets.dart';
 import 'android_apps.dart';
 import 'direct_apps.dart';
 import 'rule_lists.dart';
+import 'user_rules.dart';
 
 class RoutingPage extends StatelessWidget {
   final AppState state;
@@ -25,6 +27,7 @@ class RoutingPage extends StatelessWidget {
     if (selected) {
       left = [
         ServicePresetsPanel(state: s),
+        if (s.hasSetting('routing.block_ads')) _presetsPanel(context, selected: true),
         RuleListPanel(
           key: const ValueKey('selected-proxy'),
           state: s,
@@ -46,10 +49,11 @@ class RoutingPage extends StatelessWidget {
             description: 'Весь трафик этих программ идёт через VPN, куда бы они ни подключались. Удобно для мессенджеров и игр, заблокированных целиком.',
           ),
         _blockPanel(),
+        ..._ownRules(),
       ];
     } else {
       left = [
-        _presetsPanel(context),
+        _presetsPanel(context, selected: false),
         RuleListPanel(
           key: const ValueKey('all-direct'),
           state: s,
@@ -86,6 +90,7 @@ class RoutingPage extends StatelessWidget {
             ),
           ),
         if (full) _blockPanel(),
+        ..._ownRules(),
       ];
     }
 
@@ -257,26 +262,60 @@ class RoutingPage extends StatelessWidget {
     );
   }
 
-  Widget _presetsPanel(BuildContext context) {
+  /// The ready-made sets: Russian sites direct (not in the "only selected"
+  /// mode, where they go direct anyway) and the ad block.
+  Widget _presetsPanel(BuildContext context, {required bool selected}) {
+    final russia = !selected && s.hasSetting('routing.russia_direct');
+    final russiaOn = s.setting('routing.russia_direct', false);
+    void set(String key, bool v) => s.updateSettings((x) => x['routing'][key] = v);
     return Panel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const PanelTitle('Готовые наборы'),
-          if (s.hasSetting('routing.russia_direct'))
+          if (russia)
             SettingRow(
               first: true,
               title: 'Российские сайты напрямую',
               description:
                   'Госуслуги, банки, Яндекс, VK и другие российские сервисы откроются без VPN — '
-                  'быстрее и без блокировок «из-за границы». Google и YouTube всегда идут через VPN, как и заблокированные в России СМИ, даже на .ru. '
-                  'Списки обновляются сами раз в неделю.',
-              trailing: Switch(value: s.setting('routing.russia_direct', false), onChanged: (v) => s.updateSettings((x) => x['routing']['russia_direct'] = v)),
+                  'быстрее и без блокировок «из-за границы». Google и YouTube всегда идут через VPN, как и сайты, заблокированные в России, даже на .ru. '
+                  'Списки обновляются сами.',
+              trailing: Switch(value: russiaOn, onChanged: (v) => set('russia_direct', v)),
+            ),
+          if (russia && russiaOn && s.hasSetting('routing.russia_abroad'))
+            SettingRow(
+              title: 'Российские сайты на зарубежных серверах — через VPN',
+              description:
+                  'Сайт на .ru за Cloudflare или у зарубежного хостинга пойдёт через VPN: напрямую такие часто тормозят. '
+                  'Если сервис не пускает из-за границы, добавьте его в «Сайты и адреса без VPN».',
+              trailing: Switch(value: s.setting('routing.russia_abroad', true), onChanged: (v) => set('russia_abroad', v)),
+            ),
+          if (s.hasSetting('routing.block_ads'))
+            SettingRow(
+              first: !russia,
+              title: 'Блокировать рекламу',
+              description:
+                  'Рекламные и следящие серверы не открываются, в том числе рекламные серверы Google. '
+                  'Если из-за этого сломался сайт, добавьте его в «Сайты и адреса без VPN» или «Всегда через VPN».',
+              trailing: Switch(value: s.setting('routing.block_ads', true), onChanged: (v) => set('block_ads', v)),
             ),
         ],
       ),
     );
   }
+
+  /// The user's own rules and where their categories come from; an older
+  /// service knows neither.
+  List<Widget> _ownRules() => [
+    if (s.hasSetting('routing.rules')) UserRulesPanel(state: s),
+    if (s.hasSetting('routing.geo'))
+      Fold(
+        title: 'Источник баз',
+        sub: geoSources.firstWhere((g) => g.$1 == s.setting('routing.geo.source', 'sagernet'), orElse: () => geoSources.first).$2,
+        child: GeoSourcePanel(state: s),
+      ),
+  ];
 
   Widget _blockPanel() => Fold(
     title: 'Блокировать',

@@ -5,6 +5,7 @@ import 'dart:math';
 import 'backend.dart';
 import 'models.dart';
 import 'punycode.dart';
+import 'rules.dart';
 import '../version.dart';
 
 /// A simulated daemon for previewing the UI (`--dart-define=DEMO=true`, and
@@ -51,6 +52,10 @@ class DemoBackend implements Backend {
       'app_filter': 'all',
       'filter_apps': <String>[],
       'block_domains': <String>[],
+      'block_ads': true,
+      'russia_abroad': true,
+      'rules': <Map<String, dynamic>>[],
+      'geo': {'source': 'sagernet', 'geosite_url': '', 'geoip_url': '', 'presets': false},
     },
     'updates': {'auto': true, 'interval_hours': 12, 'user_agent': ''},
     'app_update': {'auto': true, 'source': ''},
@@ -493,7 +498,29 @@ class DemoBackend implements Backend {
           return out;
         }
 
+        // The user's rules, tidied and checked as the service does; of two
+        // for the same thing the first is kept.
+        final rules = <Map<String, dynamic>>[];
+        for (final r in routing['rules'] as List? ?? const []) {
+          final match = '${(r as Map)['match'] ?? ''}';
+          if (match.trim().isEmpty) continue;
+          final parsed = parseRule(match);
+          final action = '${r['action'] ?? ''}'.trim().toLowerCase();
+          if (parsed.error != null) {
+            problems.add('routing.rules: ${parsed.error}');
+          } else if (!ruleActions.any((a) => a.$1 == action)) {
+            problems.add('routing.rules: "$match": "$action" is not an action');
+          } else if (!rules.any((x) => x['match'] == parsed.match)) {
+            rules.add({'match': parsed.match, 'action': action});
+          }
+        }
+        final geo = Map<String, dynamic>.from(routing['geo'] as Map? ?? const {});
+        for (final key in ['geosite_url', 'geoip_url']) {
+          final err = sourceLinkError('${geo[key] ?? ''}');
+          if (err != null) problems.add('routing.geo.$key: $err');
+        }
         final clean = {
+          'rules': rules,
           'direct_domains': names('direct_domains'),
           'proxy_domains': names('proxy_domains'),
           'block_domains': names('block_domains'),
