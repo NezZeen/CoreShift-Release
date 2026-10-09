@@ -148,9 +148,7 @@ func normalizeGeo(g GeoSource) (GeoSource, error) {
 		g.Source = GeoSagerNet
 	case GeoSagerNet, GeoRunetFreedom:
 	case GeoCustom:
-		if g.GeositeURL == "" && g.GeoIPURL == "" {
-			errs = append(errs, errors.New("routing.geo: a custom source needs a link"))
-		}
+		// Without links: SagerNet's, until the user gives one.
 	default:
 		errs = append(errs, fmt.Errorf("routing.geo.source: %q is none of %q, %q, %q", g.Source, GeoSagerNet, GeoRunetFreedom, GeoCustom))
 	}

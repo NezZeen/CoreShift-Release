@@ -89,7 +89,6 @@ func TestRoutingRulesSettings(t *testing.T) {
 
 	bad := map[string]func(*Settings){
 		"routing.geo.source":      func(s *Settings) { s.Routing.Geo.Source = "elsewhere" },
-		"needs a link":            func(s *Settings) { s.Routing.Geo = GeoSource{Source: GeoCustom} },
 		"https://":                func(s *Settings) { s.Routing.Geo.GeositeURL = "http://example.org/{name}.srs" },
 		"more than once":          func(s *Settings) { s.Routing.Geo.GeoIPURL = "https://example.org/{name}/{name}.srs" },
 		"spaces":                  func(s *Settings) { s.Routing.Geo.GeoIPURL = "https://example.org/a b.dat" },
