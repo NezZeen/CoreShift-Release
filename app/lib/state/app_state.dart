@@ -698,10 +698,15 @@ class AppState extends ChangeNotifier {
       case 'rules':
         if (e.error.isNotEmpty) {
           _log(e.time, 'правила', e.error, LogLevel.warn);
-          // Without geosite-google the built-in list keeps Google in the tunnel.
-          // A set that was not updated ("kept") or was damaged on disk (the
-          // copy built into CoreShift takes its place) still works.
-          if (live && e.reason != 'geosite-google' && e.line != 'kept' && e.line != 'damaged') {
+          // Only the direct sets of the Russian preset failing changes much
+          // at once. A set that was not updated ("kept"), damaged on disk or
+          // not had from the chosen source (the copy built into CoreShift
+          // takes its place) still works; without geosite-google the
+          // built-in list keeps Google in the tunnel.
+          const quiet = {'kept', 'damaged', 'fallback', 'pending'};
+          if (live && e.line == 'skipped') {
+            toast('Правило «${e.reason}» пока не действует: база не загрузилась. Подробности в журнале.', ToastKind.err);
+          } else if (live && !quiet.contains(e.line) && (e.reason == 'geosite-category-ru' || e.reason == 'geoip-ru')) {
             toast('Базы российских сайтов не загрузились — они пойдут через туннель. Подробности в журнале.', ToastKind.err);
           }
         } else {

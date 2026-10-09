@@ -244,6 +244,22 @@ String? _settingsErrors(String e) {
     (RegExp('"(.*)" overlaps the tunnel\'s own addresses'), (m) => '«${m[1]}» пересекается со служебными адресами VPN.'),
     (RegExp(r'"(.*)" is not a program name'), (m) => '«${m[1]}» — не похоже на имя программы.'),
     (RegExp(r'at most (\d+) (apps|entries)'), (m) => 'В списке может быть не больше ${m[1]} записей.'),
+    // The user's rules and where their categories come from.
+    (
+      RegExp(r'"(.*)": (category name may have only|category name has|empty category or attribute)'),
+      (m) => '«${m[1]}»: в имени категории бывают только латинские буквы, цифры и !@._-',
+    ),
+    (RegExp(r'"(.*)": no category name'), (m) => '«${m[1]}»: укажите категорию, например geosite:youtube.'),
+    (RegExp(r'"(.*)": category name is longer than (\d+)'), (m) => '«${m[1]}»: имя категории длиннее ${m[2]} знаков.'),
+    (RegExp(r'"(.*)": geoip categories have no attributes'), (m) => '«${m[1]}»: у категорий geoip нет атрибутов (@…).'),
+    (RegExp(r'"(.*)": "(.*)" is not an action'), (m) => '«${m[1]}»: неизвестное действие «${m[2]}».'),
+    (RegExp(r'at most (\d+) categories'), (m) => 'Категорий в правилах может быть не больше ${m[1]}.'),
+    (RegExp(r'routing\.geo\.\w+: link must start with https'), (m) => 'Ссылка на базы должна начинаться с https://'),
+    (RegExp(r'routing\.geo\.\w+: link has \{name\} more than once'), (m) => '{name} должно быть в ссылке на базы один раз.'),
+    (RegExp(r'routing\.geo\.\w+: link must not have a user name'), (m) => 'В ссылке на базы не должно быть имени и пароля.'),
+    (RegExp(r'routing\.geo\.\w+: link (has spaces|is longer)'), (m) => 'Ссылка на базы неверна: пробелы или больше 2048 знаков.'),
+    // Said in Russian already (the demo).
+    (RegExp(r'^routing\.[a-z_.]+: ([А-Яа-яЁё«{].*)$'), (m) => m[1]!),
   ];
   var matched = false;
   final lines = [

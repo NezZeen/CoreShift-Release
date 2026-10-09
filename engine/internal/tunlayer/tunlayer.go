@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/netip"
 	"regexp"
 	"slices"
@@ -153,6 +154,14 @@ type Options struct {
 	// else direct; the direct lists and rule sets then have nothing to do.
 	Selective bool
 
+	// Rules are the user's own rules, in both modes, in order: after the
+	// user's lists and before the presets (see DNSOptions.DirectSuffixes).
+	// Those of address sets (geoip) come after every rule by name, just
+	// before DNS.DirectIPRuleSets: an address set needs the address of a
+	// name, looked up through the tunnel, as v2ray's IPIfNonMatch does,
+	// and a name decided before is not looked up so.
+	Rules []Rule
+
 	DNS DNSOptions
 
 	// CacheFile persists fake-IP mappings across restarts; empty disables it.
@@ -180,13 +189,34 @@ type DNSOptions struct {
 	FakeIPRange  netip.Prefix
 	FakeIPRange6 netip.Prefix
 
+	// The rules go in this order, the first that matches deciding: the
+	// user's lists (BlockSuffixes, the apps, ProxySuffixes and ProxyIPs,
+	// DirectIPs and DirectSuffixes), the user's Rules, then the presets
+	// (BlockRuleSets, PinnedSuffixes and PinnedRuleSets, ProxyRuleSets,
+	// HomeSuffixes and DirectRuleSets, DirectIPRuleSets), then the default:
+	// the proxy, or direct with Selective.
+	//
+	// DirectSuffixes are the user's: they go direct wherever the site is.
 	DirectSuffixes []string
-	// DirectFirst are direct names that win over the proxy lists and rule
-	// sets: those the user sends direct although a preset's proxy rule set
-	// has them (a Google service with the Russian preset's geosite-google).
-	DirectFirst []string
-	// ProxySuffixes are resolved through the tunnel and routed through the
-	// proxy even when a direct suffix or rule set also matches them.
+	// BlockRuleSets are domain sets refused (ads), unless the user's lists
+	// or Rules let a name through.
+	BlockRuleSets []RuleSet
+	// PinnedSuffixes and PinnedRuleSets (domain sets) always go through the
+	// proxy, unless the user's lists or Rules say otherwise: Google with
+	// the Russian preset.
+	PinnedSuffixes []string
+	PinnedRuleSets []RuleSet
+	// HomeSuffixes are a preset's direct names, like DirectRuleSets
+	// (geosite) after its proxy sets; both are resolved directly. With
+	// HomeCheck they go direct only where the address is in
+	// DirectIPRuleSets, and through the proxy otherwise: sites of the
+	// country the user is in go direct where they are hosted there, and
+	// through the tunnel where they are abroad (behind a foreign CDN or
+	// hosting, which the provider may slow down).
+	HomeSuffixes []string
+	HomeCheck    bool
+	// ProxySuffixes are the user's names that go through the proxy, ahead
+	// of every list but the block list.
 	ProxySuffixes []string
 	// BlockSuffixes are answered NXDOMAIN and their connections refused.
 	BlockSuffixes []string
@@ -226,6 +256,77 @@ type RuleSet struct {
 	Tag  string
 	Path string
 	URL  string
+}
+
+// What a Rule does with what it matches.
+const (
+	ActionProxy  = "proxy"
+	ActionDirect = "direct"
+	ActionBlock  = "block"
+)
+
+// Rule is one of the user's own rules: what it matches, one of Domains
+// (suffixes), IPs or Set, and Action. See Options.Rules for the order.
+type Rule struct {
+	Action  string
+	Domains []string
+	IPs     []netip.Prefix
+	// Set is a rule set of names (geosite), or of addresses (geoip) with
+	// SetIP.
+	Set   *RuleSet
+	SetIP bool
+}
+
+func (r Rule) validate() error {
+	n := 0
+	for _, has := range []bool{len(r.Domains) > 0, len(r.IPs) > 0, r.Set != nil} {
+		if has {
+			n++
+		}
+	}
+	if n != 1 {
+		return errors.New("tunlayer: a rule needs exactly one of domains, addresses or a rule set")
+	}
+	if !slices.Contains([]string{ActionProxy, ActionDirect, ActionBlock}, r.Action) {
+		return fmt.Errorf("tunlayer: unknown rule action %q", r.Action)
+	}
+	if r.SetIP && r.Set == nil {
+		return errors.New("tunlayer: an address rule set rule without a rule set")
+	}
+	return nil
+}
+
+// byName reports whether r is decided by the name or the address a
+// connection has: every rule but one of an address set, which needs the
+// address of a name looked up first.
+func (r Rule) byName() bool { return !r.SetIP }
+
+// match returns the condition of r for route rules, and with dns for DNS
+// rules (nil for rules that DNS cannot decide: addresses).
+func (r Rule) match(dns bool) obj {
+	switch {
+	case len(r.Domains) > 0:
+		return obj{"domain_suffix": r.Domains}
+	case r.Set != nil && (!dns || !r.SetIP):
+		return obj{"rule_set": []string{r.Set.Tag}}
+	case len(r.IPs) > 0 && !dns:
+		return obj{"ip_cidr": prefixStrings(r.IPs)}
+	}
+	return nil
+}
+
+// routeRule returns the route rule of r.
+func (r Rule) routeRule() obj {
+	m := r.match(false)
+	switch r.Action {
+	case ActionBlock:
+		m["action"] = "reject"
+	case ActionDirect:
+		m["outbound"] = tagDirect
+	default:
+		m["outbound"] = tagProxy
+	}
+	return m
 }
 
 // DNSAddress is the resolver address sing-box assigns to the TUN interface:
@@ -311,12 +412,38 @@ func (o Options) validate() error {
 	if o.DNS.Direct == "" {
 		return errors.New("tunlayer: direct DNS server is required")
 	}
-	for _, rs := range slices.Concat(o.DNS.DirectRuleSets, o.DNS.DirectIPRuleSets, o.DNS.ProxyRuleSets) {
+	for _, r := range o.Rules {
+		if err := r.validate(); err != nil {
+			return err
+		}
+	}
+	seen := map[string]RuleSet{}
+	for _, rs := range o.ruleSets(true) {
 		if rs.Tag == "" || (rs.Path == "") == (rs.URL == "") {
 			return errors.New("tunlayer: rule set needs a tag and either a path or a URL")
 		}
+		if prev, ok := seen[rs.Tag]; ok && prev != rs {
+			return fmt.Errorf("tunlayer: two rule sets tagged %q", rs.Tag)
+		}
+		seen[rs.Tag] = rs
 	}
 	return nil
+}
+
+// ruleSets returns the rule sets the configuration refers to, or with all
+// every one it was given; Selective mode never refers to the direct ones.
+// One used twice (by a preset and by a rule) is in the list twice.
+func (o Options) ruleSets(all bool) []RuleSet {
+	sets := slices.Concat(o.DNS.BlockRuleSets, o.DNS.PinnedRuleSets, o.DNS.ProxyRuleSets)
+	if all || !o.Selective {
+		sets = slices.Concat(sets, o.DNS.DirectRuleSets, o.DNS.DirectIPRuleSets)
+	}
+	for _, r := range o.Rules {
+		if r.Set != nil {
+			sets = append(sets, *r.Set)
+		}
+	}
+	return sets
 }
 
 func build(o Options) (obj, error) {
@@ -467,11 +594,34 @@ func buildDNS(o Options) (obj, error) {
 			rules = append(rules, to)
 		}
 	}
-	if len(o.DNS.DirectFirst) > 0 {
-		direct("domain_suffix", o.DNS.DirectFirst)
-	}
+	// In the order of the route rules (buildRoute): the user's lists, the
+	// user's rules, the presets.
 	if len(o.DNS.ProxySuffixes) > 0 {
 		proxied("domain_suffix", o.DNS.ProxySuffixes)
+	}
+	if !o.Selective && len(o.DNS.DirectSuffixes) > 0 {
+		direct("domain_suffix", o.DNS.DirectSuffixes)
+	}
+	for _, r := range o.Rules {
+		for key, value := range r.match(true) { // the one condition, if any
+			switch r.Action {
+			case ActionBlock:
+				rules = append(rules, obj{key: value, "action": "predefined", "rcode": "NXDOMAIN"})
+			case ActionDirect:
+				direct(key, value)
+			default:
+				proxied(key, value)
+			}
+		}
+	}
+	if len(o.DNS.BlockRuleSets) > 0 {
+		rules = append(rules, obj{"rule_set": ruleSetTags(o.DNS.BlockRuleSets), "action": "predefined", "rcode": "NXDOMAIN"})
+	}
+	if len(o.DNS.PinnedSuffixes) > 0 {
+		proxied("domain_suffix", o.DNS.PinnedSuffixes)
+	}
+	if len(o.DNS.PinnedRuleSets) > 0 {
+		proxied("rule_set", ruleSetTags(o.DNS.PinnedRuleSets))
 	}
 	if len(o.DNS.ProxyRuleSets) > 0 {
 		proxied("rule_set", ruleSetTags(o.DNS.ProxyRuleSets))
@@ -481,8 +631,10 @@ func buildDNS(o Options) (obj, error) {
 		direct("", nil)
 		final = tagDNSDirect
 	} else {
-		if len(o.DNS.DirectSuffixes) > 0 {
-			direct("domain_suffix", o.DNS.DirectSuffixes)
+		// The preset's names get real addresses: with HomeCheck, whether
+		// they go direct depends on them.
+		if len(o.DNS.HomeSuffixes) > 0 {
+			direct("domain_suffix", o.DNS.HomeSuffixes)
 		}
 		if len(o.DNS.DirectRuleSets) > 0 {
 			direct("rule_set", ruleSetTags(o.DNS.DirectRuleSets))
@@ -551,45 +703,121 @@ func buildRoute(o Options) obj {
 	if o.DNS.BlockBrowserDoH {
 		rules = append(rules, obj{"domain_suffix": browserDoHDomains, "outbound": tagProxy})
 	}
-	if len(o.DNS.DirectFirst) > 0 {
-		rules = append(rules, obj{"domain_suffix": o.DNS.DirectFirst, "outbound": tagDirect})
-	}
+	// The user's lists: through the tunnel, then around it, wherever the
+	// site is.
 	if len(o.DNS.ProxySuffixes) > 0 {
 		rules = append(rules, obj{"domain_suffix": o.DNS.ProxySuffixes, "outbound": tagProxy})
-	}
-	if len(o.DNS.ProxyRuleSets) > 0 {
-		rules = append(rules, obj{"rule_set": ruleSetTags(o.DNS.ProxyRuleSets), "outbound": tagProxy})
 	}
 	if len(o.ProxyIPs) > 0 {
 		rules = append(rules, obj{"ip_cidr": prefixStrings(o.ProxyIPs), "outbound": tagProxy})
 	}
+	if !o.Selective {
+		if len(o.DirectIPs) > 0 {
+			rules = append(rules, obj{"ip_cidr": prefixStrings(o.DirectIPs), "outbound": tagDirect})
+		}
+		if o.DNS.DirectIPv4Only && o.ipv6() {
+			// Apps can still hold real IPv6 addresses of direct sites, from
+			// caches filled before connecting or from their own DoH. Without
+			// IPv6 of its own the host cannot reach them; the tunnel can.
+			rules = append(rules, obj{"ip_cidr": []string{"2000::/3"}, "outbound": tagProxy})
+		}
+		if len(o.DNS.DirectSuffixes) > 0 {
+			rules = append(rules, obj{"domain_suffix": o.DNS.DirectSuffixes, "outbound": tagDirect})
+		}
+	}
+	// The user's rules by name, in order; then the presets: blocks (ads),
+	// Google, the sets of blocked sites, the direct names.
+	for _, r := range o.Rules {
+		if r.byName() {
+			rules = append(rules, r.routeRule())
+		}
+	}
+	if len(o.DNS.BlockRuleSets) > 0 {
+		rules = append(rules, obj{"rule_set": ruleSetTags(o.DNS.BlockRuleSets), "action": "reject"})
+	}
+	if len(o.DNS.PinnedSuffixes) > 0 {
+		rules = append(rules, obj{"domain_suffix": o.DNS.PinnedSuffixes, "outbound": tagProxy})
+	}
+	if len(o.DNS.PinnedRuleSets) > 0 {
+		rules = append(rules, obj{"rule_set": ruleSetTags(o.DNS.PinnedRuleSets), "outbound": tagProxy})
+	}
+	if len(o.DNS.ProxyRuleSets) > 0 {
+		rules = append(rules, obj{"rule_set": ruleSetTags(o.DNS.ProxyRuleSets), "outbound": tagProxy})
+	}
 	if o.Selective {
-		return route(o, rules, tagDirect)
+		return route(o, append(rules, o.addressRules()...), tagDirect)
 	}
-	if len(o.DirectIPs) > 0 {
-		rules = append(rules, obj{"ip_cidr": prefixStrings(o.DirectIPs), "outbound": tagDirect})
-	}
-	if o.DNS.DirectIPv4Only && o.ipv6() {
-		// Apps can still hold real IPv6 addresses of direct sites, from
-		// caches filled before connecting or from their own DoH. Without
-		// IPv6 of its own the host cannot reach them; the tunnel can.
-		rules = append(rules, obj{"ip_cidr": []string{"2000::/3"}, "outbound": tagProxy})
-	}
-	if len(o.DNS.DirectSuffixes) > 0 {
-		rules = append(rules, obj{"domain_suffix": o.DNS.DirectSuffixes, "outbound": tagDirect})
+	preset := obj{}
+	if len(o.DNS.HomeSuffixes) > 0 {
+		preset["domain_suffix"] = o.DNS.HomeSuffixes
 	}
 	if len(o.DNS.DirectRuleSets) > 0 {
-		rules = append(rules, obj{"rule_set": ruleSetTags(o.DNS.DirectRuleSets), "outbound": tagDirect})
+		preset["rule_set"] = ruleSetTags(o.DNS.DirectRuleSets)
 	}
-	if len(o.DNS.DirectIPRuleSets) > 0 {
-		// Through the tunnel's DNS, so looking up the address leaks nothing.
-		resolve := obj{"action": "resolve", "server": tagDNSRemote, "strategy": "ipv4_only"}
-		if o.ipv6() {
+	switch {
+	case len(preset) == 0:
+	case o.home():
+		// A preset's name goes direct where it resolves into the direct
+		// address sets (a Russian site hosted in Russia), and through the
+		// tunnel otherwise (one behind a foreign CDN or hosting, which the
+		// provider may slow down). Its address comes from the direct
+		// resolver, as the DNS rules give it to apps, so only a connection
+		// by name (a fake address kept from before) costs a direct lookup
+		// more. A service hosted abroad that refuses foreign addresses can
+		// be listed in DirectSuffixes, which go direct wherever they are.
+		resolve := maps.Clone(preset)
+		resolve["action"], resolve["server"], resolve["strategy"] = "resolve", tagDNSDirect, "ipv4_only"
+		if o.ipv6() && !o.DNS.DirectIPv4Only {
 			resolve["strategy"] = "prefer_ipv4"
 		}
-		rules = append(rules, resolve, obj{"rule_set": ruleSetTags(o.DNS.DirectIPRuleSets), "outbound": tagDirect})
+		abroad := maps.Clone(preset)
+		abroad["outbound"] = tagProxy
+		rules = append(rules,
+			resolve,
+			obj{
+				"type": "logical", "mode": "and",
+				"rules":    []any{preset, obj{"rule_set": ruleSetTags(o.DNS.DirectIPRuleSets)}},
+				"outbound": tagDirect,
+			},
+			abroad,
+		)
+	default:
+		preset["outbound"] = tagDirect
+		rules = append(rules, preset)
 	}
-	return route(o, rules, tagProxy)
+	return route(o, append(rules, o.addressRules()...), tagProxy)
+}
+
+// home reports whether the preset's direct names go direct only where they
+// resolve into DirectIPRuleSets (DNSOptions.HomeCheck).
+func (o Options) home() bool {
+	return !o.Selective && o.DNS.HomeCheck && len(o.DNS.DirectIPRuleSets) > 0
+}
+
+// addressRules are the last rules: those of address sets, which need the
+// address of a name (Rules of geoip sets, in order, then
+// DirectIPRuleSets).
+func (o Options) addressRules() []any {
+	var rules []any
+	for _, r := range o.Rules {
+		if !r.byName() {
+			rules = append(rules, r.routeRule())
+		}
+	}
+	if !o.Selective && len(o.DNS.DirectIPRuleSets) > 0 {
+		rules = append(rules, obj{"rule_set": ruleSetTags(o.DNS.DirectIPRuleSets), "outbound": tagDirect})
+	}
+	if len(rules) == 0 {
+		return nil
+	}
+	// Through the tunnel's DNS, so looking up the address leaks nothing.
+	// The proxy then gets the address instead of the name. A connection by
+	// address is left as it is; the preset's names are decided before.
+	resolve := obj{"action": "resolve", "server": tagDNSRemote, "strategy": "ipv4_only"}
+	if o.ipv6() {
+		resolve["strategy"] = "prefer_ipv4"
+	}
+	return append([]any{resolve}, rules...)
 }
 
 func route(o Options, rules []any, final string) obj {
@@ -599,13 +827,13 @@ func route(o Options, rules []any, final string) obj {
 		"auto_detect_interface":   !o.Platform,
 		"default_domain_resolver": tagDNSDirect,
 	}
-	used := o.DNS.ProxyRuleSets
-	if !o.Selective {
-		// Selective mode never refers to the direct ones.
-		used = slices.Concat(used, o.DNS.DirectRuleSets, o.DNS.DirectIPRuleSets)
-	}
 	var sets []any
-	for _, rs := range used {
+	seen := map[string]bool{}
+	for _, rs := range o.ruleSets(false) {
+		if seen[rs.Tag] {
+			continue
+		}
+		seen[rs.Tag] = true
 		if rs.Path != "" {
 			sets = append(sets, obj{"type": "local", "tag": rs.Tag, "format": "binary", "path": rs.Path})
 		} else {

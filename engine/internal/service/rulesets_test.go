@@ -91,7 +91,10 @@ func (rig *ruleSetsRig) last(t *testing.T) Event {
 func TestRuleSetsStartFromBuiltIn(t *testing.T) {
 	fetched := time.Now().Add(-30 * 24 * time.Hour).Truncate(time.Second)
 	rig := newRuleSetsRig(t, fetched)
-	for _, gs := range russiaSets {
+	for _, gs := range append(slices.Clone(russiaSets), adsSet) {
+		if !slices.Contains(ruleset.Tags(), gs.Tag) {
+			continue // a set this build does not carry yet
+		}
 		mod, ok := rig.ready(gs, rig.path(gs))
 		want, _, _ := ruleset.Baseline(gs.Tag)
 		if !ok || !mod.Equal(fetched) || !bytes.Equal(rig.onDisk(t, gs), want) {

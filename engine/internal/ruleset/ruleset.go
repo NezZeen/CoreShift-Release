@@ -1,23 +1,28 @@
-// Package ruleset keeps the rule sets (sing-box .srs) behind the "Russian
-// sites direct" preset trustworthy without pinning them, since SagerNet
-// updates them every few days.
+// Package ruleset keeps the rule sets (sing-box .srs) behind the presets
+// ("Russian sites direct", "block ads") trustworthy without pinning them,
+// since SagerNet updates them every few days. Two come out of
+// runetfreedom's v2ray list instead (DatSource), which CoreShift converts
+// and publishes itself (Published). The package also converts categories
+// of v2ray's lists into rule sets (FromDat), for those and the user's own
+// rules.
 //
 // CoreShift carries a copy of each set, downloaded when it was released
 // (coreshift-release rulesets) and so as trustworthy as the release: the
 // self-updater installs only what the release key signed. The service
 // starts from that copy, so a tampered or unreachable source never leaves
-// the preset without its lists, and then takes newer copies from SagerNet
-// by itself, but only those Check accepts: a rule set sing-box reads, made
-// of names or addresses only, with what the set is for in it and none of
-// the probes it must not have, close in size to the copy it replaces and
-// to the built-in one, and with no new entries that match whole zones
-// (keywords, regular expressions, top-level domains). A rejected copy
-// leaves the previous one in place.
+// the preset without its lists, and then takes newer copies from their
+// sources (Sources) by itself, but only those Check accepts: a rule set
+// sing-box reads, made of names or addresses only, with what the set is
+// for in it and none of the probes it must not have, close in size to the
+// copy it replaces and to the built-in one, and with no new entries that
+// match whole zones (keywords, regular expressions, top-level domains). A
+// rejected copy leaves the previous one in place.
 //
 // What this cannot see: a few names or networks added to a set within those
 // bounds. Those would go direct (or, for the proxy sets, through the
-// tunnel) until the source is fixed; the built-in copies of the next
-// release are checked against the previous ones before they are taken.
+// tunnel, and for the ad set nowhere) until the source is fixed; the
+// built-in copies of the next release are checked against the previous
+// ones before they are taken.
 package ruleset
 
 import (
@@ -111,14 +116,76 @@ func Baseline(tag string) (b []byte, fetched time.Time, ok bool) {
 	return b, m.Fetched, true
 }
 
-// URL returns where tag is downloaded from: SagerNet's sing-geoip for the
-// geoip sets, sing-geosite for the rest.
-func URL(tag string) string {
-	repo := "sing-geosite"
-	if IsIP(tag) {
-		repo = "sing-geoip"
+// Where SagerNet keeps its sets: {name} is a category, "ru" of geoip-ru or
+// "category-ru" of geosite-category-ru.
+const (
+	SagerNetGeosite = "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-{name}.srs"
+	SagerNetGeoIP   = "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-{name}.srs"
+)
+
+// RunetFreedomDat is runetfreedom's v2ray list (russia-blocked-geosite,
+// branch release), with a .sha256sum next to it: v2fly's categories, its
+// own lists of sites blocked in Russia (ru-blocked) and a fuller ad list
+// (category-ads-all: v2fly's, AdGuard DNS filter, Peter Lowe's). It
+// publishes no rule sets.
+const RunetFreedomDat = "https://raw.githubusercontent.com/runetfreedom/russia-blocked-geosite/release/geosite.dat"
+
+// Where CoreShift publishes the sets it makes out of runetfreedom's list
+// (coreshift-release rulesets-publish, run every few hours by the
+// rulesets workflow): the rulesets branch of the public release
+// repository, and jsDelivr's copy of it. PublishedManifest lists them
+// (a Manifest), so a device can tell whether its copy is current before
+// downloading one.
+const (
+	Published         = "https://raw.githubusercontent.com/NezZeen/CoreShift-Release/rulesets/"
+	PublishedMirror   = "https://cdn.jsdelivr.net/gh/NezZeen/CoreShift-Release@rulesets/"
+	PublishedManifest = "rulesets.json"
+)
+
+// Sources returns where the service downloads tag from, in order: SagerNet
+// (URL), or for the sets made out of a v2ray list CoreShift's branch and
+// its mirror, never the whole list.
+func Sources(tag string) []string {
+	if _, _, ok := DatSource(tag); ok {
+		return []string{Published + tag + ".srs", PublishedMirror + tag + ".srs"}
 	}
-	return "https://raw.githubusercontent.com/SagerNet/" + repo + "/rule-set/" + tag + ".srs"
+	return []string{URL(tag)}
+}
+
+// fromDat are the sets CoreShift carries taken out of a v2ray list, by
+// category: coreshift-release makes them, for releases (rulesets) and for
+// the branch devices refresh them from (rulesets-publish).
+var fromDat = map[string]string{
+	"geosite-ru-blocked":       "ru-blocked",
+	"geosite-category-ads-all": "category-ads-all",
+}
+
+// DatSource returns the v2ray list and the category tag is made of, if it
+// is made so (URL returns the list then).
+func DatSource(tag string) (list, category string, ok bool) {
+	category, ok = fromDat[tag]
+	if !ok {
+		return "", "", false
+	}
+	return RunetFreedomDat, category, true
+}
+
+// Known returns the sets CoreShift is meant to carry: those of Tags, and
+// any added since the copies were last downloaded (coreshift-release
+// rulesets downloads them).
+func Known() []string { return slices.Sorted(maps.Keys(expects)) }
+
+// URL returns where tag is downloaded from: SagerNet's sing-geoip for the
+// geoip sets, sing-geosite for the rest; for a set made out of a v2ray
+// list (DatSource), the list.
+func URL(tag string) string {
+	if list, _, ok := DatSource(tag); ok {
+		return list
+	}
+	if IsIP(tag) {
+		return strings.Replace(SagerNetGeoIP, "{name}", strings.TrimPrefix(tag, "geoip-"), 1)
+	}
+	return strings.Replace(SagerNetGeosite, "{name}", strings.TrimPrefix(tag, "geosite-"), 1)
 }
 
 // IsIP reports whether tag is an address (geoip) set.
@@ -166,6 +233,19 @@ var expects = map[string]expect{
 			"ytimg.com", "gstatic.com", "googleapis.com", "android.com"},
 		avoid: []string{"yandex.ru", "vk.com", "gosuslugi.ru"},
 	},
+	// Blocked outright when the user blocks ads: it must not take the
+	// sites people use, only their ad and tracking servers.
+	"geosite-category-ads-all": {
+		match: []string{"doubleclick.net"},
+		avoid: []string{"google.com", "www.google.com", "youtube.com", "www.youtube.com", "googlevideo.com",
+			"yandex.ru", "ya.ru", "vk.com", "mail.ru", "gosuslugi.ru", "sberbank.ru", "github.com", "wikipedia.org"},
+	},
+	// Through the tunnel: what it takes from the Russian preset's direct
+	// lists must be blocked there, not services that work at home.
+	"geosite-ru-blocked": {
+		match: []string{"meduza.io", "linkedin.com"},
+		avoid: []string{"yandex.ru", "ya.ru", "vk.com", "gosuslugi.ru", "sberbank.ru", "mail.ru", "google.com"},
+	},
 }
 
 // Bounds of an address set: no network wider than these, no more IPv4
@@ -186,11 +266,11 @@ func Check(tag string, b []byte, refs ...[]byte) error {
 	if err != nil {
 		return err
 	}
-	if s.ip != IsIP(tag) {
-		if s.ip {
-			return errors.New("addresses where names were expected")
-		}
-		return errors.New("names where addresses were expected")
+	if err := s.kind(IsIP(tag)); err != nil {
+		return err
+	}
+	if s.tooWide != nil {
+		return s.tooWide
 	}
 	if s.ip {
 		if s.v4 > maxIPv4 {
@@ -241,6 +321,29 @@ func Check(tag string, b []byte, refs ...[]byte) error {
 	return nil
 }
 
+// Validate reports whether b is a rule set sing-box can use, of addresses
+// with ip and of names without: all a set from a source the user chose is
+// held to. Check holds the built-in sets to much more.
+func Validate(b []byte, ip bool) error {
+	s, err := parse(b)
+	if err != nil {
+		return err
+	}
+	return s.kind(ip)
+}
+
+// kind reports whether s is of addresses (ip) or of names.
+func (s *set) kind(ip bool) error {
+	switch {
+	case s.ip == ip:
+		return nil
+	case s.ip:
+		return errors.New("addresses where names were expected")
+	default:
+		return errors.New("names where addresses were expected")
+	}
+}
+
 // near reports whether s is close enough in size to ref, an earlier copy:
 // no less than half of it, no more than about twice.
 func (s *set) near(ref *set) error {
@@ -272,6 +375,9 @@ type set struct {
 	// wide are the entries that match whole zones: keywords, regular
 	// expressions and one-label suffixes ("ru").
 	wide map[string]bool
+	// tooWide is the first network wider than a set of the presets may
+	// have (minBits4, minBits6).
+	tooWide error
 }
 
 func parse(b []byte) (s *set, err error) {
@@ -334,13 +440,13 @@ func parse(b []byte) (s *set, err error) {
 		if addrs {
 			for _, p := range d.IPSet.Prefixes() {
 				if p.Addr().Is4() {
-					if p.Bits() < minBits4 {
-						return nil, fmt.Errorf("network %s is too wide", p)
+					if p.Bits() < minBits4 && s.tooWide == nil {
+						s.tooWide = fmt.Errorf("network %s is too wide", p)
 					}
 					s.v4 += math.Ldexp(1, 32-p.Bits())
 				} else {
-					if p.Bits() < minBits6 {
-						return nil, fmt.Errorf("network %s is too wide", p)
+					if p.Bits() < minBits6 && s.tooWide == nil {
+						s.tooWide = fmt.Errorf("network %s is too wide", p)
 					}
 					s.v6 += math.Ldexp(1, 64-min(p.Bits(), 64))
 				}

@@ -318,41 +318,25 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 		return serverIP, nil
 	}
 
-	suffixes, proxied, directFirst := routeSuffixes(o)
-	var domainSets, ipSets, proxySets []tunlayer.RuleSet
-	if o.DNS.RussiaDirect && !o.Selective {
-		// The core is up, so a blocked source can be reached through it.
-		domainSets, ipSets, proxySets = s.rules.get(ctx, russiaSets, s.proxyURL())
-	}
 	opts := tunlayer.Options{
 		StrictRoute:     true,
 		Upstream:        s.cfg.Listen,
 		UpstreamUser:    s.socks.User,
 		UpstreamPass:    s.socks.Pass,
 		BypassProcesses: slices.Sorted(maps.Values(s.cfg.Binaries)),
-		DirectApps:      o.DirectApps,
-		DirectIPs:       o.DirectIPs,
-		ProxyApps:       o.ProxyApps,
-		ProxyIPs:        o.ProxyIPs,
-		Selective:       o.Selective,
 		AppFilter:       o.AppFilter,
 		FilterApps:      o.FilterApps,
 		DNS: tunlayer.DNSOptions{
-			Remote:           o.DNS.Remote,
-			Direct:           direct,
-			FakeIP:           o.DNS.FakeIP,
-			DirectSuffixes:   suffixes,
-			ProxySuffixes:    proxied,
-			DirectFirst:      directFirst,
-			BlockSuffixes:    o.BlockDomains,
-			DirectRuleSets:   domainSets,
-			DirectIPRuleSets: ipSets,
-			ProxyRuleSets:    proxySets,
-			BlockBrowserDoH:  o.DNS.BlockBrowserDoH,
-			BlockDoT:         o.DNS.BlockDoT,
+			Remote:          o.DNS.Remote,
+			Direct:          direct,
+			FakeIP:          o.DNS.FakeIP,
+			BlockBrowserDoH: o.DNS.BlockBrowserDoH,
+			BlockDoT:        o.DNS.BlockDoT,
 		},
 		CacheFile: filepath.Join(s.cfg.DataDir, "tun", "cache.db"),
 	}
+	// The core is up, so a blocked source can be reached through it.
+	applyRouting(&opts, o, s.rules.routing(ctx, o, s.proxyURL()))
 	if self, err := os.Executable(); err == nil {
 		// The daemon resolves proxy servers, e.g. for latency tests.
 		opts.DirectDNSProcesses = []string{self}
@@ -421,21 +405,31 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 	return serverIP, nil
 }
 
-// routeSuffixes returns the names that go direct and those that go through
-// the tunnel whatever else matches them: the user's lists, plus with the
-// Russian preset its domains direct and Google's in the tunnel
-// (googleSuffixes, geosite-google), unless the user sends them direct:
-// directFirst are those of the user's direct names that must win over
-// geosite-google.
-func routeSuffixes(o Options) (direct, proxied, directFirst []string) {
+// applyRouting gives opts the routing of o: the user's lists and rules, the
+// presets and their sets.
+func applyRouting(opts *tunlayer.Options, o Options, sets geoRouting) {
+	suffixes, proxied, pinned, home := routeSuffixes(o)
+	opts.DirectApps, opts.DirectIPs, opts.ProxyApps, opts.ProxyIPs = o.DirectApps, o.DirectIPs, o.ProxyApps, o.ProxyIPs
+	opts.Selective, opts.Rules = o.Selective, sets.rules
+	d := &opts.DNS
+	d.DirectSuffixes, d.ProxySuffixes, d.BlockSuffixes = suffixes, proxied, o.BlockDomains
+	d.BlockRuleSets, d.PinnedSuffixes, d.PinnedRuleSets, d.ProxyRuleSets = sets.block, pinned, sets.pinned, sets.proxied
+	d.HomeSuffixes, d.HomeCheck, d.DirectRuleSets, d.DirectIPRuleSets = home, o.DNS.RussiaAbroad, sets.domain, sets.ip
+}
+
+// routeSuffixes returns the names of the user's lists, direct (wherever
+// the site is) and through the tunnel, and with the Russian preset
+// Google's, pinned to the tunnel unless the user's lists say otherwise,
+// and the preset's direct names (see tunlayer.DNSOptions).
+func routeSuffixes(o Options) (direct, proxied, pinned, home []string) {
 	direct = mergeSuffixes(alwaysDirect, o.DNS.DirectSuffixes)
 	proxied = o.ProxyDomains
 	if o.DNS.RussiaDirect && !o.Selective {
-		direct = mergeSuffixes(direct, russiaSuffixes)
-		proxied = mergeSuffixes(proxied, googleSuffixes)
-		directFirst = googleDirect(o.DNS.DirectSuffixes)
+		direct = mergeSuffixes(direct, russiaAlways)
+		pinned = googleSuffixes
+		home = russiaSuffixes
 	}
-	return direct, proxied, directFirst
+	return direct, proxied, pinned, home
 }
 
 // Disconnect stops everything and restores the system. Safe when idle. A

@@ -30,7 +30,11 @@ type DNSSettings struct {
 	DirectSuffixes []string
 	// RussiaDirect sends Russian sites direct: .ru/.su/.рф plus the geosite
 	// and geoip rule sets, downloaded on first use.
-	RussiaDirect    bool
+	RussiaDirect bool
+	// RussiaAbroad sends the preset's names direct only where they resolve
+	// into geoip-ru: a Russian site hosted abroad goes through the tunnel
+	// (tunlayer.DNSOptions.HomeSuffixes).
+	RussiaAbroad    bool
 	BlockBrowserDoH bool
 	BlockDoT        bool
 	// Strict also disables Windows' smart multi-homed name resolution.
@@ -77,6 +81,11 @@ type Options struct {
 	// (store.Routing).
 	AppFilter  string
 	FilterApps []string
+	// Rules are the user's own rules, Geo where their categories come
+	// from, and BlockAds refuses ads (store.Routing).
+	Rules    []store.Rule
+	Geo      store.GeoSource
+	BlockAds bool
 }
 
 type Config struct {
@@ -146,6 +155,8 @@ type Config struct {
 	// else through the system resolver.
 	lookup       func(ctx context.Context, host string, server netip.AddrPort) (netip.Addr, error)
 	fetchRuleSet func(ctx context.Context, url string, proxy *url.URL) ([]byte, error)
+	// fetchGeo stands in for downloads from the sources of the user's rules.
+	fetchGeo func(ctx context.Context, url string, proxy *url.URL, limit int64) ([]byte, error)
 	// ruleSetBaseline stands in for the built-in rule sets (ruleset.Baseline).
 	ruleSetBaseline func(tag string) ([]byte, time.Time, bool)
 	coreVersion     func(ctx context.Context, k core.Kind, bin string) (string, error)
@@ -234,12 +245,16 @@ func OptionsFromSettings(set store.Settings) Options {
 		BlockDomains:         slices.Clone(set.Routing.BlockDomains),
 		AppFilter:            set.Routing.AppFilter,
 		FilterApps:           slices.Clone(set.Routing.FilterApps),
+		Rules:                slices.Clone(set.Routing.Rules),
+		Geo:                  set.Routing.Geo,
+		BlockAds:             set.Routing.BlockAds,
 		DNS: DNSSettings{
 			Remote:          set.DNS.Remote,
 			Direct:          set.DNS.Direct,
 			FakeIP:          set.DNS.FakeIP,
 			DirectSuffixes:  slices.Clone(set.Routing.DirectDomains),
 			RussiaDirect:    set.Routing.RussiaDirect,
+			RussiaAbroad:    set.Routing.RussiaAbroad,
 			BlockBrowserDoH: set.DNS.BlockBrowserDoH,
 			BlockDoT:        set.DNS.BlockDoT,
 			Strict:          set.DNS.Strict,
@@ -268,7 +283,7 @@ func (o Options) withDefaults() Options {
 	if o.DNS.Remote == "" {
 		// No DNS preferences: the defaults, keeping what the caller did set.
 		d := DefaultDNS
-		d.Direct, d.DirectSuffixes, d.RussiaDirect = o.DNS.Direct, o.DNS.DirectSuffixes, o.DNS.RussiaDirect
+		d.Direct, d.DirectSuffixes, d.RussiaDirect, d.RussiaAbroad = o.DNS.Direct, o.DNS.DirectSuffixes, o.DNS.RussiaDirect, o.DNS.RussiaAbroad
 		d.BlockBrowserDoH, d.BlockDoT = o.DNS.BlockBrowserDoH, o.DNS.BlockDoT
 		o.DNS = d
 	}

@@ -233,7 +233,7 @@ func TestBuildIPv6(t *testing.T) {
 // Sites blocked in Russia on .ru must not go direct with the Russia preset.
 func TestProxyRuleSetsWinOverDirect(t *testing.T) {
 	o := baseOptions()
-	o.DNS.DirectSuffixes = []string{"ru"}
+	o.DNS.HomeSuffixes = []string{"ru"}
 	o.DNS.DirectRuleSets = []RuleSet{{Tag: "geosite-ru", Path: "ru.srs"}}
 	o.DNS.ProxyRuleSets = []RuleSet{{Tag: "media-blocked", Path: "blocked.srs"}}
 	cfg := render(t, o)
@@ -243,7 +243,7 @@ func TestProxyRuleSetsWinOverDirect(t *testing.T) {
 	}
 	rules := list(route, "rules")
 	proxy := ruleIndex(rules, map[string]any{"rule_set": []any{"media-blocked"}, "outbound": "proxy"})
-	direct := ruleIndex(rules, map[string]any{"domain_suffix": []any{"ru"}, "outbound": "direct"})
+	direct := ruleIndex(rules, map[string]any{"domain_suffix": []any{"ru"}, "rule_set": []any{"geosite-ru"}, "outbound": "direct"})
 	if proxy < 0 || proxy > direct {
 		t.Errorf("proxy rule set at %d, direct suffixes at %d", proxy, direct)
 	}

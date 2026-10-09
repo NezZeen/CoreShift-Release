@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -9,8 +10,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"slices"
-	"strings"
 	"sync"
 	"time"
 
@@ -30,23 +29,34 @@ type geoSet struct {
 	// Proxy marks sets that go through the tunnel even when a direct list
 	// also has them.
 	Proxy bool
+	// Lost is what goes amiss without the set, for the journal.
+	Lost string
 }
 
 // russiaSuffixes and russiaSets make up the "Russian sites direct" preset:
 // the national domains, Russian services on other domains (geosite) and
-// servers located in Russia (geoip). Media blocked in Russia stay in the
+// servers located in Russia (geoip). Sites blocked in Russia stay in the
 // tunnel, many of them are on .ru (novayagazeta.ru, tvrain.ru): direct,
-// they would not open. 2ip.io is where 2ip.ru redirects: the usual way to
-// check the preset works would otherwise show the tunnel's address.
+// they would not open. Blocked media come from SagerNet, every blocked
+// site from runetfreedom (ru-blocked). With RussiaAbroad the preset's
+// names go direct only where their servers are in Russia (geoip-ru).
+// russiaAlways go direct wherever they are: 2ip.io is where 2ip.ru
+// redirects, the usual way to check the preset works, which would
+// otherwise show the tunnel's address.
 var (
-	russiaSuffixes = []string{"ru", "su", "xn--p1ai", "2ip.io"}
+	russiaSuffixes = []string{"ru", "su", "xn--p1ai"}
+	russiaAlways   = []string{"2ip.io"}
 	russiaSets     = []geoSet{
-		{Tag: "geosite-category-ru"},
-		{Tag: "geoip-ru", IP: true},
-		{Tag: "geosite-category-media-ru-blocked", Proxy: true},
+		{Tag: "geosite-category-ru", Lost: "её сайты пойдут через туннель"},
+		{Tag: "geoip-ru", IP: true, Lost: "российские адреса пойдут через туннель"},
+		{Tag: "geosite-category-media-ru-blocked", Proxy: true, Lost: "заблокированные СМИ на .ru могут не открыться"},
+		{Tag: "geosite-ru-blocked", Proxy: true, Lost: "заблокированные сайты на .ru могут не открыться"},
 		googleSet,
 	}
 )
+
+// adsSet is refused with BlockAds.
+var adsSet = geoSet{Tag: "geosite-category-ads-all", Lost: "реклама не блокируется"}
 
 // Google, YouTube included, stays in the tunnel with the Russian preset on,
 // whatever address a name resolves to: geosite-google, and googleSuffixes
@@ -59,9 +69,11 @@ var (
 // over HTTPS, QUIC kept from before) matches by the name the TUN layer
 // sniffs from it, which these rules see before geoip-ru; Google's own
 // ranges are not in geoip-ru, so no address list is needed. google.ru is
-// listed for the same reason: the preset sends .ru direct. A name the user
-// lists to go direct stays direct (googleDirect).
-var googleSet = geoSet{Tag: "geosite-google", Proxy: true}
+// listed for the same reason: the preset sends .ru direct. Nothing the user
+// sends direct takes Google out of the tunnel (they are pinned, see
+// tunlayer.DNSOptions.PinnedSuffixes); only blocks come first, so with
+// BlockAds Google's ad and analytics servers are refused.
+var googleSet = geoSet{Tag: "geosite-google", Proxy: true, Lost: "Google пойдёт через туннель по встроенному списку"}
 
 var googleSuffixes = []string{
 	// Search and the national domains people in and around Russia meet.
@@ -81,69 +93,137 @@ var googleSuffixes = []string{
 	"youtube.com", "youtu.be", "yt.be", "youtube-nocookie.com", "youtubekids.com", "googlevideo.com", "ytimg.com", "ggpht.com",
 }
 
-// googleDirect returns the names of the user's direct list that are Google's
-// (a name of googleSuffixes or one below it): they must stay direct ahead of
-// geosite-google, which would otherwise take them. Wider ones, like "com",
-// are not: Google stays in the tunnel then.
-func googleDirect(userDirect []string) []string {
-	var out []string
-	for _, d := range userDirect {
-		if slices.ContainsFunc(googleSuffixes, func(g string) bool { return under(d, g) }) {
-			out = append(out, d)
-		}
-	}
-	return out
-}
-
-// under reports whether name is domain or below it.
-func under(name, domain string) bool { return name == domain || strings.HasSuffix(name, "."+domain) }
-
 const (
 	ruleSetMaxAge  = 7 * 24 * time.Hour
 	ruleSetTimeout = 20 * time.Second
+	// setsRetry: a download that failed is not tried again sooner, so
+	// reconnecting (a network change) does not wait for it each time.
+	setsRetry = 10 * time.Minute
+	// jobTimeout bounds a download in the background: a v2ray list of every
+	// category can be tens of megabytes.
+	jobTimeout = 3 * time.Minute
 )
+
+// setsWait is how long connecting waits for sets that are not on disk yet,
+// all of them together; they keep downloading after it, for the next
+// connection. A variable for tests.
+var setsWait = 20 * time.Second
+
+// errPending is a set still downloading when connecting stops waiting.
+var errPending = errors.New("still downloading")
 
 // ruleSets keeps rule set files in dir: the copies built into CoreShift at
 // first, then newer ones from SagerNet, refreshed in the background when
 // old. A downloaded copy replaces the one on disk only if ruleset.Check
-// accepts it next to that one and the built-in one.
+// accepts it next to that one and the built-in one. The sets of the user's
+// rules, from the source the user chose, are kept below dir/geo (see
+// georules.go).
 type ruleSets struct {
 	dir   string
 	fetch func(ctx context.Context, url string, proxy *url.URL) ([]byte, error)
+	// fetchGeo downloads from the sources the user chose, at most limit
+	// bytes; nil means httpsGet.
+	fetchGeo func(ctx context.Context, url string, proxy *url.URL, limit int64) ([]byte, error)
+	// transport is how httpsGet connects through proxy (nil for none);
+	// nil means newTransport.
+	transport func(proxy *url.URL) *http.Transport
 	// baseline returns the built-in copy of a set and when it was
 	// downloaded: ruleset.Baseline.
 	baseline func(tag string) ([]byte, time.Time, bool)
 	publish  func(Event)
+	// late is called when a set connecting stopped waiting for has come:
+	// the next connection has it.
+	late func()
 
 	mu         sync.Mutex
 	refreshing map[string]bool
+	jobs       map[string]*job    // downloads under way, by the file they make
+	failed     map[string]failure // recent failed downloads, by file
+	missed     map[string]bool    // files the running connection is without
+	extract    sync.Mutex         // one category out of a v2ray list at a time
 }
 
 func newRuleSets(dir string, publish func(Event)) *ruleSets {
 	return &ruleSets{dir: dir, fetch: fetchRuleSet, baseline: ruleset.Baseline, publish: publish, refreshing: map[string]bool{}}
 }
 
+// job is a download in the background.
+type job struct {
+	done chan struct{}
+	err  error
+}
+
+type failure struct {
+	at  time.Time
+	err error
+}
+
+// start runs do in the background to make path, unless it runs already.
+func (r *ruleSets) start(path string, do func(ctx context.Context) error) *job {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.jobs == nil {
+		r.jobs, r.failed, r.missed = map[string]*job{}, map[string]failure{}, map[string]bool{}
+	}
+	if j := r.jobs[path]; j != nil {
+		return j
+	}
+	j := &job{done: make(chan struct{})}
+	r.jobs[path] = j
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), jobTimeout)
+		err := do(ctx)
+		cancel()
+		r.mu.Lock()
+		j.err = err
+		delete(r.jobs, path)
+		late := false
+		if err != nil {
+			r.failed[path] = failure{time.Now(), err}
+		} else {
+			delete(r.failed, path)
+			late = r.missed[path]
+			delete(r.missed, path)
+		}
+		r.mu.Unlock()
+		close(j.done)
+		if late && r.late != nil {
+			r.late()
+		}
+	}()
+	return j
+}
+
+// await makes path with do, as start does, and waits for it while ctx
+// lasts: errPending then. A download that failed less than setsRetry ago
+// is not tried again; its error is returned at once.
+func (r *ruleSets) await(ctx context.Context, path string, do func(ctx context.Context) error) error {
+	r.mu.Lock()
+	f, failed := r.failed[path]
+	r.mu.Unlock()
+	if failed && time.Since(f.at) < setsRetry {
+		return f.err
+	}
+	j := r.start(path, do)
+	select {
+	case <-j.done:
+		return j.err
+	case <-ctx.Done():
+		r.mu.Lock()
+		r.missed[path] = true
+		r.mu.Unlock()
+		return errPending
+	}
+}
+
 // get returns the sets available on disk, split into direct domain, direct
-// IP and proxy sets. A set missing from disk, damaged there or older than
-// the built-in copy is replaced by the built-in copy; one CoreShift has no
-// copy of is downloaded now, through proxy (the active core's SOCKS
-// inbound, credentials included; nil for none) and then directly. One that
-// cannot be had is reported and left out, so connecting still works, only
-// with fewer names going direct.
+// IP and proxy sets, publishing what became of each (see builtin).
 func (r *ruleSets) get(ctx context.Context, sets []geoSet, proxy *url.URL) (domain, ip, proxied []tunlayer.RuleSet) {
 	for _, gs := range sets {
-		path := filepath.Join(r.dir, gs.Tag+".srs")
-		mod, ok := r.ready(gs, path)
-		switch {
-		case !ok:
-			if err := r.download(ctx, gs, path, proxy); err != nil {
-				r.publish(Event{Kind: "rules", Reason: gs.Tag,
-					Error: fmt.Sprintf("база %s не загрузилась, её сайты пойдут через туннель: %v", gs.Tag, err)})
-				continue
-			}
-			r.publish(Event{Kind: "rules", Reason: gs.Tag, Line: "downloaded"})
-		case time.Since(mod) > ruleSetMaxAge:
-			go r.refresh(gs, path, proxy)
+		path, err := r.builtin(ctx, gs, proxy)
+		if err != nil {
+			r.lost(gs, err)
+			continue
 		}
 		rs := tunlayer.RuleSet{Tag: gs.Tag, Path: path}
 		switch {
@@ -156,6 +236,48 @@ func (r *ruleSets) get(ctx context.Context, sets []geoSet, proxy *url.URL) (doma
 		}
 	}
 	return domain, ip, proxied
+}
+
+// builtin returns the file of the preset set gs. A set missing from disk,
+// damaged there or older than the built-in copy is replaced by the
+// built-in copy; one CoreShift has no copy of is downloaded now, through
+// proxy (the active core's SOCKS inbound, credentials included; nil for
+// none) and then directly, while ctx lasts. One that cannot be had is left
+// out by the caller, so connecting still works, only without what the set
+// does.
+func (r *ruleSets) builtin(ctx context.Context, gs geoSet, proxy *url.URL) (string, error) {
+	path := filepath.Join(r.dir, gs.Tag+".srs")
+	mod, ok := r.ready(gs, path)
+	switch {
+	case !ok:
+		err := r.await(ctx, path, func(ctx context.Context) error {
+			if _, err := r.download(ctx, gs, path, proxy); err != nil {
+				return err
+			}
+			r.publish(Event{Kind: "rules", Reason: gs.Tag, Line: "downloaded"})
+			return nil
+		})
+		if err != nil {
+			return "", err
+		}
+	case time.Since(mod) > maxAge(gs.Tag):
+		go r.refresh(gs, path, proxy)
+	}
+	return path, nil
+}
+
+// lost reports a preset set that could not be had.
+func (r *ruleSets) lost(gs geoSet, err error) {
+	what := gs.Lost
+	if what == "" {
+		what = "её сайты пойдут через туннель"
+	}
+	if errors.Is(err, errPending) {
+		r.publish(Event{Kind: "rules", Reason: gs.Tag, Line: "pending",
+			Error: fmt.Sprintf("база %s ещё загружается, до переподключения %s", gs.Tag, what)})
+		return
+	}
+	r.publish(Event{Kind: "rules", Reason: gs.Tag, Error: fmt.Sprintf("база %s не загрузилась, %s: %v", gs.Tag, what, err)})
 }
 
 // refresh replaces an old file in the background; the TUN layer picks the
@@ -173,12 +295,15 @@ func (r *ruleSets) refresh(gs geoSet, path string, proxy *url.URL) {
 		delete(r.refreshing, gs.Tag)
 		r.mu.Unlock()
 	}()
-	if err := r.download(context.Background(), gs, path, proxy); err != nil {
+	changed, err := r.download(context.Background(), gs, path, proxy)
+	if err != nil {
 		// Line "kept": the set still works, only not updated.
 		r.publish(Event{Kind: "rules", Reason: gs.Tag, Line: "kept", Error: fmt.Sprintf("база %s не обновилась, работает прежняя: %v", gs.Tag, err)})
 		return
 	}
-	r.publish(Event{Kind: "rules", Reason: gs.Tag, Line: "updated"})
+	if changed {
+		r.publish(Event{Kind: "rules", Reason: gs.Tag, Line: "updated"})
+	}
 }
 
 // ready makes sure path holds a usable copy of gs and returns when it was
@@ -223,38 +348,84 @@ func (r *ruleSets) ready(gs geoSet, path string) (time.Time, bool) {
 
 // download fetches gs into path, if ruleset.Check accepts it next to the
 // copy on disk and the built-in one.
-func (r *ruleSets) download(ctx context.Context, gs geoSet, path string, proxy *url.URL) error {
+//
+// Each of ruleset.Sources is tried in turn, through the proxy first: the
+// source may be blocked where the user is. changed is false when the copy
+// on disk is the current one already (a set CoreShift publishes itself
+// says so in its manifest): it is dated now, as if downloaded.
+func (r *ruleSets) download(ctx context.Context, gs geoSet, path string, proxy *url.URL) (changed bool, err error) {
 	var refs [][]byte
-	if cur, err := os.ReadFile(path); err == nil {
+	cur, err := os.ReadFile(path)
+	if err == nil {
 		refs = append(refs, cur)
 	}
 	if base, _, ok := r.baseline(gs.Tag); ok {
 		refs = append(refs, base)
 	}
-	// Through the proxy first: the source may be blocked where the user is.
 	vias := []*url.URL{nil}
 	if proxy != nil {
 		vias = []*url.URL{proxy, nil}
 	}
+	if cur != nil && r.current(ctx, gs.Tag, cur, vias) {
+		now := time.Now()
+		return false, os.Chtimes(path, now, now)
+	}
 	var errs []error
 	for _, via := range vias {
-		b, err := r.fetch(ctx, ruleset.URL(gs.Tag), via)
-		if err == nil {
-			err = ruleset.Check(gs.Tag, b, refs...)
-		}
-		if err == nil {
-			return writeAtomic(path, b)
-		}
-		how := "directly"
-		if via != nil {
-			how = "through the proxy"
-		}
-		errs = append(errs, fmt.Errorf("%s: %w", how, err))
-		if ctx.Err() != nil {
-			break
+		for i, src := range ruleset.Sources(gs.Tag) {
+			b, err := r.fetch(ctx, src, via)
+			if err == nil {
+				err = ruleset.Check(gs.Tag, b, refs...)
+			}
+			if err == nil {
+				return true, writeAtomic(path, b)
+			}
+			how := "directly"
+			if via != nil {
+				how = "through the proxy"
+			}
+			if i > 0 {
+				how += ", mirror"
+			}
+			errs = append(errs, fmt.Errorf("%s: %w", how, err))
+			if ctx.Err() != nil {
+				return false, errors.Join(errs...)
+			}
 		}
 	}
-	return errors.Join(errs...)
+	return false, errors.Join(errs...)
+}
+
+// current reports whether cur is the copy of tag CoreShift publishes now,
+// by its manifest: a few hundred bytes rather than the set. Only for the
+// sets CoreShift publishes; false when the manifest cannot be had.
+func (r *ruleSets) current(ctx context.Context, tag string, cur []byte, vias []*url.URL) bool {
+	if _, _, ok := ruleset.DatSource(tag); !ok {
+		return false
+	}
+	for _, via := range vias {
+		b, err := r.fetch(ctx, ruleset.Published+ruleset.PublishedManifest, via)
+		if err != nil {
+			continue
+		}
+		var m ruleset.Manifest
+		if json.Unmarshal(b, &m) != nil {
+			return false
+		}
+		f, ok := m.Sets[tag]
+		return ok && f == ruleset.Describe(cur)
+	}
+	return false
+}
+
+// maxAge is how long a copy of tag is kept before a newer one is looked
+// for: a day for the sites blocked in Russia, which change often, a week
+// for the rest.
+func maxAge(tag string) time.Duration {
+	if tag == "geosite-ru-blocked" {
+		return 24 * time.Hour
+	}
+	return ruleSetMaxAge
 }
 
 func fetchRuleSet(ctx context.Context, rawURL string, proxy *url.URL) ([]byte, error) {

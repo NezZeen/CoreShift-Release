@@ -551,8 +551,11 @@ func TestRussiaDirectUsesBuiltInRuleSets(t *testing.T) {
 			b, _, ok := ruleset.Baseline(tag)
 			return b, time.Now().Add(-time.Hour), ok
 		}
-		c.fetchRuleSet = func(context.Context, string, *url.URL) ([]byte, error) {
-			fetched = true
+		c.fetchRuleSet = func(_ context.Context, rawURL string, _ *url.URL) ([]byte, error) {
+			// Only a set this build does not carry is looked for.
+			if _, _, ok := ruleset.Baseline(strings.TrimSuffix(path.Base(rawURL), ".srs")); ok {
+				fetched = true
+			}
 			return nil, errors.New("offline")
 		}
 	})
@@ -562,7 +565,12 @@ func TestRussiaDirectUsesBuiltInRuleSets(t *testing.T) {
 	h.tun.mu.Lock()
 	o := h.tun.opts
 	h.tun.mu.Unlock()
-	if len(o.DNS.DirectRuleSets) != 1 || len(o.DNS.DirectIPRuleSets) != 1 || len(o.DNS.ProxyRuleSets) != 2 {
+	// geosite-ru-blocked, if this build carries it.
+	wantProxy := 1
+	if _, _, ok := ruleset.Baseline("geosite-ru-blocked"); ok {
+		wantProxy++
+	}
+	if len(o.DNS.DirectRuleSets) != 1 || len(o.DNS.DirectIPRuleSets) != 1 || len(o.DNS.ProxyRuleSets) != wantProxy || len(o.DNS.PinnedRuleSets) != 1 {
 		t.Fatalf("dns options = %+v", o.DNS)
 	}
 	got, err := os.ReadFile(o.DNS.DirectIPRuleSets[0].Path)
@@ -605,8 +613,9 @@ func TestRussiaDirectDownloadsRuleSets(t *testing.T) {
 	h.tun.mu.Lock()
 	o := h.tun.opts
 	h.tun.mu.Unlock()
-	if !slices.Contains(o.DNS.DirectSuffixes, "xn--p1ai") || !slices.Contains(o.DNS.DirectSuffixes, "2ip.io") || len(o.DNS.DirectRuleSets) != 1 || len(o.DNS.DirectIPRuleSets) != 1 ||
-		len(o.DNS.ProxyRuleSets) != 2 || o.DNS.ProxyRuleSets[0].Tag != "geosite-category-media-ru-blocked" || o.DNS.ProxyRuleSets[1].Tag != "geosite-google" {
+	if !slices.Contains(o.DNS.HomeSuffixes, "xn--p1ai") || !slices.Contains(o.DNS.DirectSuffixes, "2ip.io") || len(o.DNS.DirectRuleSets) != 1 || len(o.DNS.DirectIPRuleSets) != 1 ||
+		len(o.DNS.ProxyRuleSets) != 1 || o.DNS.ProxyRuleSets[0].Tag != "geosite-category-media-ru-blocked" ||
+		len(o.DNS.PinnedRuleSets) != 1 || o.DNS.PinnedRuleSets[0].Tag != "geosite-google" {
 		t.Fatalf("dns options = %+v", o.DNS)
 	}
 	if _, err := os.Stat(o.DNS.DirectIPRuleSets[0].Path); err != nil {
@@ -641,7 +650,7 @@ func TestRussiaDirectWithoutRuleSetsStillConnects(t *testing.T) {
 	h.tun.mu.Lock()
 	o := h.tun.opts
 	h.tun.mu.Unlock()
-	if !slices.Contains(o.DNS.DirectSuffixes, "ru") || len(o.DNS.DirectRuleSets)+len(o.DNS.DirectIPRuleSets)+len(o.DNS.ProxyRuleSets) != 0 {
+	if !slices.Contains(o.DNS.HomeSuffixes, "ru") || len(o.DNS.DirectRuleSets)+len(o.DNS.DirectIPRuleSets)+len(o.DNS.ProxyRuleSets)+len(o.DNS.PinnedRuleSets) != 0 {
 		t.Errorf("dns options = %+v", o.DNS)
 	}
 	warned := false
@@ -879,7 +888,7 @@ func TestRoutingSettingsReachTheTunnel(t *testing.T) {
 	}
 	// Only the selected traffic uses the tunnel, so the Russian lists are
 	// of no use.
-	if fetched || len(got.DNS.DirectRuleSets) > 0 || slices.Contains(got.DNS.DirectSuffixes, "xn--p1ai") {
+	if fetched || len(got.DNS.DirectRuleSets) > 0 || len(got.DNS.HomeSuffixes) > 0 || len(got.DNS.PinnedSuffixes) > 0 {
 		t.Errorf("Russian preset applied in selective mode: fetched %v, %+v", fetched, got.DNS)
 	}
 }

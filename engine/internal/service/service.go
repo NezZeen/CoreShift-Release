@@ -331,6 +331,18 @@ func New(cfg Config) (*Service, error) {
 	if cfg.ruleSetBaseline != nil {
 		s.rules.baseline = cfg.ruleSetBaseline
 	}
+	s.rules.fetchGeo = cfg.fetchGeo
+	// A set connecting stopped waiting for has come: reconnecting applies
+	// it, which the app offers as for changed settings.
+	s.rules.late = func() {
+		s.mu.Lock()
+		active := s.status.State.active()
+		s.pending = s.pending || active
+		s.mu.Unlock()
+		if active {
+			s.hub.publish(Event{Kind: "options"})
+		}
+	}
 	// The guard is needed even with TUN off, to undo what a crashed run left.
 	if cfg.guard == nil {
 		g, err := dnsguard.New(filepath.Join(cfg.DataDir, "dnsguard.json"))

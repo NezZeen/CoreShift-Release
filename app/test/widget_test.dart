@@ -479,8 +479,8 @@ void main() {
 
     // The lists few people need are folded away.
     for (final fold in ['Всегда через VPN', 'Блокировать']) {
-      await tester.ensureVisible(find.text(fold));
-      await tester.tap(find.text(fold));
+      await tester.ensureVisible(find.text(fold).first);
+      await tester.tap(find.text(fold).first);
       await tester.pump();
     }
     await add('gosuslugi.ru, 10.8.0.0/16', 'bank.example 10.8.0.0/16, 2001:db8::/32');
