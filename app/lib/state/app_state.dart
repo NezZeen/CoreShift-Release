@@ -941,7 +941,7 @@ class AppState extends ChangeNotifier {
   int _statsBaseDown = 0;
   Timer? _statsTimer;
 
-  /// Shows the address as "185.23.•.•" in the app, for screenshots.
+  /// Shows the address as "203.0.•.•" in the app, for screenshots.
   bool get hideIp => prefs['hide_ip'] == true;
 
   void setPref(String key, Object value) {

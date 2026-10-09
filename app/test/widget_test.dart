@@ -813,7 +813,7 @@ void main() {
     // Hidden for screenshots.
     await tester.tap(find.byTooltip('Скрыть адрес, например для скриншота'));
     await tester.pump();
-    expect(find.text('185.23.•.•'), findsOneWidget);
+    expect(find.text('203.0.•.•'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.runAsync(() => state.disconnect());
     await tester.pump(const Duration(seconds: 6));
