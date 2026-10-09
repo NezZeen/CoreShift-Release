@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -18,6 +19,7 @@ part 'servers/cards.dart';
 part 'servers/nodes.dart';
 part 'servers/dialogs.dart';
 part 'servers/actions.dart';
+part 'servers/picking.dart';
 
 class ServersPage extends StatefulWidget {
   final AppState state;
@@ -56,6 +58,10 @@ class _ServersPageState extends State<ServersPage> {
 
   AppState get s => widget.state;
 
+  /// Picking servers to remove, as messages are picked in Telegram: a press
+  /// held on a row starts it, see servers/picking.dart.
+  late final _picking = _Picking(this);
+
   void _toggle(String id) {
     setState(() => collapsed.contains(id) ? collapsed.remove(id) : collapsed.add(id));
     s.setPref('servers_folded', collapsed.toList());
@@ -64,11 +70,22 @@ class _ServersPageState extends State<ServersPage> {
   @override
   void initState() {
     super.initState();
+    _picking.addListener(_picked);
+    HardwareKeyboard.instance.addHandler(_picking.onKey);
     if (!s.latencyAutoTested && s.online && !s.testingLatency && s.latency.isEmpty && s.nodeCount > 0) {
       s.latencyAutoTested = true;
       // Not while the page is being built: the test notifies listeners.
       WidgetsBinding.instance.addPostFrameCallback((_) => s.testLatency());
     }
+  }
+
+  void _picked() => setState(() {});
+
+  @override
+  void dispose() {
+    HardwareKeyboard.instance.removeHandler(_picking.onKey);
+    _picking.dispose();
+    super.dispose();
   }
 
   /// The rows in the order and groups the user chose: the favourites first,
@@ -142,6 +159,11 @@ class _ServersPageState extends State<ServersPage> {
     final compact = isCompact(context);
     final sections = _sections(rows, multi: subs.length > 1 && subFilter == null);
     final hidden = subs.where((sub) => subFilter == null || sub.id == subFilter).fold(0, (n, sub) => n + sub.hiddenNodes.length);
+    final folded = query.isEmpty ? collapsed : const <String>{};
+    _picking.listed([
+      for (final sec in sections)
+        if (!folded.contains(sec.id)) ...sec.rows,
+    ]);
 
     final search = TextField(
       focusNode: widget.searchFocus,
@@ -171,11 +193,32 @@ class _ServersPageState extends State<ServersPage> {
       onPressed: () => s.testLatency(subFilter),
     );
 
+    // The back gesture, like Esc, ends the picking before it leaves.
+    return PopScope(
+      canPop: !_picking.active,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _picking.cancel();
+      },
+      child: _page(context, compact: compact, subs: subs, search: search, chips: chips, ping: ping, rows: rows, sections: sections, hidden: hidden),
+    );
+  }
+
+  Widget _page(
+    BuildContext context, {
+    required bool compact,
+    required List<Subscription> subs,
+    required Widget search,
+    required List<Widget> chips,
+    required Btn ping,
+    required List<(Subscription, NodeView)> rows,
+    required List<_Section> sections,
+    required int hidden,
+  }) {
     return PageFrame(
       children: [
         PageHeader(
           'Серверы',
-          subtitle: 'Двойной щелчок по серверу подключает к нему, правая кнопка открывает действия.',
+          subtitle: 'Двойной щелчок подключает. Зажмите и ведите, чтобы выбрать несколько.',
           actions: [
             if (subs.any((x) => !x.isLocal))
               Btn(
@@ -287,11 +330,12 @@ class _ServersPageState extends State<ServersPage> {
       onChanged: (v) => s.setPref('server_sort', v),
       tooltips: const {'ping': 'Сначала самые быстрые; без ответа — в конце'},
     );
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (compact) ...[
-          // A phone: the search with the ping as an icon, then the filters.
+    final Widget toolbar;
+    if (compact) {
+      // A phone: the search with the ping as an icon, then the filters.
+      toolbar = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
           Row(
             children: [
               Expanded(child: search),
@@ -308,45 +352,62 @@ class _ServersPageState extends State<ServersPage> {
               ],
             ),
           ),
-        ] else
-          // The order, the grouping and the ping beside the search; under
-          // it when the list is too narrow for them all.
-          LayoutBuilder(
-            builder: (context, c) {
-              final filters = [
-                sort,
-                for (final ch in chips) ...[const SizedBox(width: 10), ch],
-              ];
-              if (c.maxWidth >= 860) {
-                return Row(
-                  children: [
-                    Expanded(child: search),
-                    const SizedBox(width: 10),
-                    ...filters,
-                    const SizedBox(width: 10),
-                    ping,
-                  ],
-                );
-              }
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+        ],
+      );
+    } else {
+      // The order, the grouping and the ping beside the search; under
+      // it when the list is too narrow for them all.
+      toolbar = LayoutBuilder(
+        builder: (context, c) {
+          final filters = [
+            sort,
+            for (final ch in chips) ...[const SizedBox(width: 10), ch],
+          ];
+          if (c.maxWidth >= 860) {
+            return Row(
+              children: [
+                Expanded(child: search),
+                const SizedBox(width: 10),
+                ...filters,
+                const SizedBox(width: 10),
+                ping,
+              ],
+            );
+          }
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
                 children: [
-                  Row(
-                    children: [
-                      Expanded(child: search),
-                      const SizedBox(width: 10),
-                      ping,
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(children: filters),
-                  ),
+                  Expanded(child: search),
+                  const SizedBox(width: 10),
+                  ping,
                 ],
-              );
-            },
-          ),
+              ),
+              const SizedBox(height: 10),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(children: filters),
+              ),
+            ],
+          );
+        },
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // While servers are picked their bar takes the toolbar's place, at
+        // its height: the rows under the finger must not move.
+        Stack(
+          children: [
+            Visibility(visible: !_picking.active, maintainSize: true, maintainAnimation: true, maintainState: true, child: toolbar),
+            if (_picking.active)
+              Positioned.fill(
+                child: _PickBar(picking: _picking, compact: compact),
+              ),
+          ],
+        ),
         if (compact && rows.isNotEmpty && s.prefs[serverHintPref] != true) _SwipeHint(onClose: () => s.setPref(serverHintPref, true)),
         const SizedBox(height: 12),
         Panel(
@@ -357,6 +418,7 @@ class _ServersPageState extends State<ServersPage> {
             // A search shows what it found, folded or not.
             collapsed: query.isEmpty ? collapsed : const {},
             onToggle: _toggle,
+            picking: _picking,
           ),
         ),
         if (hidden > 0)

@@ -87,9 +87,34 @@ extension AppStateServers on AppState {
 
   /// «Удалить из подписки»: the server leaves the list, with a toast to
   /// take it back. [label] is its name as the list shows it.
-  Future<void> hideNode(Subscription sub, NodeView n, {String? label}) async {
-    if (!await setNodesHidden(sub.id, [n.fingerprint], hidden: true)) return;
-    _logAction('удалить из подписки: ${n.name}');
-    toast('«${label ?? n.name}» удалён из подписки', ToastKind.info, ('Отменить', () => setNodesHidden(sub.id, [n.fingerprint], hidden: false)));
+  Future<void> hideNode(Subscription sub, NodeView n, {String? label}) => hideNodes([(sub, n)], label: label);
+
+  /// Removes [rows] from the list, one request per subscription, with one
+  /// toast that brings them all back. [label] names a single server.
+  Future<void> hideNodes(List<(Subscription, NodeView)> rows, {String? label}) async {
+    final bySub = <String, Set<String>>{};
+    for (final (sub, n) in rows) {
+      (bySub[sub.id] ??= {}).add(n.fingerprint);
+    }
+    if (bySub.isEmpty) return;
+    final done = <String, List<String>>{};
+    for (final MapEntry(key: id, value: fps) in bySub.entries) {
+      if (await setNodesHidden(id, fps.toList(), hidden: true)) done[id] = fps.toList();
+    }
+    if (done.isEmpty) return;
+    final count = done.values.fold(0, (n, fps) => n + fps.length);
+    final names = {for (final (_, n) in rows) n.name};
+    _logAction('удалить из подписки: ${names.join(', ')}');
+    Future<void> undo() async {
+      for (final MapEntry(key: id, value: fps) in done.entries) {
+        await setNodesHidden(id, fps, hidden: false);
+      }
+    }
+
+    toast(
+      count == 1 ? '«${label ?? rows.first.$2.name}» удалён из подписки' : 'Удалено из подписки: $count ${ruPlural(count, 'сервер', 'сервера', 'серверов')}',
+      ToastKind.info,
+      ('Отменить', undo),
+    );
   }
 }

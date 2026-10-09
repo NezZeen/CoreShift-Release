@@ -1,5 +1,8 @@
+import 'dart:math';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:coreshift/api/demo_backend.dart';
@@ -206,13 +209,12 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('the desktop menu: connect, star, remove from the subscription and bring back', (tester) async {
+  testWidgets('the right-click menu: connect, star, remove from the subscription and bring back', (tester) async {
     final state = await pumpApp(tester);
     await openServers(tester, phone: false);
     final (sub, tokyo) = node(state, 'Tokyo');
     final count = state.nodeCount;
 
-    // A right click opens the same menu as the «⋯».
     await tester.tap(find.text('Tokyo'), buttons: kSecondaryButton);
     await tester.pumpAndSettle();
     expect(find.text('Подключиться'), findsOneWidget);
@@ -223,14 +225,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(state.isFavorite(sub, tokyo), isTrue);
 
-    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
-    addTearDown(mouse.removePointer);
-    await mouse.addPointer(location: tester.getCenter(find.text('Tokyo')));
-    await tester.pump();
-    await tester.tap(find.descendant(of: rowOf('Tokyo'), matching: find.byTooltip('Действия')));
-    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.text('Tokyo'), buttons: kSecondaryButton);
     await tester.pumpAndSettle();
-    expect(find.text('Убрать из избранного'), findsWidgets);
+    expect(find.text('Убрать из избранного'), findsOneWidget);
     await tester.tap(find.text('Удалить из подписки'));
     await tester.pump();
     await settle(tester);
@@ -278,53 +275,141 @@ void main() {
     await tester.pump(const Duration(seconds: 10));
   });
 
-  testWidgets('the server in use cannot be removed', (tester) async {
+  /// Holds a press on [from], moves it over [over] in turn, and lets go.
+  Future<void> holdAndDrag(WidgetTester tester, String from, List<String> over, {PointerDeviceKind kind = PointerDeviceKind.touch}) async {
+    final g = await tester.startGesture(tester.getCenter(rowOf(from)), kind: kind, buttons: kPrimaryButton);
+    await tester.pump(kLongPressTimeout + const Duration(milliseconds: 100));
+    for (final name in over) {
+      await g.moveTo(tester.getCenter(rowOf(name)));
+      await tester.pump();
+    }
+    await g.up();
+    await tester.pump();
+  }
+
+  for (final isPhone in [false, true]) {
+    testWidgets('a held press picks servers, a drag picks a range, removal and undo${isPhone ? ' on a phone' : ''}', (tester) async {
+      final state = await pumpApp(tester, size: isPhone ? phone : desktop);
+      await openServers(tester, phone: isPhone);
+      final count = state.nodeCount;
+      final (sub, _) = node(state, 'Rotterdam');
+      if (isPhone) {
+        // Rotterdam to the middle of the screen, away from the edges that
+        // scroll the list.
+        await tester.ensureVisible(rowOf('Rotterdam'));
+        final pos = tester.state<ScrollableState>(find.ancestor(of: rowOf('Rotterdam'), matching: find.byType(Scrollable)).first).position;
+        pos.jumpTo(max(0, pos.pixels - 250));
+        await tester.pump();
+      }
+
+      // Held on Rotterdam, then over Frankfurt and Falkenstein: three.
+      await holdAndDrag(tester, 'Rotterdam', ['Frankfurt', 'Falkenstein'], kind: isPhone ? PointerDeviceKind.touch : PointerDeviceKind.mouse);
+      expect(find.text('Выбрано: 3'), findsOneWidget);
+      expect(find.text('Удалить из подписки'), findsOneWidget);
+      expect(find.text('Выбрать все'), findsOneWidget);
+      expect(state.status.active, isFalse, reason: 'picking connects nothing');
+
+      // Taps pick and put back.
+      await tester.tap(rowOf('Nuremberg'));
+      await tester.pump();
+      expect(find.text('Выбрано: 4'), findsOneWidget);
+      await tester.tap(rowOf('Nuremberg'));
+      await tester.pump();
+      expect(find.text('Выбрано: 3'), findsOneWidget);
+      expect(state.selection.name, contains('Amsterdam'), reason: 'a tap while picking selects no server');
+
+      await tester.tap(find.text('Удалить из подписки'));
+      await tester.pump();
+      await settle(tester);
+      expect(find.text('Выбрано: 3'), findsNothing);
+      for (final n in ['Rotterdam', 'Frankfurt', 'Falkenstein']) {
+        expect(find.text(n), findsNothing, reason: n);
+      }
+      expect(state.subscriptionById(sub.id)!.hiddenNodes.length, 3);
+      expect(state.nodeCount, count - 3);
+      expect(find.text('Удалено из подписки: 3 сервера'), findsOneWidget);
+
+      // One «Отменить» brings all three back.
+      await tester.tap(find.text('Отменить'));
+      await tester.pump();
+      await settle(tester);
+      expect(state.nodeCount, count);
+      expect(find.text('Rotterdam'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pump(const Duration(seconds: 10));
+    });
+  }
+
+  testWidgets('Esc ends the picking; the server in use is not picked', (tester) async {
     final state = await pumpApp(tester);
     await openServers(tester, phone: false);
     await tester.runAsync(() => state.connect());
     await tester.pump();
-    final name = cleanNodeName(state.selection.name);
-    await tester.tap(find.text(name).last, buttons: kSecondaryButton);
+    expect(state.status.active, isTrue);
+
+    // Held on the server in use: a note, and no picking.
+    await tester.longPress(rowOf('Amsterdam'));
+    await tester.pump();
+    expect(find.textContaining('Выбрано'), findsNothing);
+    expect(find.text('К этому серверу вы подключены — его не удалить'), findsOneWidget);
+
+    // A drag from Rotterdam over it leaves it out, and so does «Выбрать все».
+    await holdAndDrag(tester, 'Rotterdam', ['Amsterdam']);
+    expect(find.text('Выбрано: 1'), findsOneWidget);
+    await tester.tap(find.text('Выбрать все'));
+    await tester.pump();
+    expect(find.text('Выбрано: ${state.nodeCount - 1}'), findsOneWidget);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump();
+    expect(find.textContaining('Выбрано'), findsNothing);
+    expect(state.subscriptions.every((s) => s.hiddenNodes.isEmpty), isTrue);
+
+    // The right-click menu does not remove it either.
+    await tester.tap(rowOf('Amsterdam'), buttons: kSecondaryButton);
     await tester.pumpAndSettle();
-    expect(find.text('Подключён'), findsWidgets);
     expect(find.text('Сначала подключитесь к другому'), findsOneWidget);
     await tester.tap(find.text('Удалить из подписки'), warnIfMissed: false);
     await tester.pumpAndSettle();
     expect(state.subscriptions.every((s) => s.hiddenNodes.isEmpty), isTrue);
     await tester.runAsync(() => state.disconnect());
-    await tester.pump(const Duration(seconds: 6));
+    await tester.pump(const Duration(seconds: 10));
   });
 
-  testWidgets('a phone holds a server for its actions', (tester) async {
+  testWidgets('a phone: the star, the hint, and the back gesture ends the picking', (tester) async {
     final state = await pumpApp(tester, size: phone);
     await openServers(tester, phone: true);
+    expect(find.textContaining('Удерживайте и ведите пальцем'), findsOneWidget);
+
     final (sub, riga) = node(state, 'Riga');
-    await tester.ensureVisible(find.text('Riga'));
+    await tester.ensureVisible(rowOf('Riga'));
     await tester.pump();
-    await tester.longPress(find.text('Riga'));
-    await tester.pumpAndSettle();
-    expect(find.text('Подключиться'), findsOneWidget);
-    expect(find.text('В избранное'), findsOneWidget);
-    expect(find.text('Удалить из подписки'), findsOneWidget);
-    expect(find.text('Не вернётся при обновлении подписки'), findsOneWidget);
-    await tester.tap(find.text('В избранное'));
-    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(of: rowOf('Riga'), matching: find.byIcon(Icons.star_outline_rounded)));
+    await tester.pump(const Duration(milliseconds: 400));
     expect(state.isFavorite(sub, riga), isTrue);
     expect(find.text('Избранное'), findsOneWidget);
+    await tester.ensureVisible(rowOf('Riga'));
+    await tester.pump();
+    await tester.tap(find.descendant(of: rowOf('Riga'), matching: find.byIcon(Icons.star_rounded)));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(state.isFavorite(sub, riga), isFalse);
 
-    await tester.ensureVisible(find.text('Riga'));
+    // A swipe to the left does nothing now; the star is the way.
+    await tester.ensureVisible(rowOf('Helsinki'));
     await tester.pump();
-    await tester.longPress(find.text('Riga'));
+    await tester.drag(rowOf('Helsinki'), const Offset(-300, 0));
     await tester.pumpAndSettle();
-    expect(find.text('Убрать из избранного'), findsOneWidget);
-    await tester.tap(find.text('Удалить из подписки'));
+    expect(state.favorites, isEmpty);
+
+    await tester.longPress(rowOf('Helsinki'));
     await tester.pump();
-    await settle(tester);
-    expect(find.text('Riga'), findsNothing);
-    expect(state.subscriptionById(sub.id)!.hiddenNodes.single.fingerprint, riga.fingerprint);
-    await tester.ensureVisible(find.text('Удалено из подписок: 1'));
-    expect(find.text('Показать и вернуть'), findsOneWidget);
+    expect(find.text('Выбрано: 1'), findsOneWidget);
+    // Back: the picking ends, the app stays.
+    await tester.binding.handlePopRoute();
+    await tester.pump();
+    expect(find.textContaining('Выбрано'), findsNothing);
+    expect(find.text('Helsinki'), findsOneWidget);
+    expect(state.prefs['server_hint'], isTrue, reason: 'the hint goes once the picking was used');
     expect(tester.takeException(), isNull);
-    await tester.pump(const Duration(seconds: 10));
   });
 }

@@ -312,8 +312,8 @@ class _SubMenu extends StatelessWidget {
   );
 }
 
-/// Tells a phone's user about the swipes and the long press, until they
-/// swipe a server or close it.
+/// Tells a phone's user about the swipe and the picking, until they use
+/// one or close it.
 class _SwipeHint extends StatelessWidget {
   final VoidCallback onClose;
   const _SwipeHint({required this.onClose});
@@ -335,7 +335,7 @@ class _SwipeHint extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Смахните сервер вправо — подключить, влево — в избранное. Удерживайте, чтобы открыть действия',
+              'Смахните сервер вправо — подключиться. Удерживайте и ведите пальцем — выбрать несколько',
               style: TextStyle(fontSize: 12, color: p.muted),
             ),
           ),

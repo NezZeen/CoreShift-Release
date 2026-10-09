@@ -1,11 +1,10 @@
 part of '../servers_page.dart';
 
-/// The preference that hides the phone's hint about the swipes and the
-/// long press, once the user has used one or closed it.
+/// The preference that hides the phone's hint about the swipe and the
+/// picking, once the user has used one or closed it.
 const serverHintPref = 'server_hint';
 
-/// What can be done with one server: the desktop's «⋯» menu and right
-/// click, the phone's long press.
+/// What can be done with one server from the desktop's right click.
 enum _NodeAction { connect, favorite, hide }
 
 /// The servers in the order [sort] names: "ping" puts the fastest first,
@@ -111,131 +110,6 @@ void _runServerAction(AppState s, Subscription sub, NodeView n, _NodeAction a) {
     case _NodeAction.hide:
       if (!_inUse(s, sub, n)) s.hideNode(sub, n, label: cleanNodeName(n.name));
   }
-}
-
-/// A phone's long press on a server: what the desktop's «⋯» menu offers, as
-/// a sheet with the server on top.
-Future<void> showServerActions(BuildContext context, AppState s, Subscription sub, NodeView n) {
-  final p = context.pal;
-  return showModalBottomSheet<void>(
-    context: context,
-    backgroundColor: p.surface,
-    showDragHandle: true,
-    builder: (c) => SafeArea(
-      child: ListenableBuilder(
-        listenable: s,
-        builder: (context, _) {
-          final p = context.pal;
-          final fav = s.isFavorite(sub, n);
-          final inUse = _inUse(s, sub, n);
-          final l = s.latencyOf(sub.id, n.fingerprint);
-          void run(_NodeAction a) {
-            Navigator.pop(context);
-            _runServerAction(s, sub, n, a);
-          }
-
-          Widget row(_NodeAction a, IconData icon, String label, {Color? color, bool enabled = true, String? note}) {
-            final c = !enabled ? p.dim : (color == null ? p.text : p.ink(color));
-            return InkWell(
-              onTap: enabled ? () => run(a) : null,
-              borderRadius: BorderRadius.circular(10),
-              child: Container(
-                constraints: const BoxConstraints(minHeight: 52),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                child: Row(
-                  children: [
-                    Icon(icon, size: 21, color: color == null && enabled ? p.muted : c),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(label, style: TextStyle(fontSize: 15, color: c)),
-                          if (note != null) ...[const SizedBox(height: 2), Text(note, style: TextStyle(fontSize: 12, color: p.dim))],
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }
-
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
-                  child: Row(
-                    children: [
-                      CountryBadge(countryOf(n.name, n.server), width: 34),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(cleanNodeName(n.name), style: display(16), overflow: TextOverflow.ellipsis),
-                            const SizedBox(height: 4),
-                            Row(
-                              children: [
-                                ProtoBadge(n.protocol),
-                                const SizedBox(width: 8),
-                                Flexible(
-                                  child: Text(
-                                    sub.displayName,
-                                    style: TextStyle(fontSize: 12, color: p.dim),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 3),
-                            Text(
-                              '${n.server}:${n.port}',
-                              style: TextStyle(fontSize: 11.5, color: p.dim, fontFamily: monoFont, fontFamilyFallback: monoFallback),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (l != null) ...[const SizedBox(width: 8), _LatencyCell(latency: l, testing: false)],
-                    ],
-                  ),
-                ),
-                Divider(height: 1, color: p.border),
-                const SizedBox(height: 6),
-                row(
-                  _NodeAction.connect,
-                  Icons.power_settings_new,
-                  inUse ? 'Подключён' : 'Подключиться',
-                  enabled: _canConnect(s, sub, n),
-                  note: n.cores.isEmpty ? 'Ни одно ядро его не поддерживает' : null,
-                ),
-                row(
-                  _NodeAction.favorite,
-                  fav ? Icons.star_rounded : Icons.star_outline_rounded,
-                  fav ? 'Убрать из избранного' : 'В избранное',
-                  color: fav ? warnColor : null,
-                ),
-                row(
-                  _NodeAction.hide,
-                  Icons.delete_outline,
-                  'Удалить из подписки',
-                  color: errColor,
-                  enabled: !inUse,
-                  note: inUse ? 'Сначала подключитесь к другому серверу' : 'Не вернётся при обновлении подписки',
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    ),
-  );
 }
 
 /// Under the list: how many servers were removed from the subscriptions,

@@ -5,7 +5,8 @@ class _NodeTable extends StatelessWidget {
   final List<_Section> sections;
   final Set<String> collapsed;
   final ValueChanged<String> onToggle;
-  const _NodeTable({required this.state, required this.sections, required this.collapsed, required this.onToggle});
+  final _Picking picking;
+  const _NodeTable({required this.state, required this.sections, required this.collapsed, required this.onToggle, required this.picking});
 
   @override
   Widget build(BuildContext context) {
@@ -50,7 +51,7 @@ class _NodeTable extends StatelessWidget {
                 ),
               if (!collapsed.contains(sec.id))
                 for (final (sub, n) in sec.rows)
-                  _NodeRow(key: ValueKey('${sub.id}/${n.fingerprint}/${n.name}'), state: state, sub: sub, node: n, showSub: sec.showSub, narrow: narrow),
+                  _NodeRow(key: picking.rowKey(sub, n), state: state, sub: sub, node: n, showSub: sec.showSub, narrow: narrow, picking: picking),
             ],
           ],
         );
@@ -126,8 +127,8 @@ class _NodeTable extends StatelessWidget {
               child: FittedBox(fit: BoxFit.scaleDown, child: action),
             ),
           ),
-          // The star and the «⋯» menu.
-          SizedBox(width: 64, height: header ? null : 28, child: tools),
+          // The star, always in its place.
+          SizedBox(width: 36, height: header ? null : 28, child: tools),
         ],
       ),
     );
@@ -215,7 +216,8 @@ class _NodeRow extends StatefulWidget {
   final NodeView node;
   final bool showSub;
   final bool narrow;
-  const _NodeRow({super.key, required this.state, required this.sub, required this.node, required this.showSub, required this.narrow});
+  final _Picking picking;
+  const _NodeRow({super.key, required this.state, required this.sub, required this.node, required this.showSub, required this.narrow, required this.picking});
 
   @override
   State<_NodeRow> createState() => _NodeRowState();
@@ -224,35 +226,17 @@ class _NodeRow extends StatefulWidget {
 class _NodeRowState extends State<_NodeRow> {
   bool hover = false;
 
-  /// The «⋯» menu is open: its button stays in sight meanwhile.
-  bool menuOpen = false;
-  final _menuButton = GlobalKey();
-
-  /// Opens the server's actions: a sheet on a phone, a menu on the desktop,
-  /// under the «⋯» button or, for a right click, at [at].
-  Future<void> _actions({Offset? at}) async {
+  /// A right click's menu, at [at]: connect, the favourites, removal.
+  Future<void> _menu(Offset at) async {
     final s = widget.state;
-    if (isCompact(context)) {
-      HapticFeedback.selectionClick();
-      await showServerActions(context, s, widget.sub, widget.node);
-      return;
-    }
     final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
-    Rect anchor;
-    if (at != null) {
-      anchor = overlay.globalToLocal(at) & Size.zero;
-    } else {
-      final box = (_menuButton.currentContext?.findRenderObject() ?? context.findRenderObject()) as RenderBox;
-      anchor = box.localToGlobal(Offset(0, box.size.height + 4), ancestor: overlay) & box.size;
-    }
-    setState(() => menuOpen = true);
     final v = await showMenu<_NodeAction>(
       context: context,
-      position: RelativeRect.fromRect(anchor, Offset.zero & overlay.size),
+      position: RelativeRect.fromRect(overlay.globalToLocal(at) & Size.zero, Offset.zero & overlay.size),
       constraints: const BoxConstraints(minWidth: 230),
       items: _serverMenuItems(s, widget.sub, widget.node),
     );
-    if (mounted) setState(() => menuOpen = hover = false);
+    if (mounted) setState(() => hover = false);
     if (v != null && mounted) _runServerAction(s, widget.sub, widget.node, v);
   }
 
@@ -261,29 +245,17 @@ class _NodeRowState extends State<_NodeRow> {
     final p = context.pal;
     final s = widget.state;
     final n = widget.node;
+    final pick = widget.picking;
+    final picking = pick.active;
+    final picked = picking && pick.isPicked(widget.sub, n);
     final sel = s.isSelected(widget.sub, n);
     final active = sel && s.status.active;
     final connected = sel && s.status.state == ConnState.connected;
     final unusable = n.cores.isEmpty;
     final narrow = widget.narrow;
+    final compact = isCompact(context);
     final fav = s.isFavorite(widget.sub, n);
     void connect() => s.connect(subscription: widget.sub.id, fingerprint: n.fingerprint, name: n.name);
-
-    // The star and the «⋯» show under the pointer; a starred server keeps
-    // its star. A touch screen as wide as a desktop has no pointer to show
-    // them: there they stay.
-    final tools = hover || menuOpen || platform.isAndroid;
-    // Small enough for the row's height, which the theme's icon buttons
-    // are not.
-    Widget tool({Key? key, required String tooltip, required IconData icon, required Color color, required VoidCallback onTap}) => Tooltip(
-      key: key,
-      message: tooltip,
-      child: InkResponse(
-        onTap: onTap,
-        radius: 16,
-        child: SizedBox(width: 30, height: 28, child: Icon(icon, size: 18, color: color)),
-      ),
-    );
 
     final Widget action;
     if (connected) {
@@ -292,6 +264,9 @@ class _NodeRowState extends State<_NodeRow> {
       action = narrow
           ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: accent))
           : Pill('Подключение…', color: p.accentInk);
+    } else if (picking) {
+      // Picking: a tap picks the row, so nothing on it connects.
+      action = const SizedBox();
     } else if (!unusable && sel && narrow) {
       action = Btn(icon: Icons.power_settings_new, small: true, kind: BtnKind.primary, tooltip: 'Подключить', onPressed: s.busy || !s.online ? null : connect);
     } else if (!unusable && (hover || sel) && !narrow) {
@@ -306,31 +281,38 @@ class _NodeRowState extends State<_NodeRow> {
       action = const SizedBox();
     }
 
+    // The star: always there, amber when the server is a favourite. A
+    // phone's is a finger wide.
+    final star = Tooltip(
+      message: fav ? 'Убрать из избранного' : 'В избранное',
+      child: InkResponse(
+        onTap: picking ? null : () => s.toggleFavorite(widget.sub, n),
+        radius: compact ? 22 : 16,
+        child: SizedBox(
+          width: compact ? 40 : 32,
+          height: compact ? 40 : 28,
+          child: Icon(fav ? Icons.star_rounded : Icons.star_outline_rounded, size: compact ? 22 : 19, color: fav ? warnColor : p.dim),
+        ),
+      ),
+    );
+
     final row = _NodeTable._row(
       narrow: narrow,
-      radio: _Radio(on: sel),
+      radio: picking ? _PickBox(on: picked, enabled: pick.canPick(widget.sub, n)) : _Radio(on: sel),
       badge: CountryBadge(countryOf(n.name, n.server), width: narrow ? 32 : 30),
       name: Tooltip(
-        // A phone's long press opens the actions, which name the server.
-        triggerMode: isCompact(context) ? TooltipTriggerMode.manual : null,
+        // A phone's long press picks the row.
+        triggerMode: compact ? TooltipTriggerMode.manual : null,
         message:
             '${n.server}:${n.port}\n'
             '${n.cores.isEmpty ? 'Ни одно ядро не поддерживает' : 'Ядра: ${n.cores.map((k) => coreStyle(k).name).join(', ')}'}',
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Flexible(
-                  child: Text(
-                    cleanNodeName(n.name),
-                    style: const TextStyle(fontWeight: FontWeight.w500),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                // A phone has no star column: the starred ones say so here.
-                if (narrow && fav) ...[const SizedBox(width: 5), const Icon(Icons.star_rounded, size: 15, color: warnColor)],
-              ],
+            Text(
+              cleanNodeName(n.name),
+              style: const TextStyle(fontWeight: FontWeight.w500),
+              overflow: TextOverflow.ellipsis,
             ),
             if (widget.showSub)
               Text(
@@ -344,85 +326,66 @@ class _NodeRowState extends State<_NodeRow> {
       proto: ProtoBadge(n.protocol),
       ping: _LatencyCell(latency: s.latencyOf(widget.sub.id, n.fingerprint), testing: s.testingLatency),
       action: action,
-      tools: narrow
-          // A narrow window: the «⋯» under the pointer; a phone has the
-          // long press instead.
-          ? isCompact(context)
-                ? const SizedBox()
-                : SizedBox(
-                    width: 30,
-                    child: hover || menuOpen ? tool(key: _menuButton, tooltip: 'Действия', icon: Icons.more_horiz, color: p.muted, onTap: _actions) : null,
-                  )
-          : Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                tool(
-                  tooltip: fav ? 'Убрать из избранного' : 'В избранное',
-                  icon: fav ? Icons.star_rounded : Icons.star_outline_rounded,
-                  color: fav ? warnColor : (tools ? p.muted : Colors.transparent),
-                  onTap: () => s.toggleFavorite(widget.sub, n),
-                ),
-                tool(key: _menuButton, tooltip: 'Действия', icon: Icons.more_horiz, color: tools ? p.muted : Colors.transparent, onTap: _actions),
-              ],
-            ),
+      tools: star,
     );
 
+    final Color bg;
+    if (picked) {
+      bg = accent.withValues(alpha: .16);
+    } else if (sel && !picking) {
+      bg = accent.withValues(alpha: .10);
+    } else {
+      bg = hover && !unusable ? p.surface2 : Colors.transparent;
+    }
     Widget body = Opacity(
-      opacity: unusable ? .45 : 1,
-      child: Container(
-        decoration: BoxDecoration(
-          color: sel ? accent.withValues(alpha: .10) : (hover && !unusable ? p.surface2 : Colors.transparent),
-          borderRadius: BorderRadius.circular(10),
-        ),
+      opacity: unusable && !picked ? .45 : 1,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(10)),
         child: row,
       ),
     );
 
     if (narrow) {
-      // A phone: swipe right to connect, left for the favourites. The row
-      // stays where it is; the swipe only triggers the action.
+      // A phone: swipe right to connect. The row stays where it is; the
+      // swipe only triggers the action. Not while picking: the finger
+      // picks then.
       body = Dismissible(
         key: ValueKey('swipe/${widget.sub.id}/${n.fingerprint}/${n.name}'),
-        direction: unusable ? DismissDirection.endToStart : DismissDirection.horizontal,
-        dismissThresholds: const {DismissDirection.startToEnd: .28, DismissDirection.endToStart: .28},
+        direction: unusable || picking ? DismissDirection.none : DismissDirection.startToEnd,
+        dismissThresholds: const {DismissDirection.startToEnd: .28},
         confirmDismiss: (dir) async {
           s.setPref(serverHintPref, true);
-          if (dir == DismissDirection.startToEnd) {
-            if (!s.busy && s.online) {
-              HapticFeedback.selectionClick();
-              connect();
-            }
-          } else {
+          if (!s.busy && s.online) {
             HapticFeedback.selectionClick();
-            s.toggleFavorite(widget.sub, n);
+            connect();
           }
           return false;
         },
         background: _SwipeBackground(color: okColor, icon: Icons.power_settings_new, label: 'Подключить', alignLeft: true),
-        secondaryBackground: _SwipeBackground(
-          color: warnColor,
-          icon: fav ? Icons.star_outline_rounded : Icons.star_rounded,
-          label: fav ? 'Убрать из избранного' : 'В избранное',
-          alignLeft: false,
-        ),
         child: body,
       );
     }
 
     return Tooltip(
-      triggerMode: isCompact(context) ? TooltipTriggerMode.manual : null,
-      message: unusable ? 'Ни одно установленное ядро не поддерживает этот сервер' : '',
+      triggerMode: compact ? TooltipTriggerMode.manual : null,
+      message: unusable && !picking ? 'Ни одно установленное ядро не поддерживает этот сервер' : '',
       child: MouseRegion(
-        cursor: unusable ? SystemMouseCursors.basic : SystemMouseCursors.click,
+        cursor: unusable && !picking ? SystemMouseCursors.basic : SystemMouseCursors.click,
         onEnter: (_) => setState(() => hover = true),
         onExit: (_) => setState(() => hover = false),
         child: GestureDetector(
-          onLongPress: _actions,
-          onSecondaryTapUp: (d) => _actions(at: d.globalPosition),
-          onDoubleTap: unusable || isCompact(context) || s.busy || !s.online || (sel && s.status.active) ? null : connect,
-          onTap: unusable || sel
+          // A press held, then moved on: the rows it passes are picked.
+          onLongPressStart: (d) => pick.start(widget.sub, n, d.globalPosition),
+          onLongPressMoveUpdate: (d) => pick.move(d.globalPosition),
+          onLongPressEnd: (_) => pick.end(),
+          onSecondaryTapUp: picking ? null : (d) => _menu(d.globalPosition),
+          onDoubleTap: picking || unusable || compact || s.busy || !s.online || (sel && s.status.active) ? null : connect,
+          onTap: picking
+              ? () => pick.toggle(widget.sub, n)
+              : unusable || sel
               ? null
-              : isCompact(context) && s.status.active && s.online && !s.busy
+              : compact && s.status.active && s.online && !s.busy
               ? connect
               : () => s.selectNode(widget.sub.id, n.fingerprint, n.name),
           child: body,
