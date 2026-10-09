@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -108,12 +109,8 @@ const (
 // connection. A variable for tests.
 var setsWait = 20 * time.Second
 
-var (
-	// errPending is a set still downloading when connecting stops waiting.
-	errPending = errors.New("still downloading")
-	// errNotBuiltIn is a set CoreShift carries but this build has not.
-	errNotBuiltIn = errors.New("not built into this build of CoreShift")
-)
+// errPending is a set still downloading when connecting stops waiting.
+var errPending = errors.New("still downloading")
 
 // ruleSets keeps rule set files in dir: the copies built into CoreShift at
 // first, then newer ones from SagerNet, refreshed in the background when
@@ -251,16 +248,10 @@ func (r *ruleSets) get(ctx context.Context, sets []geoSet, proxy *url.URL) (doma
 func (r *ruleSets) builtin(ctx context.Context, gs geoSet, proxy *url.URL) (string, error) {
 	path := filepath.Join(r.dir, gs.Tag+".srs")
 	mod, ok := r.ready(gs, path)
-	_, _, fromDat := ruleset.DatSource(gs.Tag)
 	switch {
-	case fromDat && !ok:
-		// Made out of a list of every category, tens of megabytes:
-		// not downloaded by each device, only with releases.
-		return "", errNotBuiltIn
-	case fromDat:
 	case !ok:
 		err := r.await(ctx, path, func(ctx context.Context) error {
-			if err := r.download(ctx, gs, path, proxy); err != nil {
+			if _, err := r.download(ctx, gs, path, proxy); err != nil {
 				return err
 			}
 			r.publish(Event{Kind: "rules", Reason: gs.Tag, Line: "downloaded"})
@@ -269,7 +260,7 @@ func (r *ruleSets) builtin(ctx context.Context, gs geoSet, proxy *url.URL) (stri
 		if err != nil {
 			return "", err
 		}
-	case time.Since(mod) > ruleSetMaxAge:
+	case time.Since(mod) > maxAge(gs.Tag):
 		go r.refresh(gs, path, proxy)
 	}
 	return path, nil
@@ -304,12 +295,15 @@ func (r *ruleSets) refresh(gs geoSet, path string, proxy *url.URL) {
 		delete(r.refreshing, gs.Tag)
 		r.mu.Unlock()
 	}()
-	if err := r.download(context.Background(), gs, path, proxy); err != nil {
+	changed, err := r.download(context.Background(), gs, path, proxy)
+	if err != nil {
 		// Line "kept": the set still works, only not updated.
 		r.publish(Event{Kind: "rules", Reason: gs.Tag, Line: "kept", Error: fmt.Sprintf("база %s не обновилась, работает прежняя: %v", gs.Tag, err)})
 		return
 	}
-	r.publish(Event{Kind: "rules", Reason: gs.Tag, Line: "updated"})
+	if changed {
+		r.publish(Event{Kind: "rules", Reason: gs.Tag, Line: "updated"})
+	}
 }
 
 // ready makes sure path holds a usable copy of gs and returns when it was
@@ -354,38 +348,84 @@ func (r *ruleSets) ready(gs geoSet, path string) (time.Time, bool) {
 
 // download fetches gs into path, if ruleset.Check accepts it next to the
 // copy on disk and the built-in one.
-func (r *ruleSets) download(ctx context.Context, gs geoSet, path string, proxy *url.URL) error {
+//
+// Each of ruleset.Sources is tried in turn, through the proxy first: the
+// source may be blocked where the user is. changed is false when the copy
+// on disk is the current one already (a set CoreShift publishes itself
+// says so in its manifest): it is dated now, as if downloaded.
+func (r *ruleSets) download(ctx context.Context, gs geoSet, path string, proxy *url.URL) (changed bool, err error) {
 	var refs [][]byte
-	if cur, err := os.ReadFile(path); err == nil {
+	cur, err := os.ReadFile(path)
+	if err == nil {
 		refs = append(refs, cur)
 	}
 	if base, _, ok := r.baseline(gs.Tag); ok {
 		refs = append(refs, base)
 	}
-	// Through the proxy first: the source may be blocked where the user is.
 	vias := []*url.URL{nil}
 	if proxy != nil {
 		vias = []*url.URL{proxy, nil}
 	}
+	if cur != nil && r.current(ctx, gs.Tag, cur, vias) {
+		now := time.Now()
+		return false, os.Chtimes(path, now, now)
+	}
 	var errs []error
 	for _, via := range vias {
-		b, err := r.fetch(ctx, ruleset.URL(gs.Tag), via)
-		if err == nil {
-			err = ruleset.Check(gs.Tag, b, refs...)
-		}
-		if err == nil {
-			return writeAtomic(path, b)
-		}
-		how := "directly"
-		if via != nil {
-			how = "through the proxy"
-		}
-		errs = append(errs, fmt.Errorf("%s: %w", how, err))
-		if ctx.Err() != nil {
-			break
+		for i, src := range ruleset.Sources(gs.Tag) {
+			b, err := r.fetch(ctx, src, via)
+			if err == nil {
+				err = ruleset.Check(gs.Tag, b, refs...)
+			}
+			if err == nil {
+				return true, writeAtomic(path, b)
+			}
+			how := "directly"
+			if via != nil {
+				how = "through the proxy"
+			}
+			if i > 0 {
+				how += ", mirror"
+			}
+			errs = append(errs, fmt.Errorf("%s: %w", how, err))
+			if ctx.Err() != nil {
+				return false, errors.Join(errs...)
+			}
 		}
 	}
-	return errors.Join(errs...)
+	return false, errors.Join(errs...)
+}
+
+// current reports whether cur is the copy of tag CoreShift publishes now,
+// by its manifest: a few hundred bytes rather than the set. Only for the
+// sets CoreShift publishes; false when the manifest cannot be had.
+func (r *ruleSets) current(ctx context.Context, tag string, cur []byte, vias []*url.URL) bool {
+	if _, _, ok := ruleset.DatSource(tag); !ok {
+		return false
+	}
+	for _, via := range vias {
+		b, err := r.fetch(ctx, ruleset.Published+ruleset.PublishedManifest, via)
+		if err != nil {
+			continue
+		}
+		var m ruleset.Manifest
+		if json.Unmarshal(b, &m) != nil {
+			return false
+		}
+		f, ok := m.Sets[tag]
+		return ok && f == ruleset.Describe(cur)
+	}
+	return false
+}
+
+// maxAge is how long a copy of tag is kept before a newer one is looked
+// for: a day for the sites blocked in Russia, which change often, a week
+// for the rest.
+func maxAge(tag string) time.Duration {
+	if tag == "geosite-ru-blocked" {
+		return 24 * time.Hour
+	}
+	return ruleSetMaxAge
 }
 
 func fetchRuleSet(ctx context.Context, rawURL string, proxy *url.URL) ([]byte, error) {

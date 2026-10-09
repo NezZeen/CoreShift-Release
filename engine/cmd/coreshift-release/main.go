@@ -8,10 +8,15 @@
 //	    installer there: the three assets of the release; for an APK they
 //	    are latest-android.json and latest-android.json.sig
 //	coreshift-release rulesets [-dir internal/ruleset/data] [-accept]
-//	    downloads SagerNet's current copies of the rule sets CoreShift
-//	    carries and takes them if ruleset.Check accepts each next to the
-//	    previous copy; -accept takes ones that are far from it, after a look
-//	    at why (never damaged ones)
+//	    downloads the current copies of the rule sets CoreShift carries
+//	    (SagerNet's; the two made out of runetfreedom's geosite.dat, checked
+//	    against its .sha256sum) and takes them if ruleset.Check accepts each
+//	    next to the previous copy; -accept takes ones that are far from it,
+//	    after a look at why (never damaged ones)
+//	coreshift-release rulesets-publish -out DIR [-accept]
+//	    makes the sets CoreShift publishes itself (those made out of
+//	    runetfreedom's list) into DIR, the rulesets branch, with
+//	    rulesets.json; run by .github/workflows/rulesets.yml
 //
 // Keep the key out of the repository: whoever has it can make every
 // installed CoreShift run their installer as SYSTEM.
@@ -46,6 +51,8 @@ func main() {
 		err = manifest(os.Args[2:])
 	case "rulesets":
 		err = rulesets(os.Args[2:])
+	case "rulesets-publish":
+		err = rulesetsPublish(os.Args[2:])
 	default:
 		usage()
 	}
@@ -56,7 +63,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: coreshift-release keygen -out FILE | manifest -installer SETUP.exe -version 1.2.3 -build N [-commit C] -key FILE -out DIR | rulesets [-dir DIR] [-accept]")
+	fmt.Fprintln(os.Stderr, "usage: coreshift-release keygen -out FILE | manifest -installer SETUP.exe -version 1.2.3 -build N [-commit C] -key FILE -out DIR | rulesets [-dir DIR] [-accept] | rulesets-publish -out DIR [-accept]")
 	os.Exit(2)
 }
 

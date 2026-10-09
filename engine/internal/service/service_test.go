@@ -546,8 +546,11 @@ func TestRussiaDirectUsesBuiltInRuleSets(t *testing.T) {
 			b, _, ok := ruleset.Baseline(tag)
 			return b, time.Now().Add(-time.Hour), ok
 		}
-		c.fetchRuleSet = func(context.Context, string, *url.URL) ([]byte, error) {
-			fetched = true
+		c.fetchRuleSet = func(_ context.Context, rawURL string, _ *url.URL) ([]byte, error) {
+			// Only a set this build does not carry is looked for.
+			if _, _, ok := ruleset.Baseline(strings.TrimSuffix(path.Base(rawURL), ".srs")); ok {
+				fetched = true
+			}
 			return nil, errors.New("offline")
 		}
 	})
@@ -557,7 +560,7 @@ func TestRussiaDirectUsesBuiltInRuleSets(t *testing.T) {
 	h.tun.mu.Lock()
 	o := h.tun.opts
 	h.tun.mu.Unlock()
-	// geosite-ru-blocked, if this build carries it: it is never downloaded.
+	// geosite-ru-blocked, if this build carries it.
 	wantProxy := 1
 	if _, _, ok := ruleset.Baseline("geosite-ru-blocked"); ok {
 		wantProxy++

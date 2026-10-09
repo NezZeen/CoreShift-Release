@@ -112,6 +112,93 @@ func refreshRuleSets(dir string, fetch func(url string) ([]byte, error), accept 
 	return os.WriteFile(manifestPath, append(body, '\n'), 0o644)
 }
 
+// rulesetsPublish makes the sets CoreShift publishes itself, for the
+// rulesets branch devices refresh them from (ruleset.Published).
+func rulesetsPublish(args []string) error {
+	fs := flag.NewFlagSet("rulesets-publish", flag.ExitOnError)
+	out := fs.String("out", "", "the folder of the rulesets branch")
+	accept := fs.Bool("accept", false, "take copies that are far from the published ones (look at why first); damaged ones are never taken")
+	fs.Parse(args)
+	if *out == "" {
+		return errors.New("rulesets-publish: -out is required")
+	}
+	return publishRuleSets(*out, downloadRuleSet, ruleset.Baseline, *accept, os.Stdout)
+}
+
+// publishRuleSets writes into dir each set made out of a v2ray list
+// (ruleset.DatSource), if ruleset.Check accepts it next to the copy
+// published there before and the built-in one (with accept, on its own),
+// and rulesets.json listing them. Devices hold a copy to the same checks,
+// so one they would refuse is not published. Nothing is written unless
+// every set is good; an unchanged set keeps its file and the manifest its
+// date, so the branch gets a commit only when a set changes.
+func publishRuleSets(dir string, fetch func(url string) ([]byte, error), baseline func(tag string) ([]byte, time.Time, bool), accept bool, out io.Writer) error {
+	manifestPath := filepath.Join(dir, ruleset.PublishedManifest)
+	var prev ruleset.Manifest
+	if b, err := os.ReadFile(manifestPath); err == nil {
+		if err := json.Unmarshal(b, &prev); err != nil {
+			return fmt.Errorf("%s: %w", manifestPath, err)
+		}
+	}
+	m := ruleset.Manifest{Fetched: prev.Fetched, Sets: map[string]ruleset.File{}}
+	got := map[string][]byte{}
+	lists := map[string][]byte{}
+	changed := false
+	for _, tag := range ruleset.Known() {
+		if _, _, ok := ruleset.DatSource(tag); !ok {
+			continue
+		}
+		b, err := fetchSet(tag, fetch, lists)
+		if err != nil {
+			return fmt.Errorf("%s (%s): %w", tag, ruleset.URL(tag), err)
+		}
+		var refs [][]byte
+		if p, err := os.ReadFile(filepath.Join(dir, tag+".srs")); err == nil {
+			refs = append(refs, p)
+		}
+		if base, _, ok := baseline(tag); ok {
+			refs = append(refs, base)
+		}
+		if err := ruleset.Check(tag, b, refs...); err != nil {
+			if !accept {
+				return fmt.Errorf("%s: %w (if upstream really changed so, look at the set and run again with -accept)", tag, err)
+			}
+			if err := ruleset.Check(tag, b); err != nil {
+				return fmt.Errorf("%s: %w", tag, err)
+			}
+			fmt.Fprintf(out, "%s: taken despite: %v\n", tag, err)
+		}
+		got[tag] = b
+		m.Sets[tag] = ruleset.Describe(b)
+		what := "unchanged"
+		if p, ok := prev.Sets[tag]; !ok || p != m.Sets[tag] {
+			what = fmt.Sprintf("%d bytes", len(b))
+			changed = true
+		}
+		fmt.Fprintf(out, "%s: %s\n", tag, what)
+	}
+	if len(got) == 0 {
+		return errors.New("no set to publish")
+	}
+	if !changed && len(prev.Sets) == len(m.Sets) {
+		return nil
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	for tag, b := range got {
+		if err := os.WriteFile(filepath.Join(dir, tag+".srs"), b, 0o644); err != nil {
+			return err
+		}
+	}
+	m.Fetched = time.Now().UTC().Truncate(time.Second)
+	body, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(manifestPath, append(body, '\n'), 0o644)
+}
+
 // fetchSet downloads the set tag, or makes it out of the v2ray list it
 // comes from (ruleset.DatSource): the list is taken only if its sha256 is
 // the one published next to it (.sha256sum).

@@ -1,0 +1,56 @@
+# Publishes the rule sets CoreShift makes out of runetfreedom's geosite.dat
+# (geosite-ru-blocked, geosite-category-ads-all) to the orphan branch
+# "rulesets", where installed copies refresh them from. Touches nothing
+# else: not main, not releases. See packaging/README.md, «Базы правил».
+name: rulesets
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rulesets
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: engine/go.mod
+          cache-dependency-path: engine/go.sum
+
+      - name: Check out the rulesets branch
+        run: |
+          if git ls-remote --exit-code --heads origin rulesets >/dev/null; then
+            git fetch --depth=1 origin rulesets
+            git worktree add --detach out FETCH_HEAD
+          else
+            git worktree add --detach out
+            git -C out checkout --orphan rulesets
+            git -C out rm -rfq .
+          fi
+
+      - name: Make the rule sets
+        working-directory: engine
+        run: go run ./cmd/coreshift-release rulesets-publish -out ../out
+
+      - name: Publish if changed
+        working-directory: out
+        run: |
+          git add -A
+          if git diff --cached --quiet; then
+            echo "The rule sets have not changed."
+            exit 0
+          fi
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q -m "Rule sets $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push origin HEAD:refs/heads/rulesets

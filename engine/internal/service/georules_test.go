@@ -3,7 +3,9 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -107,11 +109,11 @@ func geoRig(t *testing.T, src *source) *ruleSetsRig {
 	rig.transport = func(*url.URL) *http.Transport {
 		return src.Client().Transport.(*http.Transport).Clone()
 	}
-	var mu sync.Mutex
+	// Published from the background too; never under rig.mu otherwise.
 	rig.publish = func(e Event) {
-		mu.Lock()
+		rig.mu.Lock()
 		rig.events = append(rig.events, e)
-		mu.Unlock()
+		rig.mu.Unlock()
 	}
 	return rig
 }
@@ -381,12 +383,9 @@ func TestRoutingPresetsFromSource(t *testing.T) {
 		t.Errorf("no word of the built-in set standing in: %+v", rig.events)
 	}
 
-	// From SagerNet: the built-in ad set, not refreshed though old.
+	// From SagerNet: the built-in ad set, whatever its own source says.
 	o.Geo = store.GeoSource{Source: store.GeoSagerNet}
-	rig.fetch = func(context.Context, string, *url.URL) ([]byte, error) {
-		t.Error("the ad set was downloaded")
-		return nil, errors.New("no")
-	}
+	rig.fetch = func(context.Context, string, *url.URL) ([]byte, error) { return nil, errors.New("offline") }
 	out = rig.routing(context.Background(), Options{BlockAds: true}, nil)
 	if len(out.block) != 1 || out.block[0].Tag != adsSet.Tag {
 		t.Fatalf("ads: %+v", out.block)
@@ -394,15 +393,21 @@ func TestRoutingPresetsFromSource(t *testing.T) {
 	if b, _ := os.ReadFile(out.block[0].Path); !bytes.Equal(b, adsCopy) {
 		t.Error("not the built-in ad set")
 	}
-	time.Sleep(100 * time.Millisecond) // a refresh would have started
-	// Not carried by this build: left out, never downloaded.
+	time.Sleep(100 * time.Millisecond) // the refresh of the old copy fails
+	// Neither carried by this build nor to be had: left out, said so.
 	rig.baseline = noBaseline
 	os.Remove(filepath.Join(rig.dir, adsSet.Tag+".srs"))
+	rig.mu.Lock()
 	rig.events = nil
+	rig.mu.Unlock()
 	if out := rig.routing(context.Background(), Options{BlockAds: true}, nil); len(out.block) != 0 {
 		t.Errorf("ads without a copy: %+v", out.block)
 	}
-	if len(rig.events) == 0 || !strings.Contains(rig.events[len(rig.events)-1].Error, "реклама не блокируется") {
+	found := false
+	for _, e := range rig.events {
+		found = found || strings.Contains(e.Error, "реклама не блокируется")
+	}
+	if !found {
 		t.Errorf("events %+v", rig.events)
 	}
 }
@@ -433,5 +438,94 @@ func TestFailedUserSetStillConnects(t *testing.T) {
 	}
 	if !warned {
 		t.Error("no word of the skipped rule")
+	}
+}
+
+// The sets CoreShift makes out of runetfreedom's list come from its own
+// branch, or its mirror, held to the same checks as SagerNet's; the
+// manifest there spares downloading a copy that is current. ru-blocked is
+// looked at daily.
+func TestPublishedSetsRefresh(t *testing.T) {
+	blocked := geoSet{Tag: "geosite-ru-blocked", Proxy: true}
+	names := []string{"meduza.io", "linkedin.com"}
+	for i := range 100 {
+		names = append(names, fmt.Sprintf("blocked-%d.example", i))
+	}
+	builtin := namesSet(t, names...)
+	update := namesSet(t, append(names, "new-blocked.example")...)
+	tampered := namesSet(t, append(names, "vk.com")...)
+	primary := ruleset.Published + blocked.Tag + ".srs"
+	mirror := ruleset.PublishedMirror + blocked.Tag + ".srs"
+	manifest := ruleset.Published + ruleset.PublishedManifest
+
+	rig := newRuleSetsRig(t, time.Now().Add(-48*time.Hour))
+	rig.baseline = func(tag string) ([]byte, time.Time, bool) {
+		if tag == blocked.Tag {
+			return builtin, rig.fetched, true
+		}
+		return nil, time.Time{}, false
+	}
+	var mu sync.Mutex
+	served := map[string][]byte{}
+	var asked []string
+	rig.fetch = func(_ context.Context, rawURL string, _ *url.URL) ([]byte, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		asked = append(asked, rawURL)
+		if b, ok := served[rawURL]; ok {
+			return b, nil
+		}
+		return nil, errors.New("server returned 404 Not Found")
+	}
+	serve := func(m map[string][]byte) {
+		mu.Lock()
+		served, asked = m, nil
+		mu.Unlock()
+	}
+	path := rig.path(blocked)
+	if _, ok := rig.ready(blocked, path); !ok {
+		t.Fatal("no built-in copy")
+	}
+	if maxAge(blocked.Tag) != 24*time.Hour || maxAge("geoip-ru") != 7*24*time.Hour {
+		t.Error("ru-blocked is not looked at daily")
+	}
+	rig.events = nil
+
+	// Damaged on the branch, refused by the checks on the mirror: the old
+	// copy stays.
+	serve(map[string][]byte{primary: []byte("<html>"), mirror: tampered})
+	rig.refresh(blocked, path, nil)
+	if !bytes.Equal(rig.onDisk(t, blocked), builtin) {
+		t.Error("a bad copy replaced the old one")
+	}
+	if e := rig.last(t); e.Line != "kept" || !strings.Contains(e.Error, "has vk.com") || !strings.Contains(e.Error, "mirror") {
+		t.Errorf("event %+v", e)
+	}
+	// The branch unreachable: the mirror's copy.
+	serve(map[string][]byte{mirror: update})
+	rig.refresh(blocked, path, nil)
+	if !bytes.Equal(rig.onDisk(t, blocked), update) {
+		t.Error("the mirror's copy was not taken")
+	}
+	if e := rig.last(t); e.Line != "updated" {
+		t.Errorf("event %+v", e)
+	}
+	// The manifest says the copy on disk is current: only it is asked
+	// for, and the copy is dated now.
+	old := time.Now().Add(-48 * time.Hour)
+	os.Chtimes(path, old, old)
+	m, _ := json.Marshal(ruleset.Manifest{Fetched: time.Now(), Sets: map[string]ruleset.File{blocked.Tag: ruleset.Describe(update)}})
+	serve(map[string][]byte{manifest: m, primary: tampered})
+	rig.refresh(blocked, path, nil)
+	if len(asked) != 1 || asked[0] != manifest || !fresh(path) || len(rig.events) != 0 {
+		t.Errorf("asked %v, events %+v", asked, rig.events)
+	}
+	// A newer one there: downloaded from the branch.
+	newer := namesSet(t, append(names, "new-blocked.example", "another.example")...)
+	m, _ = json.Marshal(ruleset.Manifest{Fetched: time.Now(), Sets: map[string]ruleset.File{blocked.Tag: ruleset.Describe(newer)}})
+	serve(map[string][]byte{manifest: m, primary: newer})
+	rig.refresh(blocked, path, nil)
+	if !bytes.Equal(rig.onDisk(t, blocked), newer) {
+		t.Error("the branch's newer copy was not taken")
 	}
 }

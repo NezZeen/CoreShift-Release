@@ -193,3 +193,71 @@ func TestRefreshRuleSets(t *testing.T) {
 		t.Errorf("output:\n%s", out.String())
 	}
 }
+
+// rulesets-publish writes the sets made out of runetfreedom's list and
+// their manifest, and nothing when they have not changed.
+func TestPublishRuleSets(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "rulesets")
+	noBaseline := func(string) ([]byte, time.Time, bool) { return nil, time.Time{}, false }
+	unreachable := func(url string) ([]byte, error) { t.Fatalf("asked for %s", url); return nil, nil }
+	read := func(name string) []byte {
+		b, _ := os.ReadFile(filepath.Join(dir, name))
+		return b
+	}
+
+	dat, sum := geoList(goodList)
+	if err := publishRuleSets(dir, serveList(dat, sum, unreachable), noBaseline, false, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	var m ruleset.Manifest
+	if err := json.Unmarshal(read(ruleset.PublishedManifest), &m); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct{ tag, category string }{{"geosite-ru-blocked", "ru-blocked"}, {"geosite-category-ads-all", "category-ads-all"}} {
+		want, err := ruleset.FromDat(dat, false, c.category)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if b := read(c.tag + ".srs"); !bytes.Equal(b, want) || m.Sets[c.tag] != ruleset.Describe(want) {
+			t.Errorf("%s not published", c.tag)
+		}
+	}
+	if len(m.Sets) != 2 || m.Fetched.IsZero() {
+		t.Errorf("manifest %+v", m)
+	}
+
+	// The same list again: not a byte changes, so the branch gets no commit.
+	before := read(ruleset.PublishedManifest)
+	if err := publishRuleSets(dir, serveList(dat, sum, unreachable), noBaseline, false, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(read(ruleset.PublishedManifest), before) {
+		t.Error("an unchanged list rewrote the manifest")
+	}
+
+	// A list that does not match its checksum, and one devices would refuse.
+	bad := map[string][]string{"category-ads-all": {"doubleclick.net"}, "ru-blocked": {"meduza.io", "linkedin.com", "vk.com"}}
+	badDat, badSum := geoList(bad)
+	if err := publishRuleSets(dir, serveList(badDat, sum, unreachable), noBaseline, false, io.Discard); err == nil || !strings.Contains(err.Error(), "sha256sum") {
+		t.Errorf("checksum: %v", err)
+	}
+	if err := publishRuleSets(dir, serveList(badDat, badSum, unreachable), noBaseline, true, io.Discard); err == nil || !strings.Contains(err.Error(), "has vk.com") {
+		t.Errorf("vk.com in ru-blocked: %v", err)
+	}
+	if !bytes.Equal(read(ruleset.PublishedManifest), before) {
+		t.Error("a refused list was published")
+	}
+
+	// A change: published.
+	more := map[string][]string{"category-ads-all": goodList["category-ads-all"], "ru-blocked": append(goodList["ru-blocked"], "new.example")}
+	newDat, newSum := geoList(more)
+	var out bytes.Buffer
+	if err := publishRuleSets(dir, serveList(newDat, newSum, unreachable), noBaseline, false, &out); err != nil {
+		t.Fatal(err)
+	}
+	want, _ := ruleset.FromDat(newDat, false, "ru-blocked")
+	if !bytes.Equal(read("geosite-ru-blocked.srs"), want) || bytes.Equal(read(ruleset.PublishedManifest), before) ||
+		!strings.Contains(out.String(), "geosite-category-ads-all: unchanged") {
+		t.Errorf("the change was not published:\n%s", out.String())
+	}
+}

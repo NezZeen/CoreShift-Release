@@ -1,26 +1,28 @@
 // Package ruleset keeps the rule sets (sing-box .srs) behind the presets
 // ("Russian sites direct", "block ads") trustworthy without pinning them,
 // since SagerNet updates them every few days. Two come out of
-// runetfreedom's v2ray list instead (DatSource) and are refreshed only
-// with releases. The package also converts categories of v2ray's lists
-// into rule sets (FromDat), for those and the user's own rules.
+// runetfreedom's v2ray list instead (DatSource), which CoreShift converts
+// and publishes itself (Published). The package also converts categories
+// of v2ray's lists into rule sets (FromDat), for those and the user's own
+// rules.
 //
 // CoreShift carries a copy of each set, downloaded when it was released
 // (coreshift-release rulesets) and so as trustworthy as the release: the
 // self-updater installs only what the release key signed. The service
 // starts from that copy, so a tampered or unreachable source never leaves
-// the preset without its lists, and then takes newer copies from SagerNet
-// by itself, but only those Check accepts: a rule set sing-box reads, made
-// of names or addresses only, with what the set is for in it and none of
-// the probes it must not have, close in size to the copy it replaces and
-// to the built-in one, and with no new entries that match whole zones
-// (keywords, regular expressions, top-level domains). A rejected copy
-// leaves the previous one in place.
+// the preset without its lists, and then takes newer copies from their
+// sources (Sources) by itself, but only those Check accepts: a rule set
+// sing-box reads, made of names or addresses only, with what the set is
+// for in it and none of the probes it must not have, close in size to the
+// copy it replaces and to the built-in one, and with no new entries that
+// match whole zones (keywords, regular expressions, top-level domains). A
+// rejected copy leaves the previous one in place.
 //
 // What this cannot see: a few names or networks added to a set within those
 // bounds. Those would go direct (or, for the proxy sets, through the
-// tunnel, and for the ad set nowhere) until the source is fixed; the built-in copies of the next
-// release are checked against the previous ones before they are taken.
+// tunnel, and for the ad set nowhere) until the source is fixed; the
+// built-in copies of the next release are checked against the previous
+// ones before they are taken.
 package ruleset
 
 import (
@@ -128,9 +130,31 @@ const (
 // publishes no rule sets.
 const RunetFreedomDat = "https://raw.githubusercontent.com/runetfreedom/russia-blocked-geosite/release/geosite.dat"
 
+// Where CoreShift publishes the sets it makes out of runetfreedom's list
+// (coreshift-release rulesets-publish, run every few hours by the
+// rulesets workflow): the rulesets branch of the public release
+// repository, and jsDelivr's copy of it. PublishedManifest lists them
+// (a Manifest), so a device can tell whether its copy is current before
+// downloading one.
+const (
+	Published         = "https://raw.githubusercontent.com/NezZeen/CoreShift-Release/rulesets/"
+	PublishedMirror   = "https://cdn.jsdelivr.net/gh/NezZeen/CoreShift-Release@rulesets/"
+	PublishedManifest = "rulesets.json"
+)
+
+// Sources returns where the service downloads tag from, in order: SagerNet
+// (URL), or for the sets made out of a v2ray list CoreShift's branch and
+// its mirror, never the whole list.
+func Sources(tag string) []string {
+	if _, _, ok := DatSource(tag); ok {
+		return []string{Published + tag + ".srs", PublishedMirror + tag + ".srs"}
+	}
+	return []string{URL(tag)}
+}
+
 // fromDat are the sets CoreShift carries taken out of a v2ray list, by
-// category: coreshift-release rulesets makes them, the service never
-// downloads the whole list for them (they are refreshed by releases).
+// category: coreshift-release makes them, for releases (rulesets) and for
+// the branch devices refresh them from (rulesets-publish).
 var fromDat = map[string]string{
 	"geosite-ru-blocked":       "ru-blocked",
 	"geosite-category-ads-all": "category-ads-all",
