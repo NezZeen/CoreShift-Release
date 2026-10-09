@@ -716,6 +716,23 @@ class _Toasts extends StatelessWidget {
                       ),
                       const SizedBox(width: 10),
                       Flexible(child: Text(t.message, style: const TextStyle(fontSize: 13))),
+                      if (t.action case (final label, final run)) ...[
+                        const SizedBox(width: 10),
+                        TextButton(
+                          onPressed: () {
+                            state.dismissToast(t);
+                            run();
+                          },
+                          style: TextButton.styleFrom(
+                            foregroundColor: p.accentInk,
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            minimumSize: const Size(0, 30),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                          ),
+                          child: Text(label),
+                        ),
+                      ],
                       const SizedBox(width: 6),
                       InkWell(
                         onTap: () => state.dismissToast(t),

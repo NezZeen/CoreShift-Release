@@ -172,6 +172,9 @@ class NodeView {
   final List<String> cores;
   final Latency? latency;
 
+  /// The user removed the server from the list (Subscription.hiddenNodes).
+  final bool hidden;
+
   const NodeView({
     required this.fingerprint,
     required this.name,
@@ -182,6 +185,7 @@ class NodeView {
     required this.port,
     required this.cores,
     this.latency,
+    this.hidden = false,
   });
 
   factory NodeView.fromJson(Json j) => NodeView(
@@ -201,6 +205,7 @@ class NodeView {
             method: j['latency_method'] ?? '',
           )
         : null,
+    hidden: j['hidden'] == true,
   );
 }
 
@@ -302,7 +307,14 @@ class Subscription {
   final String userAgent;
   final SubInfo info;
   final String format;
+
+  /// The servers of the list; those the user removed are in [hiddenNodes].
   final List<NodeView> nodes;
+
+  /// The servers the user removed from the list ("Удалить из подписки"):
+  /// the panel still sends them, the daemon keeps them out of the latency
+  /// test and of the switch to another server, until they are brought back.
+  final List<NodeView> hiddenNodes;
   final List<String> skipped;
 
   /// The servers (fingerprints) the panel set up for automatic selection:
@@ -323,6 +335,7 @@ class Subscription {
     required this.info,
     required this.format,
     required this.nodes,
+    this.hiddenNodes = const [],
     required this.skipped,
     this.auto = const [],
     this.updatedAt,
@@ -331,7 +344,22 @@ class Subscription {
     this.lastError = '',
   });
 
-  factory Subscription.fromJson(Json j) => Subscription(
+  factory Subscription.fromJson(Json j) {
+    final all = ((j['nodes'] as List?) ?? []).map((n) => NodeView.fromJson((n as Map).cast())).toList();
+    return Subscription._fromJson(
+      j,
+      [
+        for (final n in all)
+          if (!n.hidden) n,
+      ],
+      [
+        for (final n in all)
+          if (n.hidden) n,
+      ],
+    );
+  }
+
+  factory Subscription._fromJson(Json j, List<NodeView> nodes, List<NodeView> hidden) => Subscription(
     id: j['id'] ?? '',
     name: j['name'] ?? '',
     displayName: _placeholderNames[j['display_name']] ?? j['display_name'] ?? '',
@@ -340,7 +368,8 @@ class Subscription {
     userAgent: j['user_agent'] ?? '',
     info: SubInfo.fromJson((j['info'] as Map?)?.cast<String, dynamic>() ?? {}),
     format: j['format'] ?? '',
-    nodes: ((j['nodes'] as List?) ?? []).map((n) => NodeView.fromJson((n as Map).cast())).toList(),
+    nodes: nodes,
+    hiddenNodes: hidden,
     skipped: _strings(j['skipped']),
     auto: _strings(j['auto']),
     updatedAt: _time(j['updated_at']),

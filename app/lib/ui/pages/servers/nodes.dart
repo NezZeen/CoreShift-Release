@@ -37,6 +37,7 @@ class _NodeTable extends StatelessWidget {
                 child: Text('Пинг', style: headStyle),
               ),
               action: const SizedBox(),
+              tools: const SizedBox(),
             ),
             for (final (i, sec) in sections.indexed) ...[
               if (sec.title != null)
@@ -65,6 +66,7 @@ class _NodeTable extends StatelessWidget {
     required Widget proto,
     required Widget ping,
     required Widget action,
+    required Widget tools,
     bool header = false,
   }) {
     if (narrow) {
@@ -93,6 +95,7 @@ class _NodeTable extends StatelessWidget {
             ),
             SizedBox(width: 58, child: ping),
             action,
+            tools,
           ],
         ),
       );
@@ -123,13 +126,15 @@ class _NodeTable extends StatelessWidget {
               child: FittedBox(fit: BoxFit.scaleDown, child: action),
             ),
           ),
+          // The star and the «⋯» menu.
+          SizedBox(width: 64, height: header ? null : 28, child: tools),
         ],
       ),
     );
   }
 }
 
-/// A section's title: a country with its best ping, a
+/// A section's title: the favourites, a country with its best ping, a
 /// subscription. A folding one is a tap target the width of the list.
 class _SectionHeading extends StatelessWidget {
   final _Section section;
@@ -219,6 +224,38 @@ class _NodeRow extends StatefulWidget {
 class _NodeRowState extends State<_NodeRow> {
   bool hover = false;
 
+  /// The «⋯» menu is open: its button stays in sight meanwhile.
+  bool menuOpen = false;
+  final _menuButton = GlobalKey();
+
+  /// Opens the server's actions: a sheet on a phone, a menu on the desktop,
+  /// under the «⋯» button or, for a right click, at [at].
+  Future<void> _actions({Offset? at}) async {
+    final s = widget.state;
+    if (isCompact(context)) {
+      HapticFeedback.selectionClick();
+      await showServerActions(context, s, widget.sub, widget.node);
+      return;
+    }
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    Rect anchor;
+    if (at != null) {
+      anchor = overlay.globalToLocal(at) & Size.zero;
+    } else {
+      final box = (_menuButton.currentContext?.findRenderObject() ?? context.findRenderObject()) as RenderBox;
+      anchor = box.localToGlobal(Offset(0, box.size.height + 4), ancestor: overlay) & box.size;
+    }
+    setState(() => menuOpen = true);
+    final v = await showMenu<_NodeAction>(
+      context: context,
+      position: RelativeRect.fromRect(anchor, Offset.zero & overlay.size),
+      constraints: const BoxConstraints(minWidth: 230),
+      items: _serverMenuItems(s, widget.sub, widget.node),
+    );
+    if (mounted) setState(() => menuOpen = hover = false);
+    if (v != null && mounted) _runServerAction(s, widget.sub, widget.node, v);
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = context.pal;
@@ -229,7 +266,24 @@ class _NodeRowState extends State<_NodeRow> {
     final connected = sel && s.status.state == ConnState.connected;
     final unusable = n.cores.isEmpty;
     final narrow = widget.narrow;
+    final fav = s.isFavorite(widget.sub, n);
     void connect() => s.connect(subscription: widget.sub.id, fingerprint: n.fingerprint, name: n.name);
+
+    // The star and the «⋯» show under the pointer; a starred server keeps
+    // its star. A touch screen as wide as a desktop has no pointer to show
+    // them: there they stay.
+    final tools = hover || menuOpen || platform.isAndroid;
+    // Small enough for the row's height, which the theme's icon buttons
+    // are not.
+    Widget tool({Key? key, required String tooltip, required IconData icon, required Color color, required VoidCallback onTap}) => Tooltip(
+      key: key,
+      message: tooltip,
+      child: InkResponse(
+        onTap: onTap,
+        radius: 16,
+        child: SizedBox(width: 30, height: 28, child: Icon(icon, size: 18, color: color)),
+      ),
+    );
 
     final Widget action;
     if (connected) {
@@ -257,16 +311,26 @@ class _NodeRowState extends State<_NodeRow> {
       radio: _Radio(on: sel),
       badge: CountryBadge(countryOf(n.name, n.server), width: narrow ? 32 : 30),
       name: Tooltip(
+        // A phone's long press opens the actions, which name the server.
+        triggerMode: isCompact(context) ? TooltipTriggerMode.manual : null,
         message:
             '${n.server}:${n.port}\n'
             '${n.cores.isEmpty ? 'Ни одно ядро не поддерживает' : 'Ядра: ${n.cores.map((k) => coreStyle(k).name).join(', ')}'}',
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              cleanNodeName(n.name),
-              style: const TextStyle(fontWeight: FontWeight.w500),
-              overflow: TextOverflow.ellipsis,
+            Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    cleanNodeName(n.name),
+                    style: const TextStyle(fontWeight: FontWeight.w500),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                // A phone has no star column: the starred ones say so here.
+                if (narrow && fav) ...[const SizedBox(width: 5), const Icon(Icons.star_rounded, size: 15, color: warnColor)],
+              ],
             ),
             if (widget.showSub)
               Text(
@@ -280,6 +344,27 @@ class _NodeRowState extends State<_NodeRow> {
       proto: ProtoBadge(n.protocol),
       ping: _LatencyCell(latency: s.latencyOf(widget.sub.id, n.fingerprint), testing: s.testingLatency),
       action: action,
+      tools: narrow
+          // A narrow window: the «⋯» under the pointer; a phone has the
+          // long press instead.
+          ? isCompact(context)
+                ? const SizedBox()
+                : SizedBox(
+                    width: 30,
+                    child: hover || menuOpen ? tool(key: _menuButton, tooltip: 'Действия', icon: Icons.more_horiz, color: p.muted, onTap: _actions) : null,
+                  )
+          : Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                tool(
+                  tooltip: fav ? 'Убрать из избранного' : 'В избранное',
+                  icon: fav ? Icons.star_rounded : Icons.star_outline_rounded,
+                  color: fav ? warnColor : (tools ? p.muted : Colors.transparent),
+                  onTap: () => s.toggleFavorite(widget.sub, n),
+                ),
+                tool(key: _menuButton, tooltip: 'Действия', icon: Icons.more_horiz, color: tools ? p.muted : Colors.transparent, onTap: _actions),
+              ],
+            ),
     );
 
     Widget body = Opacity(
@@ -294,32 +379,46 @@ class _NodeRowState extends State<_NodeRow> {
     );
 
     if (narrow) {
-      // A phone: swipe right to connect. The row stays where it is; the
-      // swipe only triggers the action.
+      // A phone: swipe right to connect, left for the favourites. The row
+      // stays where it is; the swipe only triggers the action.
       body = Dismissible(
         key: ValueKey('swipe/${widget.sub.id}/${n.fingerprint}/${n.name}'),
-        direction: unusable ? DismissDirection.none : DismissDirection.startToEnd,
-        dismissThresholds: const {DismissDirection.startToEnd: .28},
+        direction: unusable ? DismissDirection.endToStart : DismissDirection.horizontal,
+        dismissThresholds: const {DismissDirection.startToEnd: .28, DismissDirection.endToStart: .28},
         confirmDismiss: (dir) async {
-          s.setPref('swipe_hint', true);
-          if (!s.busy && s.online) {
+          s.setPref(serverHintPref, true);
+          if (dir == DismissDirection.startToEnd) {
+            if (!s.busy && s.online) {
+              HapticFeedback.selectionClick();
+              connect();
+            }
+          } else {
             HapticFeedback.selectionClick();
-            connect();
+            s.toggleFavorite(widget.sub, n);
           }
           return false;
         },
         background: _SwipeBackground(color: okColor, icon: Icons.power_settings_new, label: 'Подключить', alignLeft: true),
+        secondaryBackground: _SwipeBackground(
+          color: warnColor,
+          icon: fav ? Icons.star_outline_rounded : Icons.star_rounded,
+          label: fav ? 'Убрать из избранного' : 'В избранное',
+          alignLeft: false,
+        ),
         child: body,
       );
     }
 
     return Tooltip(
+      triggerMode: isCompact(context) ? TooltipTriggerMode.manual : null,
       message: unusable ? 'Ни одно установленное ядро не поддерживает этот сервер' : '',
       child: MouseRegion(
         cursor: unusable ? SystemMouseCursors.basic : SystemMouseCursors.click,
         onEnter: (_) => setState(() => hover = true),
         onExit: (_) => setState(() => hover = false),
         child: GestureDetector(
+          onLongPress: _actions,
+          onSecondaryTapUp: (d) => _actions(at: d.globalPosition),
           onDoubleTap: unusable || isCompact(context) || s.busy || !s.online || (sel && s.status.active) ? null : connect,
           onTap: unusable || sel
               ? null
@@ -352,10 +451,10 @@ class _SwipeBackground extends StatelessWidget {
         if (!alignLeft)
           Text(
             label,
-            style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 13),
+            style: TextStyle(color: context.pal.ink(color), fontWeight: FontWeight.w600, fontSize: 13),
           ),
         if (!alignLeft) const SizedBox(width: 8),
-        Icon(icon, color: color, size: 20),
+        Icon(icon, color: context.pal.ink(color), size: 20),
         if (alignLeft) const SizedBox(width: 8),
         if (alignLeft)
           Text(

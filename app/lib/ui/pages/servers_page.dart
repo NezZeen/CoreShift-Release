@@ -17,6 +17,7 @@ import '../widgets.dart';
 part 'servers/cards.dart';
 part 'servers/nodes.dart';
 part 'servers/dialogs.dart';
+part 'servers/actions.dart';
 
 class ServersPage extends StatefulWidget {
   final AppState state;
@@ -29,7 +30,7 @@ class ServersPage extends StatefulWidget {
   State<ServersPage> createState() => _ServersPageState();
 }
 
-/// A run of rows under one heading: a country, a
+/// A run of rows under one heading: the favourites, a country, a
 /// subscription, or the whole list with none.
 class _Section {
   final String id;
@@ -70,11 +71,30 @@ class _ServersPageState extends State<ServersPage> {
     }
   }
 
-  /// The rows in the groups the user chose, in the order the subscription
-  /// lists them: by country, or by subscription, or as one list.
+  /// The rows in the order and groups the user chose: the favourites first,
+  /// then by country, or by subscription, or as one list. Sorted, the
+  /// servers of several subscriptions make one list; countries keep the
+  /// order of their names.
   List<_Section> _sections(List<(Subscription, NodeView)> rows, {required bool multi}) {
-    final rest = rows;
+    final sort = s.serverSort;
+    List<(Subscription, NodeView)> order(List<(Subscription, NodeView)> r) => sortServers(r, sort, (sub, n) => s.latencyOf(sub.id, n.fingerprint));
+    final favs = s.favorites;
+    bool isFav((Subscription, NodeView) r) => favs.contains(AppStateServers.key(r.$1.id, r.$2.fingerprint));
+    final fav = rows.where(isFav).toList();
+    final rest = rows.where((r) => !isFav(r)).toList();
     final out = <_Section>[];
+    if (fav.isNotEmpty) {
+      out.add(
+        _Section(
+          id: 'fav',
+          title: 'Избранное',
+          leading: const SizedBox(width: 26, child: Icon(Icons.star_rounded, size: 19, color: warnColor)),
+          rows: order(fav),
+          collapsible: true,
+          showSub: multi,
+        ),
+      );
+    }
     if (s.serverGroup) {
       final by = <String, List<(Subscription, NodeView)>>{};
       for (final r in rest) {
@@ -91,19 +111,20 @@ class _ServersPageState extends State<ServersPage> {
             id: 'c:$code',
             title: code.isEmpty ? 'Другие' : countryName(code),
             leading: CountryBadge(code, width: 26),
-            rows: by[code]!,
+            rows: order(by[code]!),
             collapsible: true,
             showSub: multi,
           ),
         );
       }
-    } else if (multi) {
+    } else if (multi && sort == 'sub') {
       for (final sub in s.subscriptions) {
         final mine = rest.where((r) => r.$1.id == sub.id).toList();
         if (mine.isNotEmpty) out.add(_Section(id: 's:${sub.id}', title: sub.displayName, rows: mine, collapsible: true));
       }
     } else if (rest.isNotEmpty) {
-      out.add(_Section(id: 'all', rows: rest, showSub: multi));
+      // Under the favourites the rest needs a heading of its own.
+      out.add(_Section(id: 'all', title: fav.isEmpty ? null : 'Остальные', rows: order(rest), showSub: multi));
     }
     return out;
   }
@@ -120,6 +141,7 @@ class _ServersPageState extends State<ServersPage> {
     ];
     final compact = isCompact(context);
     final sections = _sections(rows, multi: subs.length > 1 && subFilter == null);
+    final hidden = subs.where((sub) => subFilter == null || sub.id == subFilter).fold(0, (n, sub) => n + sub.hiddenNodes.length);
 
     final search = TextField(
       focusNode: widget.searchFocus,
@@ -134,6 +156,7 @@ class _ServersPageState extends State<ServersPage> {
     // The search finds protocols too, so there is no protocol filter; the
     // fastest server is picked in the home page's quick pick.
     final chips = [
+      if (compact) _SortChip(state: s),
       _Chip(label: 'По странам', on: s.serverGroup, onTap: () => s.setPref('server_group', !s.serverGroup)),
       if (subFilter != null) _Chip(label: '× ${s.subscriptionById(subFilter!)?.displayName ?? ''}', on: true, onTap: () => setState(() => subFilter = null)),
     ];
@@ -152,7 +175,7 @@ class _ServersPageState extends State<ServersPage> {
       children: [
         PageHeader(
           'Серверы',
-          subtitle: 'Двойной щелчок по серверу подключает к нему.',
+          subtitle: 'Двойной щелчок по серверу подключает к нему, правая кнопка открывает действия.',
           actions: [
             if (subs.any((x) => !x.isLocal))
               Btn(
@@ -172,7 +195,7 @@ class _ServersPageState extends State<ServersPage> {
             builder: (context, c) {
               Widget card(Subscription sub) =>
                   _SubCard(state: s, sub: sub, selected: subFilter == sub.id, onTap: () => setState(() => subFilter = subFilter == sub.id ? null : sub.id));
-              final list = _serverList(context, compact: compact, search: search, chips: chips, ping: ping, rows: rows, sections: sections);
+              final list = _serverList(context, compact: compact, search: search, chips: chips, ping: ping, rows: rows, sections: sections, hidden: hidden);
               // A wide window: the subscriptions as a column beside the
               // servers, like folders beside their files.
               if (!compact && c.maxWidth >= 940) {
@@ -256,7 +279,14 @@ class _ServersPageState extends State<ServersPage> {
     required Btn ping,
     required List<(Subscription, NodeView)> rows,
     required List<_Section> sections,
+    required int hidden,
   }) {
+    final sort = Seg<String>(
+      options: const [('sub', 'Как в подписке'), ('ping', 'По пингу'), ('name', 'По имени')],
+      value: s.serverSort,
+      onChanged: (v) => s.setPref('server_sort', v),
+      tooltips: const {'ping': 'Сначала самые быстрые; без ответа — в конце'},
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -279,15 +309,45 @@ class _ServersPageState extends State<ServersPage> {
             ),
           ),
         ] else
-          Row(
-            children: [
-              Expanded(child: search),
-              const SizedBox(width: 10),
-              for (final c in chips) ...[c, const SizedBox(width: 10)],
-              ping,
-            ],
+          // The order, the grouping and the ping beside the search; under
+          // it when the list is too narrow for them all.
+          LayoutBuilder(
+            builder: (context, c) {
+              final filters = [
+                sort,
+                for (final ch in chips) ...[const SizedBox(width: 10), ch],
+              ];
+              if (c.maxWidth >= 860) {
+                return Row(
+                  children: [
+                    Expanded(child: search),
+                    const SizedBox(width: 10),
+                    ...filters,
+                    const SizedBox(width: 10),
+                    ping,
+                  ],
+                );
+              }
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(child: search),
+                      const SizedBox(width: 10),
+                      ping,
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(children: filters),
+                  ),
+                ],
+              );
+            },
           ),
-        if (compact && rows.isNotEmpty && s.prefs['swipe_hint'] != true) _SwipeHint(onClose: () => s.setPref('swipe_hint', true)),
+        if (compact && rows.isNotEmpty && s.prefs[serverHintPref] != true) _SwipeHint(onClose: () => s.setPref(serverHintPref, true)),
         const SizedBox(height: 12),
         Panel(
           padding: const EdgeInsets.all(6),
@@ -299,6 +359,11 @@ class _ServersPageState extends State<ServersPage> {
             onToggle: _toggle,
           ),
         ),
+        if (hidden > 0)
+          _HiddenFooter(
+            count: hidden,
+            onShow: () => showHiddenServers(context, s, scope: subFilter),
+          ),
       ],
     );
   }

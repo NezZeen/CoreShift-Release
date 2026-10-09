@@ -830,14 +830,16 @@ class AppState extends ChangeNotifier {
 
   // ---------------------------------------------------------------- toasts
 
-  void toast(String message, [ToastKind kind = ToastKind.info]) {
+  /// Shows [message] for a few seconds; one with an [action] («Отменить»)
+  /// stays a little longer, to give time to press it.
+  void toast(String message, [ToastKind kind = ToastKind.info, (String, VoidCallback)? action]) {
     // A failed connect reports its error twice: as the response and as an
     // event of the daemon.
     if (toasts.any((t) => t.message == message)) return;
-    final t = Toast(++_toastSeq, message, kind);
+    final t = Toast(++_toastSeq, message, kind, action: action);
     toasts.add(t);
     _notify();
-    Timer(const Duration(seconds: 5), () {
+    Timer(Duration(seconds: action == null ? 5 : 8), () {
       toasts.remove(t);
       _notify();
     });

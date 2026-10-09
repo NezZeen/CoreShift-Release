@@ -143,6 +143,8 @@ class DemoBackend implements Backend {
           ['\u{1F1F9}\u{1F1F7} Istanbul', 'vmess', 'ws', 'tls', 'tr1.northlink.example'],
           ['\u{1F1F0}\u{1F1FF} Almaty', 'shadowsocks', 'tcp', 'none', 'kz1.northlink.example'],
           ['\u{1F1EF}\u{1F1F5} Tokyo', 'anytls', 'tcp', 'tls', 'jp1.northlink.example'],
+          ['\u{1F1EC}\u{1F1E7} London', 'vless', 'tcp +vision', 'reality', 'uk1.northlink.example'],
+          ['\u{1F1F8}\u{1F1EC} Singapore', 'trojan', 'ws', 'tls', 'sg1.northlink.example'],
         ],
         used: 142 * _gib,
         total: 500 * _gib,
@@ -389,12 +391,55 @@ class DemoBackend implements Backend {
 
   Json _subBy(String id) => _subs.firstWhere((s) => s['id'] == id, orElse: () => throw const ApiError(404, 'no such subscription'));
 
+  /// The servers removed from the list, by subscription: kept apart from
+  /// the nodes, as the daemon keeps them, so a refresh leaves them hidden.
+  final Map<String, Set<String>> _hidden = {};
+
+  bool _isHidden(String sub, Json n) => _hidden[sub]?.contains(n['fingerprint']) ?? false;
+
+  /// A subscription as the daemon answers it: each node says whether it was
+  /// removed from the list.
+  Json _view(Json s) => {
+    ...s,
+    'nodes': [
+      for (final n in (s['nodes'] as List).cast<Json>()) {...n, if (_isHidden(s['id'], n)) 'hidden': true},
+    ],
+  };
+
+  /// The demo's pings: steady, so the order by ping is the same each time,
+  /// and one server that never answers.
+  static const _pings = {
+    'Amsterdam': 38,
+    'Rotterdam': 45,
+    'Warsaw': 51,
+    'Frankfurt': 57,
+    'Nuremberg': 64,
+    'Falkenstein': 71,
+    'Riga': 78,
+    'Helsinki': 86,
+    'London': 93,
+    'Stockholm': 104,
+    'New York': 142,
+    'Los Angeles': 196,
+    'Singapore': 228,
+    'Almaty': 268,
+    'Tokyo': 312,
+  };
+
+  int? _pingOf(String name) {
+    for (final e in _pings.entries) {
+      if (name.endsWith(e.key)) return e.value + _rand.nextInt(5);
+    }
+    // Istanbul, and whatever the user adds: one in three does not answer.
+    return name.endsWith('Istanbul') || name.length % 3 == 0 ? null : 120 + _rand.nextInt(200);
+  }
+
   @override
   Future<dynamic> call(String method, String path, [Object? body]) async {
     await Future.delayed(const Duration(milliseconds: 120));
     final b = (body as Map?)?.cast<String, dynamic>() ?? {};
     final seg = path.split('?').first.split('/').where((s) => s.isNotEmpty).toList(); // v1, …
-    final route = '$method /${seg.skip(1).map((s) => s.length == 6 && seg[1] == 'subscriptions' && s != 'refresh' ? '{id}' : s).join('/')}';
+    final route = '$method /${seg.skip(1).map((s) => s.length == 6 && seg[1] == 'subscriptions' && s != 'refresh' && s != 'hidden' ? '{id}' : s).join('/')}';
     String id() => seg[2];
 
     switch (route) {
@@ -509,7 +554,7 @@ class DemoBackend implements Backend {
         _emit({'kind': 'store', 'reason': 'settings'});
         return jsonDecode(jsonEncode(_settings));
       case 'GET /subscriptions':
-        return _subs;
+        return [for (final s in _subs) _view(s)];
       case 'POST /subscriptions':
         await Future.delayed(const Duration(milliseconds: 700));
         final url = (b['url'] as String? ?? '').trim();
@@ -535,7 +580,7 @@ class DemoBackend implements Backend {
           if (fresh.isEmpty) throw const ApiError(409, 'these servers are already added');
           into['nodes'] = [...into['nodes'] as List, ...fresh];
           _emit({'kind': 'store', 'reason': 'subscription-updated', 'subscription': into['id']});
-          return into;
+          return _view(into);
         }
         final sub = _makeSub(
           _rand.nextInt(0xffffff).toRadixString(16).padLeft(6, '0'),
@@ -552,7 +597,7 @@ class DemoBackend implements Backend {
         _emit({'kind': 'store', 'reason': 'subscription-added', 'subscription': sub['id']});
         return sub;
       case 'GET /subscriptions/{id}':
-        return _subBy(id());
+        return _view(_subBy(id()));
       case 'GET /subscriptions/{id}/url':
         return {'url': _subBy(id())['url']};
       case 'PATCH /subscriptions/{id}':
@@ -562,9 +607,10 @@ class DemoBackend implements Backend {
           s['display_name'] = (b['name'] as String).isNotEmpty ? b['name'] : (s['info']['title'] as String? ?? 'Subscription');
         }
         _emit({'kind': 'store', 'reason': 'subscription-updated', 'subscription': id()});
-        return s;
+        return _view(s);
       case 'DELETE /subscriptions/{id}':
         _subs.remove(_subBy(id()));
+        _hidden.remove(id());
         if (_selection?['subscription'] == id()) _selection = null;
         _emit({'kind': 'store', 'reason': 'subscription-removed', 'subscription': id()});
         return null;
@@ -575,16 +621,43 @@ class DemoBackend implements Backend {
         s['updated_at'] = now.toIso8601String();
         s['checked_at'] = now.toIso8601String();
         s['next_update'] = now.add(const Duration(hours: 12)).toIso8601String();
+        // The panel sends its servers anew; the latency results stay, as
+        // the daemon keeps them apart from the list.
+        final old = {for (final n in (s['nodes'] as List).cast<Json>()) n['fingerprint']: n};
+        s['nodes'] = [
+          for (final n in (s['nodes'] as List).cast<Json>())
+            {
+              ..._node([n['name'], n['protocol'], n['transport'], n['security'], n['server']]),
+              for (final k in const ['latency_ms', 'latency_error', 'latency_core', 'latency_method'])
+                if (old[n['fingerprint']]?[k] != null) k: old[n['fingerprint']]![k],
+            },
+        ];
         _emit({'kind': 'store', 'reason': 'subscription-updated', 'subscription': id()});
-        return s;
+        return _view(s);
+      case 'POST /subscriptions/{id}/hidden':
+        final s = _subBy(id());
+        final fps = [for (final f in b['fingerprints'] as List? ?? const []) '$f'];
+        if (fps.isEmpty || b['hidden'] is! bool) throw const ApiError(400, 'need "fingerprints" and "hidden"');
+        final set = _hidden[id()] ??= {};
+        for (final fp in fps) {
+          if (b['hidden'] == true) {
+            if (!(s['nodes'] as List).any((n) => n['fingerprint'] == fp)) throw ApiError(400, 'subscription has no node $fp');
+            set.add(fp);
+          } else {
+            set.remove(fp);
+          }
+        }
+        _emit({'kind': 'store', 'reason': 'subscription-updated', 'subscription': id()});
+        return _view(s);
       case 'POST /latency':
         final subId = b['subscription'] as String?;
         _emit({'kind': 'latency', 'reason': 'started'});
         for (final s in _subs.where((s) => subId == null || s['id'] == subId)) {
           for (final n in (s['nodes'] as List).cast<Json>()) {
+            if (_isHidden(s['id'], n)) continue; // removed from the list
             await Future.delayed(Duration(milliseconds: 60 + _rand.nextInt(120)));
-            final bad = _rand.nextInt(8) == 0 || (n['cores'] as List).isEmpty;
-            final ms = 60 + _rand.nextInt(400);
+            final ms = _pingOf(n['name'] as String) ?? 0;
+            final bad = ms == 0 || (n['cores'] as List).isEmpty;
             n['latency_ms'] = bad ? null : ms;
             n['latency_error'] = bad ? 'context deadline exceeded' : null;
             final core = (n['cores'] as List).isEmpty ? '' : (n['cores'] as List).first;

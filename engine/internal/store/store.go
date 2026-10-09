@@ -68,6 +68,11 @@ type Subscription struct {
 	// Auto is the fingerprints of the servers the panel set up for automatic
 	// selection, in order (see subscription.Result.Auto).
 	Auto []string `json:"auto,omitempty"`
+	// Hidden is the fingerprints of the servers the user removed from the
+	// list. The panel still sends them; they stay out of the list, the
+	// latency test and the switch to another server across refreshes, until
+	// the user brings them back.
+	Hidden []string `json:"hidden,omitempty"`
 
 	AddedAt time.Time `json:"added_at"`
 	// UpdatedAt is the last refresh that produced nodes; CheckedAt the last
@@ -100,6 +105,10 @@ func (sub *Subscription) Fingerprints() []string {
 	}
 	return sub.fps
 }
+
+// IsHidden reports whether the user removed the server with fingerprint fp
+// from the list.
+func (sub *Subscription) IsHidden(fp string) bool { return slices.Contains(sub.Hidden, fp) }
 
 // Insecure reports a subscription fetched over plain HTTP: its link, with
 // the access token, crosses the network unencrypted.
@@ -482,6 +491,49 @@ func (s *Store) Move(id string, index int) error {
 		d.Subscriptions = slices.Insert(d.Subscriptions, index, sub)
 		return nil
 	})
+}
+
+// maxHidden bounds the servers hidden in one subscription, so that a
+// request cannot grow the file without end.
+const maxHidden = 10000
+
+// SetHidden removes the servers with fingerprints fps from subscription
+// id's list (hidden) or brings them back. A server to hide must be in the
+// list; one to bring back need not be, so that what a panel dropped can be
+// cleared too. The fingerprints stay when a refresh replaces the nodes.
+func (s *Store) SetHidden(id string, fps []string, hidden bool) (Subscription, error) {
+	var sub Subscription
+	err := s.modify(Change{What: "subscription-updated", ID: id}, func(d *fileData) error {
+		i := s.index(id)
+		if i < 0 {
+			return ErrNotFound
+		}
+		cur := &d.Subscriptions[i]
+		// A new slice: the old one is shared with readers.
+		out := slices.Clone(cur.Hidden)
+		for _, fp := range fps {
+			has := slices.Contains(out, fp)
+			switch {
+			case hidden && !has:
+				if !slices.Contains(cur.Fingerprints(), fp) {
+					return fmt.Errorf("subscription has no node %s", fp)
+				}
+				out = append(out, fp)
+			case !hidden && has:
+				out = slices.DeleteFunc(out, func(h string) bool { return h == fp })
+			}
+		}
+		if len(out) > maxHidden {
+			return errors.New("too many hidden servers")
+		}
+		if len(out) == 0 {
+			out = nil
+		}
+		cur.Hidden = out
+		sub = *cur
+		return nil
+	})
+	return sub, err
 }
 
 // Refresh downloads subscription id again. On failure the old nodes are
