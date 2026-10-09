@@ -26,7 +26,7 @@ class _Hero extends StatelessWidget {
     final canConnect = state.online && (st.active || (sel.available && !state.busy));
     final muted = TextStyle(color: p.muted, fontSize: 13.5);
     final Widget line = switch (st.state) {
-      ConnState.connected when st.since != null => _Elapsed(since: st.since!, tun: st.tun, short: isCompact(context)),
+      ConnState.connected when st.since != null => ConnectedTime(since: st.since!, tun: st.tun, short: isCompact(context)),
       ConnState.failed => Tooltip(
         message: st.error,
         child: Text(humanError(st.error), textAlign: TextAlign.center, maxLines: 3, overflow: TextOverflow.ellipsis, style: muted),
