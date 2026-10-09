@@ -598,8 +598,9 @@ class AppState extends ChangeNotifier {
         }
         if (e.state == 'idle' || e.state == 'failed') speed.clear();
         if (e.state == 'idle') _statsSoon();
-        // A core update found while connected waits for the VPN to be off.
-        if (e.state == 'idle' && live && coreUpdatesWaiting.isNotEmpty) Timer(const Duration(seconds: 2), installCoreUpdates);
+        // A core update found while a connection came up or went down
+        // waits for it to settle.
+        if ((e.state == 'idle' || e.state == 'connected') && live && coreUpdatesWaiting.isNotEmpty) Timer(const Duration(seconds: 2), installCoreUpdates);
         if (e.state == 'failed' && live) {
           toast(humanError(e.error), ToastKind.err);
           _alerts.add(Alert('VPN отключился', humanError(e.error)));
@@ -706,6 +707,8 @@ class AppState extends ChangeNotifier {
         } else {
           _trafficMissed = true;
         }
+      case 'cores' when e.reason == 'applied':
+        _log(e.time, e.core, 'обновление до ${e.line} применено без отключения VPN', LogLevel.ok);
       case 'cores':
         _log(e.time, e.core, 'обновлено до ${e.line}', LogLevel.ok);
         _reloadInfo();

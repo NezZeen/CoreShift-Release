@@ -26,6 +26,11 @@ type coreState struct {
 	// answered; nil when none are.
 	probing  chan struct{}
 	updating sync.Mutex
+	// stale holds the updates installed while a connection may run the
+	// old version; applying is the connection whose applyCores runs, 0
+	// for none (coreapply.go).
+	stale    map[core.Kind]staleCore
+	applying int
 }
 
 // CoreVersions returns the version of every installed core; a core that
@@ -151,7 +156,8 @@ func (s *Service) CheckCoreUpdates(ctx context.Context) []CoreUpdate {
 
 // UpdateCore installs the latest release of k over the current one and
 // returns the new version. A running core keeps its old version until the
-// next connection.
+// connection is quiet for a while, then moves to the new one without
+// disconnecting (coreapply.go); or until it starts again anyway.
 func (s *Service) UpdateCore(ctx context.Context, k core.Kind) (string, error) {
 	bin := s.cfg.Binaries[k]
 	if bin == "" {
@@ -189,14 +195,8 @@ func (s *Service) UpdateCore(ctx context.Context, k core.Kind) (string, error) {
 	s.cores.versions[k] = v
 	s.cores.mu.Unlock()
 
-	s.mu.Lock()
-	active := s.status.State.active()
-	s.pending = s.pending || active
-	s.mu.Unlock()
 	s.hub.publish(Event{Kind: "cores", Core: string(k), Reason: "updated", Line: v})
-	if active {
-		s.hub.publish(Event{Kind: "options"})
-	}
+	s.noteInstalled(k, v)
 	return v, nil
 }
 

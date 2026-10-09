@@ -133,8 +133,9 @@ type Service struct {
 	status   Status
 	opts     Options
 	connOpts Options // the options the running connection started with
-	// pending: a core was updated since the running connection started;
-	// optsPending: the options differ from connOpts.
+	// pending: a rule set came after the running connection stopped
+	// waiting for it (a core update is applied without reconnecting,
+	// coreapply.go); optsPending: the options differ from connOpts.
 	pending     bool
 	optsPending bool
 	lastNode    node.Node // for Reconnect
@@ -256,6 +257,15 @@ func New(cfg Config) (*Service, error) {
 	}
 	if cfg.retryDelay == 0 {
 		cfg.retryDelay = retryAfterConnectDelay
+	}
+	if cfg.coreApplyEvery == 0 {
+		cfg.coreApplyEvery = coreApplyEvery
+	}
+	if cfg.coreApplyQuiet == 0 {
+		cfg.coreApplyQuiet = coreApplyQuiet
+	}
+	if cfg.coreApplyRate == 0 {
+		cfg.coreApplyRate = coreApplyRate
 	}
 	if cfg.checkRelease == nil {
 		cfg.checkRelease = func(ctx context.Context, c *http.Client, src selfupdate.Source) (selfupdate.Release, error) {

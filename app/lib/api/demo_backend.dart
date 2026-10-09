@@ -771,7 +771,8 @@ class DemoBackend implements Backend {
       final k = seg[2];
       if (k == 'sing-box') _versions[k] = '1.14.3';
       _emit({'kind': 'cores', 'core': k, 'reason': 'updated', 'line': _versions[k]});
-      if (_status['state'] == 'connected') _pending = true;
+      // The service moves a connection to the new core once it is quiet.
+      if (_status['state'] == 'connected') _emit({'kind': 'cores', 'core': k, 'reason': 'applied', 'line': _versions[k]});
       return {'kind': k, 'version': _versions[k]};
     }
     throw ApiError(404, 'demo: $route');

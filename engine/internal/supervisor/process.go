@@ -4,6 +4,7 @@ import (
 	"net/netip"
 	"strings"
 	"sync"
+	"time"
 
 	"coreshift/engine/internal/core"
 	"coreshift/engine/internal/proc"
@@ -20,6 +21,8 @@ type process struct {
 	// portLost is closed when the core reports that it could not open its
 	// SOCKS port (portWatch).
 	portLost <-chan struct{}
+	// started is when its executable was started (Restart).
+	started time.Time
 }
 
 func (p *process) stop() {

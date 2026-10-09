@@ -199,6 +199,11 @@ type Config struct {
 	// viaDirectOrProxy; retryDelay stands in for retryAfterConnectDelay.
 	dialDirect func(ctx context.Context, network, addr string) (net.Conn, error)
 	retryDelay time.Duration
+	// coreApplyEvery, coreApplyQuiet and coreApplyRate stand in for the
+	// constants of the same names (coreapply.go).
+	coreApplyEvery time.Duration
+	coreApplyQuiet time.Duration
+	coreApplyRate  int64
 }
 
 // DefaultDataDir is where the daemon keeps its state.

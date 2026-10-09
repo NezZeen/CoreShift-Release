@@ -74,6 +74,9 @@ const (
 	// ReasonHung: the process runs but its own local port no longer takes
 	// connections, so nothing gets through whatever the server does.
 	ReasonHung Reason = "hung"
+	// ReasonRestart: the core was started again from its executable, which
+	// an update replaced (Restart).
+	ReasonRestart Reason = "restart"
 )
 
 var (
@@ -85,6 +88,9 @@ var (
 	ErrOnPrimary = errors.New("already on the primary core")
 	// ErrNotConnected means there is no running core.
 	ErrNotConnected = errors.New("not connected")
+	// ErrNotNeeded means Restart found another core running, or this one
+	// started since: the next start of it runs the new executable anyway.
+	ErrNotNeeded = errors.New("the core runs its current executable")
 )
 
 type Health struct {
@@ -235,8 +241,13 @@ type Supervisor struct {
 	gate  *socksgate.Gate
 	gates int
 
-	// returnReq asks the monitor to move back to the primary core now.
-	returnReq chan chan error
+	// returnReq asks the monitor to move back to the primary core now;
+	// restartReq to start the running core again (Restart).
+	returnReq  chan chan error
+	restartReq chan restartRequest
+	// restarted is answered once the core Restart asked for serves, or
+	// could not start; only the run goroutine uses it.
+	restarted chan<- error
 
 	// idle is set while the device is idle (SetIdle); awake tells the
 	// monitor it no longer is.
@@ -270,7 +281,8 @@ func New(cfg Config) (*Supervisor, error) {
 	if err != nil {
 		return nil, fmt.Errorf("supervisor: %w", err)
 	}
-	return &Supervisor{cfg: cfg, group: g, status: Status{State: Idle}, returnReq: make(chan chan error), awake: make(chan struct{}, 1)}, nil
+	return &Supervisor{cfg: cfg, group: g, status: Status{State: Idle}, returnReq: make(chan chan error),
+		restartReq: make(chan restartRequest), awake: make(chan struct{}, 1)}, nil
 }
 
 // SetIdle says whether the device is idle: a phone with its screen off.
@@ -471,6 +483,42 @@ func (s *Supervisor) ReturnToPrimary(ctx context.Context) error {
 	}
 }
 
+type restartRequest struct {
+	kind   core.Kind
+	before time.Time
+	reply  chan error
+}
+
+// Restart starts core k again, when it is the one running and started
+// before the given time: an update replaced its executable since, and only
+// a new start runs the new one. The new start is tried on a spare port
+// first, so a version that does not work here leaves the running core as
+// it is (and the error says why); then it takes over as after a swap,
+// connections arriving meanwhile waiting for it. Restart returns once it
+// serves. ErrNotNeeded means there is nothing to restart.
+func (s *Supervisor) Restart(ctx context.Context, k core.Kind, before time.Time) error {
+	s.mu.Lock()
+	running := s.cancel != nil
+	s.mu.Unlock()
+	if !running {
+		return ErrNotConnected
+	}
+	req := restartRequest{kind: k, before: before, reply: make(chan error, 1)}
+	select {
+	case s.restartReq <- req:
+	case <-time.After(3 * time.Second):
+		return errors.New("the core is switching right now; try again in a moment")
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	select {
+	case err := <-req.reply:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
 func (s *Supervisor) chain(n *node.Node) ([]core.Kind, error) { return s.cfg.chain(n) }
 
 // chain returns the installed cores able to run n, in priority order.
@@ -511,6 +559,14 @@ func (s *Supervisor) run(ctx context.Context, n node.Node, serverAddr string, ch
 			ready = nil
 		}
 	}
+	// restartDone answers a Restart under way, if any.
+	restartDone := func(err error) {
+		if s.restarted != nil {
+			s.restarted <- err
+			s.restarted = nil
+		}
+	}
+	defer func() { restartDone(ErrNotConnected) }()
 	failed := map[core.Kind]error{}
 	restarted := map[core.Kind]time.Time{} // the last restart of a hung core
 	var prev core.Kind
@@ -545,6 +601,7 @@ func (s *Supervisor) run(ctx context.Context, n node.Node, serverAddr string, ch
 		if err != nil {
 			p.stop()
 			s.drop(failed, k, ReasonStartFailed, err)
+			restartDone(err)
 			prev, prevReason = k, ReasonStartFailed
 			continue
 		}
@@ -555,6 +612,7 @@ func (s *Supervisor) run(ctx context.Context, n node.Node, serverAddr string, ch
 		s.serve(p)
 		s.setState(Connected, k)
 		signal(nil)
+		restartDone(nil)
 
 		reason, alt, err := s.monitor(ctx, p, n, serverAddr, chain, failed)
 		// Connections to it are closed before it stops: their clients learn
@@ -573,6 +631,8 @@ func (s *Supervisor) run(ctx context.Context, n node.Node, serverAddr string, ch
 		case ReasonHealth:
 			s.drop(failed, k, reason, err)
 			next = alt
+		case ReasonRestart:
+			next = k
 		case ReasonHung:
 			// A hung process is restarted once; hanging again soon after
 			// means the core itself is the trouble, and it is dropped.
@@ -730,6 +790,23 @@ func (s *Supervisor) monitor(ctx context.Context, p *process, n node.Node, serve
 			if err == nil {
 				return ReasonReturn, "", nil
 			}
+		case req := <-s.restartReq:
+			if p.kind != req.kind || !p.started.Before(req.before) {
+				req.reply <- ErrNotNeeded
+				continue
+			}
+			// The new executable is tried aside first: one that does not
+			// work here must not take the connection down.
+			if err := s.probe(ctx, p.kind, n, serverAddr); err != nil {
+				if ctx.Err() != nil {
+					req.reply <- ErrNotConnected
+					return "", "", nil
+				}
+				req.reply <- err
+				continue
+			}
+			s.restarted = req.reply
+			return ReasonRestart, "", nil
 		}
 	}
 }
@@ -857,6 +934,7 @@ func (s *Supervisor) launchOn(ctx context.Context, k core.Kind, n node.Node, ser
 	}
 
 	watch := newPortWatch(listen)
+	started := time.Now()
 	pr, err := s.group.Start(proc.Spec{
 		Name: string(k),
 		Path: s.cfg.Binaries[k],
@@ -870,7 +948,7 @@ func (s *Supervisor) launchOn(ctx context.Context, k core.Kind, n node.Node, ser
 	if err != nil {
 		return nil, err
 	}
-	p := &process{Process: pr, kind: k, listen: listen, auth: auth, probe: probe, portLost: watch.ch}
+	p := &process{Process: pr, kind: k, listen: listen, auth: auth, probe: probe, portLost: watch.ch, started: started}
 	// A core that could not open its port is done waiting for: the port
 	// answering then is someone else's.
 	ready := func() bool { return watch.failed() || proc.PortOpen(listen) }

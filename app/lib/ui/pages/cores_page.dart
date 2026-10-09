@@ -74,8 +74,9 @@ class _UpdateRow extends StatelessWidget {
         ),
       );
     }
-    // Installed by the app itself: said only while it waits or works.
-    final text = updating ? 'Устанавливается ${update.latest}…' : 'Версия ${update.latest} установится, когда VPN будет выключен';
+    // Installed by the app itself, the VPN on or off: said only while it
+    // waits (a connection coming up or going down) or works.
+    final text = updating ? 'Устанавливается ${update.latest}…' : 'Версия ${update.latest} скоро установится сама';
     return Row(
       children: [
         if (updating)

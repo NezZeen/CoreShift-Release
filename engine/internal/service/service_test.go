@@ -303,15 +303,20 @@ func (h *harness) connect(t *testing.T, link string) error {
 }
 
 // browse sends requests through the SOCKS port, as the TUN layer would
-// the device's, until the test ends: traffic for the counters.
-func (h *harness) browse(t *testing.T) {
+// the device's, until stop is called or the test ends: traffic for the
+// counters.
+func (h *harness) browse(t *testing.T) (stop func()) {
 	t.Helper()
 	done := make(chan struct{})
 	stopped := make(chan struct{})
-	t.Cleanup(func() {
-		close(done)
-		<-stopped
-	})
+	var once sync.Once
+	stop = func() {
+		once.Do(func() {
+			close(done)
+			<-stopped
+		})
+	}
+	t.Cleanup(stop)
 	c := &http.Client{Timeout: 2 * time.Second, Transport: &http.Transport{
 		Proxy: http.ProxyURL(h.svc.sup.SOCKSAuth().ProxyURL(h.listen)), DisableKeepAlives: true,
 	}}
@@ -331,6 +336,7 @@ func (h *harness) browse(t *testing.T) {
 			}
 		}
 	}()
+	return stop
 }
 
 func (h *harness) waitState(t *testing.T, want State, timeout time.Duration) Status {

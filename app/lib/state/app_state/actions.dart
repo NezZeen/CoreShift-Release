@@ -349,16 +349,21 @@ extension AppStateActions on AppState {
       if (u.available && u.error.isEmpty && info.installed(u.kind)) u.kind,
   ];
 
-  /// Installs every newer core found, one after another, without asking.
-  /// Only while the VPN is off: a connection is never broken for it, the
-  /// update waits for the next disconnect. The service checks each download
-  /// as it always does; the journal tells what was installed.
+  /// Installs every newer core found, one after another, without asking,
+  /// with the VPN off or on: a VPN that is always on would otherwise never
+  /// get one. A running core keeps its version until the service moves the
+  /// connection to the new one, once it is quiet, without disconnecting.
+  /// Not while a connection comes up, goes down or waits for the network.
+  /// The service checks each download as it always does; the journal tells
+  /// what was installed, and when it was applied.
   Future<void> installCoreUpdates() async {
     for (final kind in coreUpdatesWaiting) {
-      if (!online || status.active || busy || updatingCore.isNotEmpty) return;
+      if (!online || !_coreInstallTime || busy || updatingCore.isNotEmpty) return;
       await updateCore(kind);
     }
   }
+
+  bool get _coreInstallTime => status.state == ConnState.idle || status.state == ConnState.failed || status.state == ConnState.connected;
 
   /// Installs the latest release of [kind]. Only a failure is told; the
   /// service's event puts the new version in the journal.

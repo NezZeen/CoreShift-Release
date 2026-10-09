@@ -279,7 +279,7 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
   }, timeout: const Timeout(Duration(minutes: 1)));
 
-  testWidgets('cores update themselves while the VPN is off', (tester) async {
+  testWidgets('cores update themselves, the VPN off or on', (tester) async {
     final state = await pumpApp(tester);
     // Looked for and installed by the app itself, without a word.
     await tester.runAsync(() async {
@@ -300,21 +300,25 @@ void main() {
     expect(find.textContaining('Доступна'), findsNothing);
     expect(find.text('версия 1.14.3'), findsOneWidget);
 
-    // Found while connected: it waits for the VPN to be off.
+    // Found while connected: installed as well, the VPN staying on.
     await tester.runAsync(() => state.connect());
     state.coreUpdates = [const CoreUpdate(kind: 'xray', current: '26.3.27', latest: '26.4.1', available: true)];
-    await tester.runAsync(() => state.installCoreUpdates());
     await tester.pump();
-    expect(state.coreUpdatesWaiting, ['xray']);
-    expect(find.text('Версия 26.4.1 установится, когда VPN будет выключен'), findsOneWidget);
+    expect(find.text('Версия 26.4.1 скоро установится сама'), findsOneWidget);
     await tester.runAsync(() async {
-      await state.disconnect();
-      for (var i = 0; i < 200 && state.coreUpdatesWaiting.isNotEmpty; i++) {
+      for (var i = 0; i < 200 && state.status.state != ConnState.connected; i++) {
         await Future.delayed(const Duration(milliseconds: 20));
       }
+      await state.installCoreUpdates();
+      await Future.delayed(const Duration(milliseconds: 300));
     });
     await tester.pump();
     expect(state.coreUpdatesWaiting, isEmpty);
+    expect(state.status.state, ConnState.connected);
+    expect(state.status.settingsPending, isFalse);
+    expect(find.text('Изменения применятся после переподключения'), findsNothing);
+    expect(state.logs.any((l) => l.source == 'xray' && l.message.endsWith('применено без отключения VPN')), isTrue);
+    await tester.runAsync(() => state.disconnect());
     expect(tester.takeException(), isNull);
     await tester.pump(const Duration(seconds: 6));
   });
