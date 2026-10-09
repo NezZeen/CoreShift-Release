@@ -104,9 +104,9 @@ type stub struct {
 	err error
 }
 
-func (s *stub) Start(adapter.StartStage) error { return nil }
-func (s *stub) Close() error                   { return nil }
-func (s *stub) Reset()                         { s.resets.Add(1) }
+func (s *stub) Start(adapter.StartStage, *adapter.Scope) error { return nil }
+func (s *stub) Close() error                                   { return nil }
+func (s *stub) Reset()                                         { s.resets.Add(1) }
 
 func (s *stub) Exchange(_ context.Context, m *mDNS.Msg) (*mDNS.Msg, error) {
 	if s.fail.Add(-1) >= 0 {
@@ -281,7 +281,7 @@ func newDoH(t *testing.T) *doh {
 		M.ParseSocksaddr("127.0.0.1:443"),
 		nil,
 	)
-	t.Cleanup(func() { d.transport.Close() })
+	t.Cleanup(d.transport.Reset)
 	return d
 }
 
