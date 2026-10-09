@@ -85,13 +85,6 @@ func (x xray) Render(n *node.Node, o Options) ([]byte, error) {
 			"streamSettings": obj{"sockopt": obj{"tcpNoDelay": true}},
 		})
 	}
-	if o.Stats.IsValid() {
-		cfg["stats"] = obj{}
-		cfg["policy"] = obj{"system": obj{"statsInboundUplink": true, "statsInboundDownlink": true}}
-		// Only the read-only stats service; the handler service could
-		// change the core.
-		cfg["api"] = obj{"tag": "api", "listen": o.Stats.String(), "services": []string{"StatsService"}}
-	}
 	return json.MarshalIndent(cfg, "", "  ")
 }
 

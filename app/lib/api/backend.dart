@@ -14,6 +14,10 @@ abstract class Backend {
 
   /// Where the backend connects, for the UI to show.
   String get description;
+
+  /// The name [events] gives this window's stream at the service, for
+  /// POST /v1/view; empty where there is none to tell.
+  String get view;
 }
 
 class ApiError implements Exception {

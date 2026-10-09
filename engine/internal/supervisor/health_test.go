@@ -174,7 +174,7 @@ func TestHealthCheckAsksFallbacksOnlyWhenNeeded(t *testing.T) {
 		u, _, _ := healthServers(t, answer(http.StatusBadGateway, 0), answer(http.StatusServiceUnavailable, 0))
 		h.URL = u
 		_, err := checkHealth(context.Background(), proxy, h)
-		if err == nil || !strings.Contains(err.Error(), "502") || strings.Count(err.Error(), "503") != 2 {
+		if err == nil || !strings.Contains(err.Error(), "502") || strings.Count(err.Error(), "503 Service Unavailable") != 2 {
 			t.Errorf("err = %v; want every address named with its answer", err)
 		}
 	})

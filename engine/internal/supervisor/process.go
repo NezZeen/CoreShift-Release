@@ -14,11 +14,9 @@ type process struct {
 	*proc.Process
 	kind   core.Kind
 	listen netip.AddrPort
-	probe  bool
-	// stats is where the core reports traffic (see core.ReadTraffic);
-	// invalid for probes.
-	stats  netip.AddrPort
-	secret string
+	// auth is what its SOCKS inbound requires, made for this start.
+	auth  core.SOCKSAuth
+	probe bool
 	// portLost is closed when the core reports that it could not open its
 	// SOCKS port (portWatch).
 	portLost <-chan struct{}

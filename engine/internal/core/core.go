@@ -56,11 +56,6 @@ type Options struct {
 	// resolves hostnames itself so a core never needs DNS to reach its own
 	// server; TLS keeps the original hostname as SNI.
 	ServerAddr string
-	// Stats, if set, is a loopback port where the core reports its traffic
-	// counters (see ReadTraffic). StatsSecret guards it where the core
-	// supports a secret: the Clash API could otherwise change the core.
-	Stats       netip.AddrPort
-	StatsSecret string
 	// Fragment splits the TLS ClientHello of the connection to the server
 	// into pieces, which gets past DPI that blocks by the name it carries.
 	// Xray and sing-box support it; mihomo connects without it.

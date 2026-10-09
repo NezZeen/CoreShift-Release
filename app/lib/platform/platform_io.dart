@@ -210,6 +210,9 @@ class HttpBackend implements Backend {
   @override
   String get description => _ep?.base.authority ?? file;
 
+  @override
+  final String view = newNonce();
+
   /// The address and token of api.json, once whoever answers there proved
   /// it knows the token: a file left by a service that crashed may name a
   /// port another program holds now, which must get nothing from the app.
@@ -322,7 +325,7 @@ class HttpBackend implements Backend {
         try {
           final ep = await _endpoint(reload: true);
           final nonce = newNonce();
-          req = await _client.getUrl(ep.base.resolve('/v1/events?replay=1&app=1'));
+          req = await _client.getUrl(ep.base.resolve('/v1/events?replay=1&app=1&view=$view'));
           req!.headers.set(HttpHeaders.authorizationHeader, 'Bearer ${ep.token}');
           req!.headers.set(nonceHeader, nonce);
           final resp = await req!.close();

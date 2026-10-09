@@ -175,9 +175,24 @@ class AppState extends ChangeNotifier {
 
   /// Notifies with every traffic sample, apart from the rest of the state:
   /// one a second while connected would otherwise redraw whatever page is
-  /// open. What shows [speed] or the bytes moved listens to it.
+  /// open. What shows [speed] or the bytes moved listens to it. While the
+  /// window is not [shown] it waits, and catches up once it is.
   Listenable get traffic => _traffic;
   final _traffic = ValueNotifier<int>(0);
+  bool _trafficMissed = false;
+  bool _sampleHidden = false;
+
+  /// Notifies with every traffic sample, the window shown or not: the
+  /// tray's tooltip, which is all there is to see of a hidden window.
+  Listenable get speedNow => _speedNow;
+  final _speedNow = ValueNotifier<int>(0);
+
+  /// Whether the window is on screen ([setShown]). A desktop window hidden
+  /// in the tray or minimized draws nothing: its animations stop
+  /// ([TickerMode]), the speed and the graph wait, and the service samples
+  /// the traffic every few seconds rather than every second.
+  ValueListenable<bool> get shown => _shown;
+  final _shown = ValueNotifier<bool>(true);
 
   /// The latest release of each core, once checked.
   List<CoreUpdate> coreUpdates = [];
@@ -355,6 +370,9 @@ class AppState extends ChangeNotifier {
       speed.clear();
       _liveSince = DateTime.now().subtract(const Duration(seconds: 2));
       _events = backend.events().listen(_onEvent, onError: (Object e) => _lost(e), onDone: () => _lost('поток событий закрыт'));
+      // A new stream opens shown: a hidden window says so again, once the
+      // service has the stream.
+      if (!_shown.value) Timer(const Duration(seconds: 2), _sendView);
       if (!online) {
         online = true;
         offlineReason = '';
@@ -667,11 +685,22 @@ class AppState extends ChangeNotifier {
       case 'network':
         _onNetworkEvent(e, live);
       case 'traffic':
+        // Hidden, the samples come every few seconds: the graph, a sample a
+        // second, keeps only the latest of them rather than squeezing
+        // minutes into its two.
+        if (!_shown.value && _sampleHidden && speed.isNotEmpty) speed.removeLast();
+        _sampleHidden = !_shown.value;
         speed.add((e.upRate, e.downRate));
         if (speed.length > speedKeep) speed.removeRange(0, speed.length - speedKeep);
         sessionUp = e.up;
         sessionDown = e.down;
-        if (!_disposed) _traffic.value++;
+        if (_disposed) break;
+        _speedNow.value++;
+        if (_shown.value) {
+          _traffic.value++;
+        } else {
+          _trafficMissed = true;
+        }
       case 'cores':
         _log(e.time, e.core, 'обновлено до ${e.line}', LogLevel.ok);
         _reloadInfo();
@@ -1021,6 +1050,32 @@ class AppState extends ChangeNotifier {
     if (!_disposed) notifyListeners();
   }
 
+  /// Says whether the window is on screen: DesktopFrame, from the window's
+  /// events. Shown again, the speed and the graph are brought up to date at
+  /// once, and so is the service's pace.
+  void setShown(bool v) {
+    if (_disposed || _shown.value == v) return;
+    _shown.value = v;
+    if (v && _trafficMissed) {
+      _trafficMissed = false;
+      _traffic.value++;
+    }
+    if (online) unawaited(_sendView());
+  }
+
+  /// Tells the service whether this window is hidden (POST /v1/view), so
+  /// that it samples the traffic seldom while no window shows it.
+  Future<void> _sendView() async {
+    final view = backend.view;
+    if (view.isEmpty || _disposed) return;
+    try {
+      await backend.call('POST', '/v1/view', {'view': view, 'hidden': !_shown.value});
+    } catch (_) {
+      // A service before 0.8.3, or its stream just reopening: it samples
+      // at its usual pace, which costs it little.
+    }
+  }
+
   @override
   void dispose() {
     _disposed = true;
@@ -1033,6 +1088,8 @@ class AppState extends ChangeNotifier {
     _subTimer?.cancel();
     _coreTimer?.cancel();
     _traffic.dispose();
+    _speedNow.dispose();
+    _shown.dispose();
     super.dispose();
   }
 }

@@ -1654,6 +1654,9 @@ class _OfflineBackend implements Backend {
 
   @override
   String get description => 'test';
+
+  @override
+  String get view => '';
 }
 
 /// speedtest.net out of reach: the service measured with Cloudflare.

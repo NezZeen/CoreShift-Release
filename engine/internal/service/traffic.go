@@ -12,6 +12,9 @@ const (
 	// trafficIdleInterval is how often the traffic is sampled while the
 	// device is idle (SetBackground): only the day's totals need it then.
 	trafficIdleInterval = 30 * time.Second
+	// trafficHiddenInterval is how often while every app window is hidden
+	// (ViewsHidden): the tray's tooltip still shows the speed.
+	trafficHiddenInterval = 5 * time.Second
 )
 
 // SetBackground says whether the device is idle: a phone with its screen
@@ -37,14 +40,18 @@ func (s *Service) SetBackground(bg bool) {
 func (s *Service) Background() bool { return s.bg.Load() }
 
 func (s *Service) trafficEvery() time.Duration {
-	if s.bg.Load() {
+	switch {
+	case s.bg.Load():
 		return s.cfg.trafficIdleEvery
+	case s.ViewsHidden():
+		return s.cfg.trafficHiddenEvery
 	}
 	return s.cfg.trafficEvery
 }
 
 // watchTraffic publishes the node's traffic every second while connected
-// (every trafficIdleInterval while the device is idle): totals for the
+// (every trafficIdleInterval while the device is idle, trafficHiddenInterval
+// while no app window is on screen): totals for the
 // connection, which may span several cores after swaps, and the rate
 // since the last sample.
 func (s *Service) watchTraffic(ctx context.Context) {
@@ -67,15 +74,16 @@ func (s *Service) watchTraffic(ctx context.Context) {
 			return
 		case <-tick.C:
 		case <-s.awake:
-			// The screen came on: the speed it shows is up to date at once.
+			// The screen came on, or a window showed: the speed it shows is
+			// up to date at once.
 		}
 		tick.Reset(s.trafficEvery())
-		now, run, err := s.sup.Traffic(ctx)
+		now, run, err := s.sup.Traffic()
 		if err != nil {
-			continue // swapping, or a core without counters; the next sample makes up
+			continue // disconnecting
 		}
 		if run != lastRun {
-			// A new core counts from zero.
+			// A new connection counts from zero.
 			last, lastRun = core.Traffic{}, run
 		}
 		d := core.Traffic{Up: now.Up - last.Up, Down: now.Down - last.Down}

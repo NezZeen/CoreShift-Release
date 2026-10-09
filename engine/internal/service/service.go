@@ -98,6 +98,7 @@ type Service struct {
 	cores   coreState
 	upd     appUpdater
 	apps    appWatch
+	views   views
 	stats   *trafficStats
 	fo      failover
 	retry   afterConnect
@@ -249,6 +250,9 @@ func New(cfg Config) (*Service, error) {
 	}
 	if cfg.trafficIdleEvery == 0 {
 		cfg.trafficIdleEvery = trafficIdleInterval
+	}
+	if cfg.trafficHiddenEvery == 0 {
+		cfg.trafficHiddenEvery = trafficHiddenInterval
 	}
 	if cfg.retryDelay == 0 {
 		cfg.retryDelay = retryAfterConnectDelay

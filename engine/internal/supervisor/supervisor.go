@@ -4,19 +4,27 @@
 // priority order, starts the first one and watches it. The connection is up
 // as soon as the core runs: health checks only decide whether another core
 // would do better. When the core fails to start or exits, the next core in
-// the chain takes over on the same SOCKS port, so the TUN layer in front
-// never notices more than a short gap. When it keeps failing health checks,
-// the other cores are tried on a spare port and the first that works takes
-// over; when none does, the connection stays as it is rather than going
-// down, since the network, not the core, is then likely at fault. After
-// running on a backup for a while the primary core is probed on the spare
-// port and takes over again once it works.
+// the chain takes over. When it keeps failing health checks, the other
+// cores are tried on a spare port and the first that works takes over;
+// when none does, the connection stays as it is rather than going down,
+// since the network, not the core, is then likely at fault. After running
+// on a backup for a while the primary core is probed on a spare port and
+// takes over again once it works.
+//
+// The SOCKS port the TUN layer (or the user's programs) sends traffic to,
+// Config.Listen, is held by the supervisor itself for the whole connection
+// (socksgate), in front of whichever core runs. Each core start gets a
+// random loopback port of its own and credentials only the engine knows,
+// so a swap never frees the port for another program to take, and the TUN
+// layer in front never notices more than a short gap: connections made
+// meanwhile wait for the next core. A core's random port is used only once
+// the system confirms that the core itself listens there (coreListens).
+// The traffic is counted there too (Traffic), so the cores run without an
+// API of their own.
 package supervisor
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"maps"
@@ -33,6 +41,7 @@ import (
 	"coreshift/engine/internal/core"
 	"coreshift/engine/internal/node"
 	"coreshift/engine/internal/proc"
+	"coreshift/engine/internal/socksgate"
 )
 
 type Mode string
@@ -98,16 +107,17 @@ type Config struct {
 
 	// WorkDir holds generated configs (they contain credentials) and core data.
 	WorkDir string
-	// Listen is the SOCKS port the TUN layer forwards to.
+	// Listen is the SOCKS port the TUN layer forwards to. The supervisor
+	// holds it from Connect to Disconnect and relays it to the running
+	// core (socksgate).
 	Listen netip.AddrPort
-	// ProbeListen is a spare port for trying the primary core before moving back.
-	ProbeListen netip.AddrPort
-	// Auth is required by every core's SOCKS inbound, the probes' and the
-	// latency tests' too; zero means New makes random ones (SOCKSAuth).
+	// Auth is required on Listen; zero means New makes random ones
+	// (SOCKSAuth). The cores themselves require other credentials, made
+	// by New and known to the supervisor alone.
 	Auth core.SOCKSAuth
-	// OpenInbound leaves the inbound on Listen without credentials: without
-	// the TUN layer it is the proxy the user's programs are set to use, and
-	// they have none to give (browsers cannot). The probes keep Auth.
+	// OpenInbound leaves Listen without credentials: without the TUN layer
+	// it is the proxy the user's programs are set to use, and they have
+	// none to give (browsers cannot). The cores keep theirs.
 	OpenInbound bool
 
 	Health       Health
@@ -145,9 +155,6 @@ func (c Config) withDefaults() Config {
 	}
 	if !c.Listen.IsValid() {
 		c.Listen = core.DefaultListen
-	}
-	if !c.ProbeListen.IsValid() {
-		c.ProbeListen = netip.AddrPortFrom(c.Listen.Addr(), c.Listen.Port()+1)
 	}
 	if c.Health.URL == "" {
 		c.Health.URL = "http://cp.cloudflare.com/generate_204"
@@ -221,9 +228,12 @@ type Supervisor struct {
 	status Status
 	cancel context.CancelFunc
 	done   chan struct{}
-	// active is the core serving Listen; runs counts cores that got there.
+	// active is the core serving Listen.
 	active *process
-	runs   int
+	// gate holds Listen while connected and relays it to active; gates
+	// counts the connections it was opened for.
+	gate  *socksgate.Gate
+	gates int
 
 	// returnReq asks the monitor to move back to the primary core now.
 	returnReq chan chan error
@@ -298,11 +308,16 @@ func (s *Supervisor) Connect(ctx context.Context, n node.Node, serverAddr string
 	if err != nil {
 		return err
 	}
+	gate, err := socksgate.Listen(socksgate.Config{Listen: s.cfg.Listen, Auth: s.cfg.Auth, Open: s.cfg.OpenInbound})
+	if err != nil {
+		return portError(s.cfg.Listen, err)
+	}
 	runCtx, cancel := context.WithCancel(context.Background())
 	ready := make(chan error, 1)
 	done := make(chan struct{})
 	s.mu.Lock()
-	s.cancel, s.done = cancel, done
+	s.cancel, s.done, s.gate = cancel, done, gate
+	s.gates++
 	s.status = Status{State: Connecting, Node: n.Name, Chain: chain, Failed: map[core.Kind]string{}, Since: time.Now()}
 	s.mu.Unlock()
 
@@ -312,11 +327,22 @@ func (s *Supervisor) Connect(ctx context.Context, n node.Node, serverAddr string
 	}()
 	select {
 	case err := <-ready:
+		if err != nil {
+			s.Disconnect() // gives the port back
+		}
 		return err
 	case <-ctx.Done():
 		s.Disconnect()
 		return ctx.Err()
 	}
+}
+
+// portError explains why the SOCKS port at addr could not be opened.
+func portError(addr netip.AddrPort, err error) error {
+	if proc.PortOpen(addr) {
+		return fmt.Errorf("listen address %s is already in use", addr)
+	}
+	return fmt.Errorf("open the SOCKS port: %w", err)
 }
 
 // Policy is the part of Config the user can change between connections.
@@ -343,14 +369,15 @@ func (s *Supervisor) SetPolicy(p Policy) {
 	s.cfg = c.withDefaults()
 }
 
-// SOCKSAuth returns the credentials of the cores' SOCKS inbound.
+// SOCKSAuth returns the credentials Listen requires (Config.Auth).
 func (s *Supervisor) SOCKSAuth() core.SOCKSAuth {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.cfg.Auth
 }
 
-// Disconnect stops the running core. It is a no-op when idle.
+// Disconnect stops the running core and frees Listen. It is a no-op when
+// idle.
 func (s *Supervisor) Disconnect() {
 	s.mu.Lock()
 	cancel, done := s.cancel, s.done
@@ -360,6 +387,40 @@ func (s *Supervisor) Disconnect() {
 		cancel()
 		<-done
 	}
+	s.mu.Lock()
+	gate := s.gate
+	s.gate = nil
+	s.mu.Unlock()
+	if gate != nil {
+		gate.Close()
+	}
+}
+
+// CoreListen is the running core's own SOCKS port, which changes with
+// every start; false when no core runs.
+func (s *Supervisor) CoreListen() (netip.AddrPort, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.active == nil {
+		return netip.AddrPort{}, false
+	}
+	return s.active.listen, true
+}
+
+// serve makes p the core behind Listen; nil for none.
+func (s *Supervisor) serve(p *process) {
+	s.mu.Lock()
+	gate := s.gate
+	s.active = p
+	s.mu.Unlock()
+	if gate == nil {
+		return
+	}
+	t := socksgate.Target{}
+	if p != nil {
+		t = socksgate.Target{Addr: p.listen, Auth: p.auth}
+	}
+	gate.SetTarget(t)
 }
 
 func (s *Supervisor) Status() Status {
@@ -371,17 +432,17 @@ func (s *Supervisor) Status() Status {
 	return st
 }
 
-// Traffic returns the active core's byte counters and which run of a core
-// they belong to: counters restart from zero whenever run changes.
-func (s *Supervisor) Traffic(ctx context.Context) (t core.Traffic, run int, err error) {
+// Traffic returns the byte counters of the connection, which the SOCKS
+// port counts whatever core runs behind it, and which connection they
+// belong to: they restart from zero whenever run changes.
+func (s *Supervisor) Traffic() (t core.Traffic, run int, err error) {
 	s.mu.Lock()
-	p, run := s.active, s.runs
+	gate, run := s.gate, s.gates
 	s.mu.Unlock()
-	if p == nil || !p.stats.IsValid() {
+	if gate == nil {
 		return core.Traffic{}, run, ErrNotConnected
 	}
-	t, err = core.ReadTraffic(ctx, p.kind, p.stats, p.secret)
-	return t, run, err
+	return gate.Traffic(), run, nil
 }
 
 // ReturnToPrimary moves back to the primary core now instead of waiting for
@@ -474,7 +535,7 @@ func (s *Supervisor) run(ctx context.Context, n node.Node, serverAddr string, ch
 			s.setState(Swapping, k)
 		}
 
-		p, err := s.launch(ctx, k, n, serverAddr, s.cfg.Listen)
+		p, err := s.launch(ctx, k, n, serverAddr, false)
 		if ctx.Err() != nil {
 			p.stop()
 			s.setState(Idle, "")
@@ -491,17 +552,14 @@ func (s *Supervisor) run(ctx context.Context, n node.Node, serverAddr string, ch
 		if prev != "" && prev != k {
 			s.emit(Event{Kind: EventSwap, Core: k, From: prev, Reason: prevReason})
 		}
-		s.mu.Lock()
-		s.active = p
-		s.runs++
-		s.mu.Unlock()
+		s.serve(p)
 		s.setState(Connected, k)
 		signal(nil)
 
 		reason, alt, err := s.monitor(ctx, p, n, serverAddr, chain, failed)
-		s.mu.Lock()
-		s.active = nil
-		s.mu.Unlock()
+		// Connections to it are closed before it stops: their clients learn
+		// at once, and new ones wait for the next core.
+		s.serve(nil)
 		p.stop()
 		switch reason {
 		case "":
@@ -693,9 +751,9 @@ func (s *Supervisor) findWorking(ctx context.Context, chain []core.Kind, failed 
 	return "", false
 }
 
-// probe starts k on the spare port and reports whether it becomes healthy.
+// probe starts k on a spare port and reports whether it becomes healthy.
 func (s *Supervisor) probe(ctx context.Context, k core.Kind, n node.Node, serverAddr string) error {
-	p, err := s.launch(ctx, k, n, serverAddr, s.cfg.ProbeListen)
+	p, err := s.launch(ctx, k, n, serverAddr, true)
 	if err == nil {
 		_, err = s.awaitHealthy(ctx, p)
 	}
@@ -732,9 +790,9 @@ func (s *Supervisor) check(ctx context.Context, p *process) (time.Duration, erro
 	return lat, err
 }
 
-// checkHealth checks p's health through its SOCKS inbound.
+// checkHealth checks p's health through its own SOCKS inbound.
 func (s *Supervisor) checkHealth(ctx context.Context, p *process) (time.Duration, error) {
-	return checkHealth(ctx, s.cfg.Auth.ProxyURL(p.listen), s.cfg.Health)
+	return checkHealth(ctx, p.auth.ProxyURL(p.listen), s.cfg.Health)
 }
 
 // report tells of a check of p.
@@ -748,10 +806,33 @@ func (s *Supervisor) report(ctx context.Context, p *process, lat time.Duration, 
 	s.emit(Event{Kind: EventHealth, Core: p.kind, Latency: lat, Err: err, Probe: p.probe})
 }
 
-// launch writes the config for k and starts it listening on listen.
-func (s *Supervisor) launch(ctx context.Context, k core.Kind, n node.Node, serverAddr string, listen netip.AddrPort) (*process, error) {
+// launchAttempts is how many random ports a core is started on before a
+// port taken under it counts as its failure. Another program would have
+// to guess the port in the moment between choosing it and the core
+// opening it.
+const launchAttempts = 3
+
+// launch starts k on a random loopback port of its own: the running core
+// behind Listen, or a probe.
+func (s *Supervisor) launch(ctx context.Context, k core.Kind, n node.Node, serverAddr string, probe bool) (*process, error) {
+	var err error
+	for range launchAttempts {
+		var listen netip.AddrPort
+		if listen, err = freeLoopbackPort(); err != nil {
+			return nil, err
+		}
+		var p *process
+		p, err = s.launchOn(ctx, k, n, serverAddr, listen, probe)
+		if err == nil || !errors.Is(err, errTaken) || ctx.Err() != nil {
+			return p, err
+		}
+	}
+	return nil, err
+}
+
+// launchOn writes the config for k and starts it listening on listen.
+func (s *Supervisor) launchOn(ctx context.Context, k core.Kind, n node.Node, serverAddr string, listen netip.AddrPort, probe bool) (*process, error) {
 	a, _ := core.ByKind(k)
-	probe := listen != s.cfg.Listen
 	dir := filepath.Join(s.cfg.WorkDir, string(k))
 	if probe {
 		dir += "-probe"
@@ -759,17 +840,10 @@ func (s *Supervisor) launch(ctx context.Context, k core.Kind, n node.Node, serve
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
-	o := core.Options{Listen: listen, Auth: s.cfg.Auth, LogLevel: s.cfg.LogLevel, ServerAddr: serverAddr, Fragment: s.cfg.Fragment}
-	if !probe && s.cfg.OpenInbound {
-		o.Auth = core.SOCKSAuth{}
-	}
-	if !probe {
-		// Traffic counters for the UI. Losing them is not worth failing
-		// the core over, so any trouble here just leaves them off.
-		if ap, err := freeLoopbackPort(); err == nil {
-			o.Stats, o.StatsSecret = ap, randomSecret()
-		}
-	}
+	// Credentials of its own, new for every start: no client of Listen,
+	// nor any other program, is given them.
+	auth := core.NewSOCKSAuth()
+	o := core.Options{Listen: listen, Auth: auth, LogLevel: s.cfg.LogLevel, ServerAddr: serverAddr, Fragment: s.cfg.Fragment}
 	cfg, err := a.Render(&n, o)
 	if err != nil {
 		return nil, err
@@ -779,7 +853,7 @@ func (s *Supervisor) launch(ctx context.Context, k core.Kind, n node.Node, serve
 		return nil, err
 	}
 	if proc.PortOpen(listen) {
-		return nil, fmt.Errorf("listen address %s is already in use", listen)
+		return nil, errPortTaken(listen)
 	}
 
 	watch := newPortWatch(listen)
@@ -796,7 +870,7 @@ func (s *Supervisor) launch(ctx context.Context, k core.Kind, n node.Node, serve
 	if err != nil {
 		return nil, err
 	}
-	p := &process{Process: pr, kind: k, listen: listen, probe: probe, stats: o.Stats, secret: o.StatsSecret, portLost: watch.ch}
+	p := &process{Process: pr, kind: k, listen: listen, auth: auth, probe: probe, portLost: watch.ch}
 	// A core that could not open its port is done waiting for: the port
 	// answering then is someone else's.
 	ready := func() bool { return watch.failed() || proc.PortOpen(listen) }
@@ -804,7 +878,7 @@ func (s *Supervisor) launch(ctx context.Context, k core.Kind, n node.Node, serve
 		p.stop()
 		return nil, err
 	}
-	if watch.failed() {
+	if watch.failed() || !coreListens(pr, listen) {
 		p.stop()
 		return nil, errPortTaken(listen)
 	}
@@ -814,9 +888,22 @@ func (s *Supervisor) launch(ctx context.Context, k core.Kind, n node.Node, serve
 // offline reports what Config.Offline says, false without it.
 func (s *Supervisor) offline() bool { return s.cfg.Offline != nil && s.cfg.Offline() }
 
+// coreListens reports whether the port that answers at listen is pr's own:
+// another program could have taken it in the moment between choosing it
+// and the core opening it, and would then receive what is sent there.
+// Where the system does not tell (Android), the port is taken for the
+// core's, being random and open to guessing only in that moment.
+func coreListens(pr *proc.Process, listen netip.AddrPort) bool {
+	owned, err := proc.Listens(pr.Pid(), listen)
+	return owned || err != nil
+}
+
+// errTaken is what errPortTaken wraps.
+var errTaken = errors.New("another program holds it")
+
 // errPortTaken is a core's failure to open its SOCKS port at addr.
 func errPortTaken(addr netip.AddrPort) error {
-	return fmt.Errorf("the core could not open its port %s: another program holds it", addr)
+	return fmt.Errorf("the core could not open its port %s: %w", addr, errTaken)
 }
 
 func (s *Supervisor) drop(failed map[core.Kind]error, k core.Kind, reason Reason, err error) {
@@ -839,12 +926,6 @@ func (s *Supervisor) emit(e Event) {
 		e.Time = time.Now()
 		s.cfg.OnEvent(e)
 	}
-}
-
-func randomSecret() string {
-	b := make([]byte, 16)
-	_, _ = rand.Read(b)
-	return hex.EncodeToString(b)
 }
 
 func firstNotFailed(chain []core.Kind, failed map[core.Kind]error) (core.Kind, bool) {
