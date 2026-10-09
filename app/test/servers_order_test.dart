@@ -11,6 +11,7 @@ import 'package:coreshift/main.dart';
 import 'package:coreshift/state/app_state.dart';
 import 'package:coreshift/ui/countries.dart';
 import 'package:coreshift/ui/pages/servers_page.dart';
+import 'package:coreshift/ui/widgets.dart';
 
 /// The order of the server list, the favourites and the servers removed
 /// from a subscription: on the desktop, on a phone and in the home page's
@@ -308,6 +309,11 @@ void main() {
       expect(find.text('Удалить из подписки'), findsOneWidget);
       expect(find.text('Выбрать все'), findsOneWidget);
       expect(state.status.active, isFalse, reason: 'picking connects nothing');
+      // The checkbox takes the radio's place and size, clear of the flag.
+      final box = tester.getRect(find.descendant(of: rowOf('Rotterdam'), matching: find.byWidgetPredicate((w) => w.runtimeType.toString() == '_PickBox')));
+      final flag = tester.getRect(find.descendant(of: rowOf('Rotterdam'), matching: find.byType(CountryBadge)));
+      expect(box.size, const Size(16, 16));
+      expect(flag.left - box.right, greaterThanOrEqualTo(6));
 
       // Taps pick and put back.
       await tester.tap(rowOf('Nuremberg'));

@@ -137,9 +137,10 @@ class _HiddenFooter extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 6),
               minimumSize: const Size(0, 30),
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              textStyle: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
             ),
-            child: const Text('Показать и вернуть'),
+            // The style on the text, not the button's: a button's text style
+            // replaces the theme's, font and all.
+            child: const Text('Показать и вернуть', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
           ),
         ],
       ),

@@ -78,7 +78,12 @@ class _NodeTable extends StatelessWidget {
         padding: const EdgeInsets.only(left: 8, right: 2, top: 4, bottom: 4),
         child: Row(
           children: [
-            SizedBox(width: 22, child: radio),
+            // The radio, or the checkbox while picking: both at their own
+            // size at the slot's left, clear of the flag.
+            SizedBox(
+              width: 22,
+              child: Align(alignment: Alignment.centerLeft, child: radio),
+            ),
             SizedBox(
               width: 38,
               child: Align(alignment: Alignment.centerLeft, child: badge),
@@ -105,7 +110,10 @@ class _NodeTable extends StatelessWidget {
       padding: EdgeInsets.only(left: 12, right: 4, top: header ? 8 : 4, bottom: header ? 8 : 4),
       child: Row(
         children: [
-          SizedBox(width: 28, child: radio),
+          SizedBox(
+            width: 28,
+            child: Align(alignment: Alignment.centerLeft, child: radio),
+          ),
           SizedBox(
             width: 42,
             child: Align(alignment: Alignment.centerLeft, child: badge),

@@ -283,9 +283,9 @@ class _PickBar extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 10),
         minimumSize: const Size(0, 30),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
       ),
-      child: const Text('Выбрать все'),
+      // The style on the text: a button's own would drop the theme's font.
+      child: const Text('Выбрать все', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
     );
     final delete = Btn(label: 'Удалить из подписки', icon: Icons.delete_outline, kind: BtnKind.danger, small: true, onPressed: n == 0 ? null : picking.delete);
     final box = BoxDecoration(
@@ -337,8 +337,8 @@ class _PickBar extends StatelessWidget {
   }
 }
 
-/// A row's checkbox while servers are picked; the server in use has none
-/// to tick.
+/// A row's checkbox while servers are picked, as large as the radio it
+/// replaces; the server in use has none to tick.
 class _PickBox extends StatelessWidget {
   final bool on;
   final bool enabled;
@@ -347,16 +347,18 @@ class _PickBox extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.pal;
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 120),
-      width: 18,
-      height: 18,
-      decoration: BoxDecoration(
-        color: on ? accent : Colors.transparent,
-        borderRadius: BorderRadius.circular(5),
-        border: Border.all(color: on ? accent : (enabled ? p.border2 : p.border), width: 2),
+    // The row's slot would stretch it: its own size, wherever it is put.
+    return SizedBox.square(
+      dimension: 16,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        decoration: BoxDecoration(
+          color: on ? accent : Colors.transparent,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: on ? accent : (enabled ? p.border2 : p.border), width: 2),
+        ),
+        child: on ? const Icon(Icons.check, size: 11, color: onAccent) : (enabled ? null : Icon(Icons.lock_outline, size: 9, color: p.dim)),
       ),
-      child: on ? const Icon(Icons.check, size: 13, color: onAccent) : (enabled ? null : Icon(Icons.lock_outline, size: 11, color: p.dim)),
     );
   }
 }

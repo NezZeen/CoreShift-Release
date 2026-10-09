@@ -728,9 +728,9 @@ class _Toasts extends StatelessWidget {
                             padding: const EdgeInsets.symmetric(horizontal: 8),
                             minimumSize: const Size(0, 30),
                             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                           ),
-                          child: Text(label),
+                          // The style on the text: a button's own would drop the theme's font.
+                          child: Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
                         ),
                       ],
                       const SizedBox(width: 6),
