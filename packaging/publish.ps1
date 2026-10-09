@@ -56,7 +56,9 @@ param(
     [switch]$GitLabOnly,
     [string]$TelegramText = '',
     [switch]$NoTelegram,
-    [switch]$TelegramOnly
+    [switch]$TelegramOnly,
+    # Takes the post of this version back, while the bot may (48 hours).
+    [switch]$TelegramDelete
 )
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path "$PSScriptRoot\..").Path
@@ -89,29 +91,65 @@ function Send-TelegramPost {
         return
     }
     $token = [IO.File]::ReadAllText($tokenFile).Trim().Trim([char]0xFEFF).Trim()
-    $chat = [IO.File]::ReadAllText($chatFile).Trim().Trim([char]0xFEFF).Trim()
+    # The chat, and in a group with topics the topic: @CoreShift_app/10, or
+    # the topic's link https://t.me/CoreShift_app/10.
+    $where = [IO.File]::ReadAllText($chatFile).Trim().Trim([char]0xFEFF).Trim()
+    if ($where -notmatch '^(?:https?://)?(?:t\.me/)?@?([A-Za-z][A-Za-z0-9_]{3,}|-?\d+)(?:/(\d+))?/?$') {
+        Write-Host "Telegram: not posted, $chatFile says '$where': write the chat as @name, @name/<topic> or https://t.me/name/<topic>" -ForegroundColor Yellow
+        return
+    }
+    $chat = if ($Matches[1] -match '^-?\d+$') { $Matches[1] } else { "@$($Matches[1])" }
+    $thread = $Matches[2]
+    $place = if ($thread) { "$chat, topic $thread" } else { $chat }
+    $posted = Join-Path $root "dist\telegram\$Version.posted.json"
+    if ($TelegramDelete) {
+        if (-not (Test-Path $posted)) {
+            Write-Host "Telegram: nothing to delete, no $posted" -ForegroundColor Yellow
+            return
+        }
+        $p = Get-Content $posted -Raw | ConvertFrom-Json
+        try {
+            Invoke-RestMethod -Method POST -Uri "https://api.telegram.org/bot$token/deleteMessage" -UseBasicParsing -TimeoutSec 60 `
+                -Body (@{ chat_id = $p.chat_id; message_id = $p.message_id } | ConvertTo-Json -Compress) -ContentType 'application/json' | Out-Null
+            Remove-Item $posted
+            Write-Host "Deleted the v$Version post from Telegram $($p.chat_id)" -ForegroundColor Green
+        } catch {
+            Write-Host "Telegram: not deleted (a bot may delete its posts for 48 hours only); delete it by hand" -ForegroundColor Yellow
+        } finally {
+            $token = $null
+        }
+        return
+    }
     $message = [IO.File]::ReadAllText($text, [Text.Encoding]::UTF8).Trim()
     # Telegram takes up to 4096 characters in one message.
     if ($message.Length -gt 4096) {
         Write-Host "Telegram: not posted, $text is $($message.Length) characters, Telegram takes 4096" -ForegroundColor Yellow
         return
     }
-    $body = @{ chat_id = $chat; text = $message; disable_web_page_preview = $true } | ConvertTo-Json -Compress
+    $send = @{ chat_id = $chat; text = $message; disable_web_page_preview = $true }
+    if ($thread) { $send.message_thread_id = [int]$thread }
+    $body = $send | ConvertTo-Json -Compress
     try {
-        Invoke-RestMethod -Method POST -Uri "https://api.telegram.org/bot$token/sendMessage" -UseBasicParsing -TimeoutSec 60 `
-            -Body ([Text.Encoding]::UTF8.GetBytes($body)) -ContentType 'application/json; charset=utf-8' | Out-Null
-        Write-Host "Posted v$Version to Telegram $chat" -ForegroundColor Green
+        $sent = Invoke-RestMethod -Method POST -Uri "https://api.telegram.org/bot$token/sendMessage" -UseBasicParsing -TimeoutSec 60 `
+            -Body ([Text.Encoding]::UTF8.GetBytes($body)) -ContentType 'application/json; charset=utf-8'
+        # Kept so that the post can be taken back: -TelegramDelete.
+        @{ chat_id = $sent.result.chat.id; message_id = $sent.result.message_id; thread = $thread } | ConvertTo-Json -Compress | Set-Content $posted -Encoding ASCII
+        Write-Host "Posted v$Version to Telegram $place (message $($sent.result.message_id))" -ForegroundColor Green
     } catch {
         $why = 'no answer'
         if ($_.Exception.Response) {
             $code = [int]$_.Exception.Response.StatusCode
             $why = "$code"
             try {
-                $answer = (New-Object IO.StreamReader($_.Exception.Response.GetResponseStream())).ReadToEnd() | ConvertFrom-Json
+                # Windows PowerShell has read the answer already: from the start.
+                $stream = $_.Exception.Response.GetResponseStream()
+                if ($stream.CanSeek) { $stream.Position = 0 }
+                $answer = (New-Object IO.StreamReader($stream)).ReadToEnd() | ConvertFrom-Json
                 if ($answer.description) { $why = "$code, $($answer.description)" }
             } catch { }
             if ($code -eq 401 -or $code -eq 404) { $why += ': the bot token is wrong' }
-            if ($code -eq 400 -or $code -eq 403) { $why += ': is the bot in the chat, and allowed to post there?' }
+            if ("$($answer.description)" -match 'TOPIC_CLOSED') { $why += ': the topic is closed; give the bot the right to manage topics' }
+            elseif ($code -eq 400 -or $code -eq 403) { $why += ': is the bot in the chat, and allowed to post there?' }
         }
         Write-Host "Telegram: not posted ($why). Retry: publish.ps1 -Version $Version -TelegramOnly" -ForegroundColor Yellow
     } finally {
@@ -119,7 +157,7 @@ function Send-TelegramPost {
     }
 }
 
-if ($TelegramOnly) {
+if ($TelegramOnly -or $TelegramDelete) {
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
     Send-TelegramPost
     return

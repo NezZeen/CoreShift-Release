@@ -106,7 +106,9 @@ GitHub (`api.github.com`, загрузки релизов, `raw.githubuserconten
 
 1. В Telegram написать [@BotFather](https://t.me/BotFather) → `/newbot`, получить токен бота. Сохранить его в `%USERPROFILE%\.coreshift\telegram-token.txt`. Токен не печатается и в репозиторий не попадает.
 2. Добавить бота в чат или канал (`t.me/CoreShift_app`) администратором с правом публиковать сообщения.
-3. Записать чат в `%USERPROFILE%\.coreshift\telegram-chat.txt`: `@CoreShift_app` для публичного чата или канала, либо числовой id вида `-100…` для закрытого.
+3. Записать чат в `%USERPROFILE%\.coreshift\telegram-chat.txt`: `@CoreShift_app` для публичного чата или канала, либо числовой id вида `-100…` для закрытого. В группе с темами — ссылку на тему, например `https://t.me/CoreShift_app/10` (тема «Новости»), или `@CoreShift_app/10`. В закрытую тему (писать могут только админы) бот пишет, только если у него есть право «Управление темами».
+
+Номер отправленного поста сохраняется в `dist\telegram\<версия>.posted.json`; `publish.ps1 -Version X -TelegramDelete` удаляет его (Telegram разрешает боту это в течение 48 часов).
 
 ### Базы правил
 
