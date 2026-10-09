@@ -1,10 +1,6 @@
 package dev.coreshift.coreshift
 
 import android.Manifest
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.ApplicationInfo
@@ -75,7 +71,7 @@ class MainActivity : FlutterActivity() {
                     }
                     "scanQr" -> scanQr(result)
                     "notify" -> {
-                        notify(call.argument<String>("title") ?: "", call.argument<String>("body") ?: "")
+                        Alerts.notify(this@MainActivity, call.argument<String>("title") ?: "", call.argument<String>("body") ?: "")
                         result.success(null)
                     }
                     else -> result.notImplemented()
@@ -109,27 +105,6 @@ class MainActivity : FlutterActivity() {
                 val code = if (it is MlKitException && it.errorCode == MlKitException.CODE_SCANNER_UNAVAILABLE) "unavailable" else "scan"
                 result.error(code, it.message, null)
             }
-    }
-
-    /** A notification about a subscription; a tap opens CoreShift. */
-    private fun notify(title: String, body: String) {
-        val nm = getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(
-            NotificationChannel(ALERTS, "Подписка", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                description = "Окончание срока и трафика подписки"
-            },
-        )
-        val open = PendingIntent.getActivity(this, 2, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
-        val n = Notification.Builder(this, ALERTS)
-            .setSmallIcon(R.drawable.ic_stat_vpn)
-            .setContentTitle(title)
-            .setContentText(body)
-            .setStyle(Notification.BigTextStyle().bigText(body))
-            .setContentIntent(open)
-            .setAutoCancel(true)
-            .build()
-        // One notification per title: the same warning replaces itself.
-        nm.notify(title.hashCode(), n)
     }
 
     /**
@@ -251,6 +226,5 @@ class MainActivity : FlutterActivity() {
         private const val REQUEST_VPN = 1
         private const val UNASKED_WITHIN_MS = 800L
         private const val REQUEST_NOTIFICATIONS = 2
-        private const val ALERTS = "alerts"
     }
 }

@@ -56,6 +56,33 @@ type Platform interface {
 	// Traffic reports the speed every second while connected, in bytes
 	// per second.
 	Traffic(downRate, upRate int64)
+	// Notify shows a notification about a subscription running out; a
+	// tap opens CoreShift. One notification per title.
+	Notify(title, body string)
+}
+
+// watchSubscriptions tells Android of subscriptions running out, whether
+// or not the app is open: soon after the start and every hour, as long as
+// the engine runs (the VPN keeps it running). Each step once.
+func watchSubscriptions(ctx context.Context, st *store.Store, dataDir string, p Platform) {
+	alerts := subAlerts{path: filepath.Join(dataDir, "sub_warned.json")}
+	check := func() {
+		for _, w := range alerts.due(st.Subscriptions(), time.Now()) {
+			p.Notify(w.title, w.body)
+		}
+	}
+	// A moment for the subscriptions due a refresh to get it first.
+	t := time.NewTimer(time.Minute)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			check()
+			t.Reset(time.Hour)
+		}
+	}
 }
 
 // Status is the connection as the notification and the tile show it.
@@ -250,6 +277,7 @@ func Start(dataDir, libDir, deviceID, osVersion, model string, p Platform) error
 	go st.RunUpdater(ctx, time.Minute)
 	go svc.RunAppUpdates(ctx)
 	go report(ctx, svc, p)
+	go watchSubscriptions(ctx, st, dataDir, p)
 	running = &engine{ctx: ctx, cancel: cancel, svc: svc, srv: srv, apiFile: apiFile}
 	return nil
 }

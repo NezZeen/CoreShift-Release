@@ -179,5 +179,7 @@ object Engine {
             VpnStatus.setTraffic(downRate, upRate)
             CoreShiftVpnService.current()?.refreshNotification()
         }
+
+        override fun notify(title: String, body: String) = Alerts.notify(context, title, body)
     }
 }

@@ -26,7 +26,8 @@ class SubWarning {
 }
 
 /// Warns before a subscription runs out: a banner while it lasts, and once
-/// per step (3 days, a day, over) a notification.
+/// per step (3 days, a day, over) a notification. On Android the engine
+/// notifies, also while the app is closed; the texts are the same there.
 extension AppStateSubAlerts on AppState {
   /// Subscriptions running out, the most urgent first.
   List<SubWarning> get subscriptionWarnings {
@@ -99,8 +100,9 @@ extension AppStateSubAlerts on AppState {
       if (w.level <= before) continue;
       changed = true;
       toast(w.title, w.over ? ToastKind.err : ToastKind.info);
+      // The desktop's notification. Android's comes from the engine
+      // (engine/mobile/subwarn.go), the app open or not.
       _alerts.add(Alert(w.title, w.body));
-      platform.notify(w.title, w.body);
     }
     // Forget what no longer applies, e.g. a subscription renewed or removed.
     if (changed || now.length != warned.length) setPref('sub_warned', now);
