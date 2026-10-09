@@ -210,6 +210,9 @@ func New(cfg Config) (*Service, error) {
 			return ping.TCP(ctx, ap, b, tcpCount, tcpTimeout)
 		}
 	}
+	if cfg.dohLookup == nil {
+		cfg.dohLookup = (&dohPool{}).lookup
+	}
 	if cfg.netInterval == 0 {
 		cfg.netInterval = networkCheckInterval
 	}

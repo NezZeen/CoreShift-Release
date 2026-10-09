@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"coreshift/engine/internal/doh"
 	"coreshift/engine/internal/node"
 	"coreshift/engine/internal/ping"
 	"coreshift/engine/internal/store"
@@ -133,13 +134,14 @@ func (s *Service) TestLatency(ctx context.Context, subID string) ([]NodeLatency,
 	for i := range all {
 		all[i] = i
 	}
+	names := s.serverNames(ctx)
 	if s.Options().LatencyTest == store.LatencyProxy {
-		s.proxyLatency(ctx, nodes, all, nil, report)
+		s.proxyLatency(ctx, nodes, all, nil, names, report)
 		return out, nil
 	}
 	// A node the light probes cannot time is measured through its core.
-	failed, errs := s.pingLatency(ctx, nodes, report)
-	s.proxyLatency(ctx, nodes, failed, errs, report)
+	failed, errs := s.pingLatency(ctx, nodes, names, report)
+	s.proxyLatency(ctx, nodes, failed, errs, names, report)
 	return out, nil
 }
 
@@ -147,7 +149,8 @@ func latencyMS(d time.Duration) int64 { return max(d.Milliseconds(), 1) }
 
 // proxyLatency measures the nodes at indices idx through their cores.
 // pingErrs, if set, are why pinging them failed, for the error message.
-func (s *Service) proxyLatency(ctx context.Context, nodes []node.Node, idx []int, pingErrs map[int]error, report func(int, NodeLatency)) {
+// names, if set, are the server names this test has looked up already.
+func (s *Service) proxyLatency(ctx context.Context, nodes []node.Node, idx []int, pingErrs map[int]error, names *serverNames, report func(int, NodeLatency)) {
 	if len(idx) == 0 {
 		return
 	}
@@ -155,7 +158,7 @@ func (s *Service) proxyLatency(ctx context.Context, nodes []node.Node, idx []int
 	for j, i := range idx {
 		sub[j] = nodes[i]
 	}
-	addrs := s.resolveServers(ctx, sub)
+	addrs := s.resolveServers(ctx, sub, names)
 	s.sup.TestLatency(ctx, sub, addrs, latencyConcurrency, func(r supervisor.LatencyResult) {
 		i := idx[r.Index]
 		res := NodeLatency{Core: string(r.Core), Method: methodProxy}
@@ -181,10 +184,20 @@ const (
 	icmpCount       = 3
 	icmpTimeout     = time.Second
 	// The best of three: the first handshake after a pause may also wake
-	// a mobile radio, which takes a hundred milliseconds or more.
+	// a mobile radio, which takes a hundred milliseconds or more. A first
+	// handshake that fails is tried once more (ping.TCP), so a server that
+	// does not answer costs about two timeouts, three seconds.
 	tcpCount   = 3
-	tcpTimeout = 2 * time.Second
+	tcpTimeout = 1500 * time.Millisecond
+
+	// dohAfter is how long the system's resolver has on its own before
+	// DNS over HTTPS is asked too.
+	dohAfter = 2 * time.Second
 )
+
+// dohProbe stands for the DNS-over-HTTPS servers (doh.Servers), all IPv4,
+// when choosing how to reach them (bindFor).
+var dohProbe = netip.MustParseAddr("1.1.1.1")
 
 // overUDP reports whether n's protocol runs over UDP, leaving no TCP port to
 // time.
@@ -195,18 +208,20 @@ func overUDP(n *node.Node) bool {
 // pingLatency times each node's server the light way, as Happ's TCP ping
 // does: a TCP handshake with its port, all at once, no core started. Over
 // UDP there is no port to time, so ICMP instead. Each server and port is
-// probed once however many nodes share it. A server that does not answer
-// is reported as such; returned for a test through the core are only the
-// nodes the probes could not time: UDP ones that ignore ICMP, and those a
-// tunnel on this computer answered for.
-func (s *Service) pingLatency(ctx context.Context, nodes []node.Node, report func(int, NodeLatency)) ([]int, map[int]error) {
-	// Pings leave through the physical interface, around any tunnel, ours
-	// or another VPN client's, which would answer them itself or add its
-	// own detour.
-	bind, err := s.cfg.physical()
-	if err != nil {
-		bind = ping.Bind{}
+// probed once however many nodes share it. Returned for a test through the
+// core are the nodes the probes could not time, whatever the reason: a name
+// that did not resolve, a server that did not answer the handshake or
+// refused it, ICMP ignored, a tunnel on this computer answering for it.
+// The direct path is not the proxy's: a provider may drop handshakes with a
+// server, or its DNS fail the server's name, while the proxy protocol gets
+// through, as other clients' tests through the proxy show. Only the core
+// test says a server is down. names, if set, are the server names this test
+// has looked up already.
+func (s *Service) pingLatency(ctx context.Context, nodes []node.Node, names *serverNames, report func(int, NodeLatency)) ([]int, map[int]error) {
+	if names == nil {
+		names = s.serverNames(ctx)
 	}
+	bind := names.bind
 
 	sem := make(chan struct{}, pingConcurrency)
 	limit := func(f func() (time.Duration, error)) func() (time.Duration, error) {
@@ -221,19 +236,8 @@ func (s *Service) pingLatency(ctx context.Context, nodes []node.Node, report fun
 		}
 	}
 	var mu sync.Mutex
-	resolved := map[string]func() (netip.Addr, error){}
 	icmp := map[netip.Addr]func() (time.Duration, error){}
 	tcp := map[netip.AddrPort]func() (time.Duration, error){}
-	once := func(host string) func() (netip.Addr, error) {
-		mu.Lock()
-		defer mu.Unlock()
-		if f, ok := resolved[host]; ok {
-			return f
-		}
-		f := sync.OnceValues(func() (netip.Addr, error) { return s.serverAddr(ctx, host) })
-		resolved[host] = f
-		return f
-	}
 	icmpOnce := func(ip netip.Addr) func() (time.Duration, error) {
 		mu.Lock()
 		defer mu.Unlock()
@@ -276,19 +280,24 @@ func (s *Service) pingLatency(ctx context.Context, nodes []node.Node, report fun
 			defer wg.Done()
 			defer func() { <-workers }()
 			n := &nodes[i]
+			method := methodTCP
+			if overUDP(n) {
+				method = methodICMP
+			}
 			retry := func(err error) {
+				if ctx.Err() != nil {
+					// Cancelled: no core is started for it.
+					report(i, NodeLatency{Method: method, Error: ctx.Err().Error()})
+					return
+				}
 				mu.Lock()
 				failed = append(failed, i)
 				errs[i] = err
 				mu.Unlock()
 			}
-			method := methodTCP
-			if overUDP(n) {
-				method = methodICMP
-			}
-			ip, err := once(n.Server)()
+			ip, err := names.addr(n.Server)
 			if err != nil {
-				report(i, NodeLatency{Method: method, Error: err.Error()})
+				retry(err)
 				return
 			}
 			if overUDP(n) {
@@ -301,14 +310,11 @@ func (s *Service) pingLatency(ctx context.Context, nodes []node.Node, report fun
 				return
 			}
 			rtt, err := tcpOnce(netip.AddrPortFrom(ip, n.Port))()
-			switch {
-			case err == nil:
-				report(i, NodeLatency{Method: methodTCP, LatencyMS: latencyMS(rtt)})
-			case errors.Is(err, errLocalAnswer):
+			if err != nil {
 				retry(fmt.Errorf("TCP: %w", err))
-			default:
-				report(i, NodeLatency{Method: methodTCP, Error: err.Error()})
+				return
 			}
+			report(i, NodeLatency{Method: methodTCP, LatencyMS: latencyMS(rtt)})
 		}()
 	}
 	wg.Wait()
@@ -343,22 +349,27 @@ func checkPing(ip netip.Addr) func(time.Duration, error) (time.Duration, error) 
 
 // resolveServers looks up each node's server once per name, as Connect does,
 // so test cores get an address rather than resolving it themselves: some
-// resolve slowly enough to fail the test. A name that does not resolve is
-// left to the core.
-func (s *Service) resolveServers(ctx context.Context, nodes []node.Node) []string {
-	var names []string
+// resolve slowly enough to fail the test, and a name the system's resolver
+// fails may still be had over DNS over HTTPS. A name that does not resolve
+// is left to the core. names, if set, are the server names this test has
+// looked up already.
+func (s *Service) resolveServers(ctx context.Context, nodes []node.Node, names *serverNames) []string {
+	if names == nil {
+		names = s.serverNames(ctx)
+	}
+	var hostList []string
 	seen := map[string]bool{}
 	for _, n := range nodes {
 		if !seen[n.Server] {
 			seen[n.Server] = true
-			names = append(names, n.Server)
+			hostList = append(hostList, n.Server)
 		}
 	}
 	hosts := map[string]string{}
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	workers := make(chan struct{}, lookupConcurrency)
-	for _, host := range names {
+	for _, host := range hostList {
 		select {
 		case workers <- struct{}{}:
 		case <-ctx.Done():
@@ -370,7 +381,7 @@ func (s *Service) resolveServers(ctx context.Context, nodes []node.Node) []strin
 		go func() {
 			defer wg.Done()
 			defer func() { <-workers }()
-			ip, err := s.serverAddr(ctx, host)
+			ip, err := names.addr(host)
 			if err != nil || ip.String() == host {
 				return
 			}
@@ -385,6 +396,135 @@ func (s *Service) resolveServers(ctx context.Context, nodes []node.Node) []strin
 		addrs[i] = hosts[n.Server]
 	}
 	return addrs
+}
+
+// serverNames looks each server name up once per latency test, for the
+// pings and the test cores both.
+type serverNames struct {
+	s   *Service
+	ctx context.Context
+	// bind is how pings and DNS over HTTPS leave: through the physical
+	// interface, around any tunnel, ours or another VPN client's, which
+	// would answer them itself or add its own detour. On Android the app is
+	// outside the VPN and the zero Bind takes the default network.
+	bind ping.Bind
+
+	mu sync.Mutex
+	m  map[string]func() (netip.Addr, error)
+}
+
+func (s *Service) serverNames(ctx context.Context) *serverNames {
+	bind, err := s.cfg.physical()
+	if err != nil {
+		bind = ping.Bind{}
+	}
+	return &serverNames{s: s, ctx: ctx, bind: bind, m: map[string]func() (netip.Addr, error){}}
+}
+
+// addr returns host's address, looking it up the first time.
+func (n *serverNames) addr(host string) (netip.Addr, error) {
+	n.mu.Lock()
+	f, ok := n.m[host]
+	if !ok {
+		f = sync.OnceValues(func() (netip.Addr, error) { return n.s.testAddr(n.ctx, host, n.bind) })
+		n.m[host] = f
+	}
+	n.mu.Unlock()
+	return f()
+}
+
+// testAddr is serverAddr for a latency test: a name the system's resolver
+// fails, or is slow to answer, is also asked over DNS over HTTPS, from
+// public resolvers reached by address. A provider's DNS may fail a VPN
+// server's name that resolves anywhere else, and the server is then no
+// less usable: other clients' tests go through.
+func (s *Service) testAddr(ctx context.Context, host string, b ping.Bind) (netip.Addr, error) {
+	if a, err := netip.ParseAddr(host); err == nil {
+		return a, nil
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	type result struct {
+		ip  netip.Addr
+		err error
+	}
+	sys := make(chan result, 1)
+	go func() {
+		ip, err := s.serverAddr(ctx, host)
+		sys <- result{ip, err}
+	}()
+	var dohc chan result
+	startDoH := func() {
+		dohc = make(chan result, 1)
+		go func() {
+			ips, err := s.cfg.dohLookup(ctx, host, bindFor(b, dohProbe))
+			ip, err := preferIPv4(ips, err)
+			dohc <- result{ip, err}
+		}()
+	}
+	timer := time.NewTimer(dohAfter)
+	defer timer.Stop()
+	var sysErr, dohErr error
+	for sys != nil || dohc != nil {
+		select {
+		case r := <-sys:
+			if r.err == nil {
+				return r.ip, nil
+			}
+			sysErr, sys = r.err, nil
+			if dohc == nil && dohErr == nil {
+				startDoH()
+			}
+		case <-timer.C:
+			if dohc == nil && dohErr == nil {
+				startDoH()
+			}
+		case r := <-dohc:
+			if r.err == nil {
+				return r.ip, nil
+			}
+			dohErr, dohc = r.err, nil
+		}
+	}
+	return netip.Addr{}, fmt.Errorf("%w; DNS over HTTPS: %v", sysErr, dohErr)
+}
+
+// preferIPv4 picks the address to use of a lookup's, as lookupHost does.
+func preferIPv4(ips []netip.Addr, err error) (netip.Addr, error) {
+	if err != nil {
+		return netip.Addr{}, err
+	}
+	for _, ip := range ips {
+		if ip.Unmap().Is4() {
+			return ip.Unmap(), nil
+		}
+	}
+	if len(ips) == 0 {
+		return netip.Addr{}, errors.New("no addresses")
+	}
+	return ips[0], nil
+}
+
+// dohPool keeps a DNS-over-HTTPS resolver for the latest way out, so the
+// lookups of a latency test share its connections.
+type dohPool struct {
+	mu   sync.Mutex
+	bind ping.Bind
+	r    *doh.Resolver
+}
+
+func (p *dohPool) lookup(ctx context.Context, host string, b ping.Bind) ([]netip.Addr, error) {
+	p.mu.Lock()
+	if p.r == nil || p.bind != b {
+		if p.r != nil {
+			p.r.CloseIdleConnections()
+		}
+		p.bind = b
+		p.r = &doh.Resolver{Dial: b.Dialer(doh.DefaultTimeout).DialContext}
+	}
+	r := p.r
+	p.mu.Unlock()
+	return r.Lookup(ctx, host)
 }
 
 // Latency returns the last test result of a node, if it was tested.

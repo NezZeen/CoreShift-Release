@@ -250,6 +250,10 @@ func newHarness(t *testing.T, mutate func(*Config)) *harness {
 		tcpPing: func(context.Context, netip.AddrPort, ping.Bind) (time.Duration, error) {
 			return 0, errors.New("unreachable")
 		},
+		// No public DNS-over-HTTPS resolvers either.
+		dohLookup: func(context.Context, string, ping.Bind) ([]netip.Addr, error) {
+			return nil, errors.New("no DNS over HTTPS in tests")
+		},
 		// No speedtest.net from tests: the speed test goes to speedURL.
 		ookla:   noOokla,
 		netUp:   func() bool { return !h.offline.Load() },

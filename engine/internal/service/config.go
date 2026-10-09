@@ -170,6 +170,10 @@ type Config struct {
 	leakDomain string
 	leakHome   func(ctx context.Context) (IPInfo, error)
 
+	// dohLookup looks a server name up over DNS over HTTPS, leaving as b
+	// says, when the system's resolver fails it in a latency test.
+	dohLookup func(ctx context.Context, host string, b ping.Bind) ([]netip.Addr, error)
+
 	checkRelease     func(ctx context.Context, client *http.Client, src selfupdate.Source) (selfupdate.Release, error)
 	downloadRelease  func(ctx context.Context, client *http.Client, rel selfupdate.Release, dir string) (string, error)
 	launchInstaller  func(path, logPath string) error
