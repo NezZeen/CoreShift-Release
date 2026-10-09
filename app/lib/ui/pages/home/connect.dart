@@ -1,39 +1,112 @@
 part of '../home_page.dart';
 
-class _Elapsed extends StatefulWidget {
+/// How long the connection has been up, under "Подключено". It ticks on
+/// its own, each tick timed to the next whole second since [since], so no
+/// second is skipped or shown twice. When [since] moves while connected (a
+/// reconnect: the same server picked again, a switch to a spare one, a new
+/// network) the count starts over with a note saying so for a moment,
+/// rather than seeming to run backwards.
+@visibleForTesting
+class ConnectedTime extends StatefulWidget {
   final DateTime since;
   final bool tun;
   final bool short;
-  const _Elapsed({required this.since, required this.tun, this.short = false});
+
+  /// The clock; a fake one in tests.
+  final DateTime Function() now;
+  const ConnectedTime({super.key, required this.since, required this.tun, this.short = false, this.now = DateTime.now});
+
+  /// How long «переподключено» stays.
+  static const noteFor = Duration(seconds: 3);
 
   @override
-  State<_Elapsed> createState() => _ElapsedState();
+  State<ConnectedTime> createState() => _ConnectedTimeState();
 }
 
-class _ElapsedState extends State<_Elapsed> {
-  late final Timer _t = Timer.periodic(const Duration(seconds: 1), (_) => setState(() {}));
+class _ConnectedTimeState extends State<ConnectedTime> {
+  Timer? _tick;
+  Timer? _noteOff;
+  bool _reconnected = false;
+
+  /// Hidden (Android in the background, a hidden window) nothing is drawn,
+  /// so the time does not tick until the app shows again.
+  bool _shown = true;
+  late final AppLifecycleListener _lifecycle;
+
+  @override
+  void initState() {
+    super.initState();
+    _lifecycle = AppLifecycleListener(
+      onHide: () {
+        _shown = false;
+        _tick?.cancel();
+      },
+      onShow: () {
+        _shown = true;
+        if (mounted) setState(_schedule);
+      },
+    );
+    _schedule();
+  }
+
+  @override
+  void didUpdateWidget(ConnectedTime old) {
+    super.didUpdateWidget(old);
+    if (old.since.isAtSameMomentAs(widget.since)) return;
+    _reconnected = true;
+    _noteOff?.cancel();
+    _noteOff = Timer(ConnectedTime.noteFor, () {
+      if (mounted) setState(() => _reconnected = false);
+    });
+    _schedule();
+  }
 
   @override
   void dispose() {
-    _t.cancel();
+    _lifecycle.dispose();
+    _tick?.cancel();
+    _noteOff?.cancel();
     super.dispose();
+  }
+
+  /// The next tick, just past the next whole second of the count: a timer
+  /// that fires a little early would otherwise show the same second again,
+  /// and one second later skip one.
+  void _schedule() {
+    _tick?.cancel();
+    if (!_shown) return;
+    final into = widget.now().difference(widget.since).inMilliseconds % 1000;
+    _tick = Timer(Duration(milliseconds: 1000 - into + 15), () {
+      if (!mounted) return;
+      setState(_schedule);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final d = DateTime.now().difference(widget.since);
+    final p = context.pal;
+    final d = widget.now().difference(widget.since);
     final mode = widget.short ? (widget.tun ? '' : ' · только прокси') : ' · ${widget.tun ? 'все приложения через VPN' : 'прокси SOCKS5 127.0.0.1:17890'}';
-    return Text.rich(
-      TextSpan(
-        children: [
-          TextSpan(
-            text: formatDuration(d.isNegative ? Duration.zero : d),
-            style: figures(15, color: context.pal.text),
-          ),
-          TextSpan(text: mode),
-        ],
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 250),
+      child: Text.rich(
+        key: ValueKey(_reconnected),
+        TextSpan(
+          children: [
+            TextSpan(
+              text: formatDuration(d.isNegative ? Duration.zero : d),
+              style: figures(15, color: p.text),
+            ),
+            _reconnected
+                ? TextSpan(
+                    text: ' · переподключено',
+                    style: TextStyle(color: p.okInk),
+                  )
+                : TextSpan(text: mode),
+          ],
+        ),
+        style: TextStyle(color: p.muted, fontSize: 13.5),
       ),
-      style: TextStyle(color: context.pal.muted, fontSize: 13.5),
     );
   }
 }
