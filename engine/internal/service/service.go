@@ -440,7 +440,11 @@ func (s *Service) SetOptions(o Options) {
 	s.mu.Lock()
 	s.opts = o
 	active := s.status.State.active()
-	s.optsPending = active && !reflect.DeepEqual(o, s.connOpts)
+	// How much the journal tells is no reason to reconnect: the cores
+	// take their log level at the next connection, whenever it comes.
+	cmp := o
+	cmp.Verbose = s.connOpts.Verbose
+	s.optsPending = active && !reflect.DeepEqual(cmp, s.connOpts)
 	if !active {
 		s.status.TUN = o.TUN
 	}

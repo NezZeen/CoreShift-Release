@@ -237,6 +237,9 @@ func Open(path string, opts Options) (*Store, error) {
 		return nil, fmt.Errorf("store: %w", err)
 	}
 	loaded := fileData{Settings: Defaults()} // fields missing from the file keep their defaults
+	// But the journal's, which upgrade() tells apart by their version: a
+	// file's own, or none.
+	loaded.Settings.Log = LogSettings{}
 	var problem error
 	if err := json.Unmarshal(b, &loaded); err != nil {
 		problem = fmt.Errorf("unreadable: %w", err)
@@ -251,6 +254,7 @@ func Open(path string, opts Options) (*Store, error) {
 		return s, fmt.Errorf("%w: %s is %v; moved to %s", ErrReset, filepath.Base(path), problem, filepath.Base(aside))
 	}
 
+	loaded.Settings.Log.upgrade()
 	var warn error
 	if set, err := loaded.Settings.normalize(); err != nil {
 		// Hand-edited into something invalid, or a value of a later

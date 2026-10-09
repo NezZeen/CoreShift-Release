@@ -27,6 +27,11 @@ func (s *Service) Log(source, line string) {
 	case noiseLine(line) && !s.verbose.Load():
 	case s.logs.twin(line):
 		// sing-box's second report of a lookup it just reported.
+	case staleFakeIP(line):
+		// An app still holds an address from before the TUN layer
+		// restarted (the app updated or was killed): it asks the name
+		// again and connects. Said in words, once for every burst.
+		s.logs.addAs(source, staleFakeIPText)
 	case s.healthFails.Load() >= upstreamDeadChecks && lookupTimeout(line):
 		// Every app's lookups through the tunnel time out while the
 		// server does not answer: one line says it, not one per name.
@@ -61,6 +66,13 @@ func lookupTimeout(l string) bool {
 	return (strings.Contains(l, "lookup failed") || strings.Contains(l, "router: lookup")) &&
 		(strings.Contains(l, "context deadline exceeded") || strings.Contains(l, "i/o timeout"))
 }
+
+const staleFakeIPText = "программа обратилась по адресу Fake-IP из прежнего подключения: она запросит адрес заново и соединится — обычно в первую минуту после перезапуска CoreShift"
+
+// staleFakeIP recognises sing-box's report of a connection to a fake-IP
+// address it has no name for: one handed out before the TUN layer last
+// started, whose record was not saved yet when the process ended.
+func staleFakeIP(l string) bool { return strings.Contains(l, "missing fakeip record") }
 
 // noiseLine recognises TUN layer errors that are no fault of the tunnel,
 // yet read like the VPN breaking:

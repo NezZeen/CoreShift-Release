@@ -42,8 +42,23 @@ type LogSettings struct {
 	// Verbose keeps the lines of the cores and the TUN layer that the
 	// journal leaves out as harmless, and has the cores tell more (log
 	// level info, from the next connection): for finding out what goes
-	// wrong. It names the sites the device opens.
+	// wrong. It names the sites the device opens. On by default since
+	// 0.9.3.
 	Verbose bool `json:"verbose"`
+	// Version is logVersion once the defaults of that version applied; a
+	// file without it (0.9.2 saved verbose off for everyone) is moved on
+	// to them once, after which the user's choice stays.
+	Version int `json:"version"`
+}
+
+// logVersion is the version of LogSettings' defaults.
+const logVersion = 1
+
+// upgrade moves settings saved before logVersion on to its defaults.
+func (l *LogSettings) upgrade() {
+	if l.Version < logVersion {
+		l.Verbose, l.Version = true, logVersion
+	}
 }
 
 type CoreSettings struct {
@@ -211,6 +226,7 @@ func Defaults() Settings {
 	return Settings{
 		TUN:  true,
 		IPv6: true,
+		Log:  LogSettings{Verbose: true, Version: logVersion},
 		Cores: CoreSettings{
 			Priority:        []core.Kind{core.Xray, core.SingBox, core.Mihomo},
 			Mode:            ModeAuto,

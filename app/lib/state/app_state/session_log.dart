@@ -64,7 +64,7 @@ extension AppStateSessionLog on AppState {
       if (core.isNotEmpty) [AppState.coreName(core), if (version.isNotEmpty) version].join(' '),
       route,
       dns,
-      on('ipv6') ? 'IPv6' : 'без IPv6',
+      on('ipv6') ? 'IPv6 через VPN' : 'IPv6 выключен',
     ];
     final when = took == null || took.isNegative || took > const Duration(minutes: 5) ? '' : ' за ${_seconds(took)}';
     return 'подключено$when: ${parts.join(' · ')}';

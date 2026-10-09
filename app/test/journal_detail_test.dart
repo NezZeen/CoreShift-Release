@@ -99,17 +99,17 @@ void main() {
     expect(AppStateActions.coreCheckText(const [CoreUpdate(kind: 'xray', error: 'no network')]), isNull);
   });
 
-  testWidgets('«Подробно» turns the verbose journal on and off', (tester) async {
+  testWidgets('«Подробно» is on by default, and turns the verbose journal off and on', (tester) async {
     final state = await pumpApp(tester);
     await tester.tap(find.text('Журнал').first);
     await tester.pump(const Duration(milliseconds: 300));
-    expect(state.setting('log.verbose', true), isFalse);
+    expect(state.setting('log.verbose', false), isTrue);
     await tester.tap(find.text('Подробно'));
     for (var i = 0; i < 5; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
-    expect(state.setting('log.verbose', false), isTrue);
-    expect(find.textContaining('Подробный журнал включён'), findsOneWidget);
+    expect(state.setting('log.verbose', true), isFalse);
+    expect(find.text('Подробный журнал выключен'), findsOneWidget);
     await tester.pump(const Duration(seconds: 30));
   });
 }

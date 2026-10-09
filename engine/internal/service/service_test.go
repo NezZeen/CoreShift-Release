@@ -1191,6 +1191,9 @@ func TestNoiseLines(t *testing.T) {
 func TestVerboseJournalKeepsNoise(t *testing.T) {
 	const noise = "ERROR [4901] [3143972750 0ms] connection: report handshake success: connection refused"
 	h := newHarness(t, nil)
+	if err := h.connect(t, trojanLink); err != nil {
+		t.Fatal(err)
+	}
 	logged := func() bool {
 		h.svc.Log("tun", noise)
 		h.svc.logs.flushAll()
@@ -1210,10 +1213,41 @@ func TestVerboseJournalKeepsNoise(t *testing.T) {
 	if !logged() {
 		t.Fatal("a verbose journal left the line out")
 	}
+	if h.svc.Status().Pending {
+		t.Error("the journal's verbosity asked for a reconnect")
+	}
 	if lvl := o.policy().LogLevel; lvl != "info" {
 		t.Errorf("cores' log level = %q, want info", lvl)
 	}
 	if lvl := (Options{}).policy().LogLevel; lvl != "" {
 		t.Errorf("default log level = %q", lvl)
+	}
+}
+
+// sing-box's "missing fakeip record" after a restart reads as what it is,
+// grouped like any repeating line.
+func TestStaleFakeIPInWords(t *testing.T) {
+	if !staleFakeIP("ERROR [3337761335 0ms] router: missing fakeip record, try enable experimental.cache_file") {
+		t.Fatal("not recognised")
+	}
+	h := newHarness(t, nil)
+	for range 3 {
+		h.svc.Log("tun", "ERROR [3337761335 0ms] router: missing fakeip record, try enable experimental.cache_file")
+	}
+	h.svc.logs.flushAll()
+	n := 0
+	for _, e := range eventsFor(h, 100*time.Millisecond) {
+		if e.Kind != "log" {
+			continue
+		}
+		if strings.Contains(e.Line, "missing fakeip") {
+			t.Errorf("raw line told: %s", e.Line)
+		}
+		if strings.HasPrefix(e.Line, "программа обратилась по адресу Fake-IP") {
+			n++
+		}
+	}
+	if n == 0 {
+		t.Error("the words were not told")
 	}
 }
