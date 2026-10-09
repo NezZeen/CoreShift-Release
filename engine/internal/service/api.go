@@ -401,7 +401,7 @@ func (a *api) parse(w http.ResponseWriter, r *http.Request) {
 	var f subscription.Fetched
 	var err error
 	if req.URL != "" {
-		f, err = subscription.Fetch(r.Context(), &http.Client{Timeout: 30 * time.Second}, req.URL, req.UserAgent)
+		f, err = a.svc.fetchSubscription(r.Context(), req.URL, req.UserAgent)
 	} else {
 		f.Result, err = subscription.Parse([]byte(req.Content))
 	}

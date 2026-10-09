@@ -215,15 +215,40 @@ const settleWait = 30 * time.Second
 // connects by itself. Chosen mid-way, the proxy stops under the request,
 // and a direct request made before the TUN layer is up is cut off by its
 // strict routes; every check then failed as "no connection to GitHub".
+//
+// Without a connection the one direct attempt's error is untunneled, for
+// retryAfterConnect.
 func (s *Service) viaProxyOrDirect(ctx context.Context, timeout time.Duration, do func(*http.Client) error) error {
+	return s.via(ctx, timeout, false, do)
+}
+
+// viaDirectOrProxy is viaProxyOrDirect the other way round, for
+// subscriptions: directly first, then through the active core. Panels
+// often refuse VPN servers' addresses (their own nodes, hosting ranges) or
+// count them against the device limit, and the direct way is the one the
+// subscription was added with. The core is the way out when the network
+// lets nothing else through: a mobile operator's white list resets every
+// direct connection to an address not on it, and some networks do not
+// resolve the panel's name.
+func (s *Service) viaDirectOrProxy(ctx context.Context, timeout time.Duration, do func(*http.Client) error) error {
+	return s.via(ctx, timeout, true, do)
+}
+
+func (s *Service) via(ctx context.Context, timeout time.Duration, directFirst bool, do func(*http.Client) error) error {
 	s.waitSettled(ctx, settleWait)
 	proxies := []*url.URL{nil}
 	if st := s.Status().State; st == Connected {
 		proxies = []*url.URL{s.proxyURL(), nil}
+		if directFirst {
+			proxies = []*url.URL{nil, s.proxyURL()}
+		}
 	}
 	var errs []error
 	for _, p := range proxies {
 		tr := newTransport(p)
+		if p == nil && s.cfg.dialDirect != nil {
+			tr.DialContext = s.cfg.dialDirect
+		}
 		err := do(&http.Client{Timeout: timeout, Transport: tr})
 		tr.CloseIdleConnections()
 		if err == nil {
@@ -243,6 +268,9 @@ func (s *Service) viaProxyOrDirect(ctx context.Context, timeout time.Duration, d
 	}
 	if len(errs) == 2 {
 		return fmt.Errorf("%w; %w", errs[0], errs[1]) // on one line, for the journal
+	}
+	if len(proxies) == 1 {
+		return &untunneled{errs[0]}
 	}
 	return errs[0]
 }

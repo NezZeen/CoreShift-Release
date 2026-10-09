@@ -96,6 +96,7 @@ type Service struct {
 	apps    appWatch
 	stats   *trafficStats
 	fo      failover
+	retry   afterConnect
 	// healthFails counts the active core's failed checks in a row.
 	healthFails atomic.Int32
 	// bg is set while the device is idle (SetBackground); awake tells the
@@ -240,6 +241,9 @@ func New(cfg Config) (*Service, error) {
 	if cfg.trafficIdleEvery == 0 {
 		cfg.trafficIdleEvery = trafficIdleInterval
 	}
+	if cfg.retryDelay == 0 {
+		cfg.retryDelay = retryAfterConnectDelay
+	}
 	if cfg.checkRelease == nil {
 		cfg.checkRelease = func(ctx context.Context, c *http.Client, src selfupdate.Source) (selfupdate.Release, error) {
 			return selfupdate.Check(ctx, c, src, selfupdate.ManifestFor(runtime.GOOS), selfupdate.PublicKeys)
@@ -348,6 +352,7 @@ func New(cfg Config) (*Service, error) {
 	s.sup = sup
 	if cfg.Store != nil {
 		cfg.Store.Watch(s.onStoreChange)
+		cfg.Store.SetVia(s.subscriptionVia)
 	}
 	return s, nil
 }
@@ -399,6 +404,7 @@ func (s *Service) onStoreChange(c store.Change) {
 	if c.What == "settings" {
 		s.SetOptions(OptionsFromSettings(s.cfg.Store.Settings()))
 	}
+	s.noteSubscription(c)
 	e := Event{Kind: "store", Reason: c.What, Subscription: c.ID}
 	if c.Err != nil {
 		e.Error = c.Err.Error()

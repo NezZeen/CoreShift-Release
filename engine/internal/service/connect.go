@@ -558,4 +558,7 @@ func (s *Service) setStatus(st Status) {
 	s.status = st
 	s.mu.Unlock()
 	s.hub.publish(Event{Kind: "state", State: st.State, Core: string(st.Core), Error: st.Error})
+	if st.State == Connected {
+		s.retryAfterConnect()
+	}
 }
