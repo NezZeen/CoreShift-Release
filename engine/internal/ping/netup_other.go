@@ -2,4 +2,4 @@
 
 package ping
 
-func anyDefaultRoute([]string) (bool, error) { return false, ErrUnsupported }
+func defaultRouteInterface([]string) (string, error) { return "", ErrUnsupported }

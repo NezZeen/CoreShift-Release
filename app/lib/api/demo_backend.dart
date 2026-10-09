@@ -59,6 +59,7 @@ class DemoBackend implements Backend {
     },
     'updates': {'auto': true, 'interval_hours': 12, 'user_agent': ''},
     'app_update': {'auto': true, 'source': ''},
+    'log': {'verbose': false},
   };
 
   Json _appUpdate = {'state': 'idle', 'checked_at': DateTime.now().toUtc().toIso8601String()};

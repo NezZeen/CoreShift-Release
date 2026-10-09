@@ -104,6 +104,8 @@ type Service struct {
 	retry   afterConnect
 	// healthFails counts the active core's failed checks in a row.
 	healthFails atomic.Int32
+	// verbose keeps the journal's harmless lines (Options.Verbose).
+	verbose atomic.Bool
 	// direct counts direct connections the network refuses (direct.go).
 	direct directWatch
 	// bg is set while the device is idle (SetBackground); awake tells the
@@ -228,6 +230,12 @@ func New(cfg Config) (*Service, error) {
 	if cfg.netUp == nil {
 		cfg.netUp = cfg.NetworkUp
 	}
+	if cfg.netName == nil {
+		cfg.netName = cfg.NetworkName
+	}
+	if cfg.netName == nil {
+		cfg.netName = defaultNetworkName
+	}
 	if cfg.netUp == nil {
 		cfg.netUp = hasNetwork
 	}
@@ -323,6 +331,7 @@ func New(cfg Config) (*Service, error) {
 
 	s := &Service{cfg: cfg, hub: newHub(), opts: cfg.Options, status: Status{State: Idle, TUN: cfg.TUN}, socks: core.NewSOCKSAuth(),
 		awake: make(chan struct{}, 1), netKick: make(chan struct{}, 1)}
+	s.verbose.Store(cfg.Options.Verbose)
 	s.logs = newLogGrouper(logGroupEvery, func(source, line string, at time.Time) {
 		s.hub.publish(Event{Kind: "log", Source: source, Line: line, Time: at})
 	})
@@ -378,6 +387,7 @@ func New(cfg Config) (*Service, error) {
 		Health:               p.Health,
 		ReturnToPrimaryAfter: p.ReturnToPrimaryAfter,
 		Fragment:             p.Fragment,
+		LogLevel:             p.LogLevel,
 		Offline:              s.offline,
 		OnEvent:              s.onCoreEvent,
 	})
@@ -424,6 +434,9 @@ func (s *Service) Options() Options {
 // leave it as it is.
 func (s *Service) SetOptions(o Options) {
 	o = o.withDefaults()
+	// The journal keeps or drops lines at once; the cores tell more from
+	// the next connection.
+	s.verbose.Store(o.Verbose)
 	s.mu.Lock()
 	s.opts = o
 	active := s.status.State.active()

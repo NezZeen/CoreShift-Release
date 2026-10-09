@@ -53,6 +53,8 @@ type Options struct {
 	LatencyTest string
 	// Fragment splits the TLS ClientHello to get past DPI.
 	Fragment bool
+	// Verbose is store.LogSettings.Verbose.
+	Verbose bool
 	// SwitchServer moves to another server of the subscription when the
 	// connected one does not answer (store.CoreSettings.SwitchServer).
 	SwitchServer bool
@@ -138,6 +140,10 @@ type Config struct {
 	// netwatch.go); on Android from ConnectivityManager. nil means a
 	// default route outside the tunnel (ping.HasDefaultRoute).
 	NetworkUp func() bool
+	// NetworkName names the interface of the device's network, for the
+	// journal (Android's from ConnectivityManager). nil means the default
+	// route's (ping.DefaultRouteInterface).
+	NetworkName func() string
 	// AppOutsideVPN: the platform keeps the app outside its VPN (Android),
 	// so the daemon's own lookups of servers go to the system's resolver
 	// even while connected; the TUN layer's is out of its reach.
@@ -167,6 +173,7 @@ type Config struct {
 	tcpPing         func(ctx context.Context, ap netip.AddrPort, b ping.Bind) (time.Duration, error)
 	netInterval     time.Duration
 	netUp           func() bool
+	netName         func() string
 	netPoll         time.Duration // how often a connection looks whether the network is there
 	netSettle       time.Duration // how long a connection that finds no network looks again before waiting
 	netGrace        time.Duration // how long a returned network may take to carry the tunnel again
@@ -239,6 +246,7 @@ func OptionsFromSettings(set store.Settings) Options {
 		ReturnToPrimaryAfter: time.Duration(c.ReturnAfterMin) * time.Minute,
 		LatencyTest:          c.LatencyTest,
 		Fragment:             c.Fragment,
+		Verbose:              set.Log.Verbose,
 		SwitchServer:         c.SwitchServer,
 		TUN:                  set.TUN,
 		IPv6:                 set.IPv6,
@@ -305,5 +313,15 @@ func (o Options) policy() supervisor.Policy {
 	return supervisor.Policy{
 		Priority: o.Priority, Mode: o.Mode, ManualCore: o.ManualCore,
 		Health: o.Health, ReturnToPrimaryAfter: o.ReturnToPrimaryAfter, Fragment: o.Fragment,
+		LogLevel: o.logLevel(),
 	}
+}
+
+// logLevel is the cores' log level: info for a verbose journal, else
+// the default.
+func (o Options) logLevel() string {
+	if o.Verbose {
+		return "info"
+	}
+	return ""
 }

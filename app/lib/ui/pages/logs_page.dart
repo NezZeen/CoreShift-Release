@@ -112,6 +112,38 @@ class _LogsPageState extends State<LogsPage> {
               widget.state.toast('Журнал скопирован');
             },
     );
+    // «Подробно»: the cores' and the TUN layer's harmless lines too, and the
+    // cores tell more from the next connection. An older service has no
+    // such setting.
+    final s = widget.state;
+    final verbose = s.setting('log.verbose', false) == true;
+    final detail = s.hasSetting('log.verbose')
+        ? Btn(
+            label: compact ? null : 'Подробно',
+            icon: verbose ? Icons.toggle_on : Icons.toggle_off_outlined,
+            small: true,
+            kind: verbose ? BtnKind.primary : BtnKind.normal,
+            tooltip: verbose
+                ? 'Подробный журнал включён: видны служебные строки ядер и адреса сайтов. Нажмите, чтобы выключить'
+                : 'Подробный журнал: служебные строки ядер и TUN — для разбора проблем. В нём видны адреса сайтов',
+            onPressed: s.online
+                ? () async {
+                    final err = await s.updateSettings((x) {
+                      x['log'] = {...?(x['log'] as Map?)?.cast<String, dynamic>(), 'verbose': !verbose};
+                    });
+                    if (err == null) {
+                      s.toast(
+                        verbose
+                            ? 'Подробный журнал выключен'
+                            : (s.status.active
+                                  ? 'Подробный журнал включён. Ядра расскажут больше после переподключения'
+                                  : 'Подробный журнал включён. В нём видны адреса сайтов — не публикуйте его'),
+                      );
+                    }
+                  }
+                : null,
+          )
+        : null;
     return Padding(
       padding: compact ? const EdgeInsets.fromLTRB(16, 16, 16, 12) : const EdgeInsets.fromLTRB(32, 28, 32, 24),
       child: Column(
@@ -124,6 +156,7 @@ class _LogsPageState extends State<LogsPage> {
             subtitle: 'Подключения, смены ядер и ошибки. Скопируйте журнал, чтобы отправить его в поддержку.',
             actions: [
               if (!compact) ...[SizedBox(width: 220, child: search), seg],
+              ?detail,
               copy,
             ],
           ),

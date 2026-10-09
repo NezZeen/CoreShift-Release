@@ -366,6 +366,8 @@ type Policy struct {
 	ReturnToPrimaryAfter time.Duration
 	Fragment             bool
 	OpenInbound          bool // Config.OpenInbound
+	// LogLevel is the cores' (Config.LogLevel); "" is the default, warn.
+	LogLevel string
 }
 
 // SetPolicy replaces the swap policy. It stops any running connection, so
@@ -378,6 +380,7 @@ func (s *Supervisor) SetPolicy(p Policy) {
 	c.Priority, c.Mode, c.ManualCore = slices.Clone(p.Priority), p.Mode, p.ManualCore
 	c.Health, c.ReturnToPrimaryAfter, c.Fragment = p.Health, p.ReturnToPrimaryAfter, p.Fragment
 	c.OpenInbound = p.OpenInbound
+	c.LogLevel = p.LogLevel
 	s.cfg = c.withDefaults()
 }
 

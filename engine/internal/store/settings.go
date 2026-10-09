@@ -34,6 +34,16 @@ type Settings struct {
 	Routing     Routing        `json:"routing"`
 	Updates     UpdateSettings `json:"updates"`
 	AppUpdate   AppUpdate      `json:"app_update"`
+	Log         LogSettings    `json:"log"`
+}
+
+// LogSettings say how much the journal tells.
+type LogSettings struct {
+	// Verbose keeps the lines of the cores and the TUN layer that the
+	// journal leaves out as harmless, and has the cores tell more (log
+	// level info, from the next connection): for finding out what goes
+	// wrong. It names the sites the device opens.
+	Verbose bool `json:"verbose"`
 }
 
 type CoreSettings struct {

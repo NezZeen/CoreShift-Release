@@ -13,7 +13,15 @@ import (
 // nothing outside the computer can be reached, whatever a VPN does; with
 // one the network may still not reach the internet. An error means it
 // could not be told.
-func HasDefaultRoute(skip ...string) (bool, error) { return anyDefaultRoute(skip) }
+func HasDefaultRoute(skip ...string) (bool, error) {
+	name, err := defaultRouteInterface(skip)
+	return name != "", err
+}
+
+// DefaultRouteInterface names the interface of the first usable default
+// route, as HasDefaultRoute finds it, for the journal to say which network
+// the device is on; "" when there is none.
+func DefaultRouteInterface(skip ...string) (string, error) { return defaultRouteInterface(skip) }
 
 // usableInterface reports whether a default route through the interface
 // counts: up, with its link (a cable unplugged leaves the route behind on
@@ -32,8 +40,9 @@ const (
 // procDefaultRoute looks for a default route in the kernel's route table
 // as /proc/net/route (IPv4) or /proc/net/ipv6_route (v6) prints it, through
 // an interface usable accepts. Unreachable and other reject routes, which
-// systems add as a last resort, do not count.
-func procDefaultRoute(data string, v6 bool, usable func(name string) bool) bool {
+// systems add as a last resort, do not count. It returns the route's
+// interface, "" when there is none.
+func procDefaultRoute(data string, v6 bool, usable func(name string) bool) string {
 	for i, line := range strings.Split(data, "\n") {
 		f := strings.Fields(line)
 		var iface, flags string
@@ -58,8 +67,8 @@ func procDefaultRoute(data string, v6 bool, usable func(name string) bool) bool 
 			continue
 		}
 		if usable(iface) {
-			return true
+			return iface
 		}
 	}
-	return false
+	return ""
 }

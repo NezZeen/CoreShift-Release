@@ -228,6 +228,14 @@ type harness struct {
 	events <-chan Event
 	// offline takes the device's network away (Config.netUp).
 	offline atomic.Bool
+	// network names the device's network (Config.netName); "" by default,
+	// which tells the journal nothing.
+	network atomic.Value
+}
+
+func (h *harness) netName() string {
+	n, _ := h.network.Load().(string)
+	return n
 }
 
 func newHarness(t *testing.T, mutate func(*Config)) *harness {
@@ -269,8 +277,10 @@ func newHarness(t *testing.T, mutate func(*Config)) *harness {
 			return nil, errors.New("no DNS over HTTPS in tests")
 		},
 		// No speedtest.net from tests: the speed test goes to speedURL.
-		ookla:     noOokla,
-		netUp:     func() bool { return !h.offline.Load() },
+		ookla: noOokla,
+		netUp: func() bool { return !h.offline.Load() },
+		// Not the computer's own network: netinfo_test.go names its own.
+		netName:   func() string { return h.netName() },
 		netPoll:   50 * time.Millisecond,
 		netSettle: 200 * time.Millisecond,
 	}
@@ -1173,5 +1183,37 @@ func TestNoiseLines(t *testing.T) {
 	}
 	if noiseLine("ERROR [3035781270 5.30s] connection: open connection to 198.51.100.14:80 using outbound/direct[direct]: dial tcp 198.51.100.14:80: i/o timeout") {
 		t.Error("a failed connection is not noise")
+	}
+}
+
+// «Подробно»: the journal keeps the lines it leaves out as harmless, and the
+// cores tell more (log level info); off again, the lines are left out.
+func TestVerboseJournalKeepsNoise(t *testing.T) {
+	const noise = "ERROR [4901] [3143972750 0ms] connection: report handshake success: connection refused"
+	h := newHarness(t, nil)
+	logged := func() bool {
+		h.svc.Log("tun", noise)
+		h.svc.logs.flushAll()
+		for _, e := range eventsFor(h, 100*time.Millisecond) {
+			if e.Kind == "log" && strings.Contains(e.Line, "report handshake success") {
+				return true
+			}
+		}
+		return false
+	}
+	if logged() {
+		t.Fatal("a harmless line was told by default")
+	}
+	o := h.svc.Options()
+	o.Verbose = true
+	h.svc.SetOptions(o)
+	if !logged() {
+		t.Fatal("a verbose journal left the line out")
+	}
+	if lvl := o.policy().LogLevel; lvl != "info" {
+		t.Errorf("cores' log level = %q, want info", lvl)
+	}
+	if lvl := (Options{}).policy().LogLevel; lvl != "" {
+		t.Errorf("default log level = %q", lvl)
 	}
 }

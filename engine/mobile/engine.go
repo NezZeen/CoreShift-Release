@@ -241,6 +241,7 @@ func Start(dataDir, libDir, deviceID, osVersion, model string, p Platform) error
 		AppOutsideVPN: true,
 		HostIPv6:      currentNetwork.hasIPv6,
 		NetworkUp:     currentNetwork.up,
+		NetworkName:   currentNetwork.name,
 		// Release builds look for new APKs; the user installs them.
 		SelfUpdate:    service.Version != "dev",
 		InstallUpdate: p.InstallUpdate,

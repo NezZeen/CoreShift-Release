@@ -63,7 +63,9 @@ void main() {
     // The event stream reconnected: the service replays what it keeps.
     state.injectEvent(e);
     state.injectEvent(Event(time: t.add(const Duration(seconds: 1)), kind: 'state', state: 'connected', core: 'xray'));
-    expect(state.logs.map((l) => l.message), ['ERROR network: missing default interface', 'подключено']);
+    expect(state.logs, hasLength(2));
+    expect(state.logs.first.message, 'ERROR network: missing default interface');
+    expect(state.logs.last.message, startsWith('подключено: '));
     // Another line at the same moment is another line.
     state.injectEvent(Event(time: t, kind: 'log', source: 'mihomo', line: 'ERROR network: missing default interface'));
     expect(state.logs, hasLength(3));

@@ -167,6 +167,12 @@ func (s *Service) watchNet(ctx context.Context, gen int) {
 	defer t.Stop()
 	gone := 0
 	var back time.Time // when the network last came back
+	// The journal says which network the connection runs over, and when
+	// it moves to another.
+	names := netNamer{last: s.cfg.netName()}
+	if names.last != "" {
+		s.hub.publish(Event{Kind: "netinfo", Line: "сеть: " + s.describeNetwork(ctx, names.last)})
+	}
 	for {
 		select {
 		case <-ctx.Done():
@@ -184,6 +190,11 @@ func (s *Service) watchNet(ctx context.Context, gen int) {
 			s.netBlind.Store(true)
 		}
 		up := raw || s.netBlind.Load()
+		if raw {
+			if line, ok := names.look(ctx, s); ok {
+				s.hub.publish(Event{Kind: "netinfo", Reason: "changed", Line: line})
+			}
+		}
 		switch {
 		case s.netDown.Load():
 			if up && s.resumeNetwork(gen) {

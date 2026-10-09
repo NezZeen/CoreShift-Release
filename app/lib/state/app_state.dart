@@ -28,6 +28,7 @@ part 'app_state/speed_test.dart';
 part 'app_state/imports.dart';
 part 'app_state/sub_alerts.dart';
 part 'app_state/direct_hint.dart';
+part 'app_state/session_log.dart';
 
 /// Everything the UI shows, kept in sync with the daemon through its event
 /// stream. Widgets listen to it and call its actions.
@@ -281,6 +282,13 @@ class AppState extends ChangeNotifier {
   /// When the connection last changed state, by the service's events: a
   /// check waits for it to settle.
   DateTime? _stateChangedAt;
+
+  /// The connection the journal sums up when it ends (session_log.dart).
+  final _session = _Session();
+
+  /// The last state of the app's update the service told, to tell a check
+  /// that found nothing.
+  String _appUpdateWas = '';
 
   /// Automatic checks failed in a row; the journal hears of it from
   /// [_coreCheckFailuresToLog] on, as one failure is usually a network that
@@ -579,12 +587,19 @@ class AppState extends ChangeNotifier {
           _directBlocked = false;
         }
         if (e.state != 'connected') _serverProblem = null;
+        // A connection that ends is summed up, before the line that says
+        // what comes next.
+        // A replayed end is summed up once, whatever the traffic replayed.
+        final ended = _sessionEnd(e);
+        if (ended != null && !logs.any((l) => l.time.isAtSameMomentAs(e.time) && l.message.startsWith('сессия:'))) {
+          _log(e.time, 'служба', ended, LogLevel.info);
+        }
         // Without a network the "network" event beside it says what goes on.
         if (e.state != 'no-network') {
           _log(
             e.time,
             'служба',
-            _stateText(e.state) + (e.error.isNotEmpty ? ': ${journalError(e.error)}' : ''),
+            _sessionStateText(e) + (e.error.isNotEmpty ? ': ${journalError(e.error)}' : ''),
             e.state == 'failed' ? LogLevel.err : (e.state == 'connected' ? LogLevel.ok : LogLevel.info),
           );
         }
@@ -690,6 +705,9 @@ class AppState extends ChangeNotifier {
         if (live) toast(humanError(e.error), ToastKind.err);
       case 'network':
         _onNetworkEvent(e, live);
+      case 'netinfo':
+        // Which network the connection runs over, and a move to another.
+        _log(e.time, 'сеть', e.line, e.reason == 'changed' ? LogLevel.swap : LogLevel.info);
       case 'traffic':
         // Hidden, the samples come every few seconds: the graph, a sample a
         // second, keeps only the latest of them rather than squeezing
@@ -879,6 +897,10 @@ class AppState extends ChangeNotifier {
 
   Future<void> _onAppUpdate(Event e, bool live) async {
     if (e.error.isNotEmpty) _log(e.time, 'обновление', journalError(e.error), LogLevel.warn);
+    // A check that found nothing says so too: the journal shows it ran.
+    final checked = _appUpdateWas == 'checking' && e.reason == 'idle' && e.error.isEmpty;
+    _appUpdateWas = e.reason;
+    if (checked && version.known) _log(e.time, 'обновление', 'проверено: CoreShift ${version.label} — последняя версия', LogLevel.info);
     if (e.reason == 'installed') return; // the new app says so itself
     await _loadAppUpdate();
     if (live && e.reason == 'ready') {

@@ -40,7 +40,7 @@ func TestProcDefaultRoute(t *testing.T) {
 		"IPv6 without the physical one": {procRouteV6, true, noEth, false},
 		"empty":                         {"", false, all, false},
 	} {
-		if got := procDefaultRoute(c.data, c.v6, c.usable); got != c.want {
+		if got := procDefaultRoute(c.data, c.v6, c.usable) != ""; got != c.want {
 			t.Errorf("%s: %v, want %v", name, got, c.want)
 		}
 	}

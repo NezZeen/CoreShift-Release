@@ -24,7 +24,7 @@ func (s *Service) Log(source, line string) {
 		s.noteDial(line)
 	}
 	switch {
-	case noiseLine(line):
+	case noiseLine(line) && !s.verbose.Load():
 	case s.logs.twin(line):
 		// sing-box's second report of a lookup it just reported.
 	case s.healthFails.Load() >= upstreamDeadChecks && lookupTimeout(line):

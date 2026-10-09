@@ -334,6 +334,7 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 			BlockDoT:        o.DNS.BlockDoT,
 		},
 		CacheFile: filepath.Join(s.cfg.DataDir, "tun", "cache.db"),
+		LogLevel:  o.logLevel(),
 	}
 	// The core is up, so a blocked source can be reached through it.
 	applyRouting(&opts, o, s.rules.routing(ctx, o, s.proxyURL()))

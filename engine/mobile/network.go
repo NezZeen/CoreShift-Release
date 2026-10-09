@@ -92,6 +92,17 @@ func sameInterface(a, b *control.Interface) bool {
 	return a.Index == b.Index && a.Name == b.Name
 }
 
+// name is the interface of the phone's network, for the journal: the
+// service's NetworkName. "" before the app first says.
+func (n *networkState) name() string {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.iface == nil {
+		return ""
+	}
+	return n.iface.Name
+}
+
 // up reports whether the phone has a network: the service's NetworkUp.
 // Before the app first says, it does: the callback comes a moment after the
 // engine starts, and a connection must not wait for it.

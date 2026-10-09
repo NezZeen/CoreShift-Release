@@ -331,6 +331,8 @@ extension AppStateActions on AppState {
       final found = [for (final u in await backend.call('GET', '/v1/cores/updates') as List) CoreUpdate.fromJson((u as Map).cast())];
       // A core updated meanwhile keeps what its update said.
       if (updatingCore.isEmpty) coreUpdates = found;
+      final line = coreCheckText(found);
+      if (line != null) _log(DateTime.now(), 'ядра', line, LogLevel.info);
       return {for (final u in found.where((u) => u.error.isNotEmpty)) u.kind: u.error};
     } catch (e) {
       if (e is DaemonOffline) _lost(e);
@@ -339,6 +341,20 @@ extension AppStateActions on AppState {
       checkingUpdates = false;
       _notify();
     }
+  }
+
+  /// What a check of the cores found, for the journal: the newer versions,
+  /// or that every core is the latest, with their versions. null when no
+  /// core could be checked: failures are told apart (coreCheckFailedText).
+  static String? coreCheckText(List<CoreUpdate> found) {
+    final checked = found.where((u) => u.error.isEmpty).toList();
+    if (checked.isEmpty) return null;
+    String v(CoreUpdate u, String version) => '${AppState.coreName(u.kind)} $version';
+    final newer = checked.where((u) => u.available).toList();
+    if (newer.isNotEmpty) {
+      return 'найдены новые версии: ${newer.map((u) => '${v(u, u.latest)} (сейчас ${u.current})').join(', ')}';
+    }
+    return 'проверено: новых версий нет (${checked.map((u) => v(u, u.current)).join(', ')})';
   }
 
   CoreUpdate? updateOf(String kind) => coreUpdates.where((u) => u.kind == kind).firstOrNull;

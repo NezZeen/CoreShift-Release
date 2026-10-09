@@ -8,12 +8,12 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// anyDefaultRoute reads the active route table of both families: when an
+// defaultRouteInterface reads the active route table of both families: when an
 // adapter loses its link or its Wi-Fi, Windows takes its routes out of it.
-func anyDefaultRoute(skip []string) (bool, error) {
+func defaultRouteInterface(skip []string) (string, error) {
 	var table *windows.MibIpForwardTable2
 	if err := windows.GetIpForwardTable2(windows.AF_UNSPEC, &table); err != nil {
-		return false, fmt.Errorf("GetIpForwardTable2: %w", err)
+		return "", fmt.Errorf("GetIpForwardTable2: %w", err)
 	}
 	defer windows.FreeMibTable(unsafe.Pointer(table))
 	for _, r := range table.Rows() {
@@ -22,8 +22,8 @@ func anyDefaultRoute(skip []string) (bool, error) {
 		}
 		ifc, err := net.InterfaceByIndex(int(r.InterfaceIndex))
 		if err == nil && usableInterface(ifc, skip) {
-			return true, nil
+			return ifc.Name, nil
 		}
 	}
-	return false, nil
+	return "", nil
 }
