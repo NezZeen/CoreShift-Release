@@ -542,8 +542,10 @@ func (s *Service) onSupervisorEvent(e supervisor.Event) {
 		}
 		s.fo.reset()
 		s.clearProblem()
+		s.directChecked(true)
 	case e.Kind == supervisor.EventHealth && !e.Probe:
 		s.healthFails.Add(1)
+		s.directChecked(false)
 	}
 }
 

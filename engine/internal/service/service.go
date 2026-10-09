@@ -82,6 +82,10 @@ type Status struct {
 	// Waiting, in state NoNetwork, means nothing is up yet: the connection
 	// starts once the network is there. Without it the connection is held.
 	Waiting bool `json:"waiting,omitempty"`
+	// DirectBlocked is set when this connection found that direct
+	// connections do not get through the network while the tunnel works
+	// (direct.go): the settings that send traffic direct should go.
+	DirectBlocked bool `json:"direct_blocked,omitempty"`
 }
 
 type Service struct {
@@ -99,6 +103,8 @@ type Service struct {
 	retry   afterConnect
 	// healthFails counts the active core's failed checks in a row.
 	healthFails atomic.Int32
+	// direct counts direct connections the network refuses (direct.go).
+	direct directWatch
 	// bg is set while the device is idle (SetBackground); awake tells the
 	// traffic watcher it no longer is.
 	bg      atomic.Bool

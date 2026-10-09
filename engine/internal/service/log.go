@@ -20,6 +20,9 @@ func (s *Service) Log(source, line string) {
 		s.kickNetwork()
 	}
 	line = tidy(line)
+	if source == "tun" {
+		s.noteDial(line)
+	}
 	switch {
 	case noiseLine(line):
 	case s.logs.twin(line):
