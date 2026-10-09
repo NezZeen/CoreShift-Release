@@ -23,7 +23,8 @@ import (
 //   - otherwise, when the user allows it (store.CoreSettings.SwitchServer)
 //     and the server itself does not answer, among the subscription's
 //     servers that answer a handshake from here.
-// Servers that did not answer in this round are not tried again; the round
+// Servers that did not answer in this round are not tried again, nor are
+// those the user removed from the list (Subscription.Hidden); the round
 // ends when a server answers or the user connects.
 
 // failover is the state of one round.
@@ -174,7 +175,7 @@ func (s *Service) switchServer(gen int, r Reach) {
 		}
 		s.fo.markTried(cur.Fingerprint())
 		next, ok := pickNext(sub.Nodes, sub.Fingerprints(), cur.Fingerprint(), s.fo.triedSet(), func(n node.Node) bool {
-			return group[n.Fingerprint()] && len(s.Compatible(&n)) > 0 && answers(n)
+			return group[n.Fingerprint()] && !sub.IsHidden(n.Fingerprint()) && len(s.Compatible(&n)) > 0 && answers(n)
 		})
 		if !ok {
 			s.hub.publish(Event{Kind: "failover", From: from.Name, Error: "ни один другой сервер подписки не отвечает"})

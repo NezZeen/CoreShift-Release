@@ -29,7 +29,7 @@ Future<void> showQuickPick(BuildContext context, AppState state, {required VoidC
   );
 }
 
-/// The servers used last, the fastest one on top, and a
+/// The favourites and the servers used last, the fastest one on top, and a
 /// way to the whole list: what most people want when they change server.
 class _QuickPick extends StatelessWidget {
   final AppState state;
@@ -45,6 +45,9 @@ class _QuickPick extends StatelessWidget {
         final p = context.pal;
         final fastest = state.fastestNode();
         final nodes = state.quickNodes();
+        final favs = state.favorites;
+        bool isFav((Subscription, NodeView) r) => favs.contains(AppStateServers.key(r.$1.id, r.$2.fingerprint));
+        final starred = nodes.where(isFav).toList(), recent = nodes.where((r) => !isFav(r)).toList();
         void pick(Subscription sub, NodeView n) {
           Navigator.pop(context);
           state.selectNode(sub.id, n.fingerprint, n.name);
@@ -72,14 +75,22 @@ class _QuickPick extends StatelessWidget {
               ),
               _FastestTile(state: state, fastest: fastest, onPick: pick),
               const SizedBox(height: 14),
-              const Padding(padding: EdgeInsets.only(left: 4), child: SectionLabel('Недавние')),
+              if (starred.isNotEmpty) ...[
+                const Padding(padding: EdgeInsets.only(left: 4), child: SectionLabel('Избранное')),
+                for (final (sub, n) in starred) _QuickRow(state: state, sub: sub, node: n, onTap: () => pick(sub, n)),
+                if (recent.isNotEmpty) const SizedBox(height: 10),
+              ],
+              if (recent.isNotEmpty || starred.isEmpty) const Padding(padding: EdgeInsets.only(left: 4), child: SectionLabel('Недавние')),
               if (nodes.isEmpty)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
-                  child: Text('Здесь появятся серверы, к которым вы подключались.', style: TextStyle(color: p.muted, fontSize: 13, height: 1.4)),
+                  child: Text(
+                    'Здесь появятся серверы, к которым вы подключались, и те, что со звёздочкой.',
+                    style: TextStyle(color: p.muted, fontSize: 13, height: 1.4),
+                  ),
                 )
               else
-                for (final (sub, n) in nodes) _QuickRow(state: state, sub: sub, node: n, onTap: () => pick(sub, n)),
+                for (final (sub, n) in recent) _QuickRow(state: state, sub: sub, node: n, onTap: () => pick(sub, n)),
               const SizedBox(height: 10),
               Btn(
                 label: 'Все серверы · ${state.nodeCount}',

@@ -20,7 +20,10 @@ class Toast {
   final int id;
   final String message;
   final ToastKind kind;
-  const Toast(this.id, this.message, this.kind);
+
+  /// A button on the toast, such as «Отменить»: its label and what it does.
+  final (String, VoidCallback)? action;
+  const Toast(this.id, this.message, this.kind, {this.action});
 }
 
 /// Something worth a system notification when the window is out of sight.

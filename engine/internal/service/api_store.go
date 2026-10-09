@@ -30,6 +30,7 @@ import (
 //	DELETE /v1/subscriptions/{id}
 //	POST   /v1/subscriptions/{id}/refresh
 //	POST   /v1/subscriptions/{id}/move         {"index": n}
+//	POST   /v1/subscriptions/{id}/hidden       {"fingerprints": […], "hidden": true|false}: remove servers from the list or bring them back
 //	GET    /v1/selection
 //	PUT    /v1/selection                       {"subscription": id, "fingerprint": …, "name": …}
 //	POST   /v1/latency                         {"subscription": id} or {} for all; results also arrive as events
@@ -59,6 +60,7 @@ func (a *api) routeStore(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /v1/subscriptions/{id}", a.withStore(a.removeSubscription))
 	mux.HandleFunc("POST /v1/subscriptions/{id}/refresh", a.withStore(a.refreshSubscription))
 	mux.HandleFunc("POST /v1/subscriptions/{id}/move", a.withStore(a.moveSubscription))
+	mux.HandleFunc("POST /v1/subscriptions/{id}/hidden", a.withStore(a.hideNodes))
 	mux.HandleFunc("GET /v1/selection", a.withStore(a.getSelection))
 	mux.HandleFunc("PUT /v1/selection", a.withStore(a.putSelection))
 	mux.HandleFunc("POST /v1/latency", a.withStore(a.testLatency))
@@ -240,6 +242,9 @@ type nodeView struct {
 	LatencyError  string `json:"latency_error,omitempty"`
 	LatencyCore   string `json:"latency_core,omitempty"`
 	LatencyMethod string `json:"latency_method,omitempty"`
+	// Hidden: the user removed the server from the list (Subscription.Hidden);
+	// it is listed so that it can be brought back.
+	Hidden bool `json:"hidden,omitempty"`
 }
 
 // nodeView describes n, whose fingerprint is fp.
@@ -269,6 +274,7 @@ func (a *api) subscriptionView(sub *store.Subscription, set store.Settings) subs
 	fps := sub.Fingerprints()
 	for i := range sub.Nodes {
 		v.Nodes[i] = a.nodeView(sub.ID, &sub.Nodes[i], fps[i])
+		v.Nodes[i].Hidden = sub.IsHidden(fps[i])
 	}
 	return v
 }
@@ -406,6 +412,26 @@ func (a *api) moveSubscription(w http.ResponseWriter, r *http.Request, st *store
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *api) hideNodes(w http.ResponseWriter, r *http.Request, st *store.Store) {
+	var req struct {
+		Fingerprints []string `json:"fingerprints"`
+		Hidden       *bool    `json:"hidden"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+	if req.Hidden == nil || len(req.Fingerprints) == 0 {
+		writeError(w, http.StatusBadRequest, errors.New(`need "fingerprints" and "hidden"`))
+		return
+	}
+	sub, err := st.SetHidden(r.PathValue("id"), req.Fingerprints, *req.Hidden)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, a.subscriptionView(&sub, st.Settings()))
 }
 
 type selectionView struct {

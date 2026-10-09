@@ -88,10 +88,8 @@ void main() {
     await tester.pump();
     expect(find.text('Frankfurt'), findsOneWidget);
 
-    // No favourites, no sort button and no transport column.
+    // No favourites yet, and no transport column.
     expect(find.text('Избранное'), findsNothing);
-    expect(find.byIcon(Icons.star_border), findsNothing);
-    expect(find.text('Как в подписке'), findsNothing);
     expect(find.text('ТРАНСПОРТ'), findsNothing);
     expect(find.textContaining('tcp'), findsNothing);
     expect(tester.takeException(), isNull);
@@ -141,19 +139,23 @@ void main() {
     ], before);
   });
 
-  testWidgets('a phone swipes a server to connect it', (tester) async {
+  testWidgets('a phone stars a server, and swipes one to connect', (tester) async {
     final state = await pumpApp(tester, size: phone);
     await tester.tap(navTo('Серверы', phone: true));
     await tester.pump();
     await tester.pump(const Duration(seconds: 30));
     expect(find.textContaining('Смахните сервер'), findsOneWidget);
 
-    // Swiping left does nothing.
+    // The star moves the server up, to the favourites.
+    final (sub, helsinki) = node(state, 'Helsinki');
     await tester.ensureVisible(find.text('Helsinki'));
     await tester.pump();
-    await tester.drag(find.text('Helsinki'), const Offset(-300, 0));
-    await tester.pumpAndSettle();
-    expect(state.prefs['swipe_hint'], isNull);
+    final row = find.ancestor(of: find.text('Helsinki'), matching: find.byWidgetPredicate((w) => w.runtimeType.toString() == '_NodeRow'));
+    await tester.tap(find.descendant(of: row, matching: find.byTooltip('В избранное')));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(state.isFavorite(sub, helsinki), isTrue);
+    expect(find.text('Избранное'), findsOneWidget);
+    expect(find.byIcon(Icons.star_rounded), findsWidgets);
 
     final (_, stockholm) = node(state, 'Stockholm');
     await tester.ensureVisible(find.text('Stockholm'));
@@ -163,8 +165,8 @@ void main() {
     for (var i = 0; i < 4; i++) {
       await tester.pump(const Duration(milliseconds: 300));
     }
-    expect(state.quickNodes().map((e) => e.$2.name), contains(stockholm.name));
-    expect(state.prefs['swipe_hint'], isTrue);
+    expect(state.quickNodes().map((e) => e.$2.name), [helsinki.name, stockholm.name], reason: 'the favourite first, then the one used');
+    expect(state.prefs['server_hint'], isTrue);
     expect(find.textContaining('Смахните сервер'), findsNothing, reason: 'the hint goes after the first swipe');
     await tester.pump(const Duration(seconds: 30));
     expect(state.status.node, stockholm.name);

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -17,6 +18,8 @@ import '../widgets.dart';
 part 'servers/cards.dart';
 part 'servers/nodes.dart';
 part 'servers/dialogs.dart';
+part 'servers/actions.dart';
+part 'servers/picking.dart';
 
 class ServersPage extends StatefulWidget {
   final AppState state;
@@ -29,7 +32,7 @@ class ServersPage extends StatefulWidget {
   State<ServersPage> createState() => _ServersPageState();
 }
 
-/// A run of rows under one heading: a country, a
+/// A run of rows under one heading: the favourites, a country, a
 /// subscription, or the whole list with none.
 class _Section {
   final String id;
@@ -55,6 +58,10 @@ class _ServersPageState extends State<ServersPage> {
 
   AppState get s => widget.state;
 
+  /// Picking servers to remove, as messages are picked in Telegram: a press
+  /// held on a row starts it, see servers/picking.dart.
+  late final _picking = _Picking(this);
+
   void _toggle(String id) {
     setState(() => collapsed.contains(id) ? collapsed.remove(id) : collapsed.add(id));
     s.setPref('servers_folded', collapsed.toList());
@@ -63,6 +70,8 @@ class _ServersPageState extends State<ServersPage> {
   @override
   void initState() {
     super.initState();
+    _picking.addListener(_picked);
+    HardwareKeyboard.instance.addHandler(_picking.onKey);
     if (!s.latencyAutoTested && s.online && !s.testingLatency && s.latency.isEmpty && s.nodeCount > 0) {
       s.latencyAutoTested = true;
       // Not while the page is being built: the test notifies listeners.
@@ -70,11 +79,39 @@ class _ServersPageState extends State<ServersPage> {
     }
   }
 
-  /// The rows in the groups the user chose, in the order the subscription
-  /// lists them: by country, or by subscription, or as one list.
+  void _picked() => setState(() {});
+
+  @override
+  void dispose() {
+    HardwareKeyboard.instance.removeHandler(_picking.onKey);
+    _picking.dispose();
+    super.dispose();
+  }
+
+  /// The rows in the order and groups the user chose: the favourites first,
+  /// then by country, or by subscription, or as one list. Sorted, the
+  /// servers of several subscriptions make one list; countries keep the
+  /// order of their names.
   List<_Section> _sections(List<(Subscription, NodeView)> rows, {required bool multi}) {
-    final rest = rows;
+    final sort = s.serverSort;
+    List<(Subscription, NodeView)> order(List<(Subscription, NodeView)> r) => sortServers(r, sort, (sub, n) => s.latencyOf(sub.id, n.fingerprint));
+    final favs = s.favorites;
+    bool isFav((Subscription, NodeView) r) => favs.contains(AppStateServers.key(r.$1.id, r.$2.fingerprint));
+    final fav = rows.where(isFav).toList();
+    final rest = rows.where((r) => !isFav(r)).toList();
     final out = <_Section>[];
+    if (fav.isNotEmpty) {
+      out.add(
+        _Section(
+          id: 'fav',
+          title: 'Избранное',
+          leading: const SizedBox(width: 26, child: Icon(Icons.star_rounded, size: 19, color: warnColor)),
+          rows: order(fav),
+          collapsible: true,
+          showSub: multi,
+        ),
+      );
+    }
     if (s.serverGroup) {
       final by = <String, List<(Subscription, NodeView)>>{};
       for (final r in rest) {
@@ -91,19 +128,20 @@ class _ServersPageState extends State<ServersPage> {
             id: 'c:$code',
             title: code.isEmpty ? 'Другие' : countryName(code),
             leading: CountryBadge(code, width: 26),
-            rows: by[code]!,
+            rows: order(by[code]!),
             collapsible: true,
             showSub: multi,
           ),
         );
       }
-    } else if (multi) {
+    } else if (multi && sort == 'sub') {
       for (final sub in s.subscriptions) {
         final mine = rest.where((r) => r.$1.id == sub.id).toList();
         if (mine.isNotEmpty) out.add(_Section(id: 's:${sub.id}', title: sub.displayName, rows: mine, collapsible: true));
       }
     } else if (rest.isNotEmpty) {
-      out.add(_Section(id: 'all', rows: rest, showSub: multi));
+      // Under the favourites the rest needs a heading of its own.
+      out.add(_Section(id: 'all', title: fav.isEmpty ? null : 'Остальные', rows: order(rest), showSub: multi));
     }
     return out;
   }
@@ -120,6 +158,12 @@ class _ServersPageState extends State<ServersPage> {
     ];
     final compact = isCompact(context);
     final sections = _sections(rows, multi: subs.length > 1 && subFilter == null);
+    final hidden = subs.where((sub) => subFilter == null || sub.id == subFilter).fold(0, (n, sub) => n + sub.hiddenNodes.length);
+    final folded = query.isEmpty ? collapsed : const <String>{};
+    _picking.listed([
+      for (final sec in sections)
+        if (!folded.contains(sec.id)) ...sec.rows,
+    ]);
 
     final search = TextField(
       focusNode: widget.searchFocus,
@@ -134,6 +178,7 @@ class _ServersPageState extends State<ServersPage> {
     // The search finds protocols too, so there is no protocol filter; the
     // fastest server is picked in the home page's quick pick.
     final chips = [
+      if (compact) _SortChip(state: s),
       _Chip(label: 'По странам', on: s.serverGroup, onTap: () => s.setPref('server_group', !s.serverGroup)),
       if (subFilter != null) _Chip(label: '× ${s.subscriptionById(subFilter!)?.displayName ?? ''}', on: true, onTap: () => setState(() => subFilter = null)),
     ];
@@ -148,11 +193,32 @@ class _ServersPageState extends State<ServersPage> {
       onPressed: () => s.testLatency(subFilter),
     );
 
+    // The back gesture, like Esc, ends the picking before it leaves.
+    return PopScope(
+      canPop: !_picking.active,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _picking.cancel();
+      },
+      child: _page(context, compact: compact, subs: subs, search: search, chips: chips, ping: ping, rows: rows, sections: sections, hidden: hidden),
+    );
+  }
+
+  Widget _page(
+    BuildContext context, {
+    required bool compact,
+    required List<Subscription> subs,
+    required Widget search,
+    required List<Widget> chips,
+    required Btn ping,
+    required List<(Subscription, NodeView)> rows,
+    required List<_Section> sections,
+    required int hidden,
+  }) {
     return PageFrame(
       children: [
         PageHeader(
           'Серверы',
-          subtitle: 'Двойной щелчок по серверу подключает к нему.',
+          subtitle: 'Двойной щелчок подключает. Зажмите и ведите, чтобы выбрать несколько.',
           actions: [
             if (subs.any((x) => !x.isLocal))
               Btn(
@@ -172,7 +238,7 @@ class _ServersPageState extends State<ServersPage> {
             builder: (context, c) {
               Widget card(Subscription sub) =>
                   _SubCard(state: s, sub: sub, selected: subFilter == sub.id, onTap: () => setState(() => subFilter = subFilter == sub.id ? null : sub.id));
-              final list = _serverList(context, compact: compact, search: search, chips: chips, ping: ping, rows: rows, sections: sections);
+              final list = _serverList(context, compact: compact, search: search, chips: chips, ping: ping, rows: rows, sections: sections, hidden: hidden);
               // A wide window: the subscriptions as a column beside the
               // servers, like folders beside their files.
               if (!compact && c.maxWidth >= 940) {
@@ -256,12 +322,20 @@ class _ServersPageState extends State<ServersPage> {
     required Btn ping,
     required List<(Subscription, NodeView)> rows,
     required List<_Section> sections,
+    required int hidden,
   }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (compact) ...[
-          // A phone: the search with the ping as an icon, then the filters.
+    final sort = Seg<String>(
+      options: const [('sub', 'Как в подписке'), ('ping', 'По пингу'), ('name', 'По имени')],
+      value: s.serverSort,
+      onChanged: (v) => s.setPref('server_sort', v),
+      tooltips: const {'ping': 'Сначала самые быстрые; без ответа — в конце'},
+    );
+    final Widget toolbar;
+    if (compact) {
+      // A phone: the search with the ping as an icon, then the filters.
+      toolbar = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
           Row(
             children: [
               Expanded(child: search),
@@ -278,16 +352,63 @@ class _ServersPageState extends State<ServersPage> {
               ],
             ),
           ),
-        ] else
-          Row(
+        ],
+      );
+    } else {
+      // The order, the grouping and the ping beside the search; under
+      // it when the list is too narrow for them all.
+      toolbar = LayoutBuilder(
+        builder: (context, c) {
+          final filters = [
+            sort,
+            for (final ch in chips) ...[const SizedBox(width: 10), ch],
+          ];
+          if (c.maxWidth >= 860) {
+            return Row(
+              children: [
+                Expanded(child: search),
+                const SizedBox(width: 10),
+                ...filters,
+                const SizedBox(width: 10),
+                ping,
+              ],
+            );
+          }
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(child: search),
-              const SizedBox(width: 10),
-              for (final c in chips) ...[c, const SizedBox(width: 10)],
-              ping,
+              Row(
+                children: [
+                  Expanded(child: search),
+                  const SizedBox(width: 10),
+                  ping,
+                ],
+              ),
+              const SizedBox(height: 10),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(children: filters),
+              ),
             ],
-          ),
-        if (compact && rows.isNotEmpty && s.prefs['swipe_hint'] != true) _SwipeHint(onClose: () => s.setPref('swipe_hint', true)),
+          );
+        },
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // While servers are picked their bar takes the toolbar's place, at
+        // its height: the rows under the finger must not move.
+        Stack(
+          children: [
+            Visibility(visible: !_picking.active, maintainSize: true, maintainAnimation: true, maintainState: true, child: toolbar),
+            if (_picking.active)
+              Positioned.fill(
+                child: _PickBar(picking: _picking, compact: compact),
+              ),
+          ],
+        ),
+        if (compact && rows.isNotEmpty && s.prefs[serverHintPref] != true) _SwipeHint(onClose: () => s.setPref(serverHintPref, true)),
         const SizedBox(height: 12),
         Panel(
           padding: const EdgeInsets.all(6),
@@ -297,8 +418,14 @@ class _ServersPageState extends State<ServersPage> {
             // A search shows what it found, folded or not.
             collapsed: query.isEmpty ? collapsed : const {},
             onToggle: _toggle,
+            picking: _picking,
           ),
         ),
+        if (hidden > 0)
+          _HiddenFooter(
+            count: hidden,
+            onShow: () => showHiddenServers(context, s, scope: subFilter),
+          ),
       ],
     );
   }

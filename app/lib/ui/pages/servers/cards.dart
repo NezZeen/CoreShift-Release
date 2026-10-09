@@ -4,7 +4,8 @@ class _Chip extends StatelessWidget {
   final String label;
   final bool on;
   final VoidCallback onTap;
-  const _Chip({required this.label, required this.on, required this.onTap});
+  final IconData? icon;
+  const _Chip({required this.label, required this.on, required this.onTap, this.icon});
 
   @override
   Widget build(BuildContext context) {
@@ -20,11 +21,40 @@ class _Chip extends StatelessWidget {
             borderRadius: BorderRadius.circular(99),
             border: Border.all(color: on ? p.text : p.border2),
           ),
-          child: Text(
-            label,
-            style: TextStyle(fontSize: 12, fontWeight: on ? FontWeight.w600 : FontWeight.w500, color: on ? p.bg : p.muted),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon != null) ...[Icon(icon, size: 14, color: on ? p.bg : p.muted), const SizedBox(width: 5)],
+              Text(
+                label,
+                style: TextStyle(fontSize: 12, fontWeight: on ? FontWeight.w600 : FontWeight.w500, color: on ? p.bg : p.muted),
+              ),
+            ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// A phone's way to order the servers: a chip naming the order, which opens
+/// the same three choices the desktop shows side by side.
+class _SortChip extends StatelessWidget {
+  final AppState state;
+  const _SortChip({required this.state});
+
+  static const _orders = [('sub', 'Как в подписке'), ('ping', 'По пингу'), ('name', 'По имени')];
+
+  @override
+  Widget build(BuildContext context) {
+    final sort = state.serverSort;
+    return PopupMenuButton<String>(
+      tooltip: 'Порядок серверов',
+      onSelected: (v) => state.setPref('server_sort', v),
+      position: PopupMenuPosition.under,
+      itemBuilder: (_) => [for (final (v, title) in _orders) CheckedPopupMenuItem(value: v, checked: sort == v, child: Text(title))],
+      child: IgnorePointer(
+        child: _Chip(label: _orders.firstWhere((e) => e.$1 == sort).$2, icon: Icons.swap_vert, on: sort != 'sub', onTap: () {}),
       ),
     );
   }
@@ -282,7 +312,8 @@ class _SubMenu extends StatelessWidget {
   );
 }
 
-/// Tells a phone's user about the swipes, until they use one or close it.
+/// Tells a phone's user about the swipe and the picking, until they use
+/// one or close it.
 class _SwipeHint extends StatelessWidget {
   final VoidCallback onClose;
   const _SwipeHint({required this.onClose});
@@ -303,7 +334,10 @@ class _SwipeHint extends StatelessWidget {
           Icon(Icons.swipe, size: 17, color: p.accentInk),
           const SizedBox(width: 10),
           Expanded(
-            child: Text('Смахните сервер вправо, чтобы подключиться', style: TextStyle(fontSize: 12, color: p.muted)),
+            child: Text(
+              'Смахните сервер вправо — подключиться. Удерживайте и ведите пальцем — выбрать несколько',
+              style: TextStyle(fontSize: 12, color: p.muted),
+            ),
           ),
           IconButton(
             onPressed: onClose,

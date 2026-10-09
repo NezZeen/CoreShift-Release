@@ -76,6 +76,9 @@ func (s *Service) TestLatency(ctx context.Context, subID string) ([]NodeLatency,
 		}
 		fps := sub.Fingerprints()
 		for i, n := range sub.Nodes {
+			if sub.IsHidden(fps[i]) {
+				continue // removed from the list by the user
+			}
 			nodes = append(nodes, n)
 			refs = append(refs, ref{sub.ID, fps[i]})
 		}
