@@ -60,7 +60,7 @@ if ($toGitLab) {
     $tokenDir = Join-Path $env:USERPROFILE '.coreshift'
     $tokenFile = @('gitlab-token', 'gitlab-token.txt') | ForEach-Object { Join-Path $tokenDir $_ } | Where-Object { Test-Path $_ } | Select-Object -First 1
     if (-not $tokenFile) {
-        throw ("No GitLab token: save a token of $GitLabProject (a fine-grained one with write access to releases, the package registry and the repository, " +
+        throw ("No GitLab token: save a token of $GitLabProject (a fine-grained one with Release: Create, Release Link: Create, Package: Create and tag creation, " +
             "or a legacy one with the api scope) to $tokenDir\gitlab-token or $tokenDir\gitlab-token.txt; see packaging\README.md, the GitLab mirror section. " +
             'Or publish without the mirror: -NoGitLab.')
     }
@@ -153,7 +153,7 @@ function Invoke-GitLab {
             if (-not $transient -or $attempt -ge 5) {
                 $what = switch ($code) {
                     401 { 'the GitLab token is invalid or expired (401)' }
-                    403 { 'the GitLab token may not do this (403): it needs write access to releases, the package registry and the repository' }
+                    403 { 'the GitLab token may not do this (403): a fine-grained token needs Release: Create, Release Link: Create, Package: Create and tag creation (or use a legacy token with the api scope)' }
                     404 { "no project $GitLabProject on GitLab, or the token cannot see it (404)" }
                     default { $err.Message }
                 }
