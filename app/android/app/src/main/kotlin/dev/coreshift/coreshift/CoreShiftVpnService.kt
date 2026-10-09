@@ -37,7 +37,7 @@ class CoreShiftVpnService : VpnService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_DISCONNECT) {
             // From the notification: the engine closes the TUN itself.
-            Thread { Mobile.disconnect() }.start()
+            Thread { Mobile.disconnect("notification") }.start()
             return START_NOT_STICKY
         }
         showNotification()

@@ -125,7 +125,11 @@ func usesResolvedStub(b []byte) bool {
 	return false
 }
 
-func filterUsable(addrs []netip.Addr) []netip.Addr {
+// FilterUsable returns the resolvers in addrs that can be dialled directly
+// (see usableResolver), each once, in their order. Link-local ones are left
+// out with a zone too: a zone names an interface the TUN layer may not
+// reach it by (on Android the name cannot even be looked up from Go).
+func FilterUsable(addrs []netip.Addr) []netip.Addr {
 	var out []netip.Addr
 	seen := map[netip.Addr]bool{}
 	for _, a := range addrs {

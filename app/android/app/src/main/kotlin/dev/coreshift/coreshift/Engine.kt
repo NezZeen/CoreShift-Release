@@ -86,7 +86,7 @@ object Engine {
     fun connect() {
         Thread {
             try {
-                Mobile.connect()
+                Mobile.connect("tile")
             } catch (e: Exception) {
                 Log.w(TAG, "connect from the tile: ${e.message}")
                 CoreShiftVpnService.current()?.stopIfIdle()

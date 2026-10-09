@@ -395,6 +395,10 @@ func buildDNS(o Options) (obj, error) {
 	if !directUp.isIP() {
 		return nil, fmt.Errorf("tunlayer: direct DNS server %q must be an IP address", o.DNS.Direct)
 	}
+	if a, _ := netip.ParseAddr(directUp.Host); a.IsLinkLocalUnicast() && a.Zone() == "" {
+		// Every lookup would fail on dialling it ("invalid argument").
+		return nil, fmt.Errorf("tunlayer: direct DNS server %q is link-local and needs an interface (%%zone)", o.DNS.Direct)
+	}
 
 	remoteSrv := remote.server(tagDNSRemote)
 	remoteSrv["detour"] = tagProxy

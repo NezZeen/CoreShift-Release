@@ -132,10 +132,12 @@ extension AppStateActions on AppState {
     _notify();
   }
 
-  Future<void> connect({String? subscription, String? fingerprint, String? name}) async {
+  /// [from] says where the user asked, when not in the window: "трей".
+  Future<void> connect({String? subscription, String? fingerprint, String? name, String from = ''}) async {
     noteRecent(subscription ?? selection.subscription, fingerprint ?? selection.fingerprint);
     busy = true;
-    _logAction(name != null && name.isNotEmpty ? 'подключить: $name' : 'подключить${selection.name.isEmpty ? '' : ': ${selection.name}'}');
+    final where = from.isEmpty ? '' : ' ($from)';
+    _logAction(name != null && name.isNotEmpty ? 'подключить: $name$where' : 'подключить${selection.name.isEmpty ? '' : ': ${selection.name}'}$where');
     _notify();
     if (!await _vpnAllowed()) {
       busy = false;
@@ -164,9 +166,11 @@ extension AppStateActions on AppState {
     _notify();
   }
 
-  Future<void> disconnect() async {
+  /// [from] says where the user asked, when not in the window: "трей",
+  /// "выход из приложения".
+  Future<void> disconnect({String from = ''}) async {
     busy = true;
-    _logAction('отключить');
+    _logAction(from.isEmpty ? 'отключить' : 'отключить ($from)');
     _notify();
     await _act(() async => status = Status.fromJson(await backend.call('POST', '/v1/disconnect') as Json));
     if (!status.active) speed.clear();

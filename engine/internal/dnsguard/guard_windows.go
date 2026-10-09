@@ -108,5 +108,5 @@ func SystemResolvers(ctx context.Context, exclude string) ([]netip.Addr, error) 
 			}
 		}
 	}
-	return filterUsable(append(first, rest...)), nil
+	return FilterUsable(append(first, rest...)), nil
 }

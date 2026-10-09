@@ -215,13 +215,17 @@ func (s *Service) reconnectGen(gen int) {
 }
 
 // systemResolvers returns the system's resolvers other than the tunnel's:
-// those of the network the computer is on.
+// those of the network the computer is on, that can be dialled directly.
+// A router announcing an IPv6 link-local resolver (fe80::…, Android on a
+// home Wi-Fi) is left out: without its interface every direct lookup sent
+// to it failed with "invalid argument". Apps keep asking the tunnel's
+// resolver (the DNS guard, the VpnService), whatever the router announced.
 func (s *Service) systemResolvers(ctx context.Context) ([]netip.Addr, error) {
 	addrs, err := s.cfg.resolvers(ctx, tunlayer.DefaultInterface)
 	// Another tunnel on the same addresses (sing-box based clients use them
 	// by default) would send direct names back into ours.
 	own := tunlayer.DefaultAddress.Masked()
-	return slices.DeleteFunc(addrs, own.Contains), err
+	return dnsguard.FilterUsable(slices.DeleteFunc(addrs, own.Contains)), err
 }
 
 // ReturnToPrimary moves back to the first core of the chain now, when a

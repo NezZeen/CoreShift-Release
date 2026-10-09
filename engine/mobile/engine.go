@@ -85,14 +85,33 @@ func CurrentStatus() *Status {
 	return statusOf(e.svc)
 }
 
-// Connect connects the selected server, from the quick settings tile. It
-// blocks until connected or failed.
-func Connect() error {
+// actionFrom names, for the journal, where an action without the UI came
+// from: "tile" (the quick settings tile) or "notification".
+func actionFrom(from string) string {
+	switch from {
+	case "tile":
+		return " (плитка)"
+	case "notification":
+		return " (уведомление)"
+	}
+	return ""
+}
+
+// Connect connects the selected server without the UI, from the quick
+// settings tile (from "tile", see actionFrom). It blocks until connected or
+// failed.
+func Connect(from string) error {
 	mu.Lock()
 	e := running
 	mu.Unlock()
 	if e == nil {
 		return errors.New("the engine is not running")
+	}
+	if name, ok := e.svc.SelectedName(); ok {
+		if name != "" {
+			name = ": " + name
+		}
+		e.svc.LogAction("", "подключить"+name+actionFrom(from))
 	}
 	return e.svc.ConnectSelected(e.ctx)
 }
@@ -277,13 +296,16 @@ func AutoConnect() bool {
 	return e.svc.Status().State == service.Connected
 }
 
-// Disconnect turns the VPN off, from the notification or the quick
-// settings tile, without the UI.
-func Disconnect() {
+// Disconnect turns the VPN off without the UI, from the notification or
+// the quick settings tile (from "notification" or "tile", see actionFrom).
+func Disconnect(from string) {
 	mu.Lock()
 	e := running
 	mu.Unlock()
 	if e != nil {
+		if e.svc.Status().State != service.Idle {
+			e.svc.LogAction("", "отключить"+actionFrom(from))
+		}
 		e.svc.Disconnect()
 	}
 }

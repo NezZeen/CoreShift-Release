@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 )
@@ -22,14 +23,35 @@ func (s *Service) AutoConnect(ctx context.Context) error {
 	if !s.AutoConnectEnabled() {
 		return nil
 	}
-	return s.connectAtStart(ctx)
+	return s.connectAtStart(ctx, "", "подключить%s (автозапуск)")
 }
 
 // Resume connects the selected node again after a restart of the service
 // interrupted a connection (Linux: a package upgrade restarts it), whatever
 // the auto-connect setting says. Like AutoConnect it leaves alone a VPN the
 // user connected or turned off meanwhile.
-func (s *Service) Resume(ctx context.Context) error { return s.connectAtStart(ctx) }
+func (s *Service) Resume(ctx context.Context) error {
+	return s.connectAtStart(ctx, "служба", "служба перезапустилась посреди соединения, подключаюсь снова%s")
+}
+
+// LogAction notes in the journal why a connection is about to change, when
+// the app's own buttons did not ask for it (they note it themselves): the
+// user's action elsewhere, with source "" (Android's tile or notification,
+// "Автозапуск"), or the service's own reason, with the journal's source
+// for it ("служба", "обновление"). The app shows it as an "action" event.
+func (s *Service) LogAction(source, line string) {
+	s.hub.publish(Event{Kind: "action", Source: source, Line: line})
+}
+
+// SelectedName returns the name of the store's selected node, if there is
+// a usable one.
+func (s *Service) SelectedName() (string, bool) {
+	if s.cfg.Store == nil {
+		return "", false
+	}
+	_, n, ok := s.cfg.Store.Selected()
+	return n.Name, ok
+}
 
 // connectAtStart connects the selected node when nothing is connected yet,
 // retrying while the network comes up. Two things ask for it at the same
@@ -38,7 +60,9 @@ func (s *Service) Resume(ctx context.Context) error { return s.connectAtStart(ct
 // second Connect tore down the first connection a second after it came
 // up, and made it again. Whichever comes first connects; the other
 // returns nil, and so does a later one that finds the VPN already up.
-func (s *Service) connectAtStart(ctx context.Context) error {
+// Each attempt is noted in the journal first (LogAction): why, with ": "
+// and the node's name in place of its %s.
+func (s *Service) connectAtStart(ctx context.Context, source, why string) error {
 	if !s.startConn.TryLock() {
 		return nil // the other one connects
 	}
@@ -54,6 +78,16 @@ func (s *Service) connectAtStart(ctx context.Context) error {
 		// means the user took over.
 		if st := s.Status().State; (i == 0 && st != Idle) || (i > 0 && st != Failed) {
 			return nil
+		}
+		if name, ok := s.SelectedName(); ok {
+			if name != "" {
+				name = ": " + name
+			}
+			line := fmt.Sprintf(why, name)
+			if i > 0 {
+				line += ", ещё одна попытка"
+			}
+			s.LogAction(source, line)
 		}
 		err = s.ConnectSelected(ctx)
 		if err == nil || errors.Is(err, ErrNoSelection) || errors.Is(err, ErrDisconnected) || ctx.Err() != nil {

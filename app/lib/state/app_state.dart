@@ -648,10 +648,17 @@ class AppState extends ChangeNotifier {
         // The failed attempt's own FATAL line is in the journal just above:
         // this one says the next attempt follows.
         _log(e.time, 'TUN', 'интерфейс не поднялся: Windows ещё убирает прежний адаптер; повтор через ${e.line}. Причина: ${e.error}', LogLevel.warn);
+      case 'dns' when e.reason == 'network-changed':
+        // The reconnect that follows says why it happens.
+        _log(e.time, 'сеть', e.line.isNotEmpty ? e.line : _layerText(e.kind, e.reason), LogLevel.swap);
+        if (live) toast('Сеть сменилась — CoreShift переподключается');
       case 'tun':
       case 'dns':
         _log(e.time, e.kind.toUpperCase(), e.error.isNotEmpty ? e.error : _layerText(e.kind, e.reason), e.error.isNotEmpty ? LogLevel.warn : LogLevel.info);
-        if (live && e.reason == 'network-changed') toast('Сеть сменилась — CoreShift переподключается');
+      case 'action':
+        // Why the connection changes, when not by the window's buttons:
+        // Android's tile and notification, "Автозапуск", the service itself.
+        _log(e.time, e.source.isEmpty ? 'действие' : e.source, e.line, LogLevel.info);
       case 'error':
         // Services before 0.7.2 sent a failure twice: in the state and here.
         if (e.error == _failedWith) break;

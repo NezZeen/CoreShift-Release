@@ -32,7 +32,7 @@ class VpnTileService : TileService() {
         super.onClick()
         Engine.start(this)
         if (VpnStatus.active) {
-            Thread { Mobile.disconnect() }.start()
+            Thread { Mobile.disconnect("tile") }.start()
             return
         }
         // The VPN was never allowed: that takes the app.
