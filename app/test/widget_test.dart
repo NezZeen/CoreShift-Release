@@ -1225,6 +1225,24 @@ void main() {
     expect(speedTestError('download: read tcp 10.0.0.2:5000->1.2.3.4:8080: connection reset by peer'), contains('оборвалась'));
   });
 
+  testWidgets('a link waits for the disclaimer to be accepted, then is offered', (tester) async {
+    final state = AppState(DemoBackend(), prefs: {}, askDisclaimer: true);
+    await pumpApp(tester, size: const Size(390, 844), custom: state);
+    state.offerImport('happ://add/https://sub.example.com/AbCdEf1234567890#Дом', ImportFrom.link);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Отказ от ответственности'), findsOneWidget);
+    expect(find.text('Добавить подписку?'), findsNothing, reason: 'nothing comes over the disclaimer');
+    await tester.ensureVisible(find.text('Принимаю'));
+    await tester.tap(find.text('Принимаю'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Отказ от ответственности'), findsNothing);
+    expect(find.text('Добавить подписку?'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(seconds: 30));
+  });
+
   testWidgets('a link from a panel or the clipboard is added only once the user agrees', (tester) async {
     for (final size in [const Size(1400, 900), const Size(390, 844)]) {
       final state = await pumpApp(tester, size: size);

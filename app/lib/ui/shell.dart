@@ -127,11 +127,16 @@ class _ShellState extends State<Shell> {
   bool _importShown = false;
   bool _wasLoaded = false;
 
+  /// The disclaimer waits for an answer: no other window comes over it.
+  /// Accepted, the pref it sets brings the waiting offers.
+  bool get _awaitingDisclaimer => widget.state.askDisclaimer && widget.state.prefs[disclaimerPref] != true;
+
   /// A subscription from a link, the clipboard or a QR code is offered in a
   /// window once the service answers; on the first load the clipboard is
   /// looked at too.
   void _offerImport() {
     final s = widget.state;
+    if (_awaitingDisclaimer) return;
     if (s.loaded && s.online && !_wasLoaded) {
       _wasLoaded = true;
       _lookAtClipboard();
@@ -157,7 +162,7 @@ class _ShellState extends State<Shell> {
 
   /// A downloaded update is offered in a window, wherever the user is.
   void _offerUpdate() {
-    if (!widget.state.offerUpdate) return;
+    if (!widget.state.offerUpdate || _awaitingDisclaimer) return;
     widget.state.updateOffered();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) showUpdateOffer(context, widget.state);
