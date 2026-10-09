@@ -750,9 +750,30 @@ void main() {
       'tun: да → нет',
       'cores.mode: auto → manual',
       'routing.russia_direct: нет → да',
-      'routing.direct_domains: 1 записей → 2 записей',
+      'routing.direct_domains: 1 запись → 2 записи',
     ]);
     expect(settingsChanges(before, before), isEmpty);
+    expect(settingsChanges({'l': List.filled(30, 'a')}, {'l': List.filled(29, 'a')}), ['l: 30 записей → 29 записей']);
+    expect(settingsChanges({'l': List.filled(5, 'a')}, {'l': List.filled(5, 'b')}), ['l: изменён список (5 записей)']);
+  });
+
+  test('Russian plurals', () {
+    final want = {
+      1: 'запись',
+      2: 'записи',
+      4: 'записи',
+      5: 'записей',
+      11: 'записей',
+      12: 'записей',
+      14: 'записей',
+      21: 'запись',
+      22: 'записи',
+      25: 'записей',
+      101: 'запись',
+      111: 'записей',
+    };
+    want.forEach((n, w) => expect(ruPlural(n, 'запись', 'записи', 'записей'), w, reason: '$n'));
+    expect(entriesCount(3), '3 записи');
   });
 
   testWidgets('the copied journal starts with versions and mode', (tester) async {

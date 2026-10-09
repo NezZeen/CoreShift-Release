@@ -26,7 +26,7 @@ type collected struct {
 	lines []string
 }
 
-func (c *collected) emit(source, line string) {
+func (c *collected) emit(source, line string, _ time.Time) {
 	c.mu.Lock()
 	c.lines = append(c.lines, source+": "+line)
 	c.mu.Unlock()
@@ -90,7 +90,7 @@ func TestGrouperShowsTheFirstAndCountsTheRest(t *testing.T) {
 	}
 	time.Sleep(120 * time.Millisecond)
 	got := c.get()
-	if len(got) != 2 || !strings.Contains(got[1], "ещё 3 раз") || !strings.Contains(got[1], "<адрес>") {
+	if len(got) != 2 || !strings.Contains(got[1], "ещё 3 раза за") || !strings.Contains(got[1], "<адрес>") {
 		t.Fatalf("after a period: %q, want one summary of 3 repeats", got)
 	}
 }
@@ -372,8 +372,116 @@ func TestAndroidLookupIsOneLine(t *testing.T) {
 	}
 }
 
+// A disconnect tells the repeats counted so far at once, at the time of
+// the last one and for the time they took (the journal of 0.8.1 had them
+// 3–20 s after "отключено"), and ends the groups.
+func TestFlushAllReportsPendingRepeats(t *testing.T) {
+	type line struct {
+		text string
+		at   time.Time
+	}
+	var mu sync.Mutex
+	var got []line
+	g := newLogGrouper(200*time.Millisecond, func(source, l string, at time.Time) {
+		mu.Lock()
+		got = append(got, line{source + ": " + l, at})
+		mu.Unlock()
+	})
+	t0 := time.Date(2026, 10, 9, 10, 7, 15, 0, time.Local)
+	clock := t0
+	g.now = func() time.Time { return clock }
+	g.add("tun", floodA)
+	clock = t0.Add(2 * time.Second)
+	g.add("tun", floodB)
+	clock = t0.Add(5 * time.Second)
+	g.add("tun", floodC)
+	g.add("sing-box", singboxNoIface) // shown, never repeated: nothing to tell
+	g.flushAll()
+	mu.Lock()
+	n := len(got)
+	sum := got[n-1]
+	mu.Unlock()
+	if n != 3 || sum.text != "tun: ERROR connection: open connection to <адрес> using outbound/socks[proxy]: socks5: request rejected, code=1 — ещё 2 раза за 5 с" {
+		t.Fatalf("after the flush: %v", got)
+	}
+	if !sum.at.Equal(t0.Add(5 * time.Second)) {
+		t.Errorf("the count bears %v, want the last repeat's %v", sum.at, t0.Add(5*time.Second))
+	}
+	g.mu.Lock()
+	left := len(g.groups)
+	g.mu.Unlock()
+	if left != 0 {
+		t.Errorf("%d groups left after the flush", left)
+	}
+	// The periods' timers are stopped: nothing more comes, and the next
+	// such line is a new connection's, shown in full.
+	time.Sleep(400 * time.Millisecond)
+	g.add("tun", floodB)
+	mu.Lock()
+	defer mu.Unlock()
+	if len(got) != 4 || !strings.Contains(got[3].text, "203.0.113.184") || !got[3].at.IsZero() {
+		t.Errorf("after the flush: %v", got)
+	}
+}
+
+// Disconnecting puts the counts of the connection before "отключено".
+func TestDisconnectFlushesGroupsBeforeIdle(t *testing.T) {
+	h := newHarness(t, nil)
+	if err := h.connect(t, trojanLink); err != nil {
+		t.Fatal(err)
+	}
+	h.svc.Log("tun", floodA)
+	h.svc.Log("tun", floodB)
+	h.svc.Log("tun", floodC)
+	h.svc.Disconnect()
+	var sum *Event
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case e := <-h.events:
+			if e.Kind == "log" && strings.Contains(e.Line, "— ещё 2 раза за") {
+				sum = &e
+			}
+			if e.Kind == "state" && e.State == Idle {
+				if sum == nil {
+					t.Fatal("the count did not come before the idle state")
+				}
+				if sum.Time.After(e.Time) {
+					t.Errorf("the count at %v is after the idle state at %v", sum.Time, e.Time)
+				}
+				return
+			}
+		case <-deadline:
+			t.Fatal("no idle state")
+		}
+	}
+}
+
+// Remarks the cores make on every start, harmless and the same every time,
+// are not in the journal; another warning of the same kind is.
+func TestStartupRemarksAreDropped(t *testing.T) {
+	var c collected
+	s := &Service{logs: newLogGrouper(time.Minute, c.emit)}
+	for source, l := range map[string]string{
+		"sing-box": "+0300 2026-10-09 10:07:01 WARN network: initialize package manager: read packages list: open /data/system/packages.xml: permission denied",
+		"mihomo":   `time="2026-10-09T10:07:01.5+03:00" level=info msg="Geodata Loader mode: memconservative"`,
+		"mihomo ":  `time="2026-10-09T10:07:01.5+03:00" level=info msg="Geosite Matcher implementation: succinct"`,
+	} {
+		s.Log(source, l)
+		s.Log(source, l)
+	}
+	if got := c.get(); len(got) != 0 {
+		t.Fatalf("dropped lines got through: %q", got)
+	}
+	s.Log("sing-box", "WARN network: initialize package manager: create package manager: something new")
+	s.Log("mihomo", `time="2026-10-09T10:07:01.5+03:00" level=warning msg="Geodata Loader mode: broken"`)
+	if got := c.get(); len(got) != 2 {
+		t.Errorf("other lines must stay: %q", got)
+	}
+}
+
 func TestLookupTwinsAreBounded(t *testing.T) {
-	g := newLogGrouper(time.Minute, func(string, string) {})
+	g := newLogGrouper(time.Minute, func(string, string, time.Time) {})
 	for i := range 3 * maxLookupTwins {
 		g.twin(fmt.Sprintf("ERROR [%d 1.0s] dns: lookup failed for a%d.example: x", i, i))
 	}
@@ -385,7 +493,7 @@ func TestLookupTwinsAreBounded(t *testing.T) {
 // Every line the grouper takes goes through tidy and, for errors, logShape:
 // both have to stay cheap next to a flood.
 func BenchmarkLogFlood(b *testing.B) {
-	g := newLogGrouper(time.Minute, func(string, string) {})
+	g := newLogGrouper(time.Minute, func(string, string, time.Time) {})
 	lines := []string{singboxDial, mihomoDial, xrayDial, againLater(mihomoDial), "INFO ordinary line"}
 	b.ReportAllocs()
 	for i := 0; b.Loop(); i++ {

@@ -12,10 +12,12 @@ import '../platform/platform.dart' as platform;
 import 'errors.dart';
 import 'import_link.dart';
 import 'leak.dart';
+import 'plural.dart';
 import 'redact.dart';
 import '../version.dart';
 
 export 'import_link.dart' show ImportLink;
+export 'plural.dart';
 
 part 'app_state/models.dart';
 part 'app_state/actions.dart';
