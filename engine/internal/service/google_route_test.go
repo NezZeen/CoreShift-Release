@@ -134,7 +134,7 @@ func (r *router) route(t *testing.T, c conn) string {
 // through the tunnel by the final rule: no address list is needed. Names the
 // user sends direct stay direct, and Russian sites go direct.
 func TestGoogleStaysInTunnelWithRussiaDirect(t *testing.T) {
-	ggc := netip.MustParseAddr("198.51.100.10") // a Russian provider's address; in geoip-ru
+	ggc := netip.MustParseAddr("198.51.100.10") // a Russian provider's address; in geoipRU below
 	google := netip.MustParseAddr("142.250.74.46")
 	geoipRU := []netip.Prefix{netip.MustParsePrefix("198.51.100.0/24"), netip.MustParsePrefix("77.88.0.0/18")}
 	// geosite-google has names the built-in list leaves out.

@@ -256,6 +256,9 @@ func (s *Service) resumeNetwork(gen int) bool {
 	s.mu.Unlock()
 	s.hub.publish(Event{Kind: "network", Reason: "back", Line: "сеть вернулась"})
 	s.publishState(st)
+	// Connected again without setStatus: what failed for want of the
+	// network is tried now, as after any connect.
+	s.retryAfterConnect()
 	return true
 }
 

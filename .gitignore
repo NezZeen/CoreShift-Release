@@ -5,8 +5,15 @@
 # are not kept in the repository.
 /engine/testdata/bin/
 
-# Claude Code's per-user settings.
-/.claude/settings.local.json
+# Claude Code, its agents and the knowledge graph: local working notes
+# and settings, not part of the project.
+/.claude/
+/CLAUDE.md
+/CLAUDE.local.md
+/AGENTS.md
+/.mcp.json
+/graphify-out/
+/.graphifyignore
 
 # The releases token, built in by build.ps1 for the duration of a build.
 /engine/internal/selfupdate/token_gen.go
