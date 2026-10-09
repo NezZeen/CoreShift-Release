@@ -6,7 +6,8 @@
 # latest-linux.json, its .sig and the Linux packages under their fixed names
 # (CoreShift-amd64.deb, -x86_64.rpm, -x86_64.pkg.tar.zst,
 # -linux-amd64.tar.gz), or the files of some of them. The installer and the
-# APK also go up as CoreShift-Setup.exe and CoreShift.apk, the README's
+# APK go up as CoreShift-Setup.exe and CoreShift.apk (release.ps1 names them
+# so since 0.8.2; an older release folder still gets the copies), the README's
 # fixed links.
 #
 #   powershell -ExecutionPolicy Bypass -File packaging\publish.ps1 -Version 0.3.0

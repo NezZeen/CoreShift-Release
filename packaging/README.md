@@ -73,7 +73,7 @@ powershell -ExecutionPolicy Bypass -File packaging\release.ps1 -Version 0.3.0
 powershell -ExecutionPolicy Bypass -File packaging\publish.ps1 -Version 0.3.0
 ```
 
-`release.ps1` собирает установщик для Windows и APK для Android и кладёт в `dist\release\0.3.0\` по три файла на систему: установщик, `latest.json` и `latest.json.sig`, а для Android — APK, `latest-android.json` и `latest-android.json.sig`. `publish.ps1` создаёт из них релиз `v0.3.0` в `NezZeen/CoreShift-Release` и добавляет копии установщика и APK под постоянными именами `CoreShift-Setup.exe` и `CoreShift.apk`, на которые ссылается README публичного репозитория. Сам README там обновляется отдельно.
+`release.ps1` собирает установщик для Windows и APK для Android и кладёт в `dist\release\0.3.0\` по три файла на систему: установщик под постоянным именем `CoreShift-Setup.exe`, `latest.json` и `latest.json.sig`, а для Android — `CoreShift.apk`, `latest-android.json` и `latest-android.json.sig`. Манифесты называют эти же файлы, поэтому в релизе каждый установщик лежит один раз: по ссылкам `releases/latest/download/CoreShift-Setup.exe` и `…/CoreShift.apk` всегда последняя версия, и самообновление скачивает тот же файл (с 0.8.2; раньше рядом лежали ещё копии с версией в имени). Сборки с версией в имени остаются в `dist\`. `publish.ps1` создаёт из них релиз `v0.3.0` в `NezZeen/CoreShift-Release`.
 
 ### Базы правил
 

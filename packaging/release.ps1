@@ -98,15 +98,22 @@ if (-not $NoBuild) {
         $commit = (git rev-parse --short=7 HEAD).Trim()
     } finally { Pop-Location }
     $installers = @()
+    $out = Join-Path $root "dist\release\$Version"
+    New-Item -ItemType Directory $out -Force | Out-Null
+    # The release carries every installer once, under the fixed name the
+    # public downloads link to (releases/latest/download/CoreShift-Setup.exe);
+    # the manifests name these files, so self-update takes the same ones.
+    # The versioned builds stay in dist\.
     if ($Platform -eq 'all' -or $Platform -eq 'windows') {
         & "$root\packaging\windows\build.ps1"
-        $installers += "$root\dist\coreshift-setup-$Version.exe"
+        Copy-Item "$root\dist\coreshift-setup-$Version.exe" (Join-Path $out 'CoreShift-Setup.exe') -Force
+        $installers += (Join-Path $out 'CoreShift-Setup.exe')
     }
     if ($Platform -eq 'all' -or $Platform -eq 'android') {
         & "$root\packaging\android\build.ps1"
-        $installers += "$root\dist\coreshift-$Version.apk"
+        Copy-Item "$root\dist\coreshift-$Version.apk" (Join-Path $out 'CoreShift.apk') -Force
+        $installers += (Join-Path $out 'CoreShift.apk')
     }
-    $out = Join-Path $root "dist\release\$Version"
     if ($linux) {
         $linuxDir = Join-Path $root "dist\linux\$Version"
         & "$root\packaging\linux\build-wsl.ps1" -Ref "v$Version" -Distro $LinuxDistro -OutDir $linuxDir

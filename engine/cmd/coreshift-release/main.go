@@ -29,6 +29,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"coreshift/engine/internal/selfupdate"
@@ -154,7 +155,11 @@ func manifest(args []string) error {
 }
 
 func copyFile(src, dst string) error {
-	if abs1, _ := filepath.Abs(src); abs1 == dst {
+	// The installer may already be in the release folder under its
+	// published name: copying it onto itself would empty it.
+	abs1, _ := filepath.Abs(src)
+	abs2, _ := filepath.Abs(dst)
+	if strings.EqualFold(abs1, abs2) {
 		return nil
 	}
 	in, err := os.Open(src)
