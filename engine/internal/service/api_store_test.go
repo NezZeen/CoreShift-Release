@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -348,15 +349,15 @@ func TestLatencyPing(t *testing.T) {
 	if code := callJSON(t, srv, "POST", "/v1/latency", map[string]string{"subscription": sub.ID}, &res); code != http.StatusOK || len(res) != 5 {
 		t.Fatalf("latency: %d %+v", code, res)
 	}
-	// TCP servers are timed by a handshake alone: one that does not answer
-	// is down, no core is started for it. Only what the light probes cannot
-	// time goes through a core: a tunnel on this computer answering, a UDP
-	// server ignoring ICMP.
+	// Servers are timed by a handshake alone where it answers. What the
+	// light probes cannot time goes through a core, which alone says a
+	// server is down: a handshake refused, a tunnel on this computer
+	// answering, a UDP server ignoring ICMP.
 	want := []struct {
 		method string
 		ms     int64
 		fails  bool
-	}{{"tcp", 60, false}, {"tcp", 0, true}, {"proxy", 0, false}, {"icmp", 40, false}, {"proxy", 0, false}}
+	}{{"tcp", 60, false}, {"proxy", 0, false}, {"proxy", 0, false}, {"icmp", 40, false}, {"proxy", 0, false}}
 	for i, w := range want {
 		r := res[i]
 		if r.Method != w.method || (r.Error != "") != w.fails || (w.ms > 0 && r.LatencyMS != w.ms) || (!w.fails && r.LatencyMS <= 0) {
@@ -368,6 +369,167 @@ func TestLatencyPing(t *testing.T) {
 		t.Errorf("node view: %+v", n)
 	}
 	_ = h
+}
+
+// latencyRig is a store API whose pings fail each server its own way:
+// whatever the direct path says, the server is tested through a core.
+func latencyRig(t *testing.T) (*harness, *httptest.Server, *sync.Map) {
+	t.Helper()
+	var dohAsked sync.Map
+	h, srv := newStoreAPI(t, func(c *Config) {
+		c.lookup = func(_ context.Context, host string, _ netip.AddrPort) (netip.Addr, error) {
+			switch host {
+			case "nodns.example.com", "dohonly.example.com":
+				return netip.Addr{}, &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
+			case "slowdns.example.com":
+				return netip.Addr{}, &net.DNSError{Err: "i/o timeout", Name: host, IsTimeout: true}
+			}
+			return netip.MustParseAddr("198.51.100.7"), nil
+		}
+		c.dohLookup = func(_ context.Context, host string, _ ping.Bind) ([]netip.Addr, error) {
+			dohAsked.Store(host, true)
+			if host == "dohonly.example.com" {
+				return []netip.Addr{netip.MustParseAddr("2001:db8::5"), netip.MustParseAddr("198.51.100.50")}, nil
+			}
+			return nil, &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
+		}
+		c.physical = func() (ping.Bind, error) { return ping.Bind{}, nil }
+		c.icmpPing = func(context.Context, netip.Addr, ping.Bind) (time.Duration, error) {
+			return 0, errors.New("destination host unreachable")
+		}
+		c.tcpPing = func(_ context.Context, ap netip.AddrPort, _ ping.Bind) (time.Duration, error) {
+			switch ap.Port() {
+			case 443:
+				return 30 * time.Millisecond, nil
+			case 1001:
+				return 0, errors.New("dial tcp: i/o timeout")
+			case 1002:
+				return 0, errors.New("connectex: No connection could be made because the target machine actively refused it")
+			}
+			return 0, errors.New("connect: network is unreachable")
+		}
+	})
+	return h, srv, &dohAsked
+}
+
+var latencyRigLinks = []string{
+	"trojan://pw@nodns.example.com:443?sni=a.example.com#NoDNS",
+	"trojan://pw@slowdns.example.com:443?sni=a.example.com#DNSTimeout",
+	"trojan://pw@dohonly.example.com:443?sni=a.example.com#DoH",
+	"trojan://pw@203.0.113.6:1001?sni=t.example.com#Timeout",
+	"trojan://pw@203.0.113.6:1002?sni=t.example.com#Refused",
+	"trojan://pw@203.0.113.6:1003?sni=t.example.com#Unreachable",
+	"hysteria2://pw@203.0.113.9:443?sni=t.example.com#NoICMP",
+}
+
+// Every kind of direct-ping failure falls back to the test through a core:
+// a provider may block the direct path, or fail the server's name, while
+// the proxy gets through.
+func TestLatencyPingFailuresGoThroughCore(t *testing.T) {
+	_, srv, dohAsked := latencyRig(t)
+	var sub subscriptionView
+	callJSON(t, srv, "POST", "/v1/subscriptions", map[string]string{"content": strings.Join(latencyRigLinks, "\n")}, &sub)
+	var res []NodeLatency
+	if code := callJSON(t, srv, "POST", "/v1/latency", map[string]string{"subscription": sub.ID}, &res); code != http.StatusOK || len(res) != len(latencyRigLinks) {
+		t.Fatalf("latency: %d %+v", code, res)
+	}
+	for i, r := range res {
+		want := methodProxy
+		if i == 2 {
+			// The system's resolver failed it, DNS over HTTPS did not: the
+			// handshake with that address is timed.
+			want = methodTCP
+		}
+		if r.Method != want || r.Error != "" || r.LatencyMS <= 0 {
+			t.Errorf("%s: %+v, want %s", latencyRigLinks[i], r, want)
+		}
+	}
+	for _, host := range []string{"nodns.example.com", "slowdns.example.com", "dohonly.example.com"} {
+		if _, ok := dohAsked.Load(host); !ok {
+			t.Errorf("%s not asked over DNS over HTTPS", host)
+		}
+	}
+	if _, ok := dohAsked.Load("203.0.113.6"); ok {
+		t.Error("an address was looked up")
+	}
+}
+
+// A server is down only when the core cannot reach it either; the error
+// says why both failed.
+func TestLatencyPingAndCoreFail(t *testing.T) {
+	for _, k := range []string{"XRAY", "SING_BOX", "MIHOMO"} {
+		t.Setenv("FAKECORE_"+k, "unhealthy")
+	}
+	_, srv, _ := latencyRig(t)
+	links := []string{latencyRigLinks[0], latencyRigLinks[4]}
+	var sub subscriptionView
+	callJSON(t, srv, "POST", "/v1/subscriptions", map[string]string{"content": strings.Join(links, "\n")}, &sub)
+	var res []NodeLatency
+	if code := callJSON(t, srv, "POST", "/v1/latency", map[string]string{"subscription": sub.ID}, &res); code != http.StatusOK || len(res) != 2 {
+		t.Fatalf("latency: %d %+v", code, res)
+	}
+	for i, want := range []string{"nodns.example.com", "TCP: connectex"} {
+		r := res[i]
+		if r.Method != methodProxy || r.LatencyMS != 0 || !strings.HasPrefix(r.Error, "ping: ") || !strings.Contains(r.Error, "; proxy: ") || !strings.Contains(r.Error, want) {
+			t.Errorf("%s: %+v", links[i], r)
+		}
+	}
+}
+
+// In proxy mode every server goes through its core, as before; a name only
+// DNS over HTTPS knows is handed to the core as an address.
+func TestLatencyProxyMode(t *testing.T) {
+	h, srv, _ := latencyRig(t)
+	set := h.svc.Store().Settings()
+	set.Cores.LatencyTest = store.LatencyProxy
+	if code := callJSON(t, srv, "PUT", "/v1/settings", set, nil); code != http.StatusOK {
+		t.Fatalf("settings: %d", code)
+	}
+	var sub subscriptionView
+	callJSON(t, srv, "POST", "/v1/subscriptions", map[string]string{"content": strings.Join(latencyRigLinks[:3], "\n")}, &sub)
+	var res []NodeLatency
+	if code := callJSON(t, srv, "POST", "/v1/latency", map[string]string{"subscription": sub.ID}, &res); code != http.StatusOK || len(res) != 3 {
+		t.Fatalf("latency: %d %+v", code, res)
+	}
+	for i, r := range res {
+		if r.Method != methodProxy || r.Error != "" || r.LatencyMS <= 0 {
+			t.Errorf("%s: %+v", latencyRigLinks[i], r)
+		}
+	}
+	nodes := make([]node.Node, 3)
+	for i, l := range latencyRigLinks[:3] {
+		nodes[i], _ = subscription.ParseLink(l)
+	}
+	if addrs := h.svc.resolveServers(context.Background(), nodes, nil); addrs[0] != "" || addrs[1] != "" || addrs[2] != "198.51.100.50" {
+		t.Errorf("addresses for the cores: %q", addrs)
+	}
+}
+
+// A system resolver that is slow to answer does not hold the test up:
+// DNS over HTTPS is asked meanwhile, and the first answer wins.
+func TestTestAddrAsksDoHWhileSystemIsSlow(t *testing.T) {
+	release := make(chan struct{})
+	defer close(release)
+	h := newHarness(t, func(c *Config) {
+		c.lookup = func(ctx context.Context, host string, _ netip.AddrPort) (netip.Addr, error) {
+			select {
+			case <-release:
+			case <-ctx.Done():
+			}
+			return netip.Addr{}, errors.New("too late")
+		}
+		c.dohLookup = func(context.Context, string, ping.Bind) ([]netip.Addr, error) {
+			return []netip.Addr{netip.MustParseAddr("198.51.100.60")}, nil
+		}
+	})
+	start := time.Now()
+	ip, err := h.svc.testAddr(context.Background(), "slow.example.com", ping.Bind{})
+	if err != nil || ip != netip.MustParseAddr("198.51.100.60") {
+		t.Fatalf("ip %v, err %v", ip, err)
+	}
+	if d := time.Since(start); d < dohAfter || d > dohAfter+2*time.Second {
+		t.Errorf("answered after %v", d)
+	}
 }
 
 // Results of servers that are gone are forgotten when their subscription
@@ -420,7 +582,7 @@ func TestLatencyTestUsesResolvedServers(t *testing.T) {
 		n, _ := subscription.ParseLink(l)
 		nodes = append(nodes, n)
 	}
-	addrs := h.svc.resolveServers(context.Background(), nodes)
+	addrs := h.svc.resolveServers(context.Background(), nodes, nil)
 	if addrs[0] != "198.51.100.7" || addrs[1] != "198.51.100.7" || addrs[2] != "" {
 		t.Errorf("addrs = %v", addrs)
 	}

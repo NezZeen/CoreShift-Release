@@ -50,7 +50,7 @@ func TestLatencyLookupsAreBounded(t *testing.T) {
 	for i := range nodes {
 		nodes[i] = node.Node{Name: fmt.Sprint(i), Protocol: node.Trojan, Server: fmt.Sprintf("s%d.example.com", i), Port: 443, Password: "pw"}
 	}
-	addrs := h.svc.resolveServers(context.Background(), nodes)
+	addrs := h.svc.resolveServers(context.Background(), nodes, nil)
 	if addrs[1999] != "198.51.100.7" {
 		t.Errorf("address %q", addrs[1999])
 	}
@@ -61,11 +61,12 @@ func TestLatencyLookupsAreBounded(t *testing.T) {
 	c.most.Store(0)
 	var mu sync.Mutex
 	reported := 0
-	h.svc.pingLatency(context.Background(), nodes, func(int, NodeLatency) { mu.Lock(); reported++; mu.Unlock() })
+	failed, _ := h.svc.pingLatency(context.Background(), nodes, nil, func(int, NodeLatency) { mu.Lock(); reported++; mu.Unlock() })
 	if m := c.most.Load(); m > lookupConcurrency || m == 0 {
 		t.Errorf("%d lookups at once while pinging, want 1..%d", m, lookupConcurrency)
 	}
-	if reported != len(nodes) {
-		t.Errorf("%d results for %d nodes", reported, len(nodes))
+	// None answers the ping: all are left to a test through the core.
+	if reported != 0 || len(failed) != len(nodes) {
+		t.Errorf("%d results and %d left to cores for %d nodes", reported, len(failed), len(nodes))
 	}
 }

@@ -57,23 +57,45 @@ func ICMP(ctx context.Context, dst netip.Addr, b Bind, count int, timeout time.D
 }
 
 // TCP opens up to count connections to dst, each waiting up to timeout, and
-// returns the fastest handshake. It fails only if every attempt did; a
-// first attempt that fails ends it, as a server that does not answer one
-// handshake seldom answers the next, and waiting for each would make a list
-// of servers slow to test.
+// returns the fastest handshake. It fails only if every attempt did. A
+// first attempt that fails is tried once more, as a lost SYN or a mobile
+// radio waking up costs one; a second failure ends it, as a server that does
+// not answer twice seldom answers a third time, and waiting for each would
+// make a list of servers slow to test. A server that does not answer at all
+// costs at most two timeouts.
 func TCP(ctx context.Context, dst netip.AddrPort, b Bind, count int, timeout time.Duration) (time.Duration, error) {
-	d := b.Dialer(timeout)
+	return tcp(ctx, dst, count, timeout, b.Dialer(timeout).DialContext)
+}
+
+// tcpRetryPause is the pause before trying a failed first handshake again.
+var tcpRetryPause = 200 * time.Millisecond
+
+// tcp is TCP with the dialer given, for tests.
+func tcp(ctx context.Context, dst netip.AddrPort, count int, timeout time.Duration,
+	dial func(ctx context.Context, network, addr string) (net.Conn, error)) (time.Duration, error) {
 	best, err := time.Duration(0), error(nil)
-	for range count {
+	retried := false
+	for i := 0; i < count; i++ {
 		if ctx.Err() != nil {
 			break
 		}
+		actx, cancel := context.WithTimeout(ctx, timeout)
 		start := time.Now()
-		c, e := d.DialContext(ctx, "tcp", dst.String())
+		c, e := dial(actx, "tcp", dst.String())
+		cancel()
 		if e != nil {
 			err = e
-			if best == 0 {
+			if best > 0 {
+				continue
+			}
+			if retried {
 				break
+			}
+			retried = true
+			i-- // the retry does not count as an attempt of its own
+			select {
+			case <-ctx.Done():
+			case <-time.After(tcpRetryPause):
 			}
 			continue
 		}
