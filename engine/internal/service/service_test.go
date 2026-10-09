@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1249,5 +1250,26 @@ func TestStaleFakeIPInWords(t *testing.T) {
 	}
 	if n == 0 {
 		t.Error("the words were not told")
+	}
+}
+
+// A flood of the cores' output does not push the connection's own events
+// out of what a UI opened late is shown.
+func TestHubKeepsEventsPastALogFlood(t *testing.T) {
+	h := newHub()
+	h.publish(Event{Kind: "state", State: Connected})
+	for i := range 2000 {
+		h.publish(Event{Kind: "log", Source: "xray", Line: "line " + strconv.Itoa(i)})
+	}
+	ch, stop := h.subscribe(true)
+	defer stop()
+	found := false
+	for len(ch) > 0 {
+		if e := <-ch; e.Kind == "state" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("the connected state was pushed out by the cores' output")
 	}
 }

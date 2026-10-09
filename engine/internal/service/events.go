@@ -96,11 +96,17 @@ type hub struct {
 	// traffic keeps the last traffic events apart from recent, where one
 	// a second would push everything else out; enough for the UI's graph.
 	traffic []Event
+	// logs keeps the cores' and the TUN layer's output apart too: a verbose
+	// journal prints hundreds of lines a minute, which pushed the
+	// connection's own events (connected, the network, the session) out
+	// of recent before a UI opened late could see them.
+	logs []Event
 }
 
 const (
 	hubReplay   = 300
 	trafficKeep = 120
+	logsKeep    = 500
 	kindTraffic = "traffic"
 )
 
@@ -116,6 +122,11 @@ func (h *hub) publish(e Event) {
 		h.traffic = append(h.traffic, e)
 		if len(h.traffic) > trafficKeep {
 			h.traffic = h.traffic[len(h.traffic)-trafficKeep:]
+		}
+	} else if e.Kind == "log" {
+		h.logs = append(h.logs, e)
+		if len(h.logs) > logsKeep {
+			h.logs = h.logs[len(h.logs)-logsKeep:]
 		}
 	} else {
 		h.recent = append(h.recent, e)
@@ -141,10 +152,13 @@ func (h *hub) clearTraffic() {
 // subscribe returns a channel of new events, optionally preceded by the
 // recent ones, and a function that unsubscribes.
 func (h *hub) subscribe(replay bool) (<-chan Event, func()) {
-	ch := make(chan Event, 256+hubReplay+trafficKeep)
+	ch := make(chan Event, 256+hubReplay+trafficKeep+logsKeep)
 	h.mu.Lock()
 	if replay {
 		for _, e := range h.recent {
+			ch <- e
+		}
+		for _, e := range h.logs {
 			ch <- e
 		}
 		for _, e := range h.traffic {
