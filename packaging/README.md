@@ -73,7 +73,30 @@ powershell -ExecutionPolicy Bypass -File packaging\release.ps1 -Version 0.3.0
 powershell -ExecutionPolicy Bypass -File packaging\publish.ps1 -Version 0.3.0
 ```
 
-`release.ps1` собирает установщик для Windows и APK для Android и кладёт в `dist\release\0.3.0\` по три файла на систему: установщик под постоянным именем `CoreShift-Setup.exe`, `latest.json` и `latest.json.sig`, а для Android — `CoreShift.apk`, `latest-android.json` и `latest-android.json.sig`. Манифесты называют эти же файлы, поэтому в релизе каждый установщик лежит один раз: по ссылкам `releases/latest/download/CoreShift-Setup.exe` и `…/CoreShift.apk` всегда последняя версия, и самообновление скачивает тот же файл (с 0.8.2; раньше рядом лежали ещё копии с версией в имени). Сборки с версией в имени остаются в `dist\`. `publish.ps1` создаёт из них релиз `v0.3.0` в `NezZeen/CoreShift-Release`.
+`release.ps1` собирает установщик для Windows и APK для Android и кладёт в `dist\release\0.3.0\` по три файла на систему: установщик под постоянным именем `CoreShift-Setup.exe`, `latest.json` и `latest.json.sig`, а для Android — `CoreShift.apk`, `latest-android.json` и `latest-android.json.sig`. Манифесты называют эти же файлы, поэтому в релизе каждый установщик лежит один раз: по ссылкам `releases/latest/download/CoreShift-Setup.exe` и `…/CoreShift.apk` всегда последняя версия, и самообновление скачивает тот же файл (с 0.8.2; раньше рядом лежали ещё копии с версией в имени). Сборки с версией в имени остаются в `dist\`. `publish.ps1` создаёт из них релиз `v0.3.0` в `NezZeen/CoreShift-Release`, а затем такой же — на зеркале в GitLab (см. ниже).
+
+### Зеркало на GitLab
+
+GitHub (`api.github.com`, загрузки релизов, `raw.githubusercontent.com`) в России открывается не у всех. Поэтому каждый выпуск дублируется в публичный проект GitLab [`NezZeen/coreshift`](https://gitlab.com/NezZeen/coreshift).
+
+**Как работает на устройствах.** Если в настройках не задан свой источник (`app_update.source`), служба сначала проверяет GitHub (`github-public:NezZeen/CoreShift-Release`), как и раньше: через активное ядро, потом напрямую. К зеркалу (`gitlab-public:NezZeen/coreshift`, константа `selfupdate.MirrorSource`) она обращается, только если до GitHub не достучаться: ошибка DNS, соединения, TLS, тайм-аут, обрыв, ответ 403/429 (лимит) или 5xx. Если GitHub ответил (версия не новее, подпись не совпала, нужного файла нет), это и есть ответ, зеркало не спрашивается. Если релиз нашёлся на GitHub, а скачать установщик оттуда не удалось по тем же причинам, служба скачивает тот же самый релиз (та же версия, сборка и SHA-256) с зеркала. В журнале при этом появляется «обновления: GitHub недоступен, проверено через GitLab» (или «…скачано через GitLab»). Если в настройках задан источник, используется только он.
+
+Зеркалу доверия не больше, чем GitHub: манифест проверяется теми же ключами Ed25519, установщик — по SHA-256 из манифеста (размер и хеш — во время скачивания, у ссылок GitLab размера нет). Служба читает API релизов `https://gitlab.com/api/v4/projects/NezZeen%2Fcoreshift/releases`, берёт самый свежий релиз (не «предстоящий») со ссылкой на манифест своей системы и скачивает файлы только с `gitlab.com`: из реестра пакетов (`/api/v4/projects/<id>/packages/generic/...`) или по прямой ссылке релиза. Адреса на других хостах из ответа API не открываются, токены не отправляются. Linux по кнопке «Скачать» открывает страницу релиза на GitLab (`https://gitlab.com/NezZeen/coreshift/-/releases/<тег>`).
+
+Базы правил с ветки `rulesets` берутся по очереди с GitHub raw, jsDelivr и GitLab (`https://gitlab.com/NezZeen/coreshift/-/raw/rulesets/<имя>`), так же и `rulesets.json`.
+
+**Как выкладывается.** После релиза на GitHub `publish.ps1` загружает каждый файл выпуска в Generic Package Registry проекта (`PUT /projects/:id/packages/generic/coreshift/<версия>/<файл>`) и создаёт релиз `v<версия>` (тег от `main`, название «CoreShift <версия>», описание — те же заметки на русском), где у каждого файла есть ссылка типа `package` и `direct_asset_path: /<файл>`. Поэтому постоянные ссылки на последнюю версию такие:
+
+- `https://gitlab.com/NezZeen/coreshift/-/releases/permalink/latest/downloads/CoreShift-Setup.exe`
+- `https://gitlab.com/NezZeen/coreshift/-/releases/permalink/latest/downloads/CoreShift.apk`
+
+Ключи `publish.ps1`: `-NoGitLab` — без зеркала; `-GitLabOnly` — только на зеркало (повтор после сбоя или выпуск, который уже есть на GitHub; если релиз на GitLab уже создан, добавляются недостающие ссылки); `-GitLabProject` — другой проект. Сбои сети, 429 и 5xx повторяются до пяти раз. Тестовые сборки (`-Prerelease`) на GitLab не выкладываются: там нет пре-релизов, и устройства взяли бы такую сборку. Когда она станет обычным релизом, выложите её командой `publish.ps1 -Version X -GitLabOnly`.
+
+**Один раз настроить (владелец):**
+
+1. Проект на gitlab.com: `NezZeen/coreshift`, публичный (Public), с веткой `main` (например, создать с README). Реестр пакетов должен быть доступен всем: Settings → General → Visibility → Package registry — Everyone (так по умолчанию у публичного проекта). Если путь проекта другой, его нужно поменять в `selfupdate.MirrorSource`, `ruleset.PublishedGitLab`, в `publish.ps1 -GitLabProject` по умолчанию, в workflow и README.
+2. Токен для `publish.ps1`: fine-grained personal access token, ограниченный этим проектом, с правом записи в релизы, реестр пакетов и репозиторий/теги (тег `v<версия>` создаётся вместе с релизом), либо классический токен (project access token или PAT) с областью `api` и ролью Developer/Maintainer. Сохранить его в `%USERPROFILE%\.coreshift\gitlab-token` или `%USERPROFILE%\.coreshift\gitlab-token.txt` (Блокнот добавляет `.txt` — так тоже можно; пробелы, перевод строки и BOM отбрасываются). Токен не печатается и в репозиторий не попадает. Без файла `publish.ps1` останавливается ещё до публикации на GitHub и подсказывает, что сделать (или запустите с `-NoGitLab`). Срок действия токена ограничен — заранее обновите файл.
+3. Необязательно, для баз правил: в публичном `NezZeen/CoreShift-Release` на GitHub добавить секрет `GITLAB_TOKEN` (Settings → Secrets and variables → Actions) — токен проекта GitLab с правом push в репозиторий (`write_repository` или fine-grained с записью в репозиторий). Тогда workflow `rulesets.yml` после публикации на GitHub отправляет ветку `rulesets` и в GitLab. Без секрета этот шаг тихо пропускается.
 
 ### Базы правил
 
@@ -91,7 +114,7 @@ runetfreedom выкладывает только v2ray-файл `geosite.dat` (`
 
 Порядок правил в туннеле: список «Блокировать», программы, «Всегда через VPN», «Сайты и адреса без VPN» (напрямую, где бы сайт ни находился), «Свои правила» по порядку, блокировка рекламы, Google через VPN, базы заблокированных сайтов, российские сайты напрямую, остальное — через VPN (в режиме «Только выбранное» — напрямую). Правила `geoip:` из «Своих правил» проверяются после всех правил по именам. С переключателем «Российские сайты на зарубежных серверах — через VPN» (по умолчанию выключен: российские сайты идут напрямую, где бы ни стоял их сервер) имя из набора «Российские сайты напрямую» идёт напрямую, только если его адрес из прямого DNS попадает в `geoip-ru`.
 
-Копии баз лежат в `engine\internal\ruleset\data` и встраиваются в службу на всех трёх системах. Служба начинает с них, поэтому наборы работают и без доступа к GitHub. Затем она сама скачивает свежие базы (`ru-blocked` — раз в сутки, остальные — раз в неделю): базы SagerNet — у SagerNet, две базы runetfreedom — с ветки `rulesets` публичного репозитория (см. ниже), а если она недоступна — с её копии на jsDelivr. Новую копию служба берёт, только если та:
+Копии баз лежат в `engine\internal\ruleset\data` и встраиваются в службу на всех трёх системах. Служба начинает с них, поэтому наборы работают и без доступа к GitHub. Затем она сама скачивает свежие базы (`ru-blocked` — раз в сутки, остальные — раз в неделю): базы SagerNet — у SagerNet, две базы runetfreedom — с ветки `rulesets` публичного репозитория (см. ниже), а если она недоступна — с её копии на jsDelivr, затем с той же ветки на GitLab. Новую копию служба берёт, только если та:
 
 - читается как база sing-box и состоит из одних имён или адресов;
 - содержит то, для чего база нужна (в `geosite-google` есть google.com и youtube.com, в `geoip-ru` — адреса Яндекса), и не содержит контрольных чужих имён и адресов (8.8.8.8, meduza.io в списке «напрямую» и т. п.);
@@ -109,7 +132,7 @@ runetfreedom выкладывает только v2ray-файл `geosite.dat` (`
 
 #### Ветка `rulesets`
 
-Чтобы устройства не качали `geosite.dat` целиком (десятки мегабайт), две базы runetfreedom CoreShift публикует сам: workflow `.github/workflows/rulesets.yml` раз в 6 часов (и по кнопке Run workflow) запускает `go run ./cmd/coreshift-release rulesets-publish -out <папка>`. Команда скачивает `geosite.dat`, сверяет его с `.sha256sum`, собирает обе базы, проверяет их `ruleset.Check` рядом с прежней опубликованной и встроенной копией и пишет `geosite-ru-blocked.srs`, `geosite-category-ads-all.srs` и `rulesets.json` (sha256, размер, время). Workflow коммитит их в отдельную ветку `rulesets` без общей истории с `main`, только если что-то изменилось; `main` и релизы он не трогает, ключей, кроме стандартного `GITHUB_TOKEN`, не нужно. Устройства сначала читают маленький `rulesets.json` и скачивают базу, только если её sha256 отличается от своей копии.
+Чтобы устройства не качали `geosite.dat` целиком (десятки мегабайт), две базы runetfreedom CoreShift публикует сам: workflow `.github/workflows/rulesets.yml` раз в 6 часов (и по кнопке Run workflow) запускает `go run ./cmd/coreshift-release rulesets-publish -out <папка>`. Команда скачивает `geosite.dat`, сверяет его с `.sha256sum`, собирает обе базы, проверяет их `ruleset.Check` рядом с прежней опубликованной и встроенной копией и пишет `geosite-ru-blocked.srs`, `geosite-category-ads-all.srs` и `rulesets.json` (sha256, размер, время). Workflow коммитит их в отдельную ветку `rulesets` без общей истории с `main`, только если что-то изменилось; `main` и релизы он не трогает, ключей, кроме стандартного `GITHUB_TOKEN`, не нужно. С секретом `GITLAB_TOKEN` он ещё отправляет текущие файлы ветки в ветку `rulesets` зеркала на GitLab: одним коммитом без истории (принудительно), а пока файлы не меняются, коммит тот же и отправка ничего не делает. Устройства сначала читают маленький `rulesets.json` и скачивают базу, только если её sha256 отличается от своей копии.
 
 Workflow должен лежать в `main` публичного `NezZeen/CoreShift-Release`, и в репозитории должны быть включены Actions с правом записи для `GITHUB_TOKEN` (Settings → Actions → General → Workflow permissions: Read and write). Если runetfreedom сильно изменил список и проверка не прошла, workflow падает и ветка остаётся прежней; принять изменение можно, запустив команду вручную с `-accept` и закоммитив результат в ветку `rulesets`.
 
@@ -147,6 +170,8 @@ dist\stage\coreshiftd.exe update check -download %TEMP%\coreshift-check
 Для проверки без GitHub подойдёт папка: в настройках службы `app_update.source` = путь к `dist\release\0.3.0`, либо `coreshiftd update check -source <папка>`.
 
 Что увидит телефон: `dist\stage\coreshiftd.exe update check -platform android`.
+
+Что на зеркале в GitLab: `dist\stage\coreshiftd.exe update check -source gitlab-public:NezZeen/coreshift` (без `-source` команда, как и служба, идёт на GitLab, только если GitHub недоступен).
 
 Если обновление не установилось, смотрите журнал установщика: `C:\ProgramData\CoreShift\updates\install.log`. Неудавшуюся версию служба сама повторно не ставит, это можно сделать кнопкой «Установить сейчас».
 

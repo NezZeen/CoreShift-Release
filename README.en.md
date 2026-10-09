@@ -20,6 +20,8 @@ Inside are three proxy cores — **Xray, sing-box and mihomo**. If the current c
 
 Builds for Windows, Linux and Android are on the [Releases](https://github.com/NezZeen/CoreShift-Release/releases) page. Chat: [t.me/CoreShift_app](https://t.me/CoreShift_app) (in Russian).
 
+If GitHub doesn't open for you, the same files are on the GitLab mirror: [CoreShift-Setup.exe](https://gitlab.com/NezZeen/coreshift/-/releases/permalink/latest/downloads/CoreShift-Setup.exe) for Windows, [CoreShift.apk](https://gitlab.com/NezZeen/coreshift/-/releases/permalink/latest/downloads/CoreShift.apk) for Android, every release at [gitlab.com/NezZeen/coreshift](https://gitlab.com/NezZeen/coreshift/-/releases).
+
 ## What the client does
 
 ### Subscriptions and servers
@@ -65,7 +67,7 @@ Builds for Windows, Linux and Android are on the [Releases](https://github.com/N
 
 ### Updates
 
-- **CoreShift** looks for a new version once a day in the public [NezZeen/CoreShift-Release](https://github.com/NezZeen/CoreShift-Release). The manifest is signed with Ed25519 and checked against built-in keys, the installer against its SHA-256. On Windows the update is installed while the VPN is off and doesn't drop the connection; on Android the system installs it when you confirm; on Linux the app announces the new version and the package manager installs it.
+- **CoreShift** looks for a new version once a day in the public [NezZeen/CoreShift-Release](https://github.com/NezZeen/CoreShift-Release), or on the mirror [gitlab.com/NezZeen/coreshift](https://gitlab.com/NezZeen/coreshift) when GitHub can't be reached. The manifest is signed with Ed25519 and checked against built-in keys, the installer against its SHA-256. On Windows the update is installed while the VPN is off and doesn't drop the connection; on Android the system installs it when you confirm; on Linux the app announces the new version and the package manager installs it.
 - **Cores** update themselves from their projects' releases. A new core is test-started first; if it doesn't start, the old one stays.
 
 ## How it's built

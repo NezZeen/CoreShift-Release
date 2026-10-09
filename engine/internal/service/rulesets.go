@@ -398,22 +398,28 @@ func (r *ruleSets) download(ctx context.Context, gs geoSet, path string, proxy *
 
 // current reports whether cur is the copy of tag CoreShift publishes now,
 // by its manifest: a few hundred bytes rather than the set. Only for the
-// sets CoreShift publishes; false when the manifest cannot be had.
+// sets CoreShift publishes; false when the manifest cannot be had. The
+// manifest is read from the branch, else from its mirrors.
 func (r *ruleSets) current(ctx context.Context, tag string, cur []byte, vias []*url.URL) bool {
 	if _, _, ok := ruleset.DatSource(tag); !ok {
 		return false
 	}
 	for _, via := range vias {
-		b, err := r.fetch(ctx, ruleset.Published+ruleset.PublishedManifest, via)
-		if err != nil {
-			continue
+		for _, base := range ruleset.PublishedBases {
+			b, err := r.fetch(ctx, base+ruleset.PublishedManifest, via)
+			if err != nil {
+				if ctx.Err() != nil {
+					return false
+				}
+				continue
+			}
+			var m ruleset.Manifest
+			if json.Unmarshal(b, &m) != nil {
+				return false
+			}
+			f, ok := m.Sets[tag]
+			return ok && f == ruleset.Describe(cur)
 		}
-		var m ruleset.Manifest
-		if json.Unmarshal(b, &m) != nil {
-			return false
-		}
-		f, ok := m.Sets[tag]
-		return ok && f == ruleset.Describe(cur)
 	}
 	return false
 }

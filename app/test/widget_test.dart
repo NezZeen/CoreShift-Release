@@ -721,6 +721,10 @@ void main() {
     expect(humanError('update signature does not match the release key'), contains('подпись'));
     expect(humanError('check for updates: GitHub rate limit, try again later'), contains('ограничил'));
     expect(humanError('check for updates: dial tcp: i/o timeout'), contains('нет связи с GitHub'));
+    expect(
+      humanError('check for updates: GitHub rate limit, try again later; GitLab: check for updates: dial tcp: i/o timeout'),
+      contains('ни с GitHub, ни с зеркалом на GitLab'),
+    );
   });
 
   test('settings changes are described for the journal', () {

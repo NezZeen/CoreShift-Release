@@ -19,6 +19,19 @@
 #
 # Needs the GitHub CLI signed in with access to the repository (gh auth
 # login).
+#
+# Then the same files go to the mirror on GitLab (-GitLabProject, by default
+# NezZeen/coreshift), for those who cannot reach GitHub: installed copies
+# ask it when GitHub is out of reach (engine/internal/selfupdate/gitlab.go).
+# Each file is uploaded to the project's generic package registry
+# (coreshift/<version>/<file>), then a release v<version> is made whose
+# links point at them; direct_asset_path makes
+# https://gitlab.com/<project>/-/releases/permalink/latest/downloads/<file>
+# a fixed link to the latest one. The token is read from
+# %USERPROFILE%\.coreshift\gitlab-token (or gitlab-token.txt) and never
+# printed; see packaging/README.md, the GitLab mirror section. -NoGitLab skips
+# the mirror, -GitLabOnly publishes to it alone (a retry, or a release
+# already on GitHub).
 param(
     [Parameter(Mandatory = $true)][string]$Version,
     [string]$Repo = 'NezZeen/CoreShift-Release',
@@ -26,11 +39,36 @@ param(
     # A test build: marked pre-release, which installed copies never pick up
     # by themselves. Make it a normal release later with
     #   gh release edit v<version> --prerelease=false --latest
-    [switch]$Prerelease
+    # GitLab has no pre-releases: a test build does not go there; publish it
+    # with -GitLabOnly once it is a normal release.
+    [switch]$Prerelease,
+    [string]$GitLabProject = 'NezZeen/coreshift',
+    [switch]$NoGitLab,
+    [switch]$GitLabOnly
 )
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path "$PSScriptRoot\..").Path
 $dir = Join-Path $root "dist\release\$Version"
+if ($NoGitLab -and $GitLabOnly) { throw '-NoGitLab and -GitLabOnly exclude each other' }
+if ($Prerelease -and $GitLabOnly) { throw 'GitLab has no pre-releases: publish a test build to GitHub only' }
+$toGitLab = -not $NoGitLab -and -not $Prerelease
+
+# The GitLab token, read before anything is published: a missing one stops
+# here, not halfway. Never printed.
+$gitlabToken = $null
+if ($toGitLab) {
+    $tokenDir = Join-Path $env:USERPROFILE '.coreshift'
+    $tokenFile = @('gitlab-token', 'gitlab-token.txt') | ForEach-Object { Join-Path $tokenDir $_ } | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if (-not $tokenFile) {
+        throw ("No GitLab token: save a token of $GitLabProject (a fine-grained one with write access to releases, the package registry and the repository, " +
+            "or a legacy one with the api scope) to $tokenDir\gitlab-token or $tokenDir\gitlab-token.txt; see packaging\README.md, the GitLab mirror section. " +
+            'Or publish without the mirror: -NoGitLab.')
+    }
+    # ReadAllText drops a byte order mark it recognises; Trim the rest
+    # (Notepad's line end, a stray BOM character).
+    $gitlabToken = [IO.File]::ReadAllText($tokenFile).Trim().Trim([char]0xFEFF).Trim()
+    if (-not $gitlabToken) { throw "$tokenFile is empty" }
+}
 
 $files = @()
 $manifest = $null
@@ -77,7 +115,97 @@ if ($Prerelease) { $latest = '--latest=false' }
 # as an argument by Windows PowerShell.
 $notesFile = Join-Path $env:TEMP "coreshift-notes-$Version.md"
 [IO.File]::WriteAllText($notesFile, $Notes, (New-Object Text.UTF8Encoding $false))
-gh release create "v$Version" $files.FullName --repo $Repo --title "CoreShift $Version" --notes-file $notesFile $latest @pre
-if ($LASTEXITCODE -ne 0) { throw "gh release create failed (exit code $LASTEXITCODE)" }
+if (-not $GitLabOnly) {
+    gh release create "v$Version" $files.FullName --repo $Repo --title "CoreShift $Version" --notes-file $notesFile $latest @pre
+    if ($LASTEXITCODE -ne 0) { throw "gh release create failed (exit code $LASTEXITCODE)" }
+    Write-Host "Published v$Version to $Repo" -ForegroundColor Green
+}
+
+# The mirror on GitLab.
+function Invoke-GitLab {
+    param([string]$Method, [string]$Path, $Body = $null, [string]$InFile = '', [int]$TimeoutSec = 120)
+    $params = @{
+        Method          = $Method
+        Uri             = "https://gitlab.com/api/v4$Path"
+        Headers         = @{ 'PRIVATE-TOKEN' = $gitlabToken }
+        TimeoutSec      = $TimeoutSec
+        UseBasicParsing = $true
+    }
+    if ($InFile) {
+        $params.InFile = $InFile
+        $params.ContentType = 'application/octet-stream'
+    } elseif ($null -ne $Body) {
+        # As UTF-8 bytes: Windows PowerShell would send a string as Latin-1,
+        # and the notes are Russian.
+        $params.Body = [Text.Encoding]::UTF8.GetBytes(($Body | ConvertTo-Json -Depth 6 -Compress))
+        $params.ContentType = 'application/json; charset=utf-8'
+    }
+    for ($attempt = 1; ; $attempt++) {
+        try {
+            return Invoke-RestMethod @params
+        } catch {
+            $err = $_.Exception # $_ is something else inside switch
+            $code = 0
+            if ($err.Response) { $code = [int]$err.Response.StatusCode }
+            # Only what may pass is tried again: no answer, a timeout, a rate
+            # limit, GitLab's own failures.
+            $transient = $code -eq 0 -or $code -eq 408 -or $code -eq 429 -or $code -ge 500
+            if (-not $transient -or $attempt -ge 5) {
+                $what = switch ($code) {
+                    401 { 'the GitLab token is invalid or expired (401)' }
+                    403 { 'the GitLab token may not do this (403): it needs write access to releases, the package registry and the repository' }
+                    404 { "no project $GitLabProject on GitLab, or the token cannot see it (404)" }
+                    default { $err.Message }
+                }
+                $e = New-Object Exception("GitLab: $Method $($Path -replace '\?.*$', ''): $what", $err)
+                $e.Data['StatusCode'] = $code
+                throw $e
+            }
+            Write-Host "GitLab: $Method failed ($(if ($code) { $code } else { $err.Message })), trying again" -ForegroundColor Yellow
+            Start-Sleep -Seconds (5 * $attempt)
+        }
+    }
+}
+
+if ($toGitLab) {
+    # Old Windows PowerShell may not offer TLS 1.2 by itself; this process only.
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    # The progress bar slows uploads in Windows PowerShell many times over.
+    $ProgressPreference = 'SilentlyContinue'
+    $project = Invoke-GitLab GET "/projects/$([uri]::EscapeDataString($GitLabProject))"
+    $id = $project.id
+    $links = @()
+    foreach ($f in $files) {
+        $name = $f.Name
+        $pkgPath = "/projects/$id/packages/generic/coreshift/$Version/$([uri]::EscapeDataString($name))"
+        Write-Host "GitLab: uploading $name ($([math]::Round($f.Length / 1MB, 1)) MB)"
+        Invoke-GitLab PUT $pkgPath -InFile $f.FullName -TimeoutSec 3600 | Out-Null
+        $links += @{ name = $name; url = "https://gitlab.com/api/v4$pkgPath"; link_type = 'package'; direct_asset_path = "/$name" }
+    }
+    $description = $Notes.Trim()
+    if (-not $description) { $description = "CoreShift $Version" }
+    $tag = "v$Version"
+    try {
+        Invoke-GitLab POST "/projects/$id/releases" @{
+            tag_name    = $tag
+            ref         = 'main'
+            name        = "CoreShift $Version"
+            description = $description
+            assets      = @{ links = $links }
+        } | Out-Null
+    } catch {
+        if ($_.Exception.Data['StatusCode'] -ne 409) { throw }
+        # Made by an earlier run that stopped: add the links it lacks. The
+        # release itself is kept as it is.
+        Write-Host "GitLab: release $tag exists, adding missing links" -ForegroundColor Yellow
+        $have = @((Invoke-GitLab GET "/projects/$id/releases/$tag/assets/links?per_page=100") | ForEach-Object { $_.name })
+        foreach ($l in $links) {
+            if ($have -notcontains $l.name) { Invoke-GitLab POST "/projects/$id/releases/$tag/assets/links" $l | Out-Null }
+        }
+    }
+    Write-Host "Published v$Version to gitlab.com/$GitLabProject" -ForegroundColor Green
+} elseif ($Prerelease -and -not $NoGitLab) {
+    Write-Host "A test build is not published to GitLab; once it is a normal release: publish.ps1 -Version $Version -GitLabOnly" -ForegroundColor Yellow
+}
+$gitlabToken = $null
 Remove-Item $fixed -Recurse -Force -ErrorAction SilentlyContinue
-Write-Host "Published v$Version to $Repo" -ForegroundColor Green

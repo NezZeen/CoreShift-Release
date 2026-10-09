@@ -6,7 +6,8 @@
 // signature of latest.json's exact bytes; for Android they are the APK,
 // latest-android.json and latest-android.json.sig. They are the assets of a
 // release of the public GitHub repository of downloads, read through the
-// API without a token, or files in a folder (for testing). A release may
+// API without a token, of the same release on its GitLab mirror (gitlab.go),
+// or files in a folder (for testing). A release may
 // carry one platform only: each platform takes the newest release that has
 // its files.
 //
@@ -44,6 +45,16 @@ const DefaultSource = PublicSource
 // DefaultSourceFor is where releases for goos are looked for when the
 // settings name no source: the same public repository for every platform.
 func DefaultSourceFor(goos string) string { return DefaultSource }
+
+// MirrorSource is the copy of the releases on GitLab, publish.ps1's second
+// stop: GitHub is out of reach for some people in Russia. With no source
+// in the settings, a check that cannot reach GitHub (Unreachable) asks the
+// mirror. Its releases are verified with the same keys, so the mirror is
+// trusted no more than GitHub.
+const MirrorSource = "gitlab-public:NezZeen/coreshift"
+
+// MirrorSourceFor is the mirror of DefaultSourceFor(goos).
+func MirrorSourceFor(goos string) string { return MirrorSource }
 
 // ManifestName and SignatureName are the published file names of the
 // Windows release; AndroidManifestName is the Android one's manifest.

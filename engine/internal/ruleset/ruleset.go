@@ -133,21 +133,31 @@ const RunetFreedomDat = "https://raw.githubusercontent.com/runetfreedom/russia-b
 // Where CoreShift publishes the sets it makes out of runetfreedom's list
 // (coreshift-release rulesets-publish, run every few hours by the
 // rulesets workflow): the rulesets branch of the public release
-// repository, and jsDelivr's copy of it. PublishedManifest lists them
-// (a Manifest), so a device can tell whether its copy is current before
-// downloading one.
+// repository, jsDelivr's copy of it, and the same branch on the GitLab
+// mirror (the workflow pushes it there too), for where GitHub and jsDelivr
+// are out of reach. PublishedManifest lists them (a Manifest), so a device
+// can tell whether its copy is current before downloading one.
 const (
 	Published         = "https://raw.githubusercontent.com/NezZeen/CoreShift-Release/rulesets/"
 	PublishedMirror   = "https://cdn.jsdelivr.net/gh/NezZeen/CoreShift-Release@rulesets/"
+	PublishedGitLab   = "https://gitlab.com/NezZeen/coreshift/-/raw/rulesets/"
 	PublishedManifest = "rulesets.json"
 )
 
+// PublishedBases are where CoreShift's own sets are, in the order they are
+// tried.
+var PublishedBases = []string{Published, PublishedMirror, PublishedGitLab}
+
 // Sources returns where the service downloads tag from, in order: SagerNet
 // (URL), or for the sets made out of a v2ray list CoreShift's branch and
-// its mirror, never the whole list.
+// its mirrors (PublishedBases), never the whole list.
 func Sources(tag string) []string {
 	if _, _, ok := DatSource(tag); ok {
-		return []string{Published + tag + ".srs", PublishedMirror + tag + ".srs"}
+		var out []string
+		for _, base := range PublishedBases {
+			out = append(out, base+tag+".srs")
+		}
+		return out
 	}
 	return []string{URL(tag)}
 }

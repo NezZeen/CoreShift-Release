@@ -603,17 +603,16 @@ class DaemonInfo {
 /// The daemon's English names for an unnamed subscription.
 const _placeholderNames = {'Local nodes': 'Мои серверы', 'Subscription': 'Подписка'};
 
-/// Whether [url] is a release page on GitHub, the only address an
-/// announced update (Linux) may send the user to.
+/// Whether [url] is a release page on GitHub, or on its mirror on GitLab,
+/// the only addresses an announced update (Linux) may send the user to.
 bool isReleasePage(String url) {
   final u = Uri.tryParse(url);
-  return u != null &&
-      u.scheme == 'https' &&
-      u.host == 'github.com' &&
-      !u.hasPort &&
-      u.userInfo.isEmpty &&
-      !u.hasQuery &&
-      !u.hasFragment &&
-      !u.path.contains('..') &&
-      RegExp(r'^/[A-Za-z0-9-]+/[A-Za-z0-9._-]+/releases(/[A-Za-z0-9._/-]+)?$').hasMatch(u.path);
+  if (u == null || u.scheme != 'https' || u.hasPort || u.userInfo.isNotEmpty || u.hasQuery || u.hasFragment || u.path.contains('..')) {
+    return false;
+  }
+  return switch (u.host) {
+    'github.com' => RegExp(r'^/[A-Za-z0-9-]+/[A-Za-z0-9._-]+/releases(/[A-Za-z0-9._/-]+)?$').hasMatch(u.path),
+    'gitlab.com' => RegExp(r'^(/[A-Za-z0-9][A-Za-z0-9._-]*){2,5}/-/releases(/[A-Za-z0-9._/-]+)?$').hasMatch(u.path),
+    _ => false,
+  };
 }

@@ -20,6 +20,8 @@ VPN-клиент для подписок на Windows, Linux и Android. Он с
 
 Готовые сборки для Windows, Linux и Android — на странице [Releases](https://github.com/NezZeen/CoreShift-Release/releases). Чат: [t.me/CoreShift_app](https://t.me/CoreShift_app).
 
+Если GitHub не открывается, те же файлы есть на зеркале в GitLab: [CoreShift-Setup.exe](https://gitlab.com/NezZeen/coreshift/-/releases/permalink/latest/downloads/CoreShift-Setup.exe) для Windows, [CoreShift.apk](https://gitlab.com/NezZeen/coreshift/-/releases/permalink/latest/downloads/CoreShift.apk) для Android, все выпуски — на [gitlab.com/NezZeen/coreshift](https://gitlab.com/NezZeen/coreshift/-/releases).
+
 ## Что умеет клиент
 
 ### Подписки и серверы
@@ -65,7 +67,7 @@ VPN-клиент для подписок на Windows, Linux и Android. Он с
 
 ### Обновления
 
-- **CoreShift** раз в день ищет новую версию в публичном [NezZeen/CoreShift-Release](https://github.com/NezZeen/CoreShift-Release). Манифест подписан Ed25519 и проверяется встроенными ключами, установщик — по SHA-256. На Windows обновление ставится, когда VPN выключен, и не рвёт соединение; на Android его ставит система по запросу; на Linux приложение сообщает о новой версии, а ставит её пакетный менеджер.
+- **CoreShift** раз в день ищет новую версию в публичном [NezZeen/CoreShift-Release](https://github.com/NezZeen/CoreShift-Release), а если GitHub недоступен — на зеркале [gitlab.com/NezZeen/coreshift](https://gitlab.com/NezZeen/coreshift). Манифест подписан Ed25519 и проверяется встроенными ключами, установщик — по SHA-256. На Windows обновление ставится, когда VPN выключен, и не рвёт соединение; на Android его ставит система по запросу; на Linux приложение сообщает о новой версии, а ставит её пакетный менеджер.
 - **Ядра** обновляются сами из релизов своих проектов. Новое ядро сначала проверяется запуском; если оно не стартует, остаётся прежнее.
 
 ## Как устроено
