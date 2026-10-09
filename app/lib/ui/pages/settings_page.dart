@@ -4,6 +4,7 @@ import '../../platform/desktop.dart' as desktop;
 import '../../platform/platform.dart' as platform;
 import '../../state/app_state.dart';
 import '../../state/errors.dart';
+import '../disclaimer.dart';
 import '../shell.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -275,6 +276,11 @@ class SettingsPage extends StatelessWidget {
                   'Если VPN включён, установка подождёт.',
               trailing: _switch('app_update.auto'),
             ),
+          SettingRow(
+            title: 'Отказ от ответственности',
+            description: 'Некоммерческая программа «как есть»: серверы и подписки предоставляет ваш провайдер',
+            trailing: Btn(label: 'Прочитать', small: true, onPressed: () => showDisclaimer(context)),
+          ),
         ],
       ),
     );

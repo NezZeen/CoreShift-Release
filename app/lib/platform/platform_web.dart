@@ -43,6 +43,8 @@ Future<void> allowInstallUpdates() async {}
 
 Future<bool> openUrl(String url) async => false;
 
+Future<void> quitApp() async {}
+
 Future<String?> initialLink(List<String> args) async => null;
 
 void onLink(void Function(String link) handler) {}

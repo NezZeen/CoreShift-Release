@@ -155,3 +155,12 @@ powershell -ExecutionPolicy Bypass -File packaging\linux\build-wsl.ps1 -Ref main
 ```
 
 A full release: `packaging\release.ps1 -Version X` builds every platform and signs the manifests, `packaging\publish.ps1 -Version X` publishes the release to [NezZeen/CoreShift-Release](https://github.com/NezZeen/CoreShift-Release). Details are in [packaging/README.md](packaging/README.md).
+
+## Disclaimer
+
+- CoreShift is free, open-source software for non-commercial use only: personal use, learning and research. Selling it or using it commercially is not allowed.
+- CoreShift does not provide servers, subscriptions or VPN services and is not affiliated with anyone who sells them. Your provider is responsible for its servers, their content and its terms.
+- You decide how to use the software and are responsible for complying with the laws of your country.
+- The software is provided "as is", without warranty of any kind. The author is not liable for any damage, data loss or other consequences of its use.
+
+On first launch CoreShift shows these terms and works only once they are accepted; they can be read again in the settings.

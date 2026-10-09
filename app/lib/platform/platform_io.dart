@@ -139,6 +139,16 @@ Future<void> notify(String title, String body) async {
 
 /// Opens a link in the browser or the app that handles it (Telegram for
 /// t.me); false when nothing could. The caller checks the link.
+/// Closes CoreShift's window for good: on Android the activity, on a
+/// desktop the process (the service runs on, disconnected).
+Future<void> quitApp() async {
+  if (Platform.isAndroid) {
+    await SystemNavigator.pop();
+    return;
+  }
+  exit(0);
+}
+
 Future<bool> openUrl(String url) async {
   if (Platform.isAndroid) return await _android.invokeMethod<bool>('openUrl', url) ?? false;
   final r = Platform.isWindows ? await Process.run('rundll32.exe', ['url.dll,FileProtocolHandler', url]) : await Process.run('xdg-open', [url]);

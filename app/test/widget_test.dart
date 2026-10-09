@@ -80,6 +80,46 @@ void main() {
     await tester.pump(const Duration(seconds: 30));
   });
 
+  for (final size in [const Size(1400, 900), const Size(390, 844)]) {
+    testWidgets('the disclaimer is asked once and kept (${size.width.round()})', (tester) async {
+      Map<String, dynamic>? saved;
+      final state = AppState(DemoBackend(), prefs: {}, savePrefs: (p) async => saved = Map.of(p), askDisclaimer: true);
+      await pumpApp(tester, size: size, custom: state);
+      await tester.pump();
+      expect(find.text('Отказ от ответственности'), findsOneWidget);
+      expect(find.text('Выйти'), findsOneWidget);
+      // Not closed by a tap beside it: only an answer closes it.
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pump();
+      expect(find.text('Отказ от ответственности'), findsOneWidget);
+      await tester.ensureVisible(find.text('Принимаю'));
+      await tester.tap(find.text('Принимаю'));
+      await tester.pumpAndSettle();
+      expect(find.text('Отказ от ответственности'), findsNothing);
+      expect(saved?['disclaimer_accepted'], isTrue);
+      expect(tester.takeException(), isNull);
+      await tester.pump(const Duration(seconds: 30));
+    });
+  }
+
+  testWidgets('an accepted disclaimer is not asked again, and is read from the settings', (tester) async {
+    final state = AppState(DemoBackend(), prefs: {'disclaimer_accepted': true}, askDisclaimer: true);
+    await pumpApp(tester, custom: state);
+    await tester.pump();
+    expect(find.text('Отказ от ответственности'), findsNothing);
+    await open(tester, 'Настройки');
+    await tester.pump();
+    await tester.ensureVisible(find.text('Прочитать'));
+    await tester.tap(find.text('Прочитать'));
+    await tester.pumpAndSettle();
+    expect(find.text('Закрыть'), findsOneWidget);
+    expect(find.text('Принимаю'), findsNothing);
+    await tester.tap(find.text('Закрыть'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(seconds: 30));
+  });
+
   testWidgets('every page fits the smallest window', (tester) async {
     // The window's minimum size less the title bar.
     await pumpApp(tester, size: const Size(960, 606));
@@ -108,6 +148,28 @@ void main() {
     // The home page's traffic history is on its way.
     await tester.pump(const Duration(seconds: 1));
   });
+
+  for (final size in [const Size(1400, 900), const Size(390, 844)]) {
+    testWidgets('the selected server is named above the list and shown on a tap (${size.width.round()})', (tester) async {
+      final state = await pumpApp(tester, size: size);
+      await open(tester, 'Серверы');
+      await tester.pumpAndSettle();
+      final name = cleanNodeName(state.selection.name);
+      expect(find.text('Выбран'), findsOneWidget);
+      // The bar names it, and so does its row.
+      expect(find.text(name), findsAtLeastNWidgets(2));
+      await tester.tap(find.byIcon(Icons.my_location));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+
+      await tester.runAsync(() => state.connect());
+      await tester.pump();
+      expect(find.text('Сейчас'), findsOneWidget);
+      expect(find.text('Выбран'), findsNothing);
+      await tester.runAsync(() => state.disconnect());
+      await tester.pump(const Duration(seconds: 30));
+    });
+  }
 
   testWidgets('without subscriptions the home page explains the first steps', (tester) async {
     final state = await pumpApp(tester);

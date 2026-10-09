@@ -101,7 +101,12 @@ class AppState extends ChangeNotifier {
     this.daemonStarter,
     this.autostartSetter,
     this.version = BuildVersion.app,
+    this.askDisclaimer = false,
   }) : prefs = prefs ?? {};
+
+  /// Whether the window asks the user to accept the disclaimer until they
+  /// do (ui/disclaimer.dart): the app does, a test's state does not.
+  final bool askDisclaimer;
 
   /// Starts a stopped daemon, where the app may (the Windows service);
   /// returns whether it runs or is starting.

@@ -14,6 +14,7 @@ import 'pages/routing_page.dart';
 import 'pages/servers_page.dart';
 import 'pages/settings_page.dart';
 import 'countries.dart';
+import 'disclaimer.dart';
 import 'import_offer.dart';
 import 'theme.dart';
 import 'update_offer.dart';
@@ -87,6 +88,12 @@ class _ShellState extends State<Shell> {
     widget.state.addListener(_offerImport);
     _offerUpdate();
     _offerImport();
+    // The disclaimer first of all, until it is accepted.
+    if (widget.state.askDisclaimer) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) offerDisclaimer(context, widget.state);
+      });
+    }
     _lifecycle = AppLifecycleListener(
       onResume: () {
         widget.state.resumed();

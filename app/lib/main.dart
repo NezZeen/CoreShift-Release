@@ -26,6 +26,7 @@ Future<void> main(List<String> args) async {
     savePrefs: platform.savePrefs,
     daemonStarter: demo ? null : platform.daemonStarter,
     autostartSetter: demo ? null : platform.autostartSetter,
+    askDisclaimer: true,
   )..start();
   // Links from a panel's "add to app" button: the one CoreShift was opened
   // with, and those opened while it runs.
