@@ -50,6 +50,12 @@ class Status {
   /// once there is a network. Without it the connection is held.
   final bool waiting;
 
+  /// While connected: direct connections do not get through this network,
+  /// though the tunnel works (the network lets only a white list through,
+  /// or Russian sites are out of reach from here). What the settings send
+  /// direct had better go through the VPN.
+  final bool directBlocked;
+
   const Status({
     this.state = ConnState.idle,
     this.node = '',
@@ -63,6 +69,7 @@ class Status {
     this.settingsPending = false,
     this.problem = '',
     this.waiting = false,
+    this.directBlocked = false,
   });
 
   factory Status.fromJson(Json j) => Status(
@@ -78,6 +85,7 @@ class Status {
     settingsPending: j['settings_pending'] == true,
     problem: j['problem'] ?? '',
     waiting: j['waiting'] == true,
+    directBlocked: j['direct_blocked'] == true,
   );
 
   /// On, coming up, or waiting for the network to do either: the button

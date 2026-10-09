@@ -17,6 +17,7 @@ class _CompactHome extends StatelessWidget {
         const SizedBox(height: 20),
         if (st.state == ConnState.noNetwork) ...[_NoNetworkBanner(state: state), const SizedBox(height: 10)],
         if (state.serverUnresponsive) ...[_UnresponsiveBanner(state: state), const SizedBox(height: 10)],
+        if (state.directHint) ...[_DirectHintBanner(state: state), const SizedBox(height: 10)],
         if (st.settingsPending) ...[_PendingBanner(state: state), const SizedBox(height: 10)],
         _BackupBanner(state: state, below: true),
         _Route(state: state),

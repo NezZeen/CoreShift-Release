@@ -25,7 +25,11 @@ type Event struct {
 	// while a speed test runs (see Service.SpeedTest); "rules" for the rule
 	// sets of the Russian preset (Reason is the set; Line "builtin",
 	// "downloaded" or "updated", or an Error: Line "kept" when the previous
-	// copy stays in use, "damaged" when the one on disk was thrown away).
+	// copy stays in use, "damaged" when the one on disk was thrown away);
+	// "direct" (Reason "blocked") when direct connections do not get
+	// through the network while the tunnel works, once a connection: Line
+	// says so and what to change, empty when the journal said it lately
+	// (direct.go, Status.DirectBlocked).
 	Kind      string `json:"kind"`
 	State     State  `json:"state,omitempty"`
 	Core      string `json:"core,omitempty"`

@@ -25,6 +25,7 @@ part 'app_state/traffic.dart';
 part 'app_state/speed_test.dart';
 part 'app_state/imports.dart';
 part 'app_state/sub_alerts.dart';
+part 'app_state/direct_hint.dart';
 
 /// Everything the UI shows, kept in sync with the daemon through its event
 /// stream. Widgets listen to it and call its actions.
@@ -61,6 +62,11 @@ class AppState extends ChangeNotifier {
   /// when the app opens later. Empty otherwise.
   String get serverProblem => status.state == ConnState.connected ? (_serverProblem ?? status.problem) : '';
   String? _serverProblem;
+
+  /// The engine's "direct" event came for this connection (see [directHint]);
+  /// _directDismissed: the user put the hint off for this run of the app.
+  bool _directBlocked = false;
+  bool _directDismissed = false;
 
   /// Feeds an event as if the service had sent it, for tests.
   @visibleForTesting
@@ -527,6 +533,7 @@ class AppState extends ChangeNotifier {
         if (e.state == 'connecting') {
           _healthFailing.clear();
           _healthStreak.clear();
+          _directBlocked = false;
         }
         if (e.state != 'connected') _serverProblem = null;
         // Without a network the "network" event beside it says what goes on.
@@ -578,6 +585,8 @@ class AppState extends ChangeNotifier {
         _log(e.time, e.core, 'ни одно ядро не проходит проверку связи, проверяю сервер и сеть напрямую', LogLevel.warn);
       case 'server':
         _onServerEvent(e, live);
+      case 'direct':
+        _onDirectEvent(e);
       case 'failover':
         if (e.error.isNotEmpty) {
           _log(e.time, 'автопереход', 'ни один другой сервер подписки не отвечает', LogLevel.err);
