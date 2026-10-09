@@ -324,6 +324,9 @@ void main() {
       expect(find.text('Выбрано: 3'), findsOneWidget);
       expect(state.selection.name, contains('Amsterdam'), reason: 'a tap while picking selects no server');
 
+      // The bar sits where the toolbar was, above the list: scrolled down,
+      // it is scrolled back to.
+      await tester.ensureVisible(find.text('Удалить из подписки'));
       await tester.tap(find.text('Удалить из подписки'));
       await tester.pump();
       await settle(tester);

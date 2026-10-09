@@ -312,6 +312,80 @@ class _SubMenu extends StatelessWidget {
   );
 }
 
+/// The selected server above the list, wherever the list is scrolled or
+/// folded: green and "Сейчас" once connected, amber while chosen or
+/// connecting. A tap shows it in the list.
+class _CurrentBar extends StatelessWidget {
+  final AppState state;
+  final Subscription sub;
+  final NodeView node;
+  final bool showSub;
+  final VoidCallback onShow;
+  const _CurrentBar({required this.state, required this.sub, required this.node, required this.showSub, required this.onShow});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    final compact = isCompact(context);
+    final connected = state.status.state == ConnState.connected;
+    final color = connected ? okColor : accent;
+    final ink = p.ink(color);
+    final label = connected ? 'Сейчас' : (state.status.active ? 'Подключение' : 'Выбран');
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onShow,
+        borderRadius: BorderRadius.circular(10),
+        child: Ink(
+          padding: const EdgeInsets.fromLTRB(12, 6, 6, 6),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: p.isLight ? .14 : .12),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: ink.withValues(alpha: .6)),
+          ),
+          child: Row(
+            children: [
+              Text(
+                label,
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: ink),
+              ),
+              const SizedBox(width: 10),
+              CountryBadge(countryOf(node.name, node.server), width: 26),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      cleanNodeName(node.name),
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (showSub)
+                      Text(
+                        sub.displayName,
+                        style: TextStyle(fontSize: 11, color: p.dim),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                  ],
+                ),
+              ),
+              SizedBox(
+                width: compact ? 56 : 70,
+                child: _LatencyCell(latency: state.latencyOf(sub.id, node.fingerprint), testing: false),
+              ),
+              Btn(label: compact ? null : 'Показать', icon: Icons.my_location, small: true, tooltip: 'Показать в списке', onPressed: onShow),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Tells a phone's user about the swipe and the picking, until they use
 /// one or close it.
 class _SwipeHint extends StatelessWidget {

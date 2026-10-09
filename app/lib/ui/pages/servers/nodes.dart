@@ -306,7 +306,7 @@ class _NodeRowState extends State<_NodeRow> {
 
     final row = _NodeTable._row(
       narrow: narrow,
-      radio: picking ? _PickBox(on: picked, enabled: pick.canPick(widget.sub, n)) : _Radio(on: sel),
+      radio: picking ? _PickBox(on: picked, enabled: pick.canPick(widget.sub, n)) : _Radio(on: sel, color: connected ? okColor : accent),
       badge: CountryBadge(countryOf(n.name, n.server), width: narrow ? 32 : 30),
       name: Tooltip(
         // A phone's long press picks the row.
@@ -319,7 +319,7 @@ class _NodeRowState extends State<_NodeRow> {
           children: [
             Text(
               cleanNodeName(n.name),
-              style: const TextStyle(fontWeight: FontWeight.w500),
+              style: TextStyle(fontWeight: sel && !picking ? FontWeight.w700 : FontWeight.w500),
               overflow: TextOverflow.ellipsis,
             ),
             if (widget.showSub)
@@ -337,20 +337,50 @@ class _NodeRowState extends State<_NodeRow> {
       tools: star,
     );
 
+    // The selected server stands out on any theme: a tint, an edge and a
+    // bar at its left, amber while chosen, green once connected, like the
+    // button on the home page. A hovered row gets only an edge, so it
+    // never looks chosen.
+    final lit = sel && !picking;
+    final lamp = p.ink(connected ? okColor : accent);
     final Color bg;
+    final Color edge;
     if (picked) {
       bg = accent.withValues(alpha: .16);
-    } else if (sel && !picking) {
-      bg = accent.withValues(alpha: .10);
+      edge = Colors.transparent;
+    } else if (lit) {
+      bg = (connected ? okColor : accent).withValues(alpha: p.isLight ? .18 : .14);
+      edge = lamp.withValues(alpha: p.isLight ? .7 : .8);
     } else {
-      bg = hover && !unusable ? p.surface2 : Colors.transparent;
+      bg = Colors.transparent;
+      edge = hover && !unusable ? p.border2 : Colors.transparent;
     }
     Widget body = Opacity(
       opacity: unusable && !picked ? .45 : 1,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 120),
-        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(10)),
-        child: row,
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(10),
+          // Always 1.5 wide, clear when unused: the row keeps its size.
+          border: Border.all(color: edge, width: 1.5),
+        ),
+        child: lit
+            ? Stack(
+                children: [
+                  row,
+                  Positioned(
+                    left: 2,
+                    top: 7,
+                    bottom: 7,
+                    child: Container(
+                      width: 3.5,
+                      decoration: BoxDecoration(color: lamp, borderRadius: BorderRadius.circular(2)),
+                    ),
+                  ),
+                ],
+              )
+            : row,
       ),
     );
 
@@ -475,22 +505,27 @@ class _LatencyCell extends StatelessWidget {
 
 class _Radio extends StatelessWidget {
   final bool on;
-  const _Radio({required this.on});
+
+  /// Amber while chosen, green once connected; the light theme's darker
+  /// ink of it, as the pale lamp would not show on white.
+  final Color color;
+  const _Radio({required this.on, this.color = accent});
 
   @override
   Widget build(BuildContext context) {
     final p = context.pal;
+    final ink = p.ink(color);
     return Container(
-      width: 16,
-      height: 16,
+      width: 18,
+      height: 18,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        border: Border.all(color: on ? accent : p.border2, width: 2),
+        border: Border.all(color: on ? ink : p.border2, width: 2),
       ),
-      padding: const EdgeInsets.all(2),
+      padding: const EdgeInsets.all(2.5),
       child: on
           ? Container(
-              decoration: const BoxDecoration(color: accent, shape: BoxShape.circle),
+              decoration: BoxDecoration(color: ink, shape: BoxShape.circle),
             )
           : null,
     );

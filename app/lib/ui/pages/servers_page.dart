@@ -81,11 +81,49 @@ class _ServersPageState extends State<ServersPage> {
 
   void _picked() => setState(() {});
 
+  /// The search's text, cleared when the selected server is shown.
+  final _search = TextEditingController();
+
   @override
   void dispose() {
     HardwareKeyboard.instance.removeHandler(_picking.onKey);
     _picking.dispose();
+    _search.dispose();
     super.dispose();
+  }
+
+  /// The selected server, if it is still in its subscription.
+  (Subscription, NodeView)? _current() {
+    final sub = s.subscriptionById(s.selection.subscription);
+    if (sub == null) return null;
+    for (final n in sub.nodes) {
+      if (s.isSelected(sub, n)) return (sub, n);
+    }
+    return null;
+  }
+
+  /// Scrolls the list to the selected server: the search, the filter or a
+  /// folded section that hides it gives way first.
+  void _reveal(Subscription sub, NodeView n) {
+    setState(() {
+      if (subFilter != null && subFilter != sub.id) subFilter = null;
+      if (query.isNotEmpty && !_matches(n, sub)) {
+        query = '';
+        _search.clear();
+      }
+    });
+    final code = countryOf(n.name, n.server) ?? '';
+    final homes = {'fav', 'c:$code', 's:${sub.id}', 'all'};
+    if (collapsed.any(homes.contains)) {
+      setState(() => collapsed.removeAll(homes));
+      s.setPref('servers_folded', collapsed.toList());
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final row = _picking.rowKey(sub, n).currentContext;
+      if (row != null && row.mounted) {
+        Scrollable.ensureVisible(row, alignment: .35, duration: const Duration(milliseconds: 300), curve: Curves.easeOutCubic);
+      }
+    });
   }
 
   /// The rows in the order and groups the user chose: the favourites first,
@@ -166,6 +204,7 @@ class _ServersPageState extends State<ServersPage> {
     ]);
 
     final search = TextField(
+      controller: _search,
       focusNode: widget.searchFocus,
       onChanged: (v) => setState(() => query = v.trim().toLowerCase()),
       style: const TextStyle(fontSize: 13),
@@ -324,6 +363,7 @@ class _ServersPageState extends State<ServersPage> {
     required List<_Section> sections,
     required int hidden,
   }) {
+    final current = _current();
     final sort = Seg<String>(
       options: const [('sub', 'Как в подписке'), ('ping', 'По пингу'), ('name', 'По имени')],
       value: s.serverSort,
@@ -409,6 +449,15 @@ class _ServersPageState extends State<ServersPage> {
           ],
         ),
         if (compact && rows.isNotEmpty && s.prefs[serverHintPref] != true) _SwipeHint(onClose: () => s.setPref(serverHintPref, true)),
+        // Kept while picking, only idle: gone, it would move the rows under
+        // the finger.
+        if (current != null) ...[
+          const SizedBox(height: 12),
+          IgnorePointer(
+            ignoring: _picking.active,
+            child: _CurrentBar(state: s, sub: current.$1, node: current.$2, showSub: s.subscriptions.length > 1, onShow: () => _reveal(current.$1, current.$2)),
+          ),
+        ],
         const SizedBox(height: 12),
         Panel(
           padding: const EdgeInsets.all(6),
