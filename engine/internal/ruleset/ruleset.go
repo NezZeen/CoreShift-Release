@@ -111,14 +111,20 @@ func Baseline(tag string) (b []byte, fetched time.Time, ok bool) {
 	return b, m.Fetched, true
 }
 
+// Where SagerNet keeps its sets: {name} is a category, "ru" of geoip-ru or
+// "category-ru" of geosite-category-ru.
+const (
+	SagerNetGeosite = "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-{name}.srs"
+	SagerNetGeoIP   = "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-{name}.srs"
+)
+
 // URL returns where tag is downloaded from: SagerNet's sing-geoip for the
 // geoip sets, sing-geosite for the rest.
 func URL(tag string) string {
-	repo := "sing-geosite"
 	if IsIP(tag) {
-		repo = "sing-geoip"
+		return strings.Replace(SagerNetGeoIP, "{name}", strings.TrimPrefix(tag, "geoip-"), 1)
 	}
-	return "https://raw.githubusercontent.com/SagerNet/" + repo + "/rule-set/" + tag + ".srs"
+	return strings.Replace(SagerNetGeosite, "{name}", strings.TrimPrefix(tag, "geosite-"), 1)
 }
 
 // IsIP reports whether tag is an address (geoip) set.
@@ -186,11 +192,11 @@ func Check(tag string, b []byte, refs ...[]byte) error {
 	if err != nil {
 		return err
 	}
-	if s.ip != IsIP(tag) {
-		if s.ip {
-			return errors.New("addresses where names were expected")
-		}
-		return errors.New("names where addresses were expected")
+	if err := s.kind(IsIP(tag)); err != nil {
+		return err
+	}
+	if s.tooWide != nil {
+		return s.tooWide
 	}
 	if s.ip {
 		if s.v4 > maxIPv4 {
@@ -241,6 +247,29 @@ func Check(tag string, b []byte, refs ...[]byte) error {
 	return nil
 }
 
+// Validate reports whether b is a rule set sing-box can use, of addresses
+// with ip and of names without: all a set from a source the user chose is
+// held to. Check holds the built-in sets to much more.
+func Validate(b []byte, ip bool) error {
+	s, err := parse(b)
+	if err != nil {
+		return err
+	}
+	return s.kind(ip)
+}
+
+// kind reports whether s is of addresses (ip) or of names.
+func (s *set) kind(ip bool) error {
+	switch {
+	case s.ip == ip:
+		return nil
+	case s.ip:
+		return errors.New("addresses where names were expected")
+	default:
+		return errors.New("names where addresses were expected")
+	}
+}
+
 // near reports whether s is close enough in size to ref, an earlier copy:
 // no less than half of it, no more than about twice.
 func (s *set) near(ref *set) error {
@@ -272,6 +301,9 @@ type set struct {
 	// wide are the entries that match whole zones: keywords, regular
 	// expressions and one-label suffixes ("ru").
 	wide map[string]bool
+	// tooWide is the first network wider than a set of the presets may
+	// have (minBits4, minBits6).
+	tooWide error
 }
 
 func parse(b []byte) (s *set, err error) {
@@ -334,13 +366,13 @@ func parse(b []byte) (s *set, err error) {
 		if addrs {
 			for _, p := range d.IPSet.Prefixes() {
 				if p.Addr().Is4() {
-					if p.Bits() < minBits4 {
-						return nil, fmt.Errorf("network %s is too wide", p)
+					if p.Bits() < minBits4 && s.tooWide == nil {
+						s.tooWide = fmt.Errorf("network %s is too wide", p)
 					}
 					s.v4 += math.Ldexp(1, 32-p.Bits())
 				} else {
-					if p.Bits() < minBits6 {
-						return nil, fmt.Errorf("network %s is too wide", p)
+					if p.Bits() < minBits6 && s.tooWide == nil {
+						s.tooWide = fmt.Errorf("network %s is too wide", p)
 					}
 					s.v6 += math.Ldexp(1, 64-min(p.Bits(), 64))
 				}
