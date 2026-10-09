@@ -111,7 +111,8 @@ func (s *Supervisor) testCore(ctx context.Context, cfg Config, k core.Kind, n *n
 		return 0, err
 	}
 	defer os.RemoveAll(dir)
-	conf, err := a.Render(n, core.Options{Listen: listen, Auth: cfg.Auth, LogLevel: cfg.LogLevel, ServerAddr: serverAddr, Fragment: cfg.Fragment})
+	auth := core.NewSOCKSAuth()
+	conf, err := a.Render(n, core.Options{Listen: listen, Auth: auth, LogLevel: cfg.LogLevel, ServerAddr: serverAddr, Fragment: cfg.Fragment})
 	if err != nil {
 		return 0, err
 	}
@@ -125,9 +126,12 @@ func (s *Supervisor) testCore(ctx context.Context, cfg Config, k core.Kind, n *n
 		return 0, err
 	}
 	err = p.WaitFor(ctx, cfg.StartTimeout, "socks port", func() bool { return proc.PortOpen(listen) })
+	if err == nil && !coreListens(p, listen) {
+		err = errPortTaken(listen)
+	}
 	var lat time.Duration
 	if err == nil {
-		proxy := cfg.Auth.ProxyURL(listen)
+		proxy := auth.ProxyURL(listen)
 		lat, err = delayThrough(ctx, proxy, cfg.Health.URL, latencyTimeout)
 		// The health URL may be out of reach where others are not.
 		if err != nil && ctx.Err() == nil {

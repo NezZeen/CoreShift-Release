@@ -14,6 +14,9 @@
 //	                        as every check fails while the device has no network
 //	port-taken              say its port is taken (as mihomo does), serve anyway
 //	port-taken-after:<dur>  serve, then say its port is taken
+//	impostor                leave its port to another process, which takes
+//	                        it first and accepts any credentials, as a
+//	                        program that guessed the port would
 //
 // FAKECORE_FORWARD=<zone>=<host:port> relays connections to names in the
 // zone to host:port, as a real core reaches them, name resolved remotely.
@@ -33,6 +36,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -45,6 +49,10 @@ func main() {
 	name := strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe")
 	if len(os.Args) == 2 && (os.Args[1] == "version" || os.Args[1] == "-v") {
 		fmt.Println(name, "version 1.2.3")
+		return
+	}
+	if port := os.Getenv("FAKECORE_IMPOSTOR_PORT"); port != "" {
+		impostor(port)
 		return
 	}
 	go serveStats()
@@ -91,6 +99,22 @@ func main() {
 		time.AfterFunc(d, func() {
 			fmt.Printf("level=error msg=\"Listener socks-in listen err: listen tcp 127.0.0.1:%s: bind: address already in use\"\n", port)
 		})
+	case "impostor":
+		cmd := exec.Command(os.Args[0])
+		cmd.Env = append(os.Environ(), "FAKECORE_IMPOSTOR_PORT="+port)
+		// The impostor goes when this process does: its stdin closes then.
+		r, w, err := os.Pipe()
+		if err != nil {
+			fmt.Println("fatal:", err)
+			os.Exit(1)
+		}
+		cmd.Stdin = r
+		defer w.Close()
+		if err := cmd.Start(); err != nil {
+			fmt.Println("fatal:", err)
+			os.Exit(1)
+		}
+		time.Sleep(time.Hour) // running, its port someone else's
 	case "eof-first":
 		n, _ := strconv.Atoi(arg)
 		eofLeft.Store(int32(n))
@@ -331,5 +355,41 @@ func serve(c net.Conn, healthy bool) {
 		io.WriteString(c, "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n")
 	} else {
 		io.WriteString(c, "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+	}
+}
+
+// impostor listens on port for a while and lets anyone in, answering every
+// request with success: whatever is sent there, it receives.
+func impostor(port string) {
+	ln, err := net.Listen("tcp", "127.0.0.1:"+port)
+	if err != nil {
+		return
+	}
+	go func() {
+		io.Copy(io.Discard, os.Stdin)
+		os.Exit(0)
+	}()
+	for {
+		c, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		go func() {
+			defer c.Close()
+			r := bufio.NewReader(c)
+			hdr := make([]byte, 2)
+			if _, err := io.ReadFull(r, hdr); err != nil {
+				return
+			}
+			io.ReadFull(r, make([]byte, hdr[1]))
+			c.Write([]byte{5, 2})
+			r.ReadByte()
+			for range 2 {
+				n, _ := r.ReadByte()
+				io.ReadFull(r, make([]byte, n))
+			}
+			c.Write([]byte{1, 0})
+			io.Copy(io.Discard, r)
+		}()
 	}
 }

@@ -63,3 +63,20 @@ func TestCoreThatLosesItsPortIsReplaced(t *testing.T) {
 		t.Fatalf("status = %+v", st)
 	}
 }
+
+// Another program that holds a core's random port before the core opens
+// it, accepting any credentials, is told apart from the core by the
+// system's socket table and receives nothing: the core counts as failed
+// to start, and the connection goes to the next one.
+func TestImpostorOnTheCorePortIsRefused(t *testing.T) {
+	t.Setenv("FAKECORE_XRAY", "impostor")
+	h := newHarness(t, nil)
+	connect(t, h, trojanLink)
+	st := h.s.Status()
+	if st.Core != core.SingBox || !strings.Contains(st.Failed[core.Xray], "another program holds it") {
+		t.Fatalf("status = %+v", st)
+	}
+	if err := getThrough(h.s.SOCKSAuth().ProxyURL(h.listen)); err != nil {
+		t.Fatalf("through the SOCKS port: %v", err)
+	}
+}

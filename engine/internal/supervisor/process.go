@@ -14,7 +14,9 @@ type process struct {
 	*proc.Process
 	kind   core.Kind
 	listen netip.AddrPort
-	probe  bool
+	// auth is what its SOCKS inbound requires, made for this start.
+	auth  core.SOCKSAuth
+	probe bool
 	// stats is where the core reports traffic (see core.ReadTraffic);
 	// invalid for probes.
 	stats  netip.AddrPort

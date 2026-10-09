@@ -88,10 +88,9 @@ func newHarness(t *testing.T, mutate func(*Config)) *harness {
 	t.Helper()
 	h := &harness{events: make(chan Event, 10000), listen: freePort(t)}
 	cfg := Config{
-		Binaries:    installCores(t, core.Xray, core.SingBox, core.Mihomo),
-		WorkDir:     t.TempDir(),
-		Listen:      h.listen,
-		ProbeListen: freePort(t),
+		Binaries: installCores(t, core.Xray, core.SingBox, core.Mihomo),
+		WorkDir:  t.TempDir(),
+		Listen:   h.listen,
 		Health: Health{
 			URL: "http://health.test/generate_204", Interval: 100 * time.Millisecond,
 			Timeout: time.Second, Failures: 2,

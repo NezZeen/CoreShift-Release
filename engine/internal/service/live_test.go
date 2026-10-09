@@ -95,18 +95,16 @@ func startProxyServer(t *testing.T, bin string, inbounds []map[string]any) *live
 	return s
 }
 
-// spareListen returns a free SOCKS port below the ephemeral range whose
-// next port, the supervisor's spare one, is free too.
+// spareListen returns a free SOCKS port below the ephemeral range.
 func spareListen(t *testing.T) netip.AddrPort {
 	t.Helper()
 	lo := netip.MustParseAddr("127.0.0.1")
-	for p := uint16(27000); p < 32000; p += 2 {
-		a, b := netip.AddrPortFrom(lo, p), netip.AddrPortFrom(lo, p+1)
-		if !portUp(a) && !portUp(b) {
+	for p := uint16(27000); p < 32000; p++ {
+		if a := netip.AddrPortFrom(lo, p); !portUp(a) {
 			return a
 		}
 	}
-	t.Fatal("no free port pair")
+	t.Fatal("no free port")
 	return netip.AddrPort{}
 }
 
@@ -186,9 +184,8 @@ func newLiveHarness(t *testing.T, edit func(*store.Settings)) *liveHarness {
 	h := newHarness(t, func(c *Config) {
 		c.Store = st
 		c.Binaries = bins
-		// Out of the ephemeral range, as 17890 is: the cores' counters
-		// take ephemeral ports, and one could be the spare port next to
-		// a SOCKS port picked from that range.
+		// Out of the ephemeral range, as 17890 is, where the cores and
+		// their counters take their ports.
 		c.Listen = spareListen(t)
 		c.speedURL = speed.URL
 		// Pings are real for the test servers; the well-known hosts of
@@ -325,8 +322,10 @@ func TestLiveConnectSwapReturn(t *testing.T) {
 		return l.seen("health", func(e Event) bool { return e.Error == "" && !e.Probe })
 	})
 
-	// The core crashes: the next one takes the port over.
-	killListener(t, l.listen.Port())
+	// The core crashes: the next one takes over behind the SOCKS port,
+	// which stays the service's all along.
+	xrayPort, _ := l.svc.sup.CoreListen()
+	killListener(t, xrayPort.Port())
 	l.waitFor(t, "swap to sing-box", 20*time.Second, func() bool {
 		return l.seen("swap", func(e Event) bool { return e.From == string(core.Xray) && e.Core == string(core.SingBox) })
 	})
@@ -390,7 +389,7 @@ func TestLiveConnectSwapReturn(t *testing.T) {
 		t.Fatalf("disconnect: %d %+v", code, st)
 	}
 	if portUp(l.listen) {
-		t.Error("a core still listens after disconnecting")
+		t.Error("the SOCKS port is still open after disconnecting")
 	}
 	var days Stats
 	l.call(t, "GET", "/v1/stats?days=1", nil, &days)
