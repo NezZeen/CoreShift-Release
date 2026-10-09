@@ -15,7 +15,8 @@
 // whose last answer came before the device slept (or long ago) is renewed,
 // so the lookup goes out on a fresh connection; and a lookup whose
 // connection was closed under it (by a renewal, a network change or the
-// timeout of another lookup) is asked once more while time is left.
+// timeout of another lookup) is asked once more while time is left. One
+// that failed on a corrupted TLS connection renews the connections first.
 //
 // The desktop runs the stock sing-box binary, so this cannot apply there;
 // the layer's shorter DNS timeout (tunlayer) covers it on every platform.
@@ -24,6 +25,7 @@ package dnswake
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"time"
 
@@ -100,8 +102,9 @@ type Transport struct {
 	adapter.DNSTransport
 	elapsed func(time.Time) (wall, awake time.Duration)
 
-	mu   sync.Mutex
-	last time.Time // the last answer or renewal
+	mu      sync.Mutex
+	last    time.Time // the last answer or renewal
+	renewed time.Time // the last renewal
 }
 
 // Wrap returns inner renewed after sleep.
@@ -115,7 +118,36 @@ func (t *Transport) renewIfStale() {
 	t.mu.Lock()
 	renew := stale(t.elapsed(t.last))
 	if renew {
-		t.last = time.Now()
+		t.last, t.renewed = time.Now(), time.Now()
+	}
+	t.mu.Unlock()
+	if renew {
+		t.DNSTransport.Reset()
+	}
+}
+
+// brokenTLS reports whether a lookup failed on a corrupted TLS connection:
+// one whose records no longer decrypt ("local error: tls: bad record MAC"),
+// garbled on the way by the network or a DPI box, or whose peer said so
+// with an alert ("remote error: tls: …"). Such a connection never works
+// again, and for DNS over HTTPS the others in the pool may have met the
+// same fate.
+func brokenTLS(err error) bool {
+	s := err.Error()
+	return strings.Contains(s, "local error: tls: ") || strings.Contains(s, "remote error: tls: ")
+}
+
+// renewIfBroken renews the connections when a lookup started at start
+// failed on a corrupted TLS connection, so its retry goes out on a fresh
+// one. Lookups that failed together renew once.
+func (t *Transport) renewIfBroken(err error, start time.Time) {
+	if !brokenTLS(err) {
+		return
+	}
+	t.mu.Lock()
+	renew := !t.renewed.After(start)
+	if renew {
+		t.renewed = time.Now()
 	}
 	t.mu.Unlock()
 	if renew {
@@ -138,8 +170,10 @@ func retry(ctx context.Context, err error) bool {
 
 func (t *Transport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error) {
 	t.renewIfStale()
+	start := time.Now()
 	response, err := t.DNSTransport.Exchange(ctx, message)
 	if retry(ctx, err) {
+		t.renewIfBroken(err, start)
 		response, err = t.DNSTransport.Exchange(ctx, message)
 	}
 	if err == nil {
@@ -150,11 +184,13 @@ func (t *Transport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg,
 
 func (t *Transport) ExchangeAsync(ctx context.Context, message *mDNS.Msg, callback func(response *mDNS.Msg, err error)) {
 	t.renewIfStale()
+	start := time.Now()
 	t.DNSTransport.ExchangeAsync(ctx, message, func(response *mDNS.Msg, err error) {
 		if retry(ctx, err) {
 			// Not from inside the callback: it may run where a new
 			// connection must not be dialled (a transport's read loop).
 			go func() {
+				t.renewIfBroken(err, start)
 				response, err := t.DNSTransport.Exchange(ctx, message)
 				if err == nil {
 					t.answered()

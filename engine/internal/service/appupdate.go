@@ -303,12 +303,16 @@ func (s *Service) installAppUpdate(reconnect bool) error {
 	}
 	// Disconnecting first restores DNS at once; the installer stops the
 	// service anyway.
+	if s.Status().State != Idle {
+		s.LogAction("обновление", "отключаюсь, чтобы установить версию "+rel.Label())
+	}
 	s.Disconnect()
 	if err := s.cfg.launchInstaller(path, filepath.Join(s.updatesDir(), "install.log")); err != nil {
 		os.Remove(filepath.Join(s.updatesDir(), "pending.json"))
 		staged.Close()
 		os.RemoveAll(staged.dir)
 		if reconnect {
+			s.LogAction("обновление", "установщик не запустился, подключаюсь снова")
 			go s.ConnectSelected(context.Background())
 		}
 		return fail(fmt.Errorf("start the installer: %w", err))
@@ -355,7 +359,7 @@ func (s *Service) finishAppUpdate(ctx context.Context) {
 		}
 	}
 	if p.Reconnect {
-		go s.connectAtStart(ctx)
+		go s.connectAtStart(ctx, "обновление", "обновление прервало соединение, подключаюсь снова%s")
 	}
 }
 

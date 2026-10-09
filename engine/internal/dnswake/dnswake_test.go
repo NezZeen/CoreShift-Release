@@ -100,6 +100,8 @@ type stub struct {
 	dns.TransportAdapter
 	resets atomic.Int32
 	fail   atomic.Int32
+	// err is the failure, if not net.ErrClosed.
+	err error
 }
 
 func (s *stub) Start(adapter.StartStage) error { return nil }
@@ -108,6 +110,9 @@ func (s *stub) Reset()                         { s.resets.Add(1) }
 
 func (s *stub) Exchange(_ context.Context, m *mDNS.Msg) (*mDNS.Msg, error) {
 	if s.fail.Add(-1) >= 0 {
+		if s.err != nil {
+			return nil, s.err
+		}
 		return nil, net.ErrClosed
 	}
 	r := new(mDNS.Msg)
@@ -185,6 +190,47 @@ func TestRetriesClosedConnectionOnce(t *testing.T) {
 	s.fail.Store(1)
 	if _, err := w.Exchange(cancelled, query()); !errors.Is(err, net.ErrClosed) {
 		t.Errorf("retried for a caller that gave up: %v", err)
+	}
+}
+
+// A TLS connection garbled on the way ("bad record MAC", as reported on a
+// phone's Wi-Fi): the connections are renewed once, however many lookups
+// failed on it, and each is asked again on a fresh one. Other failures
+// renew nothing.
+func TestRenewsCorruptedTLSConnection(t *testing.T) {
+	ctx := context.Background()
+	s := &stub{err: &net.OpError{Op: "local error", Err: errors.New("tls: bad record MAC")}}
+	w := Wrap(s)
+	s.fail.Store(1)
+	if _, err := w.Exchange(ctx, query()); err != nil {
+		t.Errorf("Exchange after a corrupted connection: %v", err)
+	}
+	if n := s.resets.Load(); n != 1 {
+		t.Errorf("%d renewals, want 1", n)
+	}
+
+	s.fail.Store(1)
+	done := make(chan error, 1)
+	w.ExchangeAsync(ctx, query(), func(_ *mDNS.Msg, err error) { done <- err })
+	if err := <-done; err != nil || s.resets.Load() != 2 {
+		t.Errorf("ExchangeAsync after a corrupted connection: err %v, %d renewals in all", err, s.resets.Load())
+	}
+
+	// Lookups that started before a renewal and failed together renew once.
+	start := time.Now()
+	time.Sleep(time.Millisecond) // a renewal after start even on a coarse clock
+	for range 3 {
+		w.renewIfBroken(s.err, start)
+	}
+	if n := s.resets.Load(); n != 3 {
+		t.Errorf("%d renewals in all, want 3", n)
+	}
+
+	s.resets.Store(0)
+	s.err = errors.New("dial tcp: connection refused")
+	s.fail.Store(1)
+	if _, err := w.Exchange(ctx, query()); err != nil || s.resets.Load() != 0 {
+		t.Errorf("another failure: err %v, %d renewals", err, s.resets.Load())
 	}
 }
 

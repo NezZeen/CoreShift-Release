@@ -29,7 +29,10 @@ type Event struct {
 	// "direct" (Reason "blocked") when direct connections do not get
 	// through the network while the tunnel works, once a connection: Line
 	// says so and what to change, empty when the journal said it lately
-	// (direct.go, Status.DirectBlocked).
+	// (direct.go, Status.DirectBlocked); "action" for why a connection is
+	// about to change, when not by the app's own buttons (Service.
+	// LogAction): Line says it, Source is the journal's source for it,
+	// empty for the user's action.
 	Kind      string `json:"kind"`
 	State     State  `json:"state,omitempty"`
 	Core      string `json:"core,omitempty"`

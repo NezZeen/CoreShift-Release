@@ -459,7 +459,7 @@ func TestResolvConfParsing(t *testing.T) {
 	if usesResolvedStub([]byte("nameserver 8.8.8.8\n")) {
 		t.Error("false positive stub detection")
 	}
-	got := filterUsable(resolvConfNameservers(conf))
+	got := FilterUsable(resolvConfNameservers(conf))
 	if want := []netip.Addr{netip.MustParseAddr("1.1.1.1")}; !slices.Equal(got, want) {
 		t.Errorf("usable = %v, want %v", got, want)
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -56,7 +57,59 @@ func TestAutoConnect(t *testing.T) {
 		if st := h.svc.Status(); st.State != want {
 			t.Errorf("on=%v: %+v, want %s", on, st, want)
 		}
+		// Each attempt says in the journal why it connects, before it does.
+		var got []string
+		for len(h.events) > 0 {
+			e := <-h.events
+			switch {
+			case e.Kind == "action":
+				got = append(got, e.Source+"|"+e.Line)
+			case e.Kind == "state" && e.State == Connecting && len(got) == 0:
+				t.Errorf("on=%v: connecting before the action", on)
+			}
+		}
+		wantLines := []string{"|подключить: Trojan (автозапуск)", "|подключить: Trojan (автозапуск), ещё одна попытка"}
+		if !on {
+			wantLines = nil
+		}
+		if !slices.Equal(got, wantLines) {
+			t.Errorf("on=%v: actions %q, want %q", on, got, wantLines)
+		}
 	}
+}
+
+// A restart of the service in the middle of a connection, and an update
+// that interrupted it, say so before connecting again.
+func TestResumeSaysWhy(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "store.json"), store.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	set := st.Settings()
+	set.Cores.HealthURL, set.Cores.HealthIntervalS = "http://health.test/generate_204", 3600
+	if _, err := st.SetSettings(set); err != nil {
+		t.Fatal(err)
+	}
+	sub, err := st.Add(context.Background(), store.AddRequest{Name: "s", Content: trojanLink})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Select(sub.ID, sub.Nodes[0].Fingerprint(), sub.Nodes[0].Name); err != nil {
+		t.Fatal(err)
+	}
+	h := newHarness(t, func(c *Config) { c.Store = st })
+	if err := h.svc.Resume(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for len(h.events) > 0 {
+		if e := <-h.events; e.Kind == "action" {
+			if e.Source != "служба" || e.Line != "служба перезапустилась посреди соединения, подключаюсь снова: Trojan" {
+				t.Errorf("action %+v", e)
+			}
+			return
+		}
+	}
+	t.Error("no action before connecting")
 }
 
 func TestAppGoneWhenNoneEverAttaches(t *testing.T) {

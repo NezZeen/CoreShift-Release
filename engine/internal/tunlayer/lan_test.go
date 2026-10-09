@@ -85,3 +85,46 @@ func TestBuildCarvesLANResolvers(t *testing.T) {
 		t.Errorf("route_exclude_address: %v", list)
 	}
 }
+
+// A router's IPv6 link-local resolver, with its zone or without: never
+// carved out of the local ranges (it cannot be routed into the TUN), and
+// never a direct resolver dialled without its interface.
+func TestLinkLocalResolver(t *testing.T) {
+	base := func() Options {
+		return Options{Upstream: netip.MustParseAddrPort("127.0.0.1:17890"), DNS: DNSOptions{Remote: "1.1.1.1", Direct: "192.168.1.1"},
+			Address6: DefaultAddress6, ExcludeLAN: true}
+	}
+	o := base()
+	o.LANResolvers = []netip.Addr{netip.MustParseAddr("fe80::52ff:20ff:feb4:407b"), netip.MustParseAddr("fe80::1%wlan0"), netip.MustParseAddr("192.168.1.1")}
+	cfg, err := build(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, _ := cfg["inbounds"].([]any)[0].(obj)["route_exclude_address"].([]string)
+	if !slices.Contains(list, "fe80::/10") {
+		t.Errorf("route_exclude_address: %v", list)
+	}
+	for _, s := range cfg["dns"].(obj)["servers"].([]any) {
+		if srv, _ := s.(obj)["server"].(string); srv != "" {
+			if a, err := netip.ParseAddr(srv); err == nil && a.IsLinkLocalUnicast() {
+				t.Errorf("link-local DNS server %v", s)
+			}
+		}
+	}
+
+	o = base()
+	for _, d := range []string{"fe80::52ff:20ff:feb4:407b", "[fe80::52ff:20ff:feb4:407b]:53", "udp://[fe80::1]:53"} {
+		o.DNS.Direct = d
+		if _, err := Build(o); err == nil {
+			t.Errorf("zone-less link-local direct resolver %s accepted", d)
+		}
+	}
+	o.DNS.Direct = "fe80::1%wlan0"
+	cfg, err = build(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if srv := cfg["dns"].(obj)["servers"].([]any)[1].(obj)["server"]; srv != "fe80::1%wlan0" {
+		t.Errorf("direct server = %v, want it with its zone", srv)
+	}
+}

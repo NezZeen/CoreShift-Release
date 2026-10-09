@@ -103,7 +103,7 @@ class _DesktopFrameState extends State<DesktopFrame> with WindowListener {
     await windowManager.hide();
     if (widget.state.status.active) {
       try {
-        await widget.state.disconnect().timeout(const Duration(seconds: 5));
+        await widget.state.disconnect(from: 'выход из приложения').timeout(const Duration(seconds: 5));
       } catch (_) {
         // The service disconnects by itself once the app is gone.
       }
@@ -390,12 +390,12 @@ class _Tray {
   void _toggle() {
     if (state.busy || !state.online) return;
     if (state.status.active) {
-      state.disconnect();
+      state.disconnect(from: 'трей');
     } else if (!state.selection.available) {
       // Nothing to connect to yet: show the window, where a server is picked.
       onOpen();
     } else {
-      state.connect();
+      state.connect(from: 'трей');
     }
   }
 
@@ -453,7 +453,7 @@ class _Tray {
       i.addListener((e) {
         if (e is tray.MenuItemClickedEvent) {
           Timer.run(() {
-            if (state.online && !state.busy) state.connect(subscription: sub.id, fingerprint: n.fingerprint, name: n.name);
+            if (state.online && !state.busy) state.connect(subscription: sub.id, fingerprint: n.fingerprint, name: n.name, from: 'трей');
           });
         }
       });

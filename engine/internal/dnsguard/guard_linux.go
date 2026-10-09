@@ -121,5 +121,5 @@ func SystemResolvers(ctx context.Context, exclude string) ([]netip.Addr, error) 
 	if err != nil {
 		return nil, fmt.Errorf("dnsguard: %w", err)
 	}
-	return filterUsable(resolvConfNameservers(b)), nil
+	return FilterUsable(resolvConfNameservers(b)), nil
 }

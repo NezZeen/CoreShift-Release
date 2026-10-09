@@ -1062,6 +1062,43 @@ func TestResolverOfAnotherTunnelIsSkipped(t *testing.T) {
 	}
 }
 
+// A router announcing an IPv6 link-local resolver (Android on a home Wi-Fi
+// lists it first, its zone stripped or not): the TUN layer could not dial
+// it without the interface, so it takes the next one.
+func TestLinkLocalResolverIsSkipped(t *testing.T) {
+	for _, first := range []string{"fe80::52ff:20ff:feb4:407b", "fe80::52ff:20ff:feb4:407b%wlan0"} {
+		t.Run(first, func(t *testing.T) {
+			h := newHarness(t, func(c *Config) {
+				c.resolvers = func(context.Context, string) ([]netip.Addr, error) {
+					return []netip.Addr{netip.MustParseAddr(first), netip.MustParseAddr("192.168.1.1")}, nil
+				}
+			})
+			if err := h.connect(t, trojanLink); err != nil {
+				t.Fatal(err)
+			}
+			o := h.tun.opts
+			if o.DNS.Direct != "192.168.1.1" {
+				t.Errorf("direct DNS = %s", o.DNS.Direct)
+			}
+			if !slices.Equal(o.LANResolvers, []netip.Addr{netip.MustParseAddr("192.168.1.1")}) {
+				t.Errorf("LAN resolvers = %v", o.LANResolvers)
+			}
+		})
+	}
+	// Only a link-local one: the fallback, as with none.
+	h := newHarness(t, func(c *Config) {
+		c.resolvers = func(context.Context, string) ([]netip.Addr, error) {
+			return []netip.Addr{netip.MustParseAddr("fe80::1")}, nil
+		}
+	})
+	if err := h.connect(t, trojanLink); err != nil {
+		t.Fatal(err)
+	}
+	if d := h.tun.opts.DNS.Direct; d != "1.1.1.1" {
+		t.Errorf("direct DNS = %s", d)
+	}
+}
+
 func TestNoiseLines(t *testing.T) {
 	for _, l := range []string{
 		"+0400 2026-09-27 02:05:44 ERROR [612468618 83ms] dns: lookup failed for cookie.lmgssp.com: (exchange4: NXDOMAIN | exchange6: NXDOMAIN)",
