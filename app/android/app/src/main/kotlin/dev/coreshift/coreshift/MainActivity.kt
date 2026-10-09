@@ -2,6 +2,7 @@ package dev.coreshift.coreshift
 
 import android.Manifest
 import android.content.ActivityNotFoundException
+import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
@@ -11,7 +12,9 @@ import android.net.Uri
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.os.SystemClock
+import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Log
 import com.google.mlkit.common.MlKitException
@@ -70,6 +73,9 @@ class MainActivity : FlutterActivity() {
                         startLink = null
                     }
                     "scanQr" -> scanQr(result)
+                    "shareLog" -> result.success(
+                        shareLog(call.argument<String>("name") ?: "CoreShift-log.txt", call.argument<String>("text") ?: ""),
+                    )
                     "notify" -> {
                         Alerts.notify(this@MainActivity, call.argument<String>("title") ?: "", call.argument<String>("body") ?: "")
                         result.success(null)
@@ -148,6 +154,43 @@ class MainActivity : FlutterActivity() {
     }
 
     /** Opens a link in the app that handles it; false when there is none. */
+    /**
+     * Saves the journal as a text file in Downloads/CoreShift and offers to
+     * send it (Telegram, mail): the chooser of the apps that take a file.
+     * Returns where it was saved, for the app to say; null when Android is
+     * older than 10, which has no shared Downloads to write to without a
+     * permission: the journal is then sent as text.
+     */
+    private fun shareLog(name: String, text: String): String? {
+        val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_SUBJECT, name)
+        var saved: String? = null
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val values = ContentValues().apply {
+                put(MediaStore.Downloads.DISPLAY_NAME, name)
+                put(MediaStore.Downloads.MIME_TYPE, "text/plain")
+                put(MediaStore.Downloads.RELATIVE_PATH, "${Environment.DIRECTORY_DOWNLOADS}/CoreShift")
+            }
+            val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+            if (uri != null) {
+                try {
+                    contentResolver.openOutputStream(uri)?.use { it.write(text.toByteArray(Charsets.UTF_8)) }
+                    send.putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    saved = "${Environment.DIRECTORY_DOWNLOADS}/CoreShift/$name"
+                } catch (e: Exception) {
+                    Log.w("CoreShift", "save the journal: $e")
+                    contentResolver.delete(uri, null, null)
+                }
+            }
+        }
+        if (saved == null) send.putExtra(Intent.EXTRA_TEXT, text)
+        try {
+            startActivity(Intent.createChooser(send, "Отправить журнал"))
+        } catch (e: ActivityNotFoundException) {
+            Log.w("CoreShift", "no app to send the journal: $e")
+        }
+        return saved
+    }
+
     private fun openUrl(url: String): Boolean = try {
         startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
         true

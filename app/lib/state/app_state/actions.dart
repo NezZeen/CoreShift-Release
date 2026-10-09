@@ -63,6 +63,26 @@ extension AppStateActions on AppState {
     ];
   }
 
+  /// The journal for support, on the clipboard and as a file to send: a
+  /// desktop saves it to Downloads, Android to Downloads/CoreShift and
+  /// opens «Отправить». Returns where the file is, null when none was saved.
+  Future<String?> copyJournal() async {
+    final text = journalForSupport().join('\n');
+    // Not waited for: the file need not wait on the clipboard.
+    unawaited(Clipboard.setData(ClipboardData(text: text)));
+    final save = journalSaver;
+    if (save == null) return null;
+    final t = DateTime.now();
+    String two(int n) => n.toString().padLeft(2, '0');
+    final name = 'CoreShift-${version.version}-log-${t.year}-${two(t.month)}-${two(t.day)}_${two(t.hour)}-${two(t.minute)}.txt';
+    try {
+      return await save(name, '$text\n');
+    } catch (e) {
+      toast('Журнал скопирован, но файл не сохранился: ${humanError('$e')}', ToastKind.err);
+      return null;
+    }
+  }
+
   /// The journal as «Копировать» puts it on the clipboard for support: the
   /// header, every event, and of what the cores and the TUN layer print
   /// themselves only warnings and errors, plus everything they printed

@@ -103,7 +103,12 @@ class AppState extends ChangeNotifier {
     this.autostartSetter,
     this.version = BuildVersion.app,
     this.askDisclaimer = false,
+    this.journalSaver,
   }) : prefs = prefs ?? {};
+
+  /// Saves the journal as a file to send (platform.saveJournal) and says
+  /// where; null in tests, which save nothing.
+  final Future<String?> Function(String name, String text)? journalSaver;
 
   /// Whether the window asks the user to accept the disclaimer until they
   /// do (ui/disclaimer.dart): the app does, a test's state does not.

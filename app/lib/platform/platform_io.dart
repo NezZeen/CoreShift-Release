@@ -139,6 +139,50 @@ Future<void> notify(String title, String body) async {
 
 /// Opens a link in the browser or the app that handles it (Telegram for
 /// t.me); false when nothing could. The caller checks the link.
+/// Saves the journal as a text file to send: on a desktop to the user's
+/// Downloads, on Android to Downloads/CoreShift, where the system's «Send»
+/// then offers the apps that take it (Telegram, mail). Returns where it
+/// went, null when it could not be saved (Android before 10 sends it as
+/// text instead).
+Future<String?> saveJournal(String name, String text) async {
+  if (Platform.isAndroid) {
+    return _android.invokeMethod<String>('shareLog', {'name': name, 'text': text});
+  }
+  final dir = _downloadsDir();
+  await Directory(dir).create(recursive: true);
+  final f = File('$dir${Platform.pathSeparator}$name');
+  await f.writeAsString(text, flush: true);
+  return f.path;
+}
+
+/// Shows a saved file in the file manager: Explorer with it selected, on
+/// Linux its folder.
+Future<void> revealFile(String path) async {
+  if (Platform.isWindows) {
+    await Process.run('explorer.exe', ['/select,', path]);
+  } else if (Platform.isLinux) {
+    await Process.run('xdg-open', [File(path).parent.path]);
+  }
+}
+
+/// The user's Downloads: Linux's XDG_DOWNLOAD_DIR (user-dirs.dirs names it
+/// in the user's language), else ~/Downloads.
+String _downloadsDir() {
+  final home = Platform.environment[Platform.isWindows ? 'USERPROFILE' : 'HOME'] ?? Directory.systemTemp.path;
+  if (Platform.isLinux) {
+    try {
+      final dirs = File('$home/.config/user-dirs.dirs').readAsLinesSync();
+      for (final l in dirs) {
+        final m = RegExp(r'^XDG_DOWNLOAD_DIR="(.+)"$').firstMatch(l.trim());
+        if (m != null) return m.group(1)!.replaceFirst(r'$HOME', home);
+      }
+    } catch (_) {
+      // No such file: the default below.
+    }
+  }
+  return '$home${Platform.pathSeparator}Downloads';
+}
+
 /// Closes CoreShift's window for good: on Android the activity, on a
 /// desktop the process (the service runs on, disconnected).
 Future<void> quitApp() async {

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
+import '../../platform/platform.dart' as platform;
 import '../../state/app_state.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -104,12 +104,21 @@ class _LogsPageState extends State<LogsPage> {
       label: 'Копировать',
       icon: Icons.copy,
       small: true,
-      tooltip: 'Скопировать весь журнал с версиями и режимом, для поддержки',
+      tooltip: platform.isAndroid
+          ? 'Скопировать журнал с версиями и режимом и отправить файлом — для поддержки'
+          : 'Скопировать журнал с версиями и режимом и сохранить файлом в «Загрузки» — для поддержки',
       onPressed: widget.state.logs.isEmpty
           ? null
-          : () {
-              Clipboard.setData(ClipboardData(text: widget.state.journalForSupport().join('\n')));
-              widget.state.toast('Журнал скопирован');
+          : () async {
+              final s = widget.state;
+              final path = await s.copyJournal();
+              if (path == null) {
+                s.toast('Журнал скопирован');
+              } else if (platform.isAndroid) {
+                s.toast('Журнал скопирован и сохранён в $path', ToastKind.ok);
+              } else {
+                s.toast('Журнал скопирован и сохранён в «Загрузки»', ToastKind.ok, ('Показать', () => platform.revealFile(path)));
+              }
             },
     );
     // «Подробно»: the cores' and the TUN layer's harmless lines too, and the

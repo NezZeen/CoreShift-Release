@@ -112,4 +112,38 @@ void main() {
     expect(find.text('Подробный журнал выключен'), findsOneWidget);
     await tester.pump(const Duration(seconds: 30));
   });
+
+  testWidgets('«Копировать» copies the journal and saves it as a file to send', (tester) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    String? savedName, savedText;
+    final state = AppState(
+      DemoBackend(),
+      journalSaver: (name, text) async {
+        savedName = name;
+        savedText = text;
+        return '/home/me/Downloads/$name';
+      },
+    );
+    await tester.runAsync(() async {
+      state.start();
+      for (var i = 0; i < 50 && !state.loaded; i++) {
+        await Future.delayed(const Duration(milliseconds: 20));
+      }
+    });
+    await tester.pumpWidget(CoreShiftApp(state: state));
+    await tester.pump();
+    await tester.tap(find.text('Журнал').first);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Копировать'));
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(savedName, matches(RegExp(r'^CoreShift-.*-log-\d{4}-\d\d-\d\d_\d\d-\d\d\.txt$')));
+    expect(savedText, startsWith('CoreShift: приложение'));
+    expect(find.text('Журнал скопирован и сохранён в «Загрузки»'), findsOneWidget);
+    expect(find.text('Показать'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 30));
+  });
 }
