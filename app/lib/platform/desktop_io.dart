@@ -63,7 +63,10 @@ class _DesktopFrameState extends State<DesktopFrame> with WindowListener {
     windowManager.addListener(this);
     windowManager.isMaximized().then((v) => mounted ? setState(() => _maximized = v) : null);
     // Started in the tray (--tray), the window is hidden from the start.
+    // initWindow shows it without waiting, so asked once more a moment
+    // later: asked too early, a shown window reads as hidden.
     _syncShown();
+    Timer(const Duration(seconds: 1), _syncShown);
     _tray = _Tray.create(widget.state, onOpen: _show, onExit: _exit);
     _alerts = widget.state.alerts.listen(_notify);
   }
@@ -96,6 +99,7 @@ class _DesktopFrameState extends State<DesktopFrame> with WindowListener {
     if (await windowManager.isMinimized()) await windowManager.restore();
     await windowManager.show();
     await windowManager.focus();
+    await _syncShown();
   }
 
   /// Quits the app, and with it the VPN: the service stops once the app is
@@ -172,10 +176,16 @@ class _DesktopFrameState extends State<DesktopFrame> with WindowListener {
         widget.state.setShown(false);
       case 'show' || 'restore':
         // Shown while minimized, or restored while hidden, it is still
-        // not on screen: asked rather than assumed.
+        // not on screen: asked rather than assumed, and again a moment
+        // later, as the event may come before the window is up.
         _syncShown();
+        Timer(const Duration(milliseconds: 400), _syncShown);
     }
   }
+
+  // A focused window is on screen.
+  @override
+  void onWindowFocus() => widget.state.setShown(true);
 
   @override
   void onWindowMaximize() => setState(() => _maximized = true);
@@ -186,10 +196,17 @@ class _DesktopFrameState extends State<DesktopFrame> with WindowListener {
   @override
   Widget build(BuildContext context) {
     // A hidden window's animations stop: they would draw frames nobody sees.
-    final app = ValueListenableBuilder<bool>(
-      valueListenable: widget.state.shown,
-      builder: (context, shown, child) => TickerMode(enabled: shown, child: child!),
-      child: widget.child,
+    // A pointer in the window says it is on screen, whatever the window
+    // manager said: a window believed hidden would never animate again.
+    final app = Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: (_) => widget.state.setShown(true),
+      onPointerHover: (_) => widget.state.setShown(true),
+      child: ValueListenableBuilder<bool>(
+        valueListenable: widget.state.shown,
+        builder: (context, shown, child) => TickerMode(enabled: shown, child: child!),
+        child: widget.child,
+      ),
     );
     if (!_enabled) return app;
     return Column(

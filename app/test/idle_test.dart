@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -176,4 +177,31 @@ void main() {
     state.speedNow.removeListener(onSpeed);
     await finish(tester, state);
   });
+
+  // A window wrongly believed hidden, as when it was asked too early after
+  // being restored from the tray, froze its animations halfway: the ring of
+  // the button stayed red, the sort's highlight on the old choice. The
+  // pointer in the window says it is on screen.
+  for (final (what, gesture) in [('a hover', 'hover'), ('a click', 'click')]) {
+    testWidgets('$what in a window believed hidden brings its animations back', (tester) async {
+      final state = await pumpApp(tester, connect: false);
+      state.setShown(false);
+      await tester.pump();
+      expect(TickerMode.valuesOf(tester.element(find.byType(HomePage))).enabled, isFalse);
+      final at = tester.getCenter(find.byType(HomePage));
+      if (gesture == 'hover') {
+        final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+        await mouse.addPointer(location: Offset.zero);
+        await mouse.moveTo(at);
+        await mouse.removePointer();
+      } else {
+        // A corner, clear of the button: the click connects nothing.
+        await tester.tapAt(tester.getBottomRight(find.byType(HomePage)) - const Offset(8, 8));
+      }
+      await tester.pump();
+      expect(state.shown.value, isTrue);
+      expect(TickerMode.valuesOf(tester.element(find.byType(HomePage))).enabled, isTrue);
+      await finish(tester, state);
+    });
+  }
 }
