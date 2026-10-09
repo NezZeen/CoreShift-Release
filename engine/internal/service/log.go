@@ -67,12 +67,23 @@ func lookupTimeout(l string) bool {
 //   - a connection the app on the device closed first ("endpoint not
 //     connected"), and a handshake report to an app that had gone: on
 //     Android many a minute, as apps drop idle connections.
+//
+// and the cores' remarks on every start that say nothing of the connection:
+//   - sing-box on Android reads the system's list of apps for rules by app,
+//     which CoreShift does not give it and an app may not read; no setting
+//     turns the attempt off outside the platform's own VPN service;
+//   - mihomo names the geodata loader and matcher it uses, as it reads the
+//     config, before the log level in it applies.
 func noiseLine(l string) bool {
 	switch {
 	case strings.Contains(l, "NXDOMAIN"):
 		return strings.Contains(l, "dns: lookup failed") || strings.Contains(l, "router: lookup")
 	case strings.Contains(l, "endpoint not connected"):
 		return strings.Contains(l, "connection download closed") || strings.Contains(l, "connection upload closed")
+	case strings.Contains(l, "initialize package manager"):
+		return strings.Contains(l, "/data/system/packages.xml: permission denied")
+	case strings.HasPrefix(l, "INFO Geodata Loader mode: "), strings.HasPrefix(l, "INFO Geosite Matcher implementation: "):
+		return true
 	}
 	return strings.Contains(l, "report handshake success")
 }

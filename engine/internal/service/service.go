@@ -293,8 +293,8 @@ func New(cfg Config) (*Service, error) {
 
 	s := &Service{cfg: cfg, hub: newHub(), opts: cfg.Options, status: Status{State: Idle, TUN: cfg.TUN}, socks: core.NewSOCKSAuth(),
 		awake: make(chan struct{}, 1), netKick: make(chan struct{}, 1)}
-	s.logs = newLogGrouper(logGroupEvery, func(source, line string) {
-		s.hub.publish(Event{Kind: "log", Source: source, Line: line})
+	s.logs = newLogGrouper(logGroupEvery, func(source, line string, at time.Time) {
+		s.hub.publish(Event{Kind: "log", Source: source, Line: line, Time: at})
 	})
 	s.rules = newRuleSets(filepath.Join(cfg.DataDir, "rules"), s.hub.publish)
 	s.stats = openStats(filepath.Join(cfg.DataDir, "traffic.json"))

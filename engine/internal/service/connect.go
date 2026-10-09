@@ -485,6 +485,9 @@ func (s *Service) stopLocked() {
 		s.hub.publish(Event{Kind: "tun", Reason: "down"})
 	}
 	s.sup.Disconnect()
+	// The repeats counted so far belong to this connection: told now,
+	// before "отключено", not seconds after it.
+	s.logs.flushAll()
 }
 
 // teardown is the reaction to a failure while connected. It runs on its own

@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -155,13 +156,17 @@ const maxLookupTwins = 64
 type logGroup struct {
 	shape   string
 	source  string
-	repeats int // not reported yet
+	repeats int       // not reported yet
+	since   time.Time // the start of the period the repeats are counted in
+	last    time.Time // the latest repeat
 	timer   *time.Timer
 }
 
 type logGrouper struct {
-	every  time.Duration // how often a repeating line is reported
-	emit   func(source, line string)
+	every time.Duration // how often a repeating line is reported
+	// emit passes a line on; at is when it was seen, zero for now.
+	emit   func(source, line string, at time.Time)
+	now    func() time.Time
 	mu     sync.Mutex
 	groups map[string]*logGroup
 	// Failed lookups lately seen, by request id and name: which report
@@ -171,8 +176,8 @@ type logGrouper struct {
 	twinOrder []string
 }
 
-func newLogGrouper(every time.Duration, emit func(source, line string)) *logGrouper {
-	return &logGrouper{every: every, emit: emit, groups: map[string]*logGroup{}, twins: map[string]string{}}
+func newLogGrouper(every time.Duration, emit func(source, line string, at time.Time)) *logGrouper {
+	return &logGrouper{every: every, emit: emit, now: time.Now, groups: map[string]*logGroup{}, twins: map[string]string{}}
 }
 
 // add passes a line on, or counts it as a repeat of one passed on lately.
@@ -186,7 +191,7 @@ func (g *logGrouper) add(source, line string) {
 func (g *logGrouper) addTidy(source, line string) {
 	shape := logShape(line)
 	if shape == "" {
-		g.emit(source, line)
+		g.emit(source, line, time.Time{})
 		return
 	}
 	g.addShape(source, line, shape)
@@ -231,27 +236,28 @@ func (g *logGrouper) addShape(source, line, shape string) {
 	g.mu.Lock()
 	if grp, ok := g.groups[key]; ok {
 		grp.repeats++
+		grp.last = g.now()
 		g.mu.Unlock()
 		return
 	}
 	if len(g.groups) >= maxLogGroups {
 		g.mu.Unlock()
-		g.emit(source, line)
+		g.emit(source, line, time.Time{})
 		return
 	}
-	grp := &logGroup{shape: shape, source: source}
+	grp := &logGroup{shape: shape, source: source, since: g.now()}
 	g.groups[key] = grp
-	grp.timer = time.AfterFunc(g.every, func() { g.flush(key) })
+	grp.timer = time.AfterFunc(g.every, func() { g.flush(key, grp) })
 	g.mu.Unlock()
-	g.emit(source, line)
+	g.emit(source, line, time.Time{})
 }
 
 // flush reports the repeats since the last report. A period without any
-// ends the group: the next such line is a new one and shown in full.
-func (g *logGrouper) flush(key string) {
+// ends the group: the next such line is a new one and shown in full. A
+// timer that fired as flushAll ended its group finds another or none.
+func (g *logGrouper) flush(key string, grp *logGroup) {
 	g.mu.Lock()
-	grp, ok := g.groups[key]
-	if !ok {
+	if g.groups[key] != grp {
 		g.mu.Unlock()
 		return
 	}
@@ -262,9 +268,45 @@ func (g *logGrouper) flush(key string) {
 		return
 	}
 	grp.repeats = 0
+	grp.since = g.now()
 	grp.timer.Reset(g.every)
 	g.mu.Unlock()
-	g.emit(grp.source, fmt.Sprintf("%s — ещё %d раз за %s", grp.shape, n, durationText(g.every)))
+	g.emit(grp.source, repeatsText(grp.shape, n, g.every), time.Time{})
+}
+
+// flushAll reports the repeats not reported yet and ends every group: the
+// connection that made them is over. The counts come before the journal's
+// "отключено", each at the time of its last repeat and for the time it
+// took, not at the end of a period that would close after the disconnect.
+func (g *logGrouper) flushAll() {
+	type pending struct {
+		source, text string
+		at           time.Time
+	}
+	if g == nil {
+		return
+	}
+	var out []pending
+	g.mu.Lock()
+	for key, grp := range g.groups {
+		grp.timer.Stop()
+		delete(g.groups, key)
+		if grp.repeats > 0 {
+			out = append(out, pending{grp.source, repeatsText(grp.shape, grp.repeats, grp.last.Sub(grp.since)), grp.last})
+		}
+	}
+	g.mu.Unlock()
+	slices.SortFunc(out, func(a, b pending) int { return a.at.Compare(b.at) })
+	for _, p := range out {
+		g.emit(p.source, p.text, p.at)
+	}
+}
+
+// repeatsText is a group's count: "<line> — ещё 2 раза за 30 с". Less
+// than a second is told as one.
+func repeatsText(shape string, n int, period time.Duration) string {
+	period = max(period.Round(time.Second), time.Second)
+	return fmt.Sprintf("%s — ещё %d %s за %s", shape, n, ruPlural(n, "раз", "раза", "раз"), durationText(period))
 }
 
 // durationText is a period for the log: "30 с", "2 мин".
