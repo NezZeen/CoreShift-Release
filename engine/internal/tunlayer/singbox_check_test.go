@@ -74,7 +74,42 @@ func TestSingBoxAcceptsConfig(t *testing.T) {
 			o.DNS.DirectIPRuleSets = []RuleSet{{Tag: "geoip-ru", Path: geoip}}
 			o.DNS.ProxyRuleSets = []RuleSet{{Tag: "geosite-media-ru-blocked", Path: geosite}, {Tag: "geosite-google", Path: geosite}}
 			o.DNS.ProxySuffixes = []string{"google.com", "googlevideo.com"}
-			o.DNS.DirectFirst = []string{"maps.google.com"}
+			o.DNS.PinnedSuffixes = []string{"google.com"}
+		},
+		"user rules and ad block": func(o *Options) {
+			o.Address6 = DefaultAddress6
+			o.DNS.DirectIPv4Only = true
+			o.DNS.BlockSuffixes = []string{"ads.example"}
+			o.DNS.PinnedSuffixes = []string{"google.com"}
+			o.DNS.PinnedRuleSets = []RuleSet{{Tag: "geosite-google", Path: geosite}}
+			o.DNS.DirectIPRuleSets = []RuleSet{{Tag: "geoip-ru", Path: geoip}}
+			ads := RuleSet{Tag: "geosite-category-ads-all", Path: geosite}
+			o.DNS.BlockRuleSets = []RuleSet{ads}
+			o.Rules = []Rule{
+				{Action: ActionProxy, Set: &RuleSet{Tag: "user-geosite-youtube", Path: geosite}},
+				{Action: ActionDirect, Set: &RuleSet{Tag: "user-geoip-ru", Path: geoip}, SetIP: true},
+				{Action: ActionBlock, Set: &RuleSet{Tag: "user-geoip-cn", Path: geoip}, SetIP: true},
+				{Action: ActionDirect, Domains: []string{"bank.example"}},
+				{Action: ActionBlock, IPs: []netip.Prefix{netip.MustParsePrefix("203.0.113.0/24")}},
+				{Action: ActionBlock, Set: &ads},
+			}
+		},
+		"user rules, selective": func(o *Options) {
+			o.Selective = true
+			o.DNS.DirectIPRuleSets = []RuleSet{{Tag: "geoip-ru", Path: geoip}}
+			o.Rules = []Rule{
+				{Action: ActionProxy, Set: &RuleSet{Tag: "user-geoip-ru", Path: geoip}, SetIP: true},
+			}
+			o.DNS.BlockRuleSets = []RuleSet{{Tag: "geosite-category-ads-all", Path: geosite}}
+		},
+		"russian sites abroad through the proxy": func(o *Options) {
+			o.Address6 = DefaultAddress6
+			o.DNS.DirectSuffixes = []string{"lan", "bank.example"}
+			o.DNS.HomeSuffixes = []string{"ru", "su", "xn--p1ai"}
+			o.DNS.HomeCheck = true
+			o.DNS.DirectRuleSets = []RuleSet{{Tag: "geosite-category-ru", Path: geosite}}
+			o.DNS.DirectIPRuleSets = []RuleSet{{Tag: "geoip-ru", Path: geoip}}
+			o.DNS.ProxyRuleSets = []RuleSet{{Tag: "geosite-ru-blocked", Path: geosite}}
 		},
 		"proxy rule set in selective mode": func(o *Options) {
 			o.Selective = true
