@@ -85,13 +85,13 @@ func (s *Service) connectOp(ctx context.Context, n node.Node) error {
 	// VPN, and there other apps must not reach the port.
 	pol.OpenInbound = !opts.TUN && !s.cfg.AppOutsideVPN
 	s.sup.SetPolicy(pol)
-	if s.noNetwork() {
+	s.setStatus(Status{State: Connecting, Node: n.Name, Protocol: string(n.Protocol), TUN: opts.TUN, Since: time.Now()})
+	if s.networkGone(ctx) {
 		// Nothing would come of it, and the server's name would not even
 		// resolve: the connection is made once there is a network.
 		s.waitNetwork(n, opts)
 		return nil
 	}
-	s.setStatus(Status{State: Connecting, Node: n.Name, Protocol: string(n.Protocol), TUN: opts.TUN, Since: time.Now()})
 
 	serverIP, err := s.connectLocked(ctx, n, gen, opts)
 	s.mu.Lock()

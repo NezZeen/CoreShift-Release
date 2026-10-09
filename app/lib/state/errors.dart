@@ -95,7 +95,10 @@ String humanError(String raw) {
   }
   // Android's VpnService (engine/mobile).
   if (has('android turned the vpn off')) return 'Android выключил VPN: запущен другой VPN-клиент или CoreShift отключён в настройках системы.';
-  if (has('vpn permission is not granted')) return 'Нет разрешения на VPN. Нажмите «Подключить» и разрешите запрос Android.';
+  if (has('vpn permission is not granted')) {
+    return 'Нет разрешения на VPN. Нажмите «Подключить» и разрешите запрос Android; '
+        'если запрос не появляется, выключите «Постоянную VPN» у другого приложения в настройках VPN.';
+  }
   if (has('the vpn service did not start')) return 'Android не запустил VPN. Попробуйте ещё раз; если повторится — перезапустите CoreShift.';
   if (has('the network reported no dns servers')) return 'Нет сети: телефон не получил адреса DNS. Проверьте Wi-Fi или мобильный интернет.';
   if (has('every compatible core failed')) return 'Сервер не отвечает ни через одно ядро. Попробуйте другой сервер.';
@@ -138,6 +141,44 @@ String humanError(String raw) {
 }
 
 final _russianLine = RegExp('^[а-яё]');
+
+/// Android refused CoreShift the VPN (VpnService.prepare, MainActivity.kt).
+/// [unasked]: at once, without its request on the screen. Android does so
+/// while another app is the "always-on" VPN («Постоянная VPN»): it gives the
+/// VPN to no one else and shows nothing, so pressing «Подключить» again did
+/// nothing either. The toast, the home page's notice ([title], [text]) and
+/// the journal's line, which says how to fix it.
+({String toast, String title, String text, String journal}) vpnRefusedText({required bool unasked}) => unasked
+    ? (
+        toast: 'Android отказал в VPN: похоже, у другого приложения включена «Постоянная VPN»',
+        title: 'Android отказал в VPN, не спросив',
+        text:
+            'Так бывает, когда у другого VPN-приложения включена «Постоянная VPN»: пока она включена, Android не даёт VPN никому другому. '
+            'Откройте настройки VPN, выключите её у того приложения и нажмите «Подключить» снова.',
+        journal:
+            'Android отказал в VPN, не показав запрос: у другого VPN-приложения включена «Постоянная VPN» (Always-on) '
+            'или VPN для CoreShift запрещён в настройках системы. Откройте настройки VPN, выключите «Постоянную VPN» '
+            'у другого приложения и подключитесь снова',
+      )
+    : (
+        toast: 'Android не разрешил VPN: без этого подключиться нельзя',
+        title: 'Android не разрешил VPN',
+        text:
+            'Без разрешения подключиться нельзя: нажмите «Подключить» и выберите «ОК» в запросе Android. '
+            'Если запрос не появляется, проверьте в настройках VPN, не включена ли «Постоянная VPN» у другого приложения.',
+        journal:
+            'Android не разрешил VPN: запрос отклонён. Нажмите «Подключить» и разрешите запрос; если он не появляется, '
+            'выключите «Постоянную VPN» у другого приложения в настройках VPN',
+      );
+
+/// What the home page says when Android turned the VPN off itself
+/// ("android turned the vpn off", engine/mobile): another app took it.
+const vpnRevokedText = (
+  title: 'Android выключил VPN',
+  text:
+      'Другое VPN-приложение забрало VPN себе, или CoreShift отключён в настройках системы. '
+      'Если у другого приложения включена «Постоянная VPN», выключите её в настройках VPN и подключитесь снова.',
+);
 
 /// A service's error as the journal shows it: in Russian where [humanError]
 /// knows it, the service's own Russian as it is. Where the translation sends

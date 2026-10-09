@@ -251,9 +251,10 @@ func newHarness(t *testing.T, mutate func(*Config)) *harness {
 			return 0, errors.New("unreachable")
 		},
 		// No speedtest.net from tests: the speed test goes to speedURL.
-		ookla:   noOokla,
-		netUp:   func() bool { return !h.offline.Load() },
-		netPoll: 50 * time.Millisecond,
+		ookla:     noOokla,
+		netUp:     func() bool { return !h.offline.Load() },
+		netPoll:   50 * time.Millisecond,
+		netSettle: 200 * time.Millisecond,
 	}
 	if mutate != nil {
 		mutate(&cfg)

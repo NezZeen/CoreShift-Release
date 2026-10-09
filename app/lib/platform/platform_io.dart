@@ -9,6 +9,7 @@ import '../api/models.dart';
 import '../api/proof.dart';
 import 'api_access.dart';
 import 'linux_desktop.dart' as linux;
+import 'vpn_consent.dart';
 import 'win_service.dart' as win;
 
 /// On Android the engine runs inside the app; this channel reaches its
@@ -34,11 +35,26 @@ Future<void> initPlatform() async {
   if (Platform.isAndroid) _androidApiFile = await _android.invokeMethod<String>('apiFile');
 }
 
-/// Gets the user's consent to the VPN when Android needs it; false if the
-/// user declined. Elsewhere the service has the rights it needs.
-Future<bool> prepareVpn() async {
-  if (!Platform.isAndroid) return true;
-  return await _android.invokeMethod<bool>('prepareVpn') ?? false;
+/// Gets the user's consent to the VPN when Android needs it, and says how
+/// Android answered. Elsewhere the service has the rights it needs.
+Future<VpnConsent> prepareVpn() async {
+  if (!Platform.isAndroid) return VpnConsent.granted;
+  return switch (await _android.invokeMethod<Object>('prepareVpn')) {
+    true || 'granted' => VpnConsent.granted,
+    'unasked' => VpnConsent.unasked,
+    _ => VpnConsent.denied,
+  };
+}
+
+/// Opens Android's VPN settings, where another app's "always-on" VPN is
+/// turned off; false when no settings screen could be opened.
+Future<bool> openVpnSettings() async {
+  if (!Platform.isAndroid) return false;
+  try {
+    return await _android.invokeMethod<bool>('openVpnSettings') ?? false;
+  } catch (_) {
+    return false;
+  }
 }
 
 /// Whether Android lets the app install its updates. Elsewhere the service

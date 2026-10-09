@@ -225,6 +225,9 @@ func New(cfg Config) (*Service, error) {
 	if cfg.netGrace == 0 {
 		cfg.netGrace = netBackGrace
 	}
+	if cfg.netSettle == 0 {
+		cfg.netSettle = netSettleTime
+	}
 	if cfg.netEvidence == 0 {
 		cfg.netEvidence = netEvidenceInterval
 	}

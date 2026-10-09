@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../api/models.dart';
+import '../../platform/platform.dart' as platform;
 import '../../state/app_state.dart';
 import '../../state/errors.dart';
 import '../shell.dart';
@@ -55,6 +56,7 @@ class HomePage extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _Hero(state: state),
+            if (state.vpnBlocked) ...[const SizedBox(height: 16), _VpnBlockedBanner(state: state)],
             if (st.state == ConnState.noNetwork) ...[const SizedBox(height: 16), _NoNetworkBanner(state: state)],
             if (state.serverUnresponsive) ...[const SizedBox(height: 16), _UnresponsiveBanner(state: state)],
             if (st.settingsPending) ...[const SizedBox(height: 16), _PendingBanner(state: state)],

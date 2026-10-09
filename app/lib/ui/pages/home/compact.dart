@@ -15,6 +15,7 @@ class _CompactHome extends StatelessWidget {
         if (state.subscriptionWarnings.isNotEmpty) ...[_SubWarningBanner(state: state), const SizedBox(height: 14)],
         _Hero(state: state, size: 150),
         const SizedBox(height: 20),
+        if (state.vpnBlocked) ...[_VpnBlockedBanner(state: state), const SizedBox(height: 10)],
         if (st.state == ConnState.noNetwork) ...[_NoNetworkBanner(state: state), const SizedBox(height: 10)],
         if (state.serverUnresponsive) ...[_UnresponsiveBanner(state: state), const SizedBox(height: 10)],
         if (st.settingsPending) ...[_PendingBanner(state: state), const SizedBox(height: 10)],

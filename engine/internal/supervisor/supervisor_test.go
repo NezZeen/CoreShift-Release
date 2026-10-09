@@ -244,6 +244,47 @@ func TestStaysConnectedWhenNoCoreChecksOut(t *testing.T) {
 	}
 }
 
+// A fresh core's first check fails while the connection is still coming up
+// (the TUN layer, on Android the VPN moving the default network): it is
+// repeated quietly, with no failure told and none counted.
+func TestFirstCheckFailureIsRetriedQuietly(t *testing.T) {
+	// The first check's request and its fallbacks' all end in EOF.
+	t.Setenv("FAKECORE_XRAY", "eof-first:4")
+	h := newHarness(t, nil)
+	connect(t, h, trojanLink)
+	var events []Event
+	h.waitFor(t, "a check that passes", 5*time.Second, func(e Event) bool {
+		events = append(events, e)
+		return e.Kind == EventHealth && !e.Probe && e.Err == nil
+	})
+	time.Sleep(300 * time.Millisecond)
+	events = append(events, h.drain()...)
+	if _, failed := healthChecks(events); failed != 0 {
+		t.Errorf("%d failed checks told", failed)
+	}
+	for _, e := range events {
+		if e.Kind == EventSwap || e.Kind == EventCoreFailed || e.Kind == EventNoBetter {
+			t.Errorf("unexpected %s event for %s", e.Kind, e.Core)
+		}
+	}
+	if st := h.s.Status(); st.Core != core.Xray || len(st.Failed) != 0 {
+		t.Fatalf("status = %+v", st)
+	}
+}
+
+// A core that keeps failing is told of from its second check on, and still
+// swapped for the next.
+func TestFailingFirstChecksAreStillTold(t *testing.T) {
+	t.Setenv("FAKECORE_XRAY", "unhealthy")
+	h := newHarness(t, nil)
+	connect(t, h, trojanLink)
+	e := h.waitFor(t, "a failed check", 5*time.Second, func(e Event) bool { return e.Kind == EventHealth && !e.Probe })
+	if e.Err == nil || e.Core != core.Xray || !strings.Contains(e.Err.Error(), "503") {
+		t.Fatalf("first check told = %+v", e)
+	}
+	h.waitFor(t, "swap after failed health checks", 10*time.Second, isSwap(core.SingBox, ReasonHealth))
+}
+
 // healthChecks counts the active core's checks among events.
 func healthChecks(events []Event) (ok, failed int) {
 	for _, e := range events {

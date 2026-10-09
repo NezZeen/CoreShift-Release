@@ -8,6 +8,7 @@
 //	crash-after:<duration>  serve, then exit with a panic message
 //	unhealthy               accept SOCKS but answer health checks with 503
 //	unhealthy-after:<dur>   healthy at first, 503 afterwards
+//	eof-first:<n>           close the first n health requests unanswered (EOF)
 //	hang-after:<dur>        serve, then stop taking connections but keep running
 //	offline-file:<file>     answer health checks with 503 while <file> exists,
 //	                        as every check fails while the device has no network
@@ -34,7 +35,9 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -88,6 +91,9 @@ func main() {
 		time.AfterFunc(d, func() {
 			fmt.Printf("level=error msg=\"Listener socks-in listen err: listen tcp 127.0.0.1:%s: bind: address already in use\"\n", port)
 		})
+	case "eof-first":
+		n, _ := strconv.Atoi(arg)
+		eofLeft.Store(int32(n))
 	case "unhealthy":
 		healthyUntil = time.Now()
 	case "unhealthy-after":
@@ -260,6 +266,9 @@ func forward(c net.Conn, r *bufio.Reader, addr string) {
 	<-done
 }
 
+// eofLeft is how many more health requests eof-first leaves unanswered.
+var eofLeft atomic.Int32
+
 // serve speaks just enough SOCKS5 for a CONNECT, then answers one HTTP
 // request, or relays names in FAKECORE_FORWARD's zone.
 func serve(c net.Conn, healthy bool) {
@@ -314,6 +323,9 @@ func serve(c net.Conn, healthy bool) {
 
 	if _, err := http.ReadRequest(r); err != nil {
 		return
+	}
+	if eofLeft.Add(-1) >= 0 {
+		return // closed unanswered: the client reads EOF
 	}
 	if healthy {
 		io.WriteString(c, "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n")

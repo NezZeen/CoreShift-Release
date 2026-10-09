@@ -123,6 +123,54 @@ func TestConnectWaitsForTheNetwork(t *testing.T) {
 	}
 }
 
+// A reconnect takes the tunnel down and up, and for that moment the device
+// can look offline (Android between the VPN and its own network): a network
+// that is back within netSettle connects without "no network" and "the
+// network is back" told in the same second.
+func TestBriefNoNetworkWhileConnectingIsNotTold(t *testing.T) {
+	h := newHarness(t, func(c *Config) { c.netSettle = 2 * time.Second })
+	h.offline.Store(true)
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+		h.offline.Store(false)
+		h.svc.NetworkChanged() // as Android tells it
+	}()
+	start := time.Now()
+	if err := h.connect(t, trojanLink); err != nil {
+		t.Fatal(err)
+	}
+	if took := time.Since(start); took > 1500*time.Millisecond {
+		t.Errorf("connecting took %v: the returned network was not seen at once", took)
+	}
+	if st := h.svc.Status(); st.State != Connected || st.Waiting {
+		t.Fatalf("status = %+v", st)
+	}
+	for _, e := range eventsFor(h, 200*time.Millisecond) {
+		if e.Kind == "network" || e.State == NoNetwork {
+			t.Errorf("a brief no-network was told: %+v", e)
+		}
+	}
+}
+
+// No network for longer than netSettle is an outage: told, and waited for.
+func TestNoNetworkPastTheSettleIsTold(t *testing.T) {
+	h := newHarness(t, func(c *Config) { c.netSettle = 300 * time.Millisecond })
+	h.offline.Store(true)
+	start := time.Now()
+	if err := h.connect(t, trojanLink); err != nil {
+		t.Fatal(err)
+	}
+	if took := time.Since(start); took < 300*time.Millisecond {
+		t.Errorf("waited for the network after %v, before netSettle", took)
+	}
+	if st := h.svc.Status(); st.State != NoNetwork || !st.Waiting {
+		t.Fatalf("status = %+v", st)
+	}
+	if got := kinds(eventsFor(h, 100*time.Millisecond)); !slices.Contains(got, "network:waiting") {
+		t.Errorf("events = %v", got)
+	}
+}
+
 // The wait is a connection under way: disconnecting ends it for good.
 func TestDisconnectEndsTheWaitForTheNetwork(t *testing.T) {
 	h, nw := newNetRig(t, nil)
