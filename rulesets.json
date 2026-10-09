@@ -1,0 +1,13 @@
+{
+  "fetched": "2026-10-09T21:32:57Z",
+  "sets": {
+    "geosite-category-ads-all": {
+      "sha256": "9c5ae0657c056655e850544d4e1ecded5e1f1b577cb26782b98b33fbfd813e8e",
+      "size": 1302288
+    },
+    "geosite-ru-blocked": {
+      "sha256": "fe9f420b9724f61a7cbbead71ce5cc60b7b60681e81c0870dca3c06e20278b0c",
+      "size": 487410
+    }
+  }
+}
