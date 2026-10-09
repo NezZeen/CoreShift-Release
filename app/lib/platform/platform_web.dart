@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import '../api/backend.dart';
 import '../api/demo_backend.dart';
+import 'vpn_consent.dart';
 
 // The web build exists only to preview the UI; browsers cannot reach the
 // daemon's API, so it always runs on simulated data.
@@ -32,7 +33,9 @@ bool get isWindows => false;
 
 Future<void> initPlatform() async {}
 
-Future<bool> prepareVpn() async => true;
+Future<VpnConsent> prepareVpn() async => VpnConsent.granted;
+
+Future<bool> openVpnSettings() async => false;
 
 Future<bool> canInstallUpdates() async => true;
 

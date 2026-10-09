@@ -337,6 +337,31 @@ class _NoNetworkBanner extends StatelessWidget {
   }
 }
 
+/// Android will not let CoreShift run its VPN ([AppState.vpnBlocked]): it
+/// refused, often without asking because another app is the "always-on" VPN,
+/// or turned the VPN off for another app. Pressing «Подключить» again does
+/// not help; turning that app's «Постоянная VPN» off in the settings does.
+class _VpnBlockedBanner extends StatelessWidget {
+  final AppState state;
+  const _VpnBlockedBanner({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final refusal = state.vpnRefusal;
+    final refused = refusal == null ? null : vpnRefusedText(unasked: refusal == platform.VpnConsent.unasked);
+    return _Notice(
+      color: errColor,
+      icon: Icons.vpn_lock_outlined,
+      title: refused?.title ?? vpnRevokedText.title,
+      text: refused?.text ?? vpnRevokedText.text,
+      actions: [
+        Btn(label: 'Настройки VPN', small: true, kind: BtnKind.primary, onPressed: state.openVpnSettings),
+        if (refusal != null) Btn(label: 'Скрыть', small: true, onPressed: state.dismissVpnRefusal),
+      ],
+    );
+  }
+}
+
 /// A coloured line on the home page: a warning and what to do about it.
 class _Notice extends StatelessWidget {
   final Color color;

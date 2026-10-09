@@ -148,17 +148,18 @@ type Config struct {
 	fetchRuleSet func(ctx context.Context, url string, proxy *url.URL) ([]byte, error)
 	// ruleSetBaseline stands in for the built-in rule sets (ruleset.Baseline).
 	ruleSetBaseline func(tag string) ([]byte, time.Time, bool)
-	coreVersion  func(ctx context.Context, k core.Kind, bin string) (string, error)
-	hostIPv6     func() bool
-	ipv6Off      func() bool // the system refuses IPv6 on new interfaces
-	physical     func() (ping.Bind, error)
-	icmpPing     func(ctx context.Context, ip netip.Addr, b ping.Bind) (time.Duration, error)
-	tcpPing      func(ctx context.Context, ap netip.AddrPort, b ping.Bind) (time.Duration, error)
-	netInterval  time.Duration
-	netUp        func() bool
-	netPoll      time.Duration // how often a connection looks whether the network is there
-	netGrace     time.Duration // how long a returned network may take to carry the tunnel again
-	netEvidence  time.Duration // how often a wait for the network tries the server anyway
+	coreVersion     func(ctx context.Context, k core.Kind, bin string) (string, error)
+	hostIPv6        func() bool
+	ipv6Off         func() bool // the system refuses IPv6 on new interfaces
+	physical        func() (ping.Bind, error)
+	icmpPing        func(ctx context.Context, ip netip.Addr, b ping.Bind) (time.Duration, error)
+	tcpPing         func(ctx context.Context, ap netip.AddrPort, b ping.Bind) (time.Duration, error)
+	netInterval     time.Duration
+	netUp           func() bool
+	netPoll         time.Duration // how often a connection looks whether the network is there
+	netSettle       time.Duration // how long a connection that finds no network looks again before waiting
+	netGrace        time.Duration // how long a returned network may take to carry the tunnel again
+	netEvidence     time.Duration // how often a wait for the network tries the server anyway
 	// trafficEvery and trafficIdleEvery stand in for trafficInterval and
 	// trafficIdleInterval.
 	trafficEvery     time.Duration

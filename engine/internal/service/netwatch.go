@@ -22,7 +22,8 @@ import (
 //   - Connecting without a network does not fail. Nothing is started; the
 //     state is NoNetwork with Status.Waiting, and the connection is made as
 //     soon as the network is there (awaitNetwork). Disconnect cancels it, as
-//     it cancels any connecting.
+//     it cancels any connecting. A network missing only for the moment a
+//     reconnect takes the tunnel down does not count (networkGone).
 //   - A connection that loses the network is held as it is (watchNet): the
 //     cores keep running, the supervisor counts no failed checks (its
 //     Config.Offline), the server is not diagnosed and no other server is
@@ -64,6 +65,10 @@ const (
 	// netEvidenceInterval is how often a connection waiting for the network
 	// tries the server anyway (serverAnswersNow).
 	netEvidenceInterval = 20 * time.Second
+	// netSettleTime is how long a connection that finds no network looks
+	// again before it waits for one (networkGone), every netSettleLook.
+	netSettleTime = 1500 * time.Millisecond
+	netSettleLook = 100 * time.Millisecond
 )
 
 // hasNetwork is the desktop's NetworkUp: a default route outside the
@@ -82,6 +87,39 @@ func (s *Service) noNetwork() bool {
 		return false
 	}
 	return !s.netBlind.Load()
+}
+
+// networkGone reports that the device has no network, and still has none
+// cfg.netSettle later. A reconnect takes the tunnel down and puts it up
+// again, and for that moment the device itself can look offline: Android's
+// ConnectivityManager reports no default network while the VPN is torn
+// down and before the phone's own network is the default again, and a
+// desktop's route table can be in between too. Taken at its word, the
+// journal said "no network: connecting once it is there" and "the network
+// is back" in the same second. A network that returns meanwhile, which
+// Android tells at once (NetworkChanged), connects without a word; a real
+// outage waits only cfg.netSettle longer. False when ctx ends first.
+func (s *Service) networkGone(ctx context.Context) bool {
+	if !s.noNetwork() {
+		return false
+	}
+	settled := time.NewTimer(s.cfg.netSettle)
+	defer settled.Stop()
+	look := time.NewTicker(min(netSettleLook, s.cfg.netSettle))
+	defer look.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return false
+		case <-settled.C:
+			return s.noNetwork()
+		case <-look.C:
+		case <-s.netKick:
+		}
+		if !s.noNetwork() {
+			return false
+		}
+	}
 }
 
 // offline is the supervisor's Config.Offline: a held connection, or no

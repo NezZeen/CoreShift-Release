@@ -559,6 +559,16 @@ func portAnswers(ctx context.Context, addr netip.AddrPort) bool {
 // over.
 const failRetry = 3 * time.Second
 
+// startRetry is how soon a fresh core's first check is repeated when it
+// failed. That check runs the moment the core takes connections, while the
+// service is still bringing the TUN layer up and redirecting DNS; on
+// Android the VPN coming up moves the phone's default network under the
+// core, which drops the connection it just opened to the server. The check
+// then fails with "EOF" a second before the next passes: no news, and the
+// journal said "the check failed" on nearly every connection. The first
+// failure is retried quietly once; a second one is reported and counted.
+const startRetry = time.Second
+
 // monitor watches the running core and returns why it must be replaced, or
 // "" when ctx is cancelled. For ReasonHealth it also returns the core that
 // passed its check on the spare port.
@@ -576,6 +586,7 @@ func (s *Supervisor) monitor(ctx context.Context, p *process, n node.Node, serve
 	searchEvery := 10 * s.cfg.Health.Interval
 	var searched time.Time
 	fails, deaf := 0, 0
+	starting := true // the core's first check is yet to pass or fail twice (startRetry)
 	for {
 		select {
 		case <-ctx.Done():
@@ -586,10 +597,18 @@ func (s *Supervisor) monitor(ctx context.Context, p *process, n node.Node, serve
 			// Its port answers, but not with this core behind it.
 			return ReasonExited, "", errPortTaken(p.listen)
 		case <-check.C:
-			_, err := s.check(ctx, p)
+			lat, err := s.checkHealth(ctx, p)
 			if ctx.Err() != nil {
 				return "", "", nil
 			}
+			if err != nil && starting {
+				// Neither reported nor counted: see startRetry.
+				starting = false
+				check.Reset(min(s.healthEvery(), startRetry))
+				continue
+			}
+			starting = false
+			s.report(ctx, p, lat, err)
 			delay := s.healthEvery()
 			switch {
 			case err == nil:
@@ -706,16 +725,27 @@ func (s *Supervisor) awaitHealthy(ctx context.Context, p *process) (time.Duratio
 	return 0, fmt.Errorf("health check failed: %w", err)
 }
 
+// check checks p's health and reports the result.
 func (s *Supervisor) check(ctx context.Context, p *process) (time.Duration, error) {
-	lat, err := checkHealth(ctx, s.cfg.Auth.ProxyURL(p.listen), s.cfg.Health)
+	lat, err := s.checkHealth(ctx, p)
+	s.report(ctx, p, lat, err)
+	return lat, err
+}
+
+// checkHealth checks p's health through its SOCKS inbound.
+func (s *Supervisor) checkHealth(ctx context.Context, p *process) (time.Duration, error) {
+	return checkHealth(ctx, s.cfg.Auth.ProxyURL(p.listen), s.cfg.Health)
+}
+
+// report tells of a check of p.
+func (s *Supervisor) report(ctx context.Context, p *process, lat time.Duration, err error) {
 	// A check cut short by a disconnect, or by a switch to another server,
 	// says nothing about the connection: reported, it read in the journal
 	// as "the check failed: context canceled" on every switch.
 	if err != nil && ctx.Err() != nil {
-		return lat, err
+		return
 	}
 	s.emit(Event{Kind: EventHealth, Core: p.kind, Latency: lat, Err: err, Probe: p.probe})
-	return lat, err
 }
 
 // launch writes the config for k and starts it listening on listen.

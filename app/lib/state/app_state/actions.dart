@@ -98,12 +98,38 @@ extension AppStateActions on AppState {
   /// says why the connection changed.
   void _logAction(String text) => _log(DateTime.now(), 'действие', text, LogLevel.info);
 
-  /// Android asks the user once before the app may run a VPN.
+  /// Android asks the user once before the app may run a VPN. A refusal goes
+  /// into the journal with what to do, and the home page offers Android's VPN
+  /// settings ([vpnBlocked]): with another app as the "always-on" VPN,
+  /// Android refuses at once without asking, and each press of «Подключить»
+  /// used to leave only "действие подключить" in the journal.
   Future<bool> _vpnAllowed() async {
-    if (backend is DemoBackend || !setting('tun', false)) return true;
-    if (await platform.prepareVpn()) return true;
-    toast('Android не разрешил VPN: без этого подключиться нельзя', ToastKind.err);
+    if (!setting('tun', false)) return true;
+    final ask = vpnConsent ?? (backend is DemoBackend ? null : platform.prepareVpn);
+    if (ask == null) return true;
+    final consent = await ask();
+    if (consent == platform.VpnConsent.granted) {
+      vpnRefusal = null;
+      return true;
+    }
+    final text = vpnRefusedText(unasked: consent == platform.VpnConsent.unasked);
+    _log(DateTime.now(), 'VPN', text.journal, LogLevel.err);
+    vpnRefusal = consent;
+    toast(text.toast, ToastKind.err);
     return false;
+  }
+
+  /// Opens Android's VPN settings, where another app's "always-on" VPN is
+  /// turned off.
+  Future<void> openVpnSettings() async {
+    if (await (vpnSettingsOpener ?? platform.openVpnSettings)()) return;
+    toast('Не удалось открыть настройки VPN. Откройте их сами: «Настройки» → «Сеть и интернет» или «Подключение и общий доступ» → «VPN»', ToastKind.err);
+  }
+
+  /// Puts away the home page's notice of a refused VPN.
+  void dismissVpnRefusal() {
+    vpnRefusal = null;
+    _notify();
   }
 
   Future<void> connect({String? subscription, String? fingerprint, String? name}) async {

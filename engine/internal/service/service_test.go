@@ -255,9 +255,10 @@ func newHarness(t *testing.T, mutate func(*Config)) *harness {
 			return nil, errors.New("no DNS over HTTPS in tests")
 		},
 		// No speedtest.net from tests: the speed test goes to speedURL.
-		ookla:   noOokla,
-		netUp:   func() bool { return !h.offline.Load() },
-		netPoll: 50 * time.Millisecond,
+		ookla:     noOokla,
+		netUp:     func() bool { return !h.offline.Load() },
+		netPoll:   50 * time.Millisecond,
+		netSettle: 200 * time.Millisecond,
 	}
 	if mutate != nil {
 		mutate(&cfg)

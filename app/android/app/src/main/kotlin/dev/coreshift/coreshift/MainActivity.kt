@@ -15,6 +15,8 @@ import android.net.Uri
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
+import android.provider.Settings
 import android.util.Log
 import com.google.mlkit.common.MlKitException
 import com.google.mlkit.vision.barcode.common.Barcode
@@ -33,6 +35,10 @@ import java.io.ByteArrayOutputStream
  */
 class MainActivity : FlutterActivity() {
     private var pendingVpn: MethodChannel.Result? = null
+
+    /** When the VPN request was started, to tell a refusal without it. */
+    private var vpnAskedAt = 0L
+
     private var channel: MethodChannel? = null
 
     /** The link CoreShift was opened with, until the UI asks for it. */
@@ -54,6 +60,7 @@ class MainActivity : FlutterActivity() {
                 when (call.method) {
                     "apiFile" -> result.success(Engine.apiFile(this@MainActivity).absolutePath)
                     "prepareVpn" -> prepareVpn(result)
+                    "openVpnSettings" -> result.success(openVpnSettings())
                     "canInstallUpdates" -> result.success(Updater.canInstall(this@MainActivity))
                     "allowInstallUpdates" -> {
                         Updater.askPermission(this@MainActivity)
@@ -173,18 +180,46 @@ class MainActivity : FlutterActivity() {
         false
     }
 
-    /** Asks Android for the VPN once; answers whether it is allowed. */
+    /**
+     * Asks Android for the VPN once. Answers "granted", "denied" (the user
+     * declined), or "unasked": refused at once, without the request on the
+     * screen, as Android does while another app is the always-on VPN.
+     */
     private fun prepareVpn(result: MethodChannel.Result) {
         val intent = VpnService.prepare(this)
         if (intent == null) {
             askNotifications()
-            result.success(true)
+            result.success("granted")
             return
         }
-        pendingVpn?.success(false)
+        pendingVpn?.success("denied")
         pendingVpn = result
-        @Suppress("DEPRECATION")
-        startActivityForResult(intent, REQUEST_VPN)
+        vpnAskedAt = SystemClock.elapsedRealtime()
+        try {
+            @Suppress("DEPRECATION")
+            startActivityForResult(intent, REQUEST_VPN)
+        } catch (e: ActivityNotFoundException) {
+            Log.w("CoreShift", "VPN consent: $e")
+            pendingVpn = null
+            result.success("unasked")
+        }
+    }
+
+    /**
+     * Android's VPN settings, where another app's always-on VPN is turned
+     * off; the network settings, or the settings at all, where a phone has
+     * no such screen. False when none opened.
+     */
+    private fun openVpnSettings(): Boolean {
+        for (action in listOf(Settings.ACTION_VPN_SETTINGS, Settings.ACTION_WIRELESS_SETTINGS, Settings.ACTION_SETTINGS)) {
+            try {
+                startActivity(Intent(action))
+                return true
+            } catch (e: Exception) {
+                Log.w("CoreShift", "$action: $e")
+            }
+        }
+        return false
     }
 
     /** The VPN's notification needs this since Android 13; it is optional. */
@@ -200,15 +235,21 @@ class MainActivity : FlutterActivity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == REQUEST_VPN) {
-            val ok = resultCode == RESULT_OK
-            if (ok) askNotifications()
-            pendingVpn?.success(ok)
+            val answer = when {
+                resultCode == RESULT_OK -> "granted"
+                // Nobody reads and declines a request this fast: it was not shown.
+                SystemClock.elapsedRealtime() - vpnAskedAt < UNASKED_WITHIN_MS -> "unasked"
+                else -> "denied"
+            }
+            if (answer == "granted") askNotifications()
+            pendingVpn?.success(answer)
             pendingVpn = null
         }
     }
 
     companion object {
         private const val REQUEST_VPN = 1
+        private const val UNASKED_WITHIN_MS = 800L
         private const val REQUEST_NOTIFICATIONS = 2
         private const val ALERTS = "alerts"
     }

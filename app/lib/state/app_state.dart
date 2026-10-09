@@ -46,6 +46,22 @@ class AppState extends ChangeNotifier {
   /// Opens links; by default in the browser, not at all on demo data.
   final Future<bool> Function(String url)? linkOpener;
 
+  /// Asks Android for the VPN; by default [platform.prepareVpn], not at all
+  /// on demo data.
+  final Future<platform.VpnConsent> Function()? vpnConsent;
+
+  /// Opens Android's VPN settings; by default [platform.openVpnSettings].
+  final Future<bool> Function()? vpnSettingsOpener;
+
+  /// How Android last refused the VPN, for the home page's way out: null
+  /// once it allowed it, or the notice was put away.
+  platform.VpnConsent? vpnRefusal;
+
+  /// Android will not let CoreShift run its VPN: it refused, or turned the
+  /// VPN off for another app. The home page offers its VPN settings.
+  bool get vpnBlocked =>
+      !status.active && (vpnRefusal != null || (status.state == ConnState.failed && status.error.toLowerCase().contains('android turned the vpn off')));
+
   /// Cores whose health checks fail right now, to log only the change.
   final _healthFailing = <String>{};
 
@@ -80,6 +96,8 @@ class AppState extends ChangeNotifier {
     this.savePrefs,
     this.leakTestRunner,
     this.linkOpener,
+    this.vpnConsent,
+    this.vpnSettingsOpener,
     this.daemonStarter,
     this.autostartSetter,
     this.version = BuildVersion.app,
