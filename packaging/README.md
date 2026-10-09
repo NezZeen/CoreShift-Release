@@ -98,6 +98,16 @@ GitHub (`api.github.com`, загрузки релизов, `raw.githubuserconten
 2. Токен для `publish.ps1`: fine-grained personal access token, ограниченный этим проектом, с правами «Release: Create, Read», «Release Link: Create, Read», «Package: Create, Read» и созданием тегов в репозитории (тег `v<версия>` создаётся вместе с релизом; без «Release: Create» файлы загружаются, а сам релиз GitLab отклоняет с 403), либо классический токен (project access token или PAT) с областью `api` и ролью Developer/Maintainer. Сохранить его в `%USERPROFILE%\.coreshift\gitlab-token` или `%USERPROFILE%\.coreshift\gitlab-token.txt` (Блокнот добавляет `.txt` — так тоже можно; пробелы, перевод строки и BOM отбрасываются). Токен не печатается и в репозиторий не попадает. Без файла `publish.ps1` останавливается ещё до публикации на GitHub и подсказывает, что сделать (или запустите с `-NoGitLab`). Срок действия токена ограничен — заранее обновите файл.
 3. Необязательно, для баз правил: в публичном `NezZeen/CoreShift-Release` на GitHub добавить секрет `GITLAB_TOKEN` (Settings → Secrets and variables → Actions) — токен проекта GitLab с правом push в репозиторий (`write_repository` или fine-grained с записью в репозиторий). Тогда workflow `rulesets.yml` после публикации на GitHub отправляет ветку `rulesets` и в GitLab. Без секрета этот шаг тихо пропускается.
 
+### Пост в Telegram
+
+После GitHub и GitLab `publish.ps1` отправляет в Telegram-чат текст из `dist\telegram\<версия>.txt` (другой файл — `-TelegramText`). Тестовые сборки (`-Prerelease`) не публикуются. Если чего-то не хватает (токена, чата, текста) или Telegram не принял сообщение, скрипт пишет, что сделать, и не падает: релиз к этому моменту уже вышел. Повторить только пост: `publish.ps1 -Version X -TelegramOnly`; не отправлять: `-NoTelegram`. Текст — обычный, до 4096 символов, без разметки.
+
+**Один раз настроить (владелец):**
+
+1. В Telegram написать [@BotFather](https://t.me/BotFather) → `/newbot`, получить токен бота. Сохранить его в `%USERPROFILE%\.coreshift\telegram-token.txt`. Токен не печатается и в репозиторий не попадает.
+2. Добавить бота в чат или канал (`t.me/CoreShift_app`) администратором с правом публиковать сообщения.
+3. Записать чат в `%USERPROFILE%\.coreshift\telegram-chat.txt`: `@CoreShift_app` для публичного чата или канала, либо числовой id вида `-100…` для закрытого.
+
 ### Базы правил
 
 Готовые наборы работают на встроенных базах:

@@ -32,6 +32,15 @@
 # printed; see packaging/README.md, the GitLab mirror section. -NoGitLab skips
 # the mirror, -GitLabOnly publishes to it alone (a retry, or a release
 # already on GitHub).
+#
+# Last, the post about the release goes to the Telegram chat: the text of
+# dist\telegram\<version>.txt (-TelegramText), sent by a bot whose token is
+# in %USERPROFILE%\.coreshift\telegram-token (or telegram-token.txt), to the
+# chat named in telegram-chat (or telegram-chat.txt) there, such as
+# @CoreShift_app. The token is never printed. Without the token, the chat or
+# the text, the post is skipped with a hint: the release is out already.
+# -NoTelegram skips it, -TelegramOnly posts it alone (a retry). A test build
+# is not posted.
 param(
     [Parameter(Mandatory = $true)][string]$Version,
     [string]$Repo = 'NezZeen/CoreShift-Release',
@@ -44,14 +53,77 @@ param(
     [switch]$Prerelease,
     [string]$GitLabProject = 'NezZeen/coreshift',
     [switch]$NoGitLab,
-    [switch]$GitLabOnly
+    [switch]$GitLabOnly,
+    [string]$TelegramText = '',
+    [switch]$NoTelegram,
+    [switch]$TelegramOnly
 )
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path "$PSScriptRoot\..").Path
 $dir = Join-Path $root "dist\release\$Version"
 if ($NoGitLab -and $GitLabOnly) { throw '-NoGitLab and -GitLabOnly exclude each other' }
+if ($NoTelegram -and $TelegramOnly) { throw '-NoTelegram and -TelegramOnly exclude each other' }
+if ($GitLabOnly -and $TelegramOnly) { throw '-GitLabOnly and -TelegramOnly exclude each other' }
 if ($Prerelease -and $GitLabOnly) { throw 'GitLab has no pre-releases: publish a test build to GitHub only' }
-$toGitLab = -not $NoGitLab -and -not $Prerelease
+if ($Prerelease -and $TelegramOnly) { throw 'A test build is not posted to Telegram' }
+$toGitLab = -not $NoGitLab -and -not $Prerelease -and -not $TelegramOnly
+$toTelegram = -not $NoTelegram -and -not $Prerelease
+
+# The post about the release in the Telegram chat. Any failure is told and
+# not thrown: the release itself is out by then. The token is in the URL,
+# so no error that could carry the URL is shown as it is.
+function Send-TelegramPost {
+    $tokenDir = Join-Path $env:USERPROFILE '.coreshift'
+    $find = { param($names) $names | ForEach-Object { Join-Path $tokenDir $_ } | Where-Object { Test-Path $_ } | Select-Object -First 1 }
+    $tokenFile = & $find @('telegram-token', 'telegram-token.txt')
+    $chatFile = & $find @('telegram-chat', 'telegram-chat.txt')
+    $text = if ($TelegramText) { $TelegramText } else { Join-Path $root "dist\telegram\$Version.txt" }
+    if (-not $tokenFile -or -not $chatFile) {
+        Write-Host ("Telegram: not posted, no bot token or chat: save the bot's token to $tokenDir\telegram-token.txt and the chat " +
+            "(such as @CoreShift_app) to $tokenDir\telegram-chat.txt; see packaging\README.md, the Telegram section. " +
+            "Then: publish.ps1 -Version $Version -TelegramOnly") -ForegroundColor Yellow
+        return
+    }
+    if (-not (Test-Path $text)) {
+        Write-Host "Telegram: not posted, no text: write it to $text, then publish.ps1 -Version $Version -TelegramOnly" -ForegroundColor Yellow
+        return
+    }
+    $token = [IO.File]::ReadAllText($tokenFile).Trim().Trim([char]0xFEFF).Trim()
+    $chat = [IO.File]::ReadAllText($chatFile).Trim().Trim([char]0xFEFF).Trim()
+    $message = [IO.File]::ReadAllText($text, [Text.Encoding]::UTF8).Trim()
+    # Telegram takes up to 4096 characters in one message.
+    if ($message.Length -gt 4096) {
+        Write-Host "Telegram: not posted, $text is $($message.Length) characters, Telegram takes 4096" -ForegroundColor Yellow
+        return
+    }
+    $body = @{ chat_id = $chat; text = $message; disable_web_page_preview = $true } | ConvertTo-Json -Compress
+    try {
+        Invoke-RestMethod -Method POST -Uri "https://api.telegram.org/bot$token/sendMessage" -UseBasicParsing -TimeoutSec 60 `
+            -Body ([Text.Encoding]::UTF8.GetBytes($body)) -ContentType 'application/json; charset=utf-8' | Out-Null
+        Write-Host "Posted v$Version to Telegram $chat" -ForegroundColor Green
+    } catch {
+        $why = 'no answer'
+        if ($_.Exception.Response) {
+            $code = [int]$_.Exception.Response.StatusCode
+            $why = "$code"
+            try {
+                $answer = (New-Object IO.StreamReader($_.Exception.Response.GetResponseStream())).ReadToEnd() | ConvertFrom-Json
+                if ($answer.description) { $why = "$code, $($answer.description)" }
+            } catch { }
+            if ($code -eq 401 -or $code -eq 404) { $why += ': the bot token is wrong' }
+            if ($code -eq 400 -or $code -eq 403) { $why += ': is the bot in the chat, and allowed to post there?' }
+        }
+        Write-Host "Telegram: not posted ($why). Retry: publish.ps1 -Version $Version -TelegramOnly" -ForegroundColor Yellow
+    } finally {
+        $token = $null
+    }
+}
+
+if ($TelegramOnly) {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    Send-TelegramPost
+    return
+}
 
 # The GitLab token, read before anything is published: a missing one stops
 # here, not halfway. Never printed.
@@ -211,3 +283,8 @@ if ($toGitLab) {
 }
 $gitlabToken = $null
 Remove-Item $fixed -Recurse -Force -ErrorAction SilentlyContinue
+
+if ($toTelegram) {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    Send-TelegramPost
+}
