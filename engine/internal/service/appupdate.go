@@ -190,6 +190,7 @@ func (s *Service) checkAppUpdate(ctx context.Context) {
 		rel, err = s.cfg.checkRelease(ctx, c, src)
 		return err
 	})
+	s.noteUpdateCheck(err)
 	now := time.Now()
 	if err != nil {
 		s.setAppUpdate(func(u *AppUpdate) { u.State, u.Error, u.CheckedAt = UpdateError, err.Error(), now })
@@ -226,6 +227,7 @@ func (s *Service) checkAppUpdate(ctx context.Context) {
 			path, err = s.cfg.downloadRelease(ctx, c, rel, dir)
 			return err
 		})
+		s.noteUpdateCheck(err)
 	}
 	if err != nil {
 		s.setAppUpdate(func(u *AppUpdate) { u.State, u.Error = UpdateError, err.Error() })

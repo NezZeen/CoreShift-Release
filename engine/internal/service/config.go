@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"net/netip"
 	"net/url"
@@ -177,6 +178,10 @@ type Config struct {
 	startApp         func(sessions []uint32) error
 	updateFirstCheck time.Duration
 	updateTick       time.Duration
+	// dialDirect makes the direct connections of viaProxyOrDirect and
+	// viaDirectOrProxy; retryDelay stands in for retryAfterConnectDelay.
+	dialDirect func(ctx context.Context, network, addr string) (net.Conn, error)
+	retryDelay time.Duration
 }
 
 // DefaultDataDir is where the daemon keeps its state.

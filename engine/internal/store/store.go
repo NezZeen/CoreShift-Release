@@ -22,6 +22,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"coreshift/engine/internal/fsutil"
@@ -165,9 +166,15 @@ type Options struct {
 	fetch func(ctx context.Context, url, userAgent string, legacyHWID bool) (subscription.Fetched, error)
 }
 
+// Via runs do with a client for one way to the panel, then with the next
+// way while do fails (Store.SetVia).
+type Via func(ctx context.Context, do func(*http.Client) error) error
+
 type Store struct {
 	path string
 	opts Options
+	// via is how fetches reach the panel; unset, directly with opts.Client.
+	via atomic.Pointer[Via]
 
 	fetchMu sync.Mutex // one refresh at a time; panels do not like bursts
 
@@ -203,12 +210,15 @@ func Open(path string, opts Options) (*Store, error) {
 	if opts.now == nil {
 		opts.now = time.Now
 	}
-	if opts.fetch == nil {
-		opts.fetch = func(ctx context.Context, url, ua string, legacyHWID bool) (subscription.Fetched, error) {
-			return subscription.FetchAs(ctx, opts.Client, url, ua, legacyHWID)
+	s := &Store{path: path, opts: opts, data: fileData{Version: fileVersion, Settings: Defaults()}}
+	if s.opts.fetch == nil {
+		s.opts.fetch = func(ctx context.Context, url, ua string, legacyHWID bool) (subscription.Fetched, error) {
+			if via := s.via.Load(); via != nil {
+				return FetchVia(ctx, *via, url, ua, legacyHWID)
+			}
+			return subscription.FetchAs(ctx, s.opts.Client, url, ua, legacyHWID)
 		}
 	}
-	s := &Store{path: path, opts: opts, data: fileData{Version: fileVersion, Settings: Defaults()}}
 
 	b, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -509,6 +519,38 @@ func (s *Store) Refresh(ctx context.Context, id string) (Subscription, error) {
 		return nil
 	})
 	return sub, errors.Join(fetchErr, err)
+}
+
+// SetVia makes subscriptions reach their panels through via (the service
+// adds the tunnel while it is up); nil goes back to Options.Client.
+func (s *Store) SetVia(via Via) {
+	if via == nil {
+		s.via.Store(nil)
+		return
+	}
+	s.via.Store(&via)
+}
+
+// FetchVia downloads a subscription as subscription.FetchAs does, trying
+// the ways via offers until one gets servers. A panel that told about the
+// subscription (its headers) answered, even with an error such as a
+// message instead of servers: another way would get the same.
+func FetchVia(ctx context.Context, via Via, rawURL, userAgent string, legacyHWID bool) (subscription.Fetched, error) {
+	var f subscription.Fetched
+	var answer error
+	err := via(ctx, func(c *http.Client) error {
+		var err error
+		f, err = subscription.FetchAs(ctx, c, rawURL, userAgent, legacyHWID)
+		if err != nil && len(f.Nodes) == 0 && f.Info == (subscription.Info{}) {
+			return err
+		}
+		answer = err
+		return nil
+	})
+	if err != nil {
+		return subscription.Fetched{}, err
+	}
+	return f, answer
 }
 
 // load fills sub's nodes from its URL or, when content is set, from content.
