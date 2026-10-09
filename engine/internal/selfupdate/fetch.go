@@ -28,24 +28,41 @@ var token string
 // HasToken reports whether this build can read the private releases.
 func HasToken() bool { return token != "" }
 
-// Source is where releases come from: a GitHub repository or a folder.
+// Source is where releases come from: a GitHub repository, a GitLab
+// project (the mirror, see MirrorSource) or a folder.
 type Source struct {
-	Repo string // OWNER/REPO
+	Repo string // OWNER/REPO; for GitLab the project's path, NAMESPACE/PROJECT
 	// Public: the repository is public and read without the token, which
 	// is then never sent (Linux builds have none, see PublicSource).
 	Public bool
+	// GitLab: Repo is a public project on gitlab.com (GitLabBase), read
+	// without any token.
+	GitLab bool
 	Dir    string
 }
 
-var repoRE = regexp.MustCompile(`^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$`)
+var (
+	repoRE = regexp.MustCompile(`^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$`)
+	// A GitLab project's path: a namespace, maybe with subgroups, and the
+	// project.
+	gitlabPathRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*){1,4}$`)
+)
 
 // ParseSource accepts "github:OWNER/REPO" (private, read with the token),
-// "github-public:OWNER/REPO" (public, read without it) or an absolute folder
-// path on this computer (not a network path). That the folder is reached
-// without links and on a local disk is checked each time it is read
-// (checkLocal): the folder may not exist yet when the setting is saved.
+// "github-public:OWNER/REPO" (public, read without it),
+// "gitlab-public:NAMESPACE/PROJECT" (a public project on gitlab.com) or an
+// absolute folder path on this computer (not a network path). That the
+// folder is reached without links and on a local disk is checked each time
+// it is read (checkLocal): the folder may not exist yet when the setting is
+// saved.
 func ParseSource(s string) (Source, error) {
 	s = strings.TrimSpace(s)
+	if path, ok := strings.CutPrefix(s, "gitlab-public:"); ok {
+		if !gitlabPathRE.MatchString(path) || strings.Contains(path, "..") {
+			return Source{}, fmt.Errorf("%q is not gitlab-public:NAMESPACE/PROJECT", s)
+		}
+		return Source{Repo: path, Public: true, GitLab: true}, nil
+	}
 	for _, p := range []struct {
 		prefix string
 		public bool
@@ -65,7 +82,7 @@ func ParseSource(s string) (Source, error) {
 	if filepath.IsAbs(s) {
 		return Source{Dir: filepath.Clean(s)}, nil
 	}
-	return Source{}, fmt.Errorf("%q is neither github:OWNER/REPO nor a full folder path", s)
+	return Source{}, fmt.Errorf("%q is neither github:OWNER/REPO, gitlab-public:NAMESPACE/PROJECT nor a full folder path", s)
 }
 
 // readLocal reads a file of a folder source, which must be on this
@@ -78,6 +95,9 @@ func readLocal(path string) ([]byte, error) {
 }
 
 func (s Source) String() string {
+	if s.GitLab {
+		return "gitlab-public:" + s.Repo
+	}
 	if s.Repo != "" && s.Public {
 		return "github-public:" + s.Repo
 	}
@@ -87,25 +107,42 @@ func (s Source) String() string {
 	return s.Dir
 }
 
+// Site names where s is, for the journal: "GitHub", "GitLab" or "папка".
+func (s Source) Site() string {
+	switch {
+	case s.GitLab:
+		return "GitLab"
+	case s.Repo != "":
+		return "GitHub"
+	}
+	return "папка"
+}
+
 // Release is a verified manifest and where its installer is.
 type Release struct {
 	Manifest
-	// Page is the release's page on GitHub, for downloading it by hand
-	// (Linux); empty for a folder. It is not signed, so it is only ever an
-	// address under the source repository's releases.
+	// Page is the release's page on GitHub or GitLab, for downloading it by
+	// hand (Linux); empty for a folder. It is not signed, so it is only
+	// ever an address under the source repository's releases.
 	Page      string
 	src       Source
-	installer string // the asset's API URL, or the file's path
+	installer string // the asset's API URL (GitHub), its link (GitLab), or the file's path
 }
+
+// Source is where the release was found.
+func (r Release) Source() Source { return r.src }
 
 // Check reads and verifies the manifest named manifest (see ManifestFor)
 // of the latest release.
 func Check(ctx context.Context, client *http.Client, src Source, manifest string, keys []string) (Release, error) {
 	var rel Release
 	var err error
-	if src.Dir != "" {
+	switch {
+	case src.Dir != "":
 		rel, err = checkDir(src, manifest, keys)
-	} else {
+	case src.GitLab:
+		rel, err = checkGitLab(ctx, client, src, manifest, keys)
+	default:
 		rel, err = checkGitHub(ctx, client, src, manifest, keys)
 	}
 	if err == nil && filepath.Ext(rel.Installer) != installerExt(manifest) {
@@ -192,7 +229,7 @@ func releaseAssets(ctx context.Context, client *http.Client, src Source, manifes
 		Assets     []asset `json:"assets"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(&releases); err != nil {
-		return nil, "", fmt.Errorf("check for updates: %w", err)
+		return nil, "", decodeError(err)
 	}
 	for _, rel := range releases {
 		if rel.Draft || rel.Prerelease {
@@ -244,7 +281,9 @@ func githubRequest(ctx context.Context, src Source, rawURL, accept string) (*htt
 }
 
 // do runs req, keeping addresses out of the error: asset downloads redirect
-// to signed URLs, which are credentials for a while.
+// to signed URLs, which are credentials for a while. Any failure here is
+// the source out of reach: no address for it, no connection, TLS cut off,
+// no answer in time.
 func do(client *http.Client, req *http.Request) (*http.Response, error) {
 	resp, err := client.Do(req)
 	if err != nil {
@@ -252,12 +291,83 @@ func do(client *http.Client, req *http.Request) (*http.Response, error) {
 		if errors.As(err, &ue) {
 			err = ue.Err
 		}
-		return nil, fmt.Errorf("check for updates: %w", err)
+		return nil, &unreachableError{fmt.Errorf("check for updates: %w", err)}
 	}
 	return resp, nil
 }
 
+// unreachableError is a source that could not be reached or would not
+// answer now: the network failed (see do), the connection broke mid-way,
+// or the server refused for the moment (403 and 429 rate limits, 5xx).
+// Another source may answer instead (Unreachable). A signature that does
+// not match, a release without the file, a 404 are answers, not this.
+type unreachableError struct{ err error }
+
+func (e *unreachableError) Error() string { return e.err.Error() }
+func (e *unreachableError) Unwrap() error { return e.err }
+
+// MarkUnreachable marks err as a source out of reach, for Unreachable: for
+// checks made outside this package, and tests.
+func MarkUnreachable(err error) error {
+	if err == nil {
+		return nil
+	}
+	return &unreachableError{err}
+}
+
+// Unreachable reports whether err is only a source out of reach, so that
+// another source, the mirror, may answer instead. Errors joined together
+// (the attempts through the proxy and directly) must all be: a real answer
+// on one way is the answer.
+func Unreachable(err error) bool {
+	for err != nil {
+		if m, ok := err.(interface{ Unwrap() []error }); ok {
+			errs := m.Unwrap()
+			for _, e := range errs {
+				if !Unreachable(e) {
+					return false
+				}
+			}
+			return len(errs) > 0
+		}
+		if _, ok := err.(*unreachableError); ok {
+			return true
+		}
+		err = errors.Unwrap(err)
+	}
+	return false
+}
+
+// decodeError is the error of a list of releases that did not decode: a
+// broken connection is the source out of reach, anything else what it
+// answered.
+func decodeError(err error) error {
+	var syntax *json.SyntaxError
+	var typ *json.UnmarshalTypeError
+	err = fmt.Errorf("check for updates: %w", err)
+	if errors.As(err, &syntax) || errors.As(err, &typ) {
+		return err
+	}
+	return &unreachableError{err}
+}
+
+// transient marks the statuses that say "not now" rather than "no": rate
+// limits and the server's own failures.
+func transient(code int, err error) error {
+	if code == http.StatusForbidden || code == http.StatusTooManyRequests || code >= 500 {
+		return &unreachableError{err}
+	}
+	return err
+}
+
 func statusError(resp *http.Response) error {
+	if resp.StatusCode == http.StatusOK {
+		return nil
+	}
+	return transient(resp.StatusCode, githubStatusError(resp))
+}
+
+func githubStatusError(resp *http.Response) error {
 	switch resp.StatusCode {
 	case http.StatusOK:
 		return nil
@@ -291,14 +401,33 @@ func fetchAsset(ctx context.Context, client *http.Client, src Source, apiURL str
 	if err := statusError(resp); err != nil {
 		return nil, err
 	}
-	b, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
+	return readLimited(resp.Body, limit)
+}
+
+// readLimited reads at most limit bytes of a small file: a manifest, its
+// signature.
+func readLimited(r io.Reader, limit int64) ([]byte, error) {
+	b, err := io.ReadAll(io.LimitReader(r, limit+1))
 	if err != nil {
-		return nil, fmt.Errorf("check for updates: %w", err)
+		return nil, &unreachableError{fmt.Errorf("check for updates: %w", err)}
 	}
 	if int64(len(b)) > limit {
 		return nil, errors.New("check for updates: file too large")
 	}
 	return b, nil
+}
+
+// readError marks what failed reading the download, not writing it.
+type readError struct{ error }
+
+type readMarker struct{ r io.Reader }
+
+func (m readMarker) Read(p []byte) (int, error) {
+	n, err := m.r.Read(p)
+	if err != nil && err != io.EOF {
+		err = readError{err}
+	}
+	return n, err
 }
 
 // Download saves the release's installer into dir, which only
@@ -346,6 +475,12 @@ func copyInstaller(ctx context.Context, client *http.Client, rel Release, w io.W
 			return fmt.Errorf("download update: %w", err)
 		}
 		r = f
+	} else if rel.src.GitLab {
+		body, err := gitlabOpen(ctx, client, rel.installer)
+		if err != nil {
+			return err
+		}
+		r = body
 	} else {
 		req, err := githubRequest(ctx, rel.src, rel.installer, "application/octet-stream")
 		if err != nil {
@@ -362,7 +497,12 @@ func copyInstaller(ctx context.Context, client *http.Client, rel Release, w io.W
 		r = resp.Body
 	}
 	defer r.Close()
-	n, err := io.Copy(w, io.LimitReader(r, rel.Size+1))
+	n, err := io.Copy(w, io.LimitReader(readMarker{r}, rel.Size+1))
+	var rerr readError
+	if errors.As(err, &rerr) && rel.src.Dir == "" {
+		// The connection broke or stalled: the source out of reach.
+		return &unreachableError{fmt.Errorf("download update: %w", rerr.error)}
+	}
 	if err != nil {
 		return fmt.Errorf("download update: %w", err)
 	}

@@ -54,3 +54,30 @@ jobs:
           git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
             commit -q -m "Rule sets $(date -u +%Y-%m-%dT%H:%MZ)"
           git push origin HEAD:refs/heads/rulesets
+
+      # The same files to the rulesets branch of the GitLab mirror, where
+      # devices that reach neither GitHub nor jsDelivr take them. Only with
+      # the GITLAB_TOKEN secret (a token of the GitLab project that may push
+      # to its repository); without it, skipped. The checkout is shallow,
+      # so GitLab gets one commit of the current files rather than the
+      # history; dated as the branch's last commit, it is the same commit
+      # while nothing changes, and the push does nothing.
+      - name: Mirror to GitLab
+        working-directory: out
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+          GITLAB_PROJECT: NezZeen/coreshift
+        run: |
+          if [ -z "$GITLAB_TOKEN" ]; then
+            echo "No GITLAB_TOKEN secret: the GitLab mirror is not updated."
+            exit 0
+          fi
+          if ! git rev-parse -q --verify HEAD >/dev/null; then
+            echo "Nothing published yet."
+            exit 0
+          fi
+          date=$(git log -1 --format=%cI)
+          commit=$(GIT_AUTHOR_NAME="CoreShift" GIT_AUTHOR_EMAIL="rulesets@coreshift.invalid" GIT_AUTHOR_DATE="$date" \
+            GIT_COMMITTER_NAME="CoreShift" GIT_COMMITTER_EMAIL="rulesets@coreshift.invalid" GIT_COMMITTER_DATE="$date" \
+            git commit-tree "HEAD^{tree}" -m "Rule sets $date")
+          git push --force -q "https://oauth2:${GITLAB_TOKEN}@gitlab.com/${GITLAB_PROJECT}.git" "$commit:refs/heads/rulesets"

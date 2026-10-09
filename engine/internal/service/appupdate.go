@@ -173,23 +173,108 @@ func (s *Service) RunAppUpdates(ctx context.Context) {
 	}
 }
 
-func (s *Service) checkAppUpdate(ctx context.Context) {
-	source := s.appUpdateSettings().Source
-	if source == "" {
-		source = selfupdate.DefaultSourceFor(runtime.GOOS)
+// updateSources are where releases are looked for, in turn: the source the
+// settings name, only it; else GitHub, then its mirror on GitLab for when
+// GitHub is out of reach (blocked or slowed down in Russia).
+func (s *Service) updateSources() ([]selfupdate.Source, error) {
+	names := []string{s.appUpdateSettings().Source}
+	if names[0] == "" {
+		names = []string{selfupdate.DefaultSourceFor(runtime.GOOS), selfupdate.MirrorSourceFor(runtime.GOOS)}
 	}
-	src, err := selfupdate.ParseSource(source)
+	var srcs []selfupdate.Source
+	for _, name := range names {
+		src, err := selfupdate.ParseSource(name)
+		if err != nil {
+			return nil, err
+		}
+		srcs = append(srcs, src)
+	}
+	return srcs, nil
+}
+
+// findRelease checks srcs in turn, each through the proxy, then directly:
+// the next one only when the last could not be reached at all
+// (selfupdate.Unreachable). What a source answered, an older version or a
+// signature that does not match, is the answer. It returns the release and
+// the index of the source that gave it; the journal tells of the mirror.
+func (s *Service) findRelease(ctx context.Context, srcs []selfupdate.Source) (selfupdate.Release, int, error) {
+	var errs []error
+	for i, src := range srcs {
+		var rel selfupdate.Release
+		err := s.viaProxyOrDirect(ctx, time.Minute, func(c *http.Client) error {
+			var err error
+			rel, err = s.cfg.checkRelease(ctx, c, src)
+			return err
+		})
+		if err == nil {
+			if i > 0 {
+				s.logUpdate(fmt.Sprintf("%s недоступен, проверено через %s", srcs[0].Site(), src.Site()))
+			}
+			return rel, i, nil
+		}
+		errs = append(errs, err)
+		if !selfupdate.Unreachable(err) || ctx.Err() != nil {
+			break
+		}
+	}
+	return selfupdate.Release{}, 0, sourcesError(srcs, errs)
+}
+
+// sourcesError tells each source's failure, the first one's alone when the
+// others were not asked.
+func sourcesError(srcs []selfupdate.Source, errs []error) error {
+	if len(errs) == 1 {
+		return errs[0]
+	}
+	err := errs[0]
+	for i, e := range errs[1:] {
+		err = fmt.Errorf("%w; %s: %w", err, srcs[i+1].Site(), e)
+	}
+	return err
+}
+
+// downloadUpdate downloads rel, found in srcs[0]. When that source cannot
+// be reached for it, the next one is checked and, if it has the very same
+// release, rel is downloaded from there.
+func (s *Service) downloadUpdate(ctx context.Context, srcs []selfupdate.Source, rel selfupdate.Release, dir string) (string, error) {
+	var path string
+	err := s.viaProxyOrDirect(ctx, appUpdateTimeout, func(c *http.Client) error {
+		var err error
+		path, err = s.cfg.downloadRelease(ctx, c, rel, dir)
+		return err
+	})
+	if err == nil || len(srcs) < 2 || !selfupdate.Unreachable(err) || ctx.Err() != nil {
+		return path, err
+	}
+	var other selfupdate.Release
+	if s.viaProxyOrDirect(ctx, time.Minute, func(c *http.Client) error {
+		var err error
+		other, err = s.cfg.checkRelease(ctx, c, srcs[1])
+		return err
+	}) != nil || other.Version != rel.Version || other.Build != rel.Build || other.SHA256 != rel.SHA256 || other.Size != rel.Size {
+		return "", err
+	}
+	path, oerr := s.downloadUpdate(ctx, srcs[1:], other, dir)
+	if oerr != nil {
+		return "", fmt.Errorf("%w; %s: %w", err, srcs[1].Site(), oerr)
+	}
+	s.logUpdate(fmt.Sprintf("%s недоступен, обновление скачано через %s", srcs[0].Site(), srcs[1].Site()))
+	return path, nil
+}
+
+// logUpdate notes in the journal how the update was had.
+func (s *Service) logUpdate(line string) {
+	s.hub.publish(Event{Kind: "action", Source: "обновления", Line: line})
+}
+
+func (s *Service) checkAppUpdate(ctx context.Context) {
+	srcs, err := s.updateSources()
 	if err != nil {
 		s.setAppUpdate(func(u *AppUpdate) { u.State, u.Error = UpdateError, err.Error() })
 		return
 	}
 	s.setAppUpdate(func(u *AppUpdate) { u.State, u.Error = UpdateChecking, "" })
-	var rel selfupdate.Release
-	err = s.viaProxyOrDirect(ctx, time.Minute, func(c *http.Client) error {
-		var err error
-		rel, err = s.cfg.checkRelease(ctx, c, src)
-		return err
-	})
+	rel, from, err := s.findRelease(ctx, srcs)
 	s.noteUpdateCheck(err)
 	now := time.Now()
 	if err != nil {
@@ -222,11 +307,7 @@ func (s *Service) checkAppUpdate(ctx context.Context) {
 	}
 	var path string
 	if err == nil {
-		err = s.viaProxyOrDirect(ctx, appUpdateTimeout, func(c *http.Client) error {
-			var err error
-			path, err = s.cfg.downloadRelease(ctx, c, rel, dir)
-			return err
-		})
+		path, err = s.downloadUpdate(ctx, srcs[from:], rel, dir)
 		s.noteUpdateCheck(err)
 	}
 	if err != nil {

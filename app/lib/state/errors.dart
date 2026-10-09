@@ -123,6 +123,8 @@ String humanError(String raw) {
   if (has('no token for the private releases')) return 'Эта сборка собрана без доступа к обновлениям: новые версии ставьте установщиком.';
   if (has('releases token is invalid or expired')) return 'Доступ к обновлениям истёк. Установите новую версию CoreShift вручную.';
   if (has('no release found, or the token has no access')) return 'Обновлений не найдено: версии ещё не выложены или нет доступа к ним.';
+  // GitHub out of reach, and its mirror on GitLab too (appupdate.go).
+  if (has('; gitlab: ')) return 'Не удалось проверить обновления: нет связи ни с GitHub, ни с зеркалом на GitLab. CoreShift проверит ещё раз позже.';
   if (has('github rate limit')) return 'GitHub временно ограничил проверки обновлений с этого адреса. CoreShift проверит ещё раз позже.';
   if (has('update signature')) return 'Обновление отклонено: его подпись не совпадает. Устанавливаются только проверенные версии.';
   if (has('did not install')) return 'Обновление не установилось. Попробуйте кнопкой «Установить сейчас» или поставьте версию вручную.';

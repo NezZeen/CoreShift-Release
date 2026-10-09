@@ -474,7 +474,7 @@ class AppState extends ChangeNotifier {
       ((appUpdate.state == 'ready' && (platform.isAndroid || appUpdate.waiting || !setting('app_update.auto', true))) || appUpdate.state == 'available');
 
   /// Opens the page of an announced update (Linux) in the browser; false
-  /// when there is none or it could not be opened. Only GitHub release
+  /// when there is none or it could not be opened. Only GitHub (or GitLab mirror) release
   /// pages, which the daemon has checked too.
   Future<bool> openUpdatePage() async {
     final url = appUpdate.url;

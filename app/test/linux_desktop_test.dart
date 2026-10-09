@@ -44,7 +44,16 @@ void main() {
   test('an announced update may open only a GitHub release page', () {
     expect(isReleasePage('https://github.com/NezZeen/CoreShift-Release/releases/tag/v0.7.0'), isTrue);
     expect(isReleasePage('https://github.com/NezZeen/CoreShift-Release/releases'), isTrue);
+    // The mirror on GitLab, where the service found the release when
+    // GitHub was out of reach.
+    expect(isReleasePage('https://gitlab.com/NezZeen/coreshift/-/releases/v0.9.0'), isTrue);
+    expect(isReleasePage('https://gitlab.com/NezZeen/coreshift/-/releases'), isTrue);
     for (final bad in [
+      'https://gitlab.com/NezZeen/coreshift/-/raw/main/x',
+      'https://gitlab.com/NezZeen/coreshift/-/releases/v1?x=1',
+      'https://gitlab.com.evil.example/o/r/-/releases/v1',
+      'http://gitlab.com/o/r/-/releases/v1',
+      'https://gitlab.com/o/r/-/releases/../../x',
       'http://github.com/o/r/releases/tag/v1',
       'https://github.com.evil.example/o/r/releases/tag/v1',
       'https://user@github.com/o/r/releases/tag/v1',
