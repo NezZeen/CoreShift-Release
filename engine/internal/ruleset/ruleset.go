@@ -1,6 +1,9 @@
-// Package ruleset keeps the rule sets (sing-box .srs) behind the "Russian
-// sites direct" preset trustworthy without pinning them, since SagerNet
-// updates them every few days.
+// Package ruleset keeps the rule sets (sing-box .srs) behind the presets
+// ("Russian sites direct", "block ads") trustworthy without pinning them,
+// since SagerNet updates them every few days. Two come out of
+// runetfreedom's v2ray list instead (DatSource) and are refreshed only
+// with releases. The package also converts categories of v2ray's lists
+// into rule sets (FromDat), for those and the user's own rules.
 //
 // CoreShift carries a copy of each set, downloaded when it was released
 // (coreshift-release rulesets) and so as trustworthy as the release: the
@@ -16,7 +19,7 @@
 //
 // What this cannot see: a few names or networks added to a set within those
 // bounds. Those would go direct (or, for the proxy sets, through the
-// tunnel) until the source is fixed; the built-in copies of the next
+// tunnel, and for the ad set nowhere) until the source is fixed; the built-in copies of the next
 // release are checked against the previous ones before they are taken.
 package ruleset
 
@@ -118,9 +121,43 @@ const (
 	SagerNetGeoIP   = "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-{name}.srs"
 )
 
+// RunetFreedomDat is runetfreedom's v2ray list (russia-blocked-geosite,
+// branch release), with a .sha256sum next to it: v2fly's categories, its
+// own lists of sites blocked in Russia (ru-blocked) and a fuller ad list
+// (category-ads-all: v2fly's, AdGuard DNS filter, Peter Lowe's). It
+// publishes no rule sets.
+const RunetFreedomDat = "https://raw.githubusercontent.com/runetfreedom/russia-blocked-geosite/release/geosite.dat"
+
+// fromDat are the sets CoreShift carries taken out of a v2ray list, by
+// category: coreshift-release rulesets makes them, the service never
+// downloads the whole list for them (they are refreshed by releases).
+var fromDat = map[string]string{
+	"geosite-ru-blocked":       "ru-blocked",
+	"geosite-category-ads-all": "category-ads-all",
+}
+
+// DatSource returns the v2ray list and the category tag is made of, if it
+// is made so (URL returns the list then).
+func DatSource(tag string) (list, category string, ok bool) {
+	category, ok = fromDat[tag]
+	if !ok {
+		return "", "", false
+	}
+	return RunetFreedomDat, category, true
+}
+
+// Known returns the sets CoreShift is meant to carry: those of Tags, and
+// any added since the copies were last downloaded (coreshift-release
+// rulesets downloads them).
+func Known() []string { return slices.Sorted(maps.Keys(expects)) }
+
 // URL returns where tag is downloaded from: SagerNet's sing-geoip for the
-// geoip sets, sing-geosite for the rest.
+// geoip sets, sing-geosite for the rest; for a set made out of a v2ray
+// list (DatSource), the list.
 func URL(tag string) string {
+	if list, _, ok := DatSource(tag); ok {
+		return list
+	}
 	if IsIP(tag) {
 		return strings.Replace(SagerNetGeoIP, "{name}", strings.TrimPrefix(tag, "geoip-"), 1)
 	}
@@ -171,6 +208,19 @@ var expects = map[string]expect{
 		match: []string{"google.com", "www.google.com", "google.ru", "youtube.com", "www.youtube.com", "googlevideo.com",
 			"ytimg.com", "gstatic.com", "googleapis.com", "android.com"},
 		avoid: []string{"yandex.ru", "vk.com", "gosuslugi.ru"},
+	},
+	// Blocked outright when the user blocks ads: it must not take the
+	// sites people use, only their ad and tracking servers.
+	"geosite-category-ads-all": {
+		match: []string{"doubleclick.net"},
+		avoid: []string{"google.com", "www.google.com", "youtube.com", "www.youtube.com", "googlevideo.com",
+			"yandex.ru", "ya.ru", "vk.com", "mail.ru", "gosuslugi.ru", "sberbank.ru", "github.com", "wikipedia.org"},
+	},
+	// Through the tunnel: what it takes from the Russian preset's direct
+	// lists must be blocked there, not services that work at home.
+	"geosite-ru-blocked": {
+		match: []string{"meduza.io", "linkedin.com"},
+		avoid: []string{"yandex.ru", "ya.ru", "vk.com", "gosuslugi.ru", "sberbank.ru", "mail.ru", "google.com"},
 	},
 }
 

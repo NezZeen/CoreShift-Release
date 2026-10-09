@@ -87,6 +87,43 @@ func TestURL(t *testing.T) {
 	if got := URL("geosite-google"); got != "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-google.srs" {
 		t.Error(got)
 	}
+	if got := URL("geosite-ru-blocked"); got != "https://raw.githubusercontent.com/runetfreedom/russia-blocked-geosite/release/geosite.dat" {
+		t.Error(got)
+	}
+	// Every set carried is known, and so checked.
+	for _, tag := range Tags() {
+		if !slices.Contains(Known(), tag) {
+			t.Errorf("%s is carried, not known", tag)
+		}
+	}
+	for _, tag := range []string{"geosite-category-ads-all", "geosite-ru-blocked"} {
+		if !slices.Contains(Known(), tag) {
+			t.Errorf("%s not known", tag)
+		}
+	}
+}
+
+// The checks of the sets CoreShift has no copy of yet, on made-up ones.
+func TestNewSetsChecked(t *testing.T) {
+	names := func(n ...string) []byte {
+		return encode(t, option.PlainRuleSet{Rules: []option.HeadlessRule{{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultHeadlessRule{DomainSuffix: n}}}})
+	}
+	if err := Check("geosite-category-ads-all", names("doubleclick.net", "googleadservices.com", "adfox.ru")); err != nil {
+		t.Error(err)
+	}
+	for _, bad := range []string{"youtube.com", "vk.com", "yandex.ru", "gosuslugi.ru"} {
+		if err := Check("geosite-category-ads-all", names("doubleclick.net", "googleadservices.com", bad)); err == nil {
+			t.Errorf("an ad list with %s taken", bad)
+		}
+	}
+	if err := Check("geosite-ru-blocked", names("meduza.io", "linkedin.com")); err != nil {
+		t.Error(err)
+	}
+	for _, bad := range []string{"sberbank.ru", "vk.com", "gosuslugi.ru"} {
+		if err := Check("geosite-ru-blocked", names("meduza.io", "linkedin.com", bad)); err == nil {
+			t.Errorf("a blocked list with %s taken", bad)
+		}
+	}
 }
 
 func TestUpdateAccepted(t *testing.T) {

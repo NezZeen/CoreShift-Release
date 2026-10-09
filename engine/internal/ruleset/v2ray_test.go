@@ -183,6 +183,23 @@ func TestFromDatGeosite(t *testing.T) {
 	}
 }
 
+func TestCheckDat(t *testing.T) {
+	if err := CheckDat(testSites); err != nil {
+		t.Error(err)
+	}
+	for name, b := range map[string][]byte{
+		"html":      []byte("<html>rate limited</html>"),
+		"truncated": testSites[:len(testSites)/2],
+		"empty":     nil,
+		"no name":   list(geoSite("")),
+		"rule set":  []byte("SRS\x01\x02\x03"),
+	} {
+		if err := CheckDat(b); err == nil {
+			t.Errorf("%s: taken", name)
+		}
+	}
+}
+
 func TestFromDatErrors(t *testing.T) {
 	cases := []struct {
 		dat  []byte

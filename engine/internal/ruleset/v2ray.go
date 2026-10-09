@@ -94,6 +94,33 @@ func FromDat(dat []byte, ip bool, name string) ([]byte, error) {
 	return b, nil
 }
 
+// CheckDat reports whether dat reads as a v2ray list with a category at
+// least: a newer download replaces an older one only so.
+func CheckDat(dat []byte) error {
+	if len(dat) > MaxDatSize {
+		return errors.New("list too large")
+	}
+	n := 0
+	err := fields(dat, func(num protowire.Number, typ protowire.Type, v []byte) error {
+		if num != 1 || typ != protowire.BytesType {
+			return errors.New("not a v2ray list")
+		}
+		code, err := entryCode(v)
+		if err == nil && code == "" {
+			err = errors.New("a category without a name")
+		}
+		n++
+		return err
+	})
+	if err != nil {
+		return fmt.Errorf("damaged list: %w", err)
+	}
+	if n == 0 {
+		return errors.New("empty list")
+	}
+	return nil
+}
+
 // fields calls f with every field of the message b, stopping at its first
 // error.
 func fields(b []byte, f func(num protowire.Number, typ protowire.Type, v []byte) error) error {
