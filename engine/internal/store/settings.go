@@ -85,6 +85,14 @@ type Routing struct {
 	// RussiaDirect sends Russian sites direct: the .ru, .su and .рф domains,
 	// Russian services on other domains and servers located in Russia.
 	RussiaDirect bool `json:"russia_direct"`
+	// RussiaAbroad sends RussiaDirect's sites direct only where their
+	// servers are in Russia (geoip-ru): one hosted abroad goes through the
+	// VPN. On by default, also for settings saved before it existed.
+	RussiaAbroad bool `json:"russia_abroad"`
+	// BlockAds refuses ads and trackers (geosite-category-ads-all), in both
+	// modes, ahead of every list but the user's Rules. On by default, also
+	// for settings saved before it existed.
+	BlockAds bool `json:"block_ads"`
 	// DirectDomains are domain suffixes that bypass the tunnel, e.g. "ru"
 	// or "bank.example". Internationalized names must be in punycode.
 	DirectDomains []string `json:"direct_domains"`
@@ -112,6 +120,39 @@ type Routing struct {
 	// it, having DirectApps and ProxyApps.
 	AppFilter  string   `json:"app_filter"`
 	FilterApps []string `json:"filter_apps"`
+
+	// Rules are the user's own rules, in order: the first that matches
+	// decides, ahead of the lists above and the Russian preset (only the
+	// block list, the apps' lists and the local network come first), in
+	// both modes. Like the lists, they work in TUN mode only.
+	Rules []Rule `json:"rules"`
+	// Geo is where the categories of Rules come from.
+	Geo GeoSource `json:"geo"`
+}
+
+// Rule is one of the user's rules. Match is "geosite:<category>" (names,
+// "category-ads-all", "google@cn"), "geoip:<code>" (addresses, "ru"), a
+// domain with its subdomains, or an address or subnet; Action is
+// RuleProxy, RuleDirect or RuleBlock.
+type Rule struct {
+	Match  string `json:"match"`
+	Action string `json:"action"`
+}
+
+// GeoSource is where geosite and geoip categories come from.
+type GeoSource struct {
+	// Source is GeoSagerNet, GeoRunetFreedom or GeoCustom.
+	Source string `json:"source"`
+	// GeositeURL and GeoIPURL are the custom source: an https link with
+	// {name} in it, one rule set (.srs) per category, or a link to a
+	// v2ray list (geosite.dat, geoip.dat) with them all. Empty, that kind
+	// comes from SagerNet. Kept while another source is chosen.
+	GeositeURL string `json:"geosite_url"`
+	GeoIPURL   string `json:"geoip_url"`
+	// Presets takes the lists of the presets (RussiaDirect, BlockAds) from
+	// the source too, when it is not SagerNet; the built-in copies stand
+	// in for those that cannot be had.
+	Presets bool `json:"presets"`
 }
 
 type UpdateSettings struct {
@@ -145,6 +186,14 @@ const (
 	AppsAll     = "all"
 	AppsExclude = "exclude"
 	AppsOnly    = "only"
+
+	RuleProxy  = "proxy"
+	RuleDirect = "direct"
+	RuleBlock  = "block"
+
+	GeoSagerNet     = "sagernet"
+	GeoRunetFreedom = "runetfreedom"
+	GeoCustom       = "custom"
 )
 
 // Defaults returns the settings of a fresh install.
@@ -169,10 +218,14 @@ func Defaults() Settings {
 		},
 		Routing: Routing{
 			Mode:          RouteAll,
+			BlockAds:      true,
+			RussiaAbroad:  true,
 			DirectDomains: []string{}, DirectApps: []string{}, DirectIPs: []string{},
 			ProxyDomains: []string{}, ProxyIPs: []string{}, ProxyApps: []string{},
 			AppFilter: AppsAll, FilterApps: []string{},
 			BlockDomains: []string{},
+			Rules:        []Rule{},
+			Geo:          GeoSource{Source: GeoSagerNet},
 		},
 		Updates:   UpdateSettings{Auto: true, IntervalHours: 12},
 		AppUpdate: AppUpdate{Auto: true},
@@ -279,6 +332,10 @@ func (s Settings) normalize() (Settings, error) {
 	r.DirectIPs, err = normalizeList("routing.direct_ips", r.DirectIPs, maxRules, normalizeIP, sameString)
 	errs = append(errs, err)
 	r.ProxyIPs, err = normalizeList("routing.proxy_ips", r.ProxyIPs, maxRules, normalizeIP, sameString)
+	errs = append(errs, err)
+	r.Rules, err = normalizeRules(r.Rules)
+	errs = append(errs, err)
+	r.Geo, err = normalizeGeo(r.Geo)
 	errs = append(errs, err)
 
 	s.Updates.UserAgent = strings.TrimSpace(s.Updates.UserAgent)
