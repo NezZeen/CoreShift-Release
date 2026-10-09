@@ -1,9 +1,11 @@
 <div align="center">
 
+🇷🇺 **Русский** | 🇺🇸 [English](README.en.md)
+
 # CoreShift
 
 [![Скачать для Windows](https://img.shields.io/badge/Windows-скачать-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/NezZeen/CoreShift-Release/releases/latest/download/CoreShift-Setup.exe)
-[![Скачать для Linux](https://img.shields.io/badge/Linux-скачать-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://github.com/NezZeen/CoreShift-Release#linux)
+[![Скачать для Linux](https://img.shields.io/badge/Linux-скачать-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://github.com/NezZeen/CoreShift-Release/releases/latest)
 [![Скачать для Android](https://img.shields.io/badge/Android-скачать%20APK-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/NezZeen/CoreShift-Release/releases/latest/download/CoreShift.apk)
 
 [![Последняя версия](https://img.shields.io/github/v/release/NezZeen/CoreShift-Release?label=версия&color=6D8CFF)](https://github.com/NezZeen/CoreShift-Release/releases/latest)
@@ -16,7 +18,7 @@ VPN-клиент для подписок на Windows, Linux и Android. Он с
 
 Внутри три прокси-ядра — **Xray, sing-box и mihomo**. Если текущее ядро упало, не приняло конфиг или перестало пропускать трафик, CoreShift переключается на следующее, а туннель и DNS при этом не пересоздаются, и соединения у программ не рвутся.
 
-Готовые сборки и описание для пользователей — в публичном репозитории [NezZeen/CoreShift-Release](https://github.com/NezZeen/CoreShift-Release). Чат: [t.me/CoreShift_app](https://t.me/CoreShift_app).
+Готовые сборки для Windows, Linux и Android — на странице [Releases](https://github.com/NezZeen/CoreShift-Release/releases). Чат: [t.me/CoreShift_app](https://t.me/CoreShift_app).
 
 ## Что умеет клиент
 
