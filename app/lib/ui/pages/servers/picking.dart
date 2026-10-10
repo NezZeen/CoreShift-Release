@@ -154,10 +154,11 @@ class _Picking extends ChangeNotifier {
   }
 
   /// «Скорость»: the picked servers are tested, the picking ends.
-  void testSpeed(BuildContext context) {
+  void testSpeed() {
     final rows = pickedRows;
     cancel();
-    _startSpeedTest(context, s, rows);
+    // The page's context: the bar the button was on is gone by now.
+    _startSpeedTest(page.context, s, rows);
   }
 
   /// «Удалить из подписки»: the picked servers leave their lists at once,
@@ -309,7 +310,7 @@ class _PickBar extends StatelessWidget {
             icon: Icons.download_rounded,
             small: true,
             tooltip: 'Проверить скорость скачивания выбранных серверов',
-            onPressed: n == 0 || picking.s.testingSpeed || picking.s.testingLatency ? null : () => picking.testSpeed(context),
+            onPressed: n == 0 || picking.s.testingSpeed || picking.s.testingLatency ? null : picking.testSpeed,
           );
     final box = BoxDecoration(
       color: accent.withValues(alpha: .08),
@@ -340,10 +341,7 @@ class _PickBar extends StatelessWidget {
             const SizedBox(height: 2),
             Align(
               alignment: Alignment.centerLeft,
-              child: Padding(
-                padding: const EdgeInsets.only(left: 6),
-                child: delete,
-              ),
+              child: Padding(padding: const EdgeInsets.only(left: 6), child: delete),
             ),
           ],
         ),

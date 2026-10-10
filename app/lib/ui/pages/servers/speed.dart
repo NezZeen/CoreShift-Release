@@ -63,7 +63,7 @@ class _PingSpeedCell extends StatelessWidget {
     }
     return Row(
       children: [
-        SizedBox(width: 84, child: ping),
+        SizedBox(width: 104, child: ping),
         Expanded(child: speed),
       ],
     );
@@ -85,7 +85,7 @@ class _PingSpeedHeader extends StatelessWidget {
     if (!state.speedSupported) return ping;
     return Row(
       children: [
-        SizedBox(width: 84, child: ping),
+        SizedBox(width: 104, child: ping),
         Expanded(
           child: Tooltip(
             message: 'Скорость скачивания через сервер: зелёный — от ${speedGoodMbps.round()} Мбит/с, жёлтый — от ${speedFairMbps.round()}',

@@ -33,7 +33,7 @@ class _NodeTable extends StatelessWidget {
     // The columns need about 600 points; narrower, the rows become a list.
     return LayoutBuilder(
       builder: (context, c) {
-        final narrow = isCompact(context) || c.maxWidth < 680;
+        final narrow = isCompact(context) || c.maxWidth < 720;
         return Column(
           children: [
             _row(
@@ -155,7 +155,7 @@ class _NodeTable extends StatelessWidget {
             flex: 10,
             child: Align(alignment: Alignment.centerLeft, child: proto),
           ),
-          SizedBox(width: 176, child: ping),
+          SizedBox(width: 196, child: ping),
           // As tall as the "Подключить" button that shows under the pointer:
           // a row that grew when hovered would shift the rows below it and
           // jerk the list as the pointer moves.
