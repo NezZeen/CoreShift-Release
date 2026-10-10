@@ -62,6 +62,10 @@ func (g *Gate) serveHTTP(s *session, core func() (net.Conn, error)) {
 	if err != nil {
 		return
 	}
+	if isProbe(req) {
+		answerProbe(c)
+		return
+	}
 	if !g.httpAllowed(req) {
 		httpError(c, http.StatusProxyAuthRequired, "Proxy-Authenticate: Basic realm=\""+proxyRealm+"\"\r\n")
 		return

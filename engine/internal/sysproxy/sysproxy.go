@@ -35,10 +35,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"net/netip"
 	"slices"
 	"time"
+
+	"coreshift/engine/internal/socksgate"
 )
 
 // Settings are one backend's proxy settings, key → value in the backend's
@@ -108,7 +109,8 @@ type Manager struct {
 	Backends []Backend
 	// Autostart, if set, restores at the next sign-in.
 	Autostart Autostart
-	// Alive reports whether something listens at addr; nil dials it.
+	// Alive reports whether CoreShift's gate listens at addr; nil asks it
+	// (socksgate.IsGate).
 	Alive func(addr string) bool
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
@@ -125,12 +127,9 @@ func (m *Manager) alive(addr string) bool {
 	if m.Alive != nil {
 		return m.Alive(addr)
 	}
-	c, err := net.DialTimeout("tcp", addr, time.Second)
-	if err != nil {
-		return false
-	}
-	c.Close()
-	return true
+	// Not merely a port that answers: another program may have taken it
+	// while CoreShift was down.
+	return socksgate.IsGate(addr, 2*time.Second)
 }
 
 func (m *Manager) backend(name string) Backend {
