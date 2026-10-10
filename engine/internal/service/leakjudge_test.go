@@ -162,6 +162,30 @@ func TestLeakJudge(t *testing.T) {
 			want:  leakOK,
 			roles: []string{leakRoleVPN},
 		},
+		// bash.ws puts the server in Germany, the other services agree it is in
+		// Russia: a resolver in Russia is then on the server's side.
+		"the exit is where the services agree, not where bash.ws says": {
+			r: LeakResult{Exit: de, Home: home, DNS: []LeakHost{
+				{IP: "17", Country: "ru", Org: "AS64501 Some ISP", ASN: 64501, Path: "system"},
+			}},
+			judge: leakJudge{exitCountry: "ru"},
+			want:  leakOK,
+			roles: []string{leakRoleVPN},
+		},
+		"a resolver where bash.ws puts the server stays on its side": {
+			r: LeakResult{Exit: de, Home: home, DNS: []LeakHost{
+				{IP: "18", Country: "de", Org: "Some Hosting", Path: "system"},
+			}},
+			judge: leakJudge{exitCountry: "ru"},
+			want:  leakOK,
+			roles: []string{leakRoleVPN},
+		},
+		"the network's DNS is the ISP's wherever the exit is": {
+			r:     LeakResult{Exit: de, Home: home, DNS: []LeakHost{{IP: "192.0.2.1", Country: "ru", Path: "system"}}},
+			judge: leakJudge{exitCountry: "ru", network: netip.MustParseAddr("192.0.2.1")},
+			want:  leakFound,
+			roles: []string{leakRoleISP},
+		},
 		"an unknown resolver elsewhere is neutral": {
 			r: LeakResult{Exit: ua, Home: home, DNS: []LeakHost{
 				{IP: "15", Country: "nl", Org: "Other Hosting", Path: "system"},
@@ -228,7 +252,7 @@ func TestJudgeLeakAsksNobody(t *testing.T) {
 		{IP: "192.0.2.1", Country: "de", Org: "Hosting", Path: "system"},
 		{IP: "1", Country: "de", Org: "AS64501 Home ISP", ASN: 64501, Path: "system"},
 	}}
-	s.judgeLeak(&r)
+	s.leakJudge().apply(&r)
 	if r.Verdict != leakFound || r.DNS[0].Role != leakRoleISP || r.DNS[1].Role != leakRoleVPN {
 		t.Errorf("result = %+v", r)
 	}

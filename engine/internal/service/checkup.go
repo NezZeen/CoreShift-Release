@@ -631,8 +631,7 @@ func (s *Service) checkLeak(ctx context.Context, st Status) CheckStep {
 	}
 	ctx, cancel := context.WithTimeout(ctx, checkupLeakFor)
 	defer cancel()
-	// The checkup says nothing of where the exit is: no second geolocation.
-	res, err := s.leakTest(ctx, false)
+	res, err := s.LeakTest(ctx)
 	if err != nil {
 		if errors.Is(err, supervisor.ErrNotConnected) {
 			return skipStep(notConnected)

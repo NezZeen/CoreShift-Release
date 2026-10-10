@@ -147,11 +147,17 @@ type leakJudge struct {
 	remote string
 	// network is the DNS server the network gave (invalid when not known).
 	network netip.Addr
+	// exitCountry is the country the geolocation services agree the VPN
+	// server is in, when it is not the one bash.ws gave (lower case).
+	exitCountry string
 }
 
 // classify says whose a DNS server is; empty when nothing is known.
 func (j leakJudge) classify(r *LeakResult, d LeakHost, own *dnsProvider) string {
 	exit := r.Exit.Country
+	if j.exitCountry != "" {
+		exit = j.exitCountry
+	}
 	home := ""
 	if r.Home != nil {
 		home = strings.ToLower(r.Home.Country)
@@ -167,7 +173,7 @@ func (j leakJudge) classify(r *LeakResult, d LeakHost, own *dnsProvider) string 
 		return leakRoleISP
 	case d.Path == "proxy":
 		return leakRoleVPN
-	case d.Country != "" && d.Country == exit:
+	case d.Country != "" && (d.Country == exit || d.Country == r.Exit.Country):
 		return leakRoleVPN
 	}
 	return ""
@@ -240,14 +246,14 @@ func (r LeakResult) ownDNS() bool {
 	return false
 }
 
-// judgeLeak gives r its verdict from what bash.ws reported and what the
-// service knows of the network.
-func (s *Service) judgeLeak(r *LeakResult) {
+// leakJudge is what the service knows of the network and of the DNS set for
+// the tunnel, for the verdict.
+func (s *Service) leakJudge() leakJudge {
 	s.mu.Lock()
 	j := leakJudge{remote: s.connOpts.DNS.Remote, network: s.autoDNS}
 	s.mu.Unlock()
 	if j.remote == "" {
 		j.remote = s.Options().DNS.Remote
 	}
-	j.apply(r)
+	return j
 }

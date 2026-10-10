@@ -1200,15 +1200,42 @@ class DemoBackend implements Backend {
   /// should, to the DNS the user chose: AdGuard, whose resolvers answer
   /// apps from Germany while the VPN server is in the Netherlands (no leak),
   /// and the server's own resolvers look up the names of connections. The
-  /// exit address is in the Netherlands for bash.ws and in Germany for the
-  /// second geolocation service (the two disagree, as they often do).
+  /// exit address is in the Netherlands for bash.ws and one more service and
+  /// in Germany for three (the databases disagree, as they often do).
   static Future<Json> leakSample() async {
     await Future.delayed(const Duration(milliseconds: 1200));
     return {
       'server': 'Amsterdam',
       'server_ip': '203.0.113.40',
       'exit': {'ip': '203.0.113.40', 'country': 'nl', 'country_name': 'Netherlands', 'org': 'Example Hosting'},
-      'exit_geo': {'source': 'ipwho.is', 'country': 'de', 'country_name': 'Germany', 'city': 'Frankfurt am Main', 'org': 'Example Hosting'},
+      'exit_geo': {
+        'country': 'de',
+        'country_name': 'Germany',
+        'city': 'Frankfurt am Main',
+        'org': 'Example Hosting',
+        'votes': 3,
+        'total': 5,
+        'groups': [
+          {
+            'country': 'de',
+            'country_name': 'Germany',
+            'sources': ['ipwho.is', 'ipinfo.io', 'geojs.io'],
+          },
+          {
+            'country': 'nl',
+            'country_name': 'Netherlands',
+            'sources': ['bash.ws', 'freeipapi'],
+          },
+        ],
+        'sources': [
+          {'name': 'bash.ws', 'ok': true, 'country': 'nl', 'country_name': 'Netherlands', 'org': 'Example Hosting'},
+          {'name': 'ipwho.is', 'ok': true, 'country': 'de', 'city': 'Frankfurt am Main', 'org': 'Example Hosting'},
+          {'name': 'ipinfo.io', 'ok': true, 'country': 'de', 'city': 'Frankfurt am Main', 'org': 'Example Hosting'},
+          {'name': 'geojs.io', 'ok': true, 'country': 'de', 'city': 'Frankfurt', 'org': 'EXAMPLE-HOSTING'},
+          {'name': 'freeipapi', 'ok': true, 'country': 'nl', 'city': 'Amsterdam', 'org': 'Example Hosting'},
+          {'name': 'ipapi.co', 'ok': false},
+        ],
+      },
       'dns': [
         {'ip': '94.140.14.1', 'country': 'de', 'country_name': 'Germany', 'org': 'DataCamp Limited', 'path': 'system', 'role': 'own'},
         {'ip': '94.140.14.2', 'country': 'de', 'country_name': 'Germany', 'org': 'DataCamp Limited', 'path': 'system', 'role': 'own'},

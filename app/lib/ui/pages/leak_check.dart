@@ -27,7 +27,7 @@ class LeakCheck extends StatelessWidget {
           first: first,
           title: 'Проверка утечки DNS',
           description: ready
-              ? 'Узнать, видит ли провайдер ваши DNS-запросы. Проверка идёт через туннель, как у приложений. Использует сервис bash.ws; страну адреса VPN-сервера (не вашего) уточняет ещё ipwho.is'
+              ? 'Узнать, видит ли провайдер ваши DNS-запросы. Проверка идёт через туннель, как у приложений. Использует сервис bash.ws; страну адреса VPN-сервера (не вашего) сверяет ещё с несколькими сервисами: ipwho.is, ipinfo.io и другими'
               : 'Подключитесь в режиме «Все приложения», чтобы проверить',
           trailing: Btn(label: 'Проверить DNS', icon: Icons.policy_outlined, loading: state.leakTesting, onPressed: ready ? state.runLeakTest : null),
         ),
@@ -108,8 +108,6 @@ class LeakResultCard extends StatelessWidget {
           if (d.country.isNotEmpty) countryName(d.country),
       },
     ].join(', ');
-    // «Россия, Москва»: the country in Russian and the city, if the service gave one.
-    String geoPlace(LeakGeo g) => [countryName(g.country), cityName(g.city)].where((s) => s.isNotEmpty).join(', ');
     final appsTitle = 'DNS, которым пользуются приложения (через VPN)${report.provider.isEmpty ? '' : ' — ${report.provider}'}';
 
     final (color, icon, title, text) = switch (verdict) {
@@ -155,6 +153,7 @@ class LeakResultCard extends StatelessWidget {
         if (d.path == 'proxy') d,
     ];
     final home = report.home;
+    final geo = report.exitGeo;
     final differ = !report.bypassed && report.exitCountriesDiffer;
     return _Box(
       color: color,
@@ -166,14 +165,17 @@ class LeakResultCard extends StatelessWidget {
         if (report.exit != null) ...[
           const SizedBox(height: 8),
           Text(report.bypassed ? 'Сайты видят вас из' : 'Адрес VPN-сервера для сайтов', style: heading),
-          if (differ)
-            // Two services, two countries: both are shown, neither is picked.
-            row(Icons.dns_outlined, p.dim, [
-              mono(report.exit!.ip),
-              TextSpan(text: '  ${countryName(report.exit!.country)} (по данным bash.ws) · ${geoPlace(report.exitGeo!)} (по данным ${report.exitGeo!.source})'),
-            ])
-          else
+          if (differ) ...[
+            // The services disagree: the country most name, and how they voted.
+            row(Icons.dns_outlined, p.dim, [mono(report.exit!.ip), TextSpan(text: '  ${_voteText(report.exitGeo!)}')]),
+            if (report.exitGeo!.split)
+              Padding(
+                padding: const EdgeInsets.only(left: 20, top: 3),
+                child: Text(_splitText(report.exitGeo!), style: small),
+              ),
+          ] else
             server(report.exit!, bad: report.bypassed),
+          if (geo != null && !report.bypassed) _GeoDetails(geo: geo),
         ],
         if (verdict == LeakVerdict.bypass && home != null) ...[
           const SizedBox(height: 8),
@@ -203,6 +205,73 @@ class LeakResultCard extends StatelessWidget {
             ),
           ),
         if (!report.systemChecked) ...[const SizedBox(height: 8), Text('Запросы приложений через туннель проверить не удалось.', style: small)],
+      ],
+    );
+  }
+}
+
+/// «Россия, Москва — 4 из 5 баз» (and «поровну» when the votes are even).
+String _voteText(LeakGeo g) {
+  final place = [countryName(g.country), cityName(g.city)].where((s) => s.isNotEmpty).join(', ');
+  return '$place — ${g.votes} из ${g.total} баз${g.tie ? ' (поровну)' : ''}';
+}
+
+/// «Россия (ipwho.is, ipinfo.io) · Украина (bash.ws)»: who said what.
+String _splitText(LeakGeo g) => g.groups.map((x) => '${countryName(x.country)} (${x.sources.join(', ')})').join(' · ');
+
+/// Each geolocation service and what it said of the VPN server's address,
+/// folded away: the ones that did not answer are only named here.
+class _GeoDetails extends StatefulWidget {
+  final LeakGeo geo;
+  const _GeoDetails({required this.geo});
+
+  @override
+  State<_GeoDetails> createState() => _GeoDetailsState();
+}
+
+class _GeoDetailsState extends State<_GeoDetails> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    final small = TextStyle(fontSize: 12, color: p.muted);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 4),
+        InkWell(
+          onTap: () => setState(() => _open = !_open),
+          borderRadius: BorderRadius.circular(6),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(_open ? Icons.expand_less : Icons.expand_more, size: 16, color: p.dim),
+                const SizedBox(width: 4),
+                Text('Подробнее по базам', style: small.copyWith(color: p.text)),
+              ],
+            ),
+          ),
+        ),
+        if (_open)
+          for (final s in widget.geo.sources)
+            Padding(
+              padding: const EdgeInsets.only(left: 20, top: 2),
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(
+                      text: s.name,
+                      style: TextStyle(color: p.text, fontWeight: FontWeight.w600),
+                    ),
+                    TextSpan(text: s.ok ? ' — ${[countryName(s.country), cityName(s.city), s.org].where((x) => x.isNotEmpty).join(', ')}' : ' — не ответил'),
+                  ],
+                ),
+                style: small,
+              ),
+            ),
       ],
     );
   }

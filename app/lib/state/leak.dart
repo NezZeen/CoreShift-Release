@@ -42,20 +42,85 @@ class LeakServer {
   String get place => [countryName, org].where((s) => s.isNotEmpty).join(', ');
 }
 
-/// Where a second geolocation service puts the VPN server's address
-/// (the engine's LeakGeo): bash.ws and the other services often say
-/// different countries for the same address.
-class LeakGeo {
-  /// The service: "ipwho.is".
-  final String source;
+/// One geolocation service's answer for the VPN server's address (the
+/// engine's LeakGeoSource).
+class LeakGeoSource {
+  final String name;
+
+  /// It answered with a country; a failed one is only listed in the details.
+  final bool ok;
   final String country; // two letters, lower case
   final String city;
   final String org;
 
-  const LeakGeo({this.source = '', this.country = '', this.city = '', this.org = ''});
+  const LeakGeoSource({this.name = '', this.ok = false, this.country = '', this.city = '', this.org = ''});
 
-  factory LeakGeo.fromJson(Json j) =>
-      LeakGeo(source: j['source'] ?? '', country: (j['country'] as String? ?? '').toLowerCase(), city: j['city'] ?? '', org: j['org'] ?? '');
+  factory LeakGeoSource.fromJson(Json j) => LeakGeoSource(
+    name: j['name'] ?? '',
+    ok: j['ok'] == true,
+    country: (j['country'] as String? ?? '').toLowerCase(),
+    city: j['city'] ?? '',
+    org: j['org'] ?? '',
+  );
+}
+
+/// The services that put the VPN server in one country.
+class LeakGeoGroup {
+  final String country;
+  final List<String> sources;
+  const LeakGeoGroup({this.country = '', this.sources = const []});
+
+  factory LeakGeoGroup.fromJson(Json j) =>
+      LeakGeoGroup(country: (j['country'] as String? ?? '').toLowerCase(), sources: [for (final s in (j['sources'] as List? ?? const [])) '$s']);
+}
+
+/// Where the geolocation services, bash.ws among them, put the VPN
+/// server's address (the engine's LeakGeo): they often disagree, so the
+/// country most of them name is taken, and the split is shown.
+class LeakGeo {
+  /// The country most services agree on, and the city and organisation
+  /// those that agree gave.
+  final String country;
+  final String city;
+  final String org;
+
+  /// How many services put the server there, out of how many answered.
+  final int votes;
+  final int total;
+
+  /// Another country has as many votes.
+  final bool tie;
+
+  /// The countries named, the most voted first.
+  final List<LeakGeoGroup> groups;
+
+  /// Every service asked, with those that did not answer.
+  final List<LeakGeoSource> sources;
+
+  const LeakGeo({
+    this.country = '',
+    this.city = '',
+    this.org = '',
+    this.votes = 0,
+    this.total = 0,
+    this.tie = false,
+    this.groups = const [],
+    this.sources = const [],
+  });
+
+  factory LeakGeo.fromJson(Json j) => LeakGeo(
+    country: (j['country'] as String? ?? '').toLowerCase(),
+    city: j['city'] ?? '',
+    org: j['org'] ?? '',
+    votes: (j['votes'] as num?)?.toInt() ?? 0,
+    total: (j['total'] as num?)?.toInt() ?? 0,
+    tie: j['tie'] == true,
+    groups: [for (final g in (j['groups'] as List? ?? const [])) LeakGeoGroup.fromJson((g as Map).cast())],
+    sources: [for (final g in (j['sources'] as List? ?? const [])) LeakGeoSource.fromJson((g as Map).cast())],
+  );
+
+  /// The services name more than one country.
+  bool get split => groups.length > 1;
 }
 
 enum LeakVerdict {
@@ -83,8 +148,8 @@ class LeakReport {
   /// The DNS servers that resolved the test names.
   final List<LeakServer> dns;
 
-  /// The exit address as a second geolocation service sees it; null when
-  /// none answered.
+  /// The exit address as the geolocation services see it; null when none
+  /// but bash.ws answered.
   final LeakGeo? exitGeo;
 
   /// The device's address outside the VPN, when the engine could learn it.
@@ -144,10 +209,11 @@ class LeakReport {
     );
   }
 
-  /// The two services put the VPN server's address in different countries.
+  /// The services do not all put the VPN server where bash.ws does: they
+  /// split, or the country they agree on is not bash.ws's.
   bool get exitCountriesDiffer {
     final g = exitGeo, e = exit;
-    return g != null && e != null && e.country.isNotEmpty && g.country != e.country;
+    return g != null && e != null && (g.split || e.country != g.country);
   }
 
   /// bash.ws saw the device's own address.
