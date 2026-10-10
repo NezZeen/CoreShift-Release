@@ -100,6 +100,26 @@ if (-not $NoBuild) {
     $installers = @()
     $out = Join-Path $root "dist\release\$Version"
     New-Item -ItemType Directory $out -Force | Out-Null
+    # The Linux packages are built in WSL from the tag, apart from this
+    # checkout: they build alongside Windows and Android instead of after
+    # them, in a process of their own whose output goes to a log (as a
+    # PowerShell job, the tools' notes on stderr would stop it). Windows and
+    # Android stay one after the other: both are Flutter builds of the same
+    # app folder. build-wsl.ps1 wakes WSL first, retrying a VM that times
+    # out starting.
+    $linuxProc = $null
+    if ($linux) {
+        $linuxDir = Join-Path $root "dist\linux\$Version"
+        $linuxLog = Join-Path $root "dist\linux\build-$Version.log"
+        New-Item -ItemType Directory (Split-Path $linuxLog) -Force | Out-Null
+        $linuxProc = Start-Process powershell.exe -PassThru -NoNewWindow `
+            -RedirectStandardOutput $linuxLog -RedirectStandardError "$linuxLog.err" `
+            -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$root\packaging\linux\build-wsl.ps1`"", `
+            '-Ref', "v$Version", '-Distro', $LinuxDistro, '-OutDir', "`"$linuxDir`""
+        # Held now: without the handle, ExitCode stays empty after the exit.
+        $null = $linuxProc.Handle
+        Write-Host "Linux packages building in WSL alongside (log: $linuxLog)"
+    }
     # The release carries every installer once, under the fixed name the
     # public downloads link to (releases/latest/download/CoreShift-Setup.exe);
     # the manifests name these files, so self-update takes the same ones.
@@ -115,8 +135,10 @@ if (-not $NoBuild) {
         $installers += (Join-Path $out 'CoreShift.apk')
     }
     if ($linux) {
-        $linuxDir = Join-Path $root "dist\linux\$Version"
-        & "$root\packaging\linux\build-wsl.ps1" -Ref "v$Version" -Distro $LinuxDistro -OutDir $linuxDir
+        # Its output comes now, all at once; a failure there fails the release.
+        $linuxProc.WaitForExit()
+        Get-Content $linuxLog, "$linuxLog.err" -ErrorAction SilentlyContinue
+        if ($linuxProc.ExitCode -ne 0) { throw "the Linux build failed (exit code $($linuxProc.ExitCode)); see $linuxLog" }
         # The release carries them under fixed names, the ones the public
         # downloads link to (packaging\README.md); the manifest names the .deb.
         New-Item -ItemType Directory $out -Force | Out-Null

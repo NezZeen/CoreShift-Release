@@ -31,6 +31,16 @@ $distros = (wsl.exe -l -q) | ForEach-Object { $_.Trim([char]0, ' ') } | Where-Ob
 if ($distros -notcontains $Distro) {
     throw "WSL distribution $Distro not found (have: $($distros -join ', ')); install it or pass -NoLinux to release.ps1"
 }
+# Woken first, and again when its VM times out starting
+# (Wsl/Service/CreateInstance/CreateVm/ERROR_TIMEOUT): that happens now and
+# then and would otherwise fail a release at its end.
+foreach ($try in 1..3) {
+    wsl.exe -d $Distro -- true
+    if ($LASTEXITCODE -eq 0) { break }
+    if ($try -eq 3) { throw "WSL $Distro does not start (exit code $LASTEXITCODE)" }
+    Write-Warning "WSL $Distro did not start (exit code $LASTEXITCODE); trying again"
+    Start-Sleep -Seconds 10
+}
 
 function WslPath([string]$p) {
     $full = (Resolve-Path $p).Path
