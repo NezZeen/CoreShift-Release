@@ -247,6 +247,9 @@ type Supervisor struct {
 	// monitor it no longer is.
 	idle  atomic.Bool
 	awake chan struct{}
+	// healthFloor is the least time between checks of a healthy
+	// connection (SetHealthFloor, power.go), in nanoseconds.
+	healthFloor atomic.Int64
 }
 
 func New(cfg Config) (*Supervisor, error) {

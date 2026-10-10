@@ -52,26 +52,33 @@ object Engine {
         }
         Mobile.currentStatus().let { VpnStatus.set(it.state, it.node, it.sinceMillis) }
         watchNetwork(app)
-        watchScreen(app)
+        watchPower(app)
     }
 
     /**
-     * Tells the engine whether the screen is on: with it off the engine
+     * Tells the engine whether the screen is on and whether the phone saves
+     * its battery (battery saver, or Doze): with the screen off the engine
      * checks the connection and samples the traffic less often, and leaves
-     * the notification alone, so the phone sleeps more.
+     * the notification alone, so the phone sleeps more; saving the battery,
+     * less often still.
      */
-    private fun watchScreen(context: Context) {
+    private fun watchPower(context: Context) {
+        val pm = context.getSystemService(PowerManager::class.java)
+        fun saving() = pm.isPowerSaveMode || pm.isDeviceIdleMode
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(c: Context, intent: Intent) {
                 when (intent.action) {
                     Intent.ACTION_SCREEN_ON -> Mobile.setScreenOn(true)
                     Intent.ACTION_SCREEN_OFF -> Mobile.setScreenOn(false)
+                    PowerManager.ACTION_POWER_SAVE_MODE_CHANGED, PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED -> Mobile.setPowerSave(saving())
                 }
             }
         }
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_ON)
             addAction(Intent.ACTION_SCREEN_OFF)
+            addAction(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
+            addAction(PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED)
         }
         // System broadcasts reach a receiver that is not exported too.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -79,7 +86,8 @@ object Engine {
         } else {
             context.registerReceiver(receiver, filter)
         }
-        Mobile.setScreenOn(context.getSystemService(PowerManager::class.java).isInteractive)
+        Mobile.setScreenOn(pm.isInteractive)
+        Mobile.setPowerSave(saving())
     }
 
     /** Connects the selected server in the background, from the tile. */

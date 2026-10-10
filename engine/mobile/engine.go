@@ -53,8 +53,8 @@ type Platform interface {
 	// connect, or with the VPN held until it returns), the server and when
 	// it connected (Unix milliseconds, 0 when not connected).
 	StateChanged(state, node string, sinceMillis int64)
-	// Traffic reports the speed every second while connected, in bytes
-	// per second.
+	// Traffic reports the speed while connected and the screen is on, in
+	// bytes per second: every second, every other in battery saver.
 	Traffic(downRate, upRate int64)
 	// Notify shows a notification about a subscription running out; a
 	// tap opens CoreShift. One notification per title.
@@ -249,6 +249,8 @@ func Start(dataDir, libDir, deviceID, osVersion, model string, p Platform) error
 		FirstUpdateCheck: 20 * time.Second,
 		// The DNS leak test asks the tunnel the way apps do.
 		TUNLookup: tunLookup,
+		// The VPN's notification shows the speed, the app open or not.
+		NotificationSpeed: true,
 	})
 	if err != nil {
 		return err
@@ -342,14 +344,29 @@ func Disconnect(from string) {
 // SetScreenOn tells the engine whether the phone's screen is on. With it
 // off the engine wakes the phone less: the traffic is sampled every half
 // minute, a working connection is checked once a minute, and the
-// notification's speed is left alone (service.SetBackground). The app
-// calls it at start and on every change.
+// notification's speed is left alone (service.SetBackground, power.go).
+// The app calls it at start and on every change.
 func SetScreenOn(on bool) {
 	mu.Lock()
 	e := running
 	mu.Unlock()
 	if e != nil {
 		e.svc.SetBackground(!on)
+	}
+}
+
+// SetPowerSave tells the engine whether the phone saves its battery:
+// Android's battery saver is on, or the phone dozes. The engine then does
+// less still: with the screen on the notification's speed moves every
+// other second and a working connection is checked at most every half
+// minute; with it off, every five minutes (service.SetPowerSave). The app
+// calls it at start and on every change.
+func SetPowerSave(on bool) {
+	mu.Lock()
+	e := running
+	mu.Unlock()
+	if e != nil {
+		e.svc.SetPowerSave(on)
 	}
 }
 

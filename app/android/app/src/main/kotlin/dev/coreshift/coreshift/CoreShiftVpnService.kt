@@ -28,6 +28,19 @@ class CoreShiftVpnService : VpnService() {
     @Volatile
     private var foreground = false
 
+    /** What the notification shows now, so one that would not change is not posted again. */
+    private var shown: List<Any>? = null
+
+    // Made once: each one is a call into Android.
+    private val openApp by lazy {
+        PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
+    }
+    private val disconnect by lazy {
+        PendingIntent.getService(
+            this, 1, Intent(this, CoreShiftVpnService::class.java).setAction(ACTION_DISCONNECT), PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
+
     override fun onCreate() {
         super.onCreate()
         instance = this
@@ -61,7 +74,7 @@ class CoreShiftVpnService : VpnService() {
         excludeLocalNetwork(b, cfg)
         b.addDnsServer(cfg.dns)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) b.setMetered(false)
-        b.setConfigureIntent(openAppIntent())
+        b.setConfigureIntent(openApp)
         val pfd = b.establish() ?: throw IllegalStateException("VPN permission is not granted")
         tun = pfd
         showNotification()
@@ -154,10 +167,6 @@ class CoreShiftVpnService : VpnService() {
         return p.substring(0, i) to p.substring(i + 1).toInt()
     }
 
-    private fun openAppIntent(): PendingIntent = PendingIntent.getActivity(
-        this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE,
-    )
-
     /** Puts the service in the foreground with the connection's notification. */
     private fun showNotification() {
         val nm = getSystemService(NotificationManager::class.java)
@@ -168,6 +177,7 @@ class CoreShiftVpnService : VpnService() {
             },
         )
         val n = buildNotification()
+        synchronized(this) { shown = content() }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(NOTIFICATION_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         } else {
@@ -176,10 +186,24 @@ class CoreShiftVpnService : VpnService() {
         foreground = true
     }
 
-    /** Shows the engine's latest state and speed in the notification. */
+    /**
+     * Shows the engine's latest state and speed in the notification, unless
+     * it would look the same: an idle connection's speed stays 0 for long.
+     */
     fun refreshNotification() {
         if (!foreground) return
+        synchronized(this) {
+            val now = content()
+            if (now == shown) return
+            shown = now
+        }
         getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, buildNotification())
+    }
+
+    /** What [buildNotification] shows, to compare. */
+    private fun content(): List<Any> {
+        val s = VpnStatus
+        return listOf(tun != null, s.state, s.node, s.since, VpnStatus.formatRate(s.down), VpnStatus.formatRate(s.up))
     }
 
     /**
@@ -188,12 +212,9 @@ class CoreShiftVpnService : VpnService() {
      */
     private fun buildNotification(): Notification {
         val s = VpnStatus
-        val disconnect = PendingIntent.getService(
-            this, 1, Intent(this, CoreShiftVpnService::class.java).setAction(ACTION_DISCONNECT), PendingIntent.FLAG_IMMUTABLE,
-        )
         val b = Notification.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_vpn)
-            .setContentIntent(openAppIntent())
+            .setContentIntent(openApp)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setCategory(Notification.CATEGORY_SERVICE)

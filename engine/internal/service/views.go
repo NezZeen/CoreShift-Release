@@ -111,3 +111,20 @@ func (s *Service) wakeTraffic() {
 	default:
 	}
 }
+
+// quietView reports whether the event stream of view id may leave out
+// what only a window on screen shows: the platform shows the speed itself
+// (Config.NotificationSpeed, Android) and the view is hidden, which there
+// means the app is in the background and draws nothing. Its traffic
+// events and most pings are left out (api.go); shown again, the speed it
+// shows is up to date at once (SetViewHidden).
+func (s *Service) quietView(id string) bool {
+	if !s.cfg.NotificationSpeed || id == "" {
+		return false
+	}
+	v := &s.views
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	w := v.m[id]
+	return w != nil && w.hidden
+}

@@ -56,10 +56,18 @@ class _DesktopFrameState extends State<DesktopFrame> with WindowListener {
   bool _maximized = false;
   StreamSubscription<Alert>? _alerts;
 
+  /// Without a desktop window (Android) the app is hidden while it is in
+  /// the background: the service then leaves its speed out (the VPN's
+  /// notification has it), and tells it again once the app is back.
+  AppLifecycleListener? _lifecycle;
+
   @override
   void initState() {
     super.initState();
-    if (!_enabled) return;
+    if (!_enabled) {
+      _lifecycle = AppLifecycleListener(onHide: () => widget.state.setShown(false), onShow: () => widget.state.setShown(true));
+      return;
+    }
     windowManager.addListener(this);
     windowManager.isMaximized().then((v) => mounted ? setState(() => _maximized = v) : null);
     // Started in the tray (--tray), the window is hidden from the start.
@@ -74,6 +82,7 @@ class _DesktopFrameState extends State<DesktopFrame> with WindowListener {
   @override
   void dispose() {
     if (_enabled) windowManager.removeListener(this);
+    _lifecycle?.dispose();
     _alerts?.cancel();
     _tray?.dispose();
     super.dispose();

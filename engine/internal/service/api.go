@@ -343,6 +343,15 @@ func (a *api) stats(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, a.svc.Stats(days))
 }
 
+const (
+	// streamPing is how often an event stream is pinged, so a reader that
+	// went away is found.
+	streamPing = 15 * time.Second
+	// quietPings: a quiet view (quietView) gets only every 8th ping, one
+	// every 2 minutes.
+	quietPings = 8
+)
+
 func (a *api) events(w http.ResponseWriter, r *http.Request) {
 	rc := http.NewResponseController(w)
 	// The stream is endless: the server's read timeout must not end it.
@@ -368,21 +377,33 @@ func (a *api) events(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("app") == "1" {
 		defer a.svc.AttachApp()()
 	}
-	if v := r.URL.Query().Get("view"); validView(v) {
-		defer a.svc.AttachView(v)()
+	view := r.URL.Query().Get("view")
+	if validView(view) {
+		defer a.svc.AttachView(view)()
+	} else {
+		view = ""
 	}
-	ping := time.NewTicker(15 * time.Second)
+	ping := time.NewTicker(streamPing)
 	defer ping.Stop()
+	pings := 0
 	for {
-		// A reader that stopped reading is dropped rather than kept forever.
-		rc.SetWriteDeadline(time.Now().Add(apiLimits.streamWrite))
 		var err error
 		select {
 		case <-ctx.Done():
 			return
 		case <-ping.C:
+			// An app in the background (quietView) is woken seldom.
+			if pings++; a.svc.quietView(view) && pings%quietPings != 0 {
+				continue
+			}
+			// A reader that stopped reading is dropped rather than kept forever.
+			rc.SetWriteDeadline(time.Now().Add(apiLimits.streamWrite))
 			_, err = fmt.Fprint(w, ": ping\n\n")
 		case e := <-events:
+			if e.Kind == kindTraffic && a.svc.quietView(view) {
+				continue
+			}
+			rc.SetWriteDeadline(time.Now().Add(apiLimits.streamWrite))
 			b, _ := json.Marshal(e)
 			_, err = fmt.Fprintf(w, "data: %s\n\n", b)
 		}

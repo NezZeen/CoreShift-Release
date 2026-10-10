@@ -173,11 +173,12 @@ const networkCheckInterval = 10 * time.Second
 // to another network (another Wi-Fi, a phone's hotspot), where that
 // resolver is out of reach, so every direct site would stop opening. A
 // change has to be seen twice in a row, so a brief flap of an adapter does
-// not reconnect, and a computer that is offline waits for a network.
+// not reconnect, and a computer that is offline waits for a network. With
+// a phone's screen off it looks seldom (resolverEvery, power.go).
 func (s *Service) watchNetwork(ctx context.Context, gen int, direct netip.Addr) {
-	t := time.NewTicker(s.cfg.netInterval)
-	defer t.Stop()
 	seen := 0
+	t := time.NewTimer(s.resolverEvery(seen))
+	defer t.Stop()
 	for {
 		select {
 		case <-ctx.Done():
@@ -187,9 +188,12 @@ func (s *Service) watchNetwork(ctx context.Context, gen int, direct netip.Addr) 
 		addrs, err := s.systemResolvers(ctx)
 		if err != nil || len(addrs) == 0 || slices.Contains(addrs, direct) {
 			seen = 0
+			t.Reset(s.resolverEvery(seen))
 			continue
 		}
 		if seen++; seen < 2 {
+			// Confirmed at the usual pace, screen off or not (power.go).
+			t.Reset(s.resolverEvery(seen))
 			continue
 		}
 		s.hub.publish(Event{Kind: "dns", Reason: "network-changed",

@@ -10,48 +10,17 @@ import (
 const (
 	trafficInterval = time.Second
 	// trafficIdleInterval is how often the traffic is sampled while the
-	// device is idle (SetBackground): only the day's totals need it then.
+	// device is idle (SetBackground, power.go): only the day's totals need
+	// it then.
 	trafficIdleInterval = 30 * time.Second
 	// trafficHiddenInterval is how often while every app window is hidden
 	// (ViewsHidden): the tray's tooltip still shows the speed.
 	trafficHiddenInterval = 5 * time.Second
 )
 
-// SetBackground says whether the device is idle: a phone with its screen
-// off, where no one sees the speed and every wakeup costs battery. The
-// traffic is then sampled every half minute rather than every second, and
-// a healthy connection is checked once a minute (supervisor.SetIdle); a
-// failing one as often as ever. Back in use, both catch up at once.
-func (s *Service) SetBackground(bg bool) {
-	if s.bg.Swap(bg) == bg {
-		return
-	}
-	s.sup.SetIdle(bg)
-	if !bg {
-		select {
-		case s.awake <- struct{}{}:
-		default:
-		}
-		s.kickNetwork() // the network watcher too (netwatch.go)
-	}
-}
-
-// Background reports what SetBackground set last.
-func (s *Service) Background() bool { return s.bg.Load() }
-
-func (s *Service) trafficEvery() time.Duration {
-	switch {
-	case s.bg.Load():
-		return s.cfg.trafficIdleEvery
-	case s.ViewsHidden():
-		return s.cfg.trafficHiddenEvery
-	}
-	return s.cfg.trafficEvery
-}
-
 // watchTraffic publishes the node's traffic every second while connected
 // (every trafficIdleInterval while the device is idle, trafficHiddenInterval
-// while no app window is on screen): totals for the
+// while no app window is on screen; see trafficEvery, power.go): totals for the
 // connection, which may span several cores after swaps, and the rate
 // since the last sample.
 func (s *Service) watchTraffic(ctx context.Context) {

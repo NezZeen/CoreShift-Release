@@ -110,8 +110,11 @@ type Service struct {
 	direct directWatch
 	// bg is set while the device is idle (SetBackground); awake tells the
 	// traffic watcher it no longer is.
-	bg      atomic.Bool
-	awake   chan struct{}
+	bg    atomic.Bool
+	awake chan struct{}
+	// power is what else the device and the user said about saving power
+	// (power.go).
+	power   powerState
 	speedMu sync.Mutex // one speed test at a time
 	// checkupMu: one checkup at a time (checkup.go).
 	checkupMu sync.Mutex
@@ -342,6 +345,7 @@ func New(cfg Config) (*Service, error) {
 	s := &Service{cfg: cfg, hub: newHub(), opts: cfg.Options, status: Status{State: Idle, TUN: cfg.TUN}, socks: core.NewSOCKSAuth(),
 		awake: make(chan struct{}, 1), netKick: make(chan struct{}, 1)}
 	s.verbose.Store(cfg.Options.Verbose)
+	s.power.off.Store(cfg.Options.NoBatterySaving)
 	s.logs = newLogGrouper(logGroupEvery, func(source, line string, at time.Time) {
 		s.hub.publish(Event{Kind: "log", Source: source, Line: line, Time: at})
 	})
@@ -447,6 +451,7 @@ func (s *Service) SetOptions(o Options) {
 	// The journal keeps or drops lines at once; the cores tell more from
 	// the next connection.
 	s.verbose.Store(o.Verbose)
+	s.setBatterySaving(!o.NoBatterySaving)
 	s.mu.Lock()
 	s.opts = o
 	active := s.status.State.active()
@@ -454,6 +459,7 @@ func (s *Service) SetOptions(o Options) {
 	// take their log level at the next connection, whenever it comes.
 	cmp := o
 	cmp.Verbose = s.connOpts.Verbose
+	cmp.NoBatterySaving = s.connOpts.NoBatterySaving // applies at once, power.go
 	s.optsPending = active && !reflect.DeepEqual(cmp, s.connOpts)
 	if !active {
 		s.status.TUN = o.TUN

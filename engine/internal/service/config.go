@@ -58,6 +58,10 @@ type Options struct {
 	// SwitchServer moves to another server of the subscription when the
 	// connected one does not answer (store.CoreSettings.SwitchServer).
 	SwitchServer bool
+	// NoBatterySaving keeps the pace of a screen that is on while a
+	// phone's screen is off or it saves its battery: «Экономия батареи»
+	// off (store.Settings.BatterySaving, power.go). It applies at once.
+	NoBatterySaving bool
 
 	// TUN routes all system traffic through the tunnel and guards DNS.
 	// Without it only the SOCKS port is served.
@@ -148,6 +152,11 @@ type Config struct {
 	// so the daemon's own lookups of servers go to the system's resolver
 	// even while connected; the TUN layer's is out of its reach.
 	AppOutsideVPN bool
+	// NotificationSpeed: the platform shows the speed in a notification
+	// of its own (Android), so the traffic keeps its pace while the app's
+	// windows are hidden, and a hidden window, which shows nothing at all
+	// (the app in the background), gets no traffic events (views.go).
+	NotificationSpeed bool
 	// TUNLookup resolves a name the way apps inside the VPN do, through
 	// the TUN layer's DNS, for the DNS leak test. nil means the system's
 	// resolver as another program would use it (systemLookup).
@@ -248,6 +257,7 @@ func OptionsFromSettings(set store.Settings) Options {
 		Fragment:             c.Fragment,
 		Verbose:              set.Log.Verbose,
 		SwitchServer:         c.SwitchServer,
+		NoBatterySaving:      !set.BatterySaving,
 		TUN:                  set.TUN,
 		IPv6:                 set.IPv6,
 		DirectApps:           slices.Clone(set.Routing.DirectApps),

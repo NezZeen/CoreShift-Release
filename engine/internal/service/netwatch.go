@@ -133,16 +133,8 @@ func (s *Service) NetworkChanged() { s.kickNetwork() }
 
 // netPollIdle is how often the network is looked at while the device is
 // idle (SetBackground): every wakeup costs a phone's battery, and Android
-// tells of changes anyway (NetworkChanged).
+// tells of changes anyway (NetworkChanged). netEvery is in power.go.
 const netPollIdle = 15 * time.Second
-
-// netEvery is how long until the watcher looks next.
-func (s *Service) netEvery() time.Duration {
-	if s.bg.Load() {
-		return max(s.cfg.netPoll, netPollIdle)
-	}
-	return s.cfg.netPoll
-}
 
 // kickNetwork makes the watcher look now.
 func (s *Service) kickNetwork() {

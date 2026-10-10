@@ -77,6 +77,13 @@ class SettingsPage extends StatelessWidget {
                 : 'Запускать CoreShift в трее при входе в ${platform.isLinux ? 'систему' : 'Windows'} и сразу подключать выбранный сервер',
             trailing: _switch('auto_connect'),
           ),
+          // The engine slows down with the screen off (engine/internal/service/power.go).
+          if (platform.isAndroid && state.hasSetting('battery_saving'))
+            SettingRow(
+              title: 'Экономия батареи',
+              description: 'Когда экран выключен или включено энергосбережение, связь с сервером проверяется реже и телефон дольше спит',
+              trailing: _switch('battery_saving'),
+            ),
           if (desktop.canNotify)
             SettingRow(
               title: 'Уведомления',

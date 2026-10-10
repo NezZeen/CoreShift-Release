@@ -29,10 +29,11 @@ func (s *Supervisor) SetIdle(idle bool) {
 
 // healthEvery is how long after a check that passed the next one comes.
 func (s *Supervisor) healthEvery() time.Duration {
+	d := max(s.cfg.Health.Interval, time.Duration(s.healthFloor.Load()))
 	if s.idle.Load() {
-		return max(s.cfg.Health.Interval, s.cfg.IdleHealthInterval)
+		return max(d, s.cfg.IdleHealthInterval)
 	}
-	return s.cfg.Health.Interval
+	return d
 }
 
 // A core whose local port does not answer hungChecks failed checks in a
@@ -160,7 +161,13 @@ func (s *Supervisor) monitor(ctx context.Context, p *process, n node.Node, serve
 			// The device is in use again: whatever happened to the server
 			// meanwhile is seen now, not a minute later.
 			check.Reset(0)
+			back = backAfterIdle(back)
 		case <-back:
+			if s.idle.Load() {
+				// Starting the primary aside waits for the screen (power.go).
+				back = deferredBack
+				continue
+			}
 			if s.probe(ctx, primary, n, serverAddr) == nil {
 				return ReasonReturn, "", nil
 			}

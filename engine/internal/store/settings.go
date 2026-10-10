@@ -35,6 +35,11 @@ type Settings struct {
 	Updates     UpdateSettings `json:"updates"`
 	AppUpdate   AppUpdate      `json:"app_update"`
 	Log         LogSettings    `json:"log"`
+	// BatterySaving, «Экономия батареи» (Android): with the phone's screen
+	// off, or in battery saver, the connection is checked and the network
+	// looked at less often (service/power.go). On by default, also for
+	// settings saved before it existed. The desktop has no use for it.
+	BatterySaving bool `json:"battery_saving"`
 }
 
 // LogSettings say how much the journal tells.
@@ -254,6 +259,8 @@ func Defaults() Settings {
 		},
 		Updates:   UpdateSettings{Auto: true, IntervalHours: 12},
 		AppUpdate: AppUpdate{Auto: true},
+		// Also for settings saved before it existed.
+		BatterySaving: true,
 	}
 }
 
