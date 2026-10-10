@@ -113,6 +113,7 @@ class AppState extends ChangeNotifier {
     this.autostartSetter,
     this.version = BuildVersion.app,
     this.askDisclaimer = false,
+    this.askWizard = false,
     this.journalSaver,
   }) : prefs = prefs ?? {};
 
@@ -123,6 +124,10 @@ class AppState extends ChangeNotifier {
   /// Whether the window asks the user to accept the disclaimer until they
   /// do (ui/disclaimer.dart): the app does, a test's state does not.
   final bool askDisclaimer;
+
+  /// Whether the shell offers the first-run wizard to a user without
+  /// subscriptions (ui/wizard/): the app does, most tests' states do not.
+  final bool askWizard;
 
   /// Starts a stopped daemon, where the app may (the Windows service);
   /// returns whether it runs or is starting.

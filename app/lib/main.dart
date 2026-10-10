@@ -12,6 +12,10 @@ import 'ui/theme.dart';
 /// daemon.
 const demo = bool.fromEnvironment('DEMO');
 
+/// `--dart-define=DEMO_EMPTY=true` with DEMO: the demo starts as a fresh
+/// install, with the first-run wizard.
+const demoEmpty = bool.fromEnvironment('DEMO_EMPTY');
+
 /// `--tray` starts hidden in the tray: the service starts the app so after
 /// updating CoreShift, and Windows at sign-in ("Автозапуск").
 Future<void> main(List<String> args) async {
@@ -19,7 +23,7 @@ Future<void> main(List<String> args) async {
   await desktop.initWindow(hidden: args.contains('--tray'));
   if (!demo) await platform.initPlatform();
   final prefs = await platform.loadPrefs();
-  final Backend backend = demo ? DemoBackend() : platform.createBackend();
+  final Backend backend = demo ? DemoBackend(empty: demoEmpty) : platform.createBackend();
   final state = AppState(
     backend,
     prefs: prefs,
@@ -27,6 +31,7 @@ Future<void> main(List<String> args) async {
     daemonStarter: demo ? null : platform.daemonStarter,
     autostartSetter: demo ? null : platform.autostartSetter,
     askDisclaimer: true,
+    askWizard: true,
     journalSaver: demo ? null : platform.saveJournal,
   )..start();
   // Links from a panel's "add to app" button: the one CoreShift was opened

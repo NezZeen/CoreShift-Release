@@ -127,9 +127,12 @@ class DemoBackend implements Backend {
     return {'days': all.sublist(all.length - n.clamp(1, all.length))};
   }
 
-  DemoBackend() {
+  /// [empty] starts as a fresh install, without subscriptions and a chosen
+  /// server, for the first-run wizard (`--dart-define=DEMO_EMPTY=true`).
+  DemoBackend({bool empty = false}) {
     _history.addAll(_makeHistory());
     _seedJournal();
+    if (empty) return;
     _subs.add(
       _makeSub(
         'a1b2c3',

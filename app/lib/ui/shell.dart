@@ -19,6 +19,7 @@ import 'import_offer.dart';
 import 'theme.dart';
 import 'update_offer.dart';
 import 'widgets.dart';
+import 'wizard/first_run_wizard.dart';
 
 part 'shell/navigation.dart';
 part 'shell/offline.dart';
@@ -90,8 +91,12 @@ class _ShellState extends State<Shell> {
     super.initState();
     widget.state.addListener(_offerUpdate);
     widget.state.addListener(_offerImport);
+    widget.state.addListener(_offerWizard);
     _offerUpdate();
     _offerImport();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _offerWizard();
+    });
     // The disclaimer first of all, until it is accepted.
     if (widget.state.askDisclaimer) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -112,10 +117,12 @@ class _ShellState extends State<Shell> {
     if (old.state == widget.state) return;
     old.state
       ..removeListener(_offerUpdate)
-      ..removeListener(_offerImport);
+      ..removeListener(_offerImport)
+      ..removeListener(_offerWizard);
     widget.state
       ..addListener(_offerUpdate)
-      ..addListener(_offerImport);
+      ..addListener(_offerImport)
+      ..addListener(_offerWizard);
     _wasLoaded = false;
   }
 
@@ -125,6 +132,7 @@ class _ShellState extends State<Shell> {
     _serverSearch.dispose();
     widget.state.removeListener(_offerUpdate);
     widget.state.removeListener(_offerImport);
+    widget.state.removeListener(_offerWizard);
     super.dispose();
   }
 
@@ -135,12 +143,36 @@ class _ShellState extends State<Shell> {
   /// Accepted, the pref it sets brings the waiting offers.
   bool get _awaitingDisclaimer => widget.state.askDisclaimer && widget.state.prefs[disclaimerPref] != true;
 
+  /// The first-run wizard is on screen or about to be: no other window
+  /// (the import offer, the update) comes over it, and the clipboard is
+  /// left to it. What waited is offered once it is closed.
+  bool _wizardOpen = false;
+  bool get _wizardBusy => _wizardOpen || wizardDue(widget.state);
+
+  /// The first-run wizard, once, after the disclaimer, to a user without
+  /// subscriptions (ui/wizard/).
+  void _offerWizard() {
+    final s = widget.state;
+    wizardSettle(s);
+    if (_wizardOpen || _awaitingDisclaimer || !wizardDue(s)) return;
+    _wizardOpen = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (mounted) await showFirstRunWizard(context, s);
+      _wizardOpen = false;
+      if (!mounted) return;
+      _offerImport();
+      _offerUpdate();
+    });
+    // Called after a frame, so a new one is asked for.
+    WidgetsBinding.instance.ensureVisualUpdate();
+  }
+
   /// A subscription from a link, the clipboard or a QR code is offered in a
   /// window once the service answers; on the first load the clipboard is
   /// looked at too.
   void _offerImport() {
     final s = widget.state;
-    if (_awaitingDisclaimer) return;
+    if (_awaitingDisclaimer || _wizardBusy) return;
     if (s.loaded && s.online && !_wasLoaded) {
       _wasLoaded = true;
       _lookAtClipboard();
@@ -159,14 +191,14 @@ class _ShellState extends State<Shell> {
   /// it only then, a moment after it comes back.
   void _lookAtClipboard() {
     Timer(const Duration(milliseconds: 400), () {
-      if (!mounted || WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) return;
+      if (!mounted || _wizardBusy || WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) return;
       widget.state.checkClipboard();
     });
   }
 
   /// A downloaded update is offered in a window, wherever the user is.
   void _offerUpdate() {
-    if (!widget.state.offerUpdate || _awaitingDisclaimer) return;
+    if (!widget.state.offerUpdate || _awaitingDisclaimer || _wizardBusy) return;
     widget.state.updateOffered();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) showUpdateOffer(context, widget.state);
