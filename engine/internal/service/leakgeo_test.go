@@ -82,6 +82,21 @@ func geoServer(t *testing.T, a, b http.HandlerFunc) (*httptest.Server, *[]string
 	return srv, &seen
 }
 
+// The real sources need no key, speak HTTPS and take the address only.
+func TestLeakGeoSources(t *testing.T) {
+	if len(leakGeoSources) < 2 {
+		t.Fatal("no second source to fall back to")
+	}
+	for _, src := range leakGeoSources {
+		if !strings.HasPrefix(src.URL, "https://") || strings.Count(src.URL, "%s") != 1 || strings.Contains(strings.ToLower(src.URL), "key") || strings.Contains(strings.ToLower(src.URL), "token") {
+			t.Errorf("%s: %s", src.Name, src.URL)
+		}
+	}
+	if got := fmt.Sprintf(leakGeoSources[0].URL, "203.0.113.5"); got != "https://ipwho.is/203.0.113.5?lang=ru" {
+		t.Errorf("first source: %s", got)
+	}
+}
+
 func TestExitGeoFallsBack(t *testing.T) {
 	for name, c := range map[string]struct {
 		a, b    http.HandlerFunc

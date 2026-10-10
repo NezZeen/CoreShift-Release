@@ -42,6 +42,22 @@ class LeakServer {
   String get place => [countryName, org].where((s) => s.isNotEmpty).join(', ');
 }
 
+/// Where a second geolocation service puts the VPN server's address
+/// (the engine's LeakGeo): bash.ws and the other services often say
+/// different countries for the same address.
+class LeakGeo {
+  /// The service: "ipwho.is".
+  final String source;
+  final String country; // two letters, lower case
+  final String city;
+  final String org;
+
+  const LeakGeo({this.source = '', this.country = '', this.city = '', this.org = ''});
+
+  factory LeakGeo.fromJson(Json j) =>
+      LeakGeo(source: j['source'] ?? '', country: (j['country'] as String? ?? '').toLowerCase(), city: j['city'] ?? '', org: j['org'] ?? '');
+}
+
 enum LeakVerdict {
   /// The test went through the VPN and no DNS server is the ISP's.
   ok,
@@ -67,6 +83,10 @@ class LeakReport {
   /// The DNS servers that resolved the test names.
   final List<LeakServer> dns;
 
+  /// The exit address as a second geolocation service sees it; null when
+  /// none answered.
+  final LeakGeo? exitGeo;
+
   /// The device's address outside the VPN, when the engine could learn it.
   final IpInfo? home;
 
@@ -89,6 +109,7 @@ class LeakReport {
     this.verdict = LeakVerdict.unknown,
     this.exit,
     this.dns = const [],
+    this.exitGeo,
     this.home,
     this.server = '',
     this.serverIp = '',
@@ -102,6 +123,7 @@ class LeakReport {
   factory LeakReport.fromJson(Json j, {DateTime? time}) {
     final system = (j['system'] as Map?)?.cast<String, dynamic>() ?? const {};
     final home = (j['home'] as Map?)?.cast<String, dynamic>();
+    final geo = j['exit_geo'] is Map ? LeakGeo.fromJson((j['exit_geo'] as Map).cast()) : null;
     return LeakReport(
       verdict: switch (j['verdict']) {
         'ok' => LeakVerdict.ok,
@@ -111,6 +133,7 @@ class LeakReport {
       },
       exit: j['exit'] is Map ? LeakServer.fromJson((j['exit'] as Map).cast()) : null,
       dns: [for (final d in (j['dns'] as List? ?? const [])) LeakServer.fromJson((d as Map).cast())],
+      exitGeo: geo == null || geo.country.isEmpty ? null : geo,
       home: home == null ? null : IpInfo.fromJson(home),
       server: j['server'] ?? '',
       serverIp: j['server_ip'] ?? '',
@@ -119,6 +142,12 @@ class LeakReport {
       fakeIp: system['fake_ip'] == true,
       time: time ?? DateTime.now(),
     );
+  }
+
+  /// The two services put the VPN server's address in different countries.
+  bool get exitCountriesDiffer {
+    final g = exitGeo, e = exit;
+    return g != null && e != null && e.country.isNotEmpty && g.country != e.country;
   }
 
   /// bash.ws saw the device's own address.

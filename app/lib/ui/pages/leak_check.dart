@@ -27,7 +27,7 @@ class LeakCheck extends StatelessWidget {
           first: first,
           title: 'Проверка утечки DNS',
           description: ready
-              ? 'Узнать, видит ли провайдер ваши DNS-запросы. Проверка идёт через туннель, как у приложений. Использует сервис bash.ws'
+              ? 'Узнать, видит ли провайдер ваши DNS-запросы. Проверка идёт через туннель, как у приложений. Использует сервис bash.ws; страну адреса VPN-сервера (не вашего) уточняет ещё ipwho.is'
               : 'Подключитесь в режиме «Все приложения», чтобы проверить',
           trailing: Btn(label: 'Проверить DNS', icon: Icons.policy_outlined, loading: state.leakTesting, onPressed: ready ? state.runLeakTest : null),
         ),
@@ -108,6 +108,8 @@ class LeakResultCard extends StatelessWidget {
           if (d.country.isNotEmpty) countryName(d.country),
       },
     ].join(', ');
+    // «Россия, Москва»: the country in Russian and the city, if the service gave one.
+    String geoPlace(LeakGeo g) => [countryName(g.country), cityName(g.city)].where((s) => s.isNotEmpty).join(', ');
     final appsTitle = 'DNS, которым пользуются приложения (через VPN)${report.provider.isEmpty ? '' : ' — ${report.provider}'}';
 
     final (color, icon, title, text) = switch (verdict) {
@@ -153,6 +155,7 @@ class LeakResultCard extends StatelessWidget {
         if (d.path == 'proxy') d,
     ];
     final home = report.home;
+    final differ = !report.bypassed && report.exitCountriesDiffer;
     return _Box(
       color: color,
       icon: icon,
@@ -163,7 +166,14 @@ class LeakResultCard extends StatelessWidget {
         if (report.exit != null) ...[
           const SizedBox(height: 8),
           Text(report.bypassed ? 'Сайты видят вас из' : 'Адрес VPN-сервера для сайтов', style: heading),
-          server(report.exit!, bad: report.bypassed),
+          if (differ)
+            // Two services, two countries: both are shown, neither is picked.
+            row(Icons.dns_outlined, p.dim, [
+              mono(report.exit!.ip),
+              TextSpan(text: '  ${countryName(report.exit!.country)} (по данным bash.ws) · ${geoPlace(report.exitGeo!)} (по данным ${report.exitGeo!.source})'),
+            ])
+          else
+            server(report.exit!, bad: report.bypassed),
         ],
         if (verdict == LeakVerdict.bypass && home != null) ...[
           const SizedBox(height: 8),
@@ -183,7 +193,7 @@ class LeakResultCard extends StatelessWidget {
           ],
           if (proxy.isNotEmpty) ...servers('DNS на стороне VPN-сервера', proxy),
         ],
-        if (report.dns.isNotEmpty)
+        if (report.dns.isNotEmpty || differ)
           Padding(
             padding: const EdgeInsets.only(top: 8),
             child: Text(

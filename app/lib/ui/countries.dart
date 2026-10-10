@@ -63,6 +63,54 @@ const _names = {
 
 String countryName(String code) => _names[code.toUpperCase()] ?? code.toUpperCase();
 
+/// Russian names of the big cities, for a geolocation service that gives
+/// them in English; others stay as the service wrote them.
+const _cities = {
+  'moscow': 'Москва',
+  'saint petersburg': 'Санкт-Петербург',
+  'st petersburg': 'Санкт-Петербург',
+  'novosibirsk': 'Новосибирск',
+  'yekaterinburg': 'Екатеринбург',
+  'kyiv': 'Киев',
+  'kiev': 'Киев',
+  'kharkiv': 'Харьков',
+  'odesa': 'Одесса',
+  'odessa': 'Одесса',
+  'dnipro': 'Днепр',
+  'minsk': 'Минск',
+  'warsaw': 'Варшава',
+  'berlin': 'Берлин',
+  'frankfurt am main': 'Франкфурт-на-Майне',
+  'frankfurt': 'Франкфурт',
+  'amsterdam': 'Амстердам',
+  'london': 'Лондон',
+  'paris': 'Париж',
+  'helsinki': 'Хельсинки',
+  'stockholm': 'Стокгольм',
+  'tallinn': 'Таллин',
+  'riga': 'Рига',
+  'vilnius': 'Вильнюс',
+  'prague': 'Прага',
+  'vienna': 'Вена',
+  'zurich': 'Цюрих',
+  'madrid': 'Мадрид',
+  'milan': 'Милан',
+  'istanbul': 'Стамбул',
+  'tbilisi': 'Тбилиси',
+  'yerevan': 'Ереван',
+  'almaty': 'Алма-Ата',
+  'astana': 'Астана',
+  'tel aviv': 'Тель-Авив',
+  'dubai': 'Дубай',
+  'new york': 'Нью-Йорк',
+  'los angeles': 'Лос-Анджелес',
+  'singapore': 'Сингапур',
+  'tokyo': 'Токио',
+  'hong kong': 'Гонконг',
+};
+
+String cityName(String city) => _cities[city.trim().toLowerCase()] ?? city;
+
 /// English names, and the cities servers are usually named after, for the
 /// subscriptions that name nodes in words rather than with a flag.
 const _words = {

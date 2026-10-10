@@ -46,7 +46,8 @@ type exitGeoSource struct {
 // leakGeoSources are tried in turn, the next one when the one before
 // fails, is rate-limited or knows no country.
 var leakGeoSources = []exitGeoSource{
-	{"ipwho.is", "https://ipwho.is/%s", parseIPWho},
+	// lang=ru: the city comes in Russian, as the app shows it.
+	{"ipwho.is", "https://ipwho.is/%s?lang=ru", parseIPWho},
 	{"ipinfo.io", "https://ipinfo.io/%s/json", parseIPInfo},
 }
 

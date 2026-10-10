@@ -6,6 +6,7 @@ import 'package:coreshift/api/models.dart';
 import 'package:coreshift/main.dart';
 import 'package:coreshift/state/app_state.dart';
 import 'package:coreshift/state/leak.dart';
+import 'package:coreshift/ui/countries.dart';
 import 'package:coreshift/ui/pages/leak_check.dart';
 
 // The engine's LeakResult, as POST /v1/leaktest returns it. The verdict and
@@ -13,6 +14,7 @@ import 'package:coreshift/ui/pages/leak_check.dart';
 // (engine/internal/service/leakjudge.go, tested there).
 Json result({
   Json? exit,
+  Json? exitGeo,
   List<Json> dns = const [],
   Json? home = const {'ip': '198.51.100.37', 'country': 'RU'},
   String serverIp = '203.0.113.5',
@@ -24,6 +26,7 @@ Json result({
   'server': 'Германия',
   'server_ip': serverIp,
   'exit': ?exit,
+  'exit_geo': ?exitGeo,
   'dns': dns,
   'system': {'checked': checked, 'fake_ip': fakeIp},
   'home': ?home,
@@ -66,6 +69,23 @@ final ownCase = result(
   provider: 'AdGuard',
 );
 
+/// The second geolocation service's answer for the exit address.
+Json geo(String cc, {String city = '', String org = '', String source = 'ipwho.is'}) => {
+  'source': source,
+  'country': cc,
+  'country_name': {'ru': 'Russia', 'ua': 'Ukraine', 'de': 'Germany'}[cc] ?? cc,
+  if (city.isNotEmpty) 'city': city,
+  if (org.isNotEmpty) 'org': org,
+};
+
+/// The tester's server: bash.ws says Ukraine, ipwho.is says Russia.
+final differCase = result(
+  exit: host('203.0.113.6', 'ua', 'Hosting Industry Limited'),
+  exitGeo: geo('ru', city: 'Moscow', org: 'SERV.HOST GROUP'),
+  dns: [serverDNS],
+  serverIp: '203.0.113.6',
+);
+
 LeakReport report(Json j) => LeakReport.fromJson(j);
 
 void main() {
@@ -105,6 +125,36 @@ void main() {
       expect(report({...result(exit: vpnExit), 'verdict': 'new'}).verdict, LeakVerdict.unknown);
       expect(report(result(exit: vpnExit)..remove('verdict')).verdict, LeakVerdict.unknown);
       expect(report(result(verdict: 'unknown')).verdict, LeakVerdict.unknown);
+    });
+
+    test('the second geolocation of the exit address', () {
+      final r = report(differCase);
+      expect(r.exitGeo?.source, 'ipwho.is');
+      expect(r.exitGeo?.country, 'ru');
+      expect(r.exitGeo?.city, 'Moscow');
+      expect(r.exitGeo?.org, 'SERV.HOST GROUP');
+      expect(r.exitCountriesDiffer, isTrue);
+      // The same country, none at all, or one without a country: nothing differs.
+      expect(
+        report(
+          result(
+            exit: vpnExit,
+            exitGeo: geo('de', city: 'Frankfurt'),
+          ),
+        ).exitCountriesDiffer,
+        isFalse,
+      );
+      expect(report(result(exit: vpnExit)).exitGeo, isNull);
+      expect(report(result(exit: vpnExit)).exitCountriesDiffer, isFalse);
+      expect(report(result(exit: vpnExit, exitGeo: geo(''))).exitGeo, isNull);
+      expect(report(result(exit: vpnExit, exitGeo: geo('RU'))).exitGeo?.country, 'ru');
+    });
+
+    test('cities come in Russian, unknown ones as the service wrote them', () {
+      expect(cityName('Moscow'), 'Москва');
+      expect(cityName('Москва'), 'Москва');
+      expect(cityName('Smallville'), 'Smallville');
+      expect(cityName(''), '');
     });
 
     test('reads the engine JSON', () {
@@ -215,6 +265,60 @@ void main() {
         // The user's DNS and the VPN's side are ticked, nothing is warned of.
         expect(find.byIcon(Icons.check_circle_outline), findsNWidgets(3));
         expect(find.byIcon(Icons.warning_amber_rounded), findsNothing);
+        await finish(tester, state);
+      });
+
+      testWidgets('$name: the services put the exit in different countries', (tester) async {
+        final state = await showResult(tester, differCase);
+        expect(find.text('Адрес VPN-сервера для сайтов'), findsOneWidget);
+        expect(find.textContaining('Украина (по данным bash.ws) · Россия, Москва (по данным ipwho.is)'), findsOneWidget);
+        expect(find.textContaining('203.0.113.6'), findsOneWidget);
+        // The note that the bases differ stays.
+        expect(find.textContaining('у разных баз может отличаться'), findsOneWidget);
+        expect(find.text('Утечки нет'), findsOneWidget);
+        await finish(tester, state);
+      });
+
+      testWidgets('$name: the second service gave no city', (tester) async {
+        final state = await showResult(
+          tester,
+          result(
+            exit: host('203.0.113.6', 'ua', 'Example Hosting'),
+            exitGeo: geo('ru', source: 'ipinfo.io'),
+            dns: [serverDNS],
+          ),
+        );
+        expect(find.textContaining('Украина (по данным bash.ws) · Россия (по данным ipinfo.io)'), findsOneWidget);
+        await finish(tester, state);
+      });
+
+      testWidgets('$name: the services agree, one row as before', (tester) async {
+        final state = await showResult(
+          tester,
+          result(
+            exit: vpnExit,
+            exitGeo: geo('de', city: 'Frankfurt'),
+            dns: [serverDNS],
+          ),
+        );
+        expect(find.text('Адрес VPN-сервера для сайтов'), findsOneWidget);
+        expect(find.textContaining('по данным'), findsNothing);
+        expect(find.textContaining('203.0.113.5  Germany, Example Hosting'), findsOneWidget);
+        await finish(tester, state);
+      });
+
+      testWidgets('$name: no second service, no noise', (tester) async {
+        final state = await showResult(tester, result(exit: vpnExit, dns: [serverDNS]));
+        expect(find.textContaining('по данным'), findsNothing);
+        expect(find.textContaining('203.0.113.5  Germany, Example Hosting'), findsOneWidget);
+        expect(find.byIcon(Icons.error_outline), findsNothing);
+        await finish(tester, state);
+      });
+
+      testWidgets('$name: around the VPN shows no second country', (tester) async {
+        final state = await showResult(tester, {...userCase, 'exit_geo': geo('de', city: 'Frankfurt')});
+        expect(find.text('Сайты видят вас из'), findsOneWidget);
+        expect(find.textContaining('по данным'), findsNothing);
         await finish(tester, state);
       });
 
