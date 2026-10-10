@@ -121,8 +121,16 @@ type Service struct {
 	// start (connectAtStart): only one may run at a time.
 	startConn sync.Mutex
 
-	op       sync.Mutex // serialises connect, disconnect and teardown
-	tun      TUNInstance
+	op  sync.Mutex // serialises connect, disconnect and teardown
+	tun TUNInstance
+	// tunSeq counts the TUN layer's starts, so watchTUN tells the running
+	// one from one stopped on purpose; tunOpts, tunAt and guardCfg are what
+	// the running one was started with, and when, for starting it again on
+	// an updated sing-box (coreapply.go). All under op.
+	tunSeq   int
+	tunOpts  tunlayer.Options
+	tunAt    time.Time
+	guardCfg dnsguard.Config
 	stopPing context.CancelFunc // ends the connection's watchers: traffic, network
 
 	mu sync.Mutex

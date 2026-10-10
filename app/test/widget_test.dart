@@ -1016,6 +1016,14 @@ void main() {
     await tester.pump(const Duration(seconds: 6));
   });
 
+  testWidgets('the TUN layer moved to an updated sing-box is one line of the journal', (tester) async {
+    final state = await pumpApp(tester);
+    state.injectEvent(Event(time: DateTime.now(), kind: 'tun', reason: 'updated', core: 'sing-box', line: '1.14.4'));
+    final told = [for (final l in state.logs.where((l) => l.source == 'TUN')) l.message];
+    expect(told.where((m) => m.contains('1.14.4')), ['слой TUN перешёл на sing-box 1.14.4: интерфейс перезапущен, VPN не отключался']);
+    await tester.pump(const Duration(seconds: 6));
+  });
+
   testWidgets('the panel automatic selection is known and the switch is told in the journal', (tester) async {
     final state = await pumpApp(tester);
     final sub = Subscription.fromJson({

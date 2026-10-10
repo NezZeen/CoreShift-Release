@@ -23,7 +23,8 @@ type Event struct {
 	// "traffic" every second while connected (Up, Down and rates); "cores"
 	// when a core was updated (Core, Line is the new version; Reason
 	// "updated", or "applied" when the running connection moved to it
-	// without disconnecting); "speedtest"
+	// without disconnecting; "tun" with Reason "updated" when the desktop's
+	// TUN layer moved to an updated sing-box, coreapply.go); "speedtest"
 	// while a speed test runs (see Service.SpeedTest); "rules" for the rule
 	// sets of the Russian preset (Reason is the set; Line "builtin",
 	// "downloaded" or "updated", or an Error: Line "kept" when the previous

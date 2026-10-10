@@ -41,3 +41,27 @@ func Version(ctx context.Context, k Kind, bin string) (string, error) {
 	}
 	return v, nil
 }
+
+// Check has the core at bin validate the config at path without running
+// it: an updated core may no longer take a config the old one did.
+func Check(ctx context.Context, k Kind, bin, path, workDir string) error {
+	a, ok := ByKind(k)
+	if !ok {
+		return fmt.Errorf("unknown core %q", k)
+	}
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, bin, a.CheckArgs(path, workDir)...)
+	cmd.Dir = workDir
+	hideWindow(cmd)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		return nil
+	}
+	// The last line is where a core says why it refused the config.
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if last := strings.TrimSpace(lines[len(lines)-1]); last != "" {
+		return fmt.Errorf("%s: %w: %s", k, err, last)
+	}
+	return fmt.Errorf("%s: %w", k, err)
+}

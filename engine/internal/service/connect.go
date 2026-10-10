@@ -366,6 +366,7 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 	// default interface from the TUN layer (see tunlayer.Options.ExcludeLAN).
 	opts.ExcludeLAN = true
 	opts.LANResolvers = resolvers
+	started := time.Now()
 	inst, err := tun.Start(ctx, opts)
 	if err != nil && opts.RefuseIPv6 && ctx.Err() == nil && ipv6Refused(err) {
 		// The system would not give the interface IPv6 after all (Windows
@@ -378,16 +379,15 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 	if err != nil {
 		return netip.Addr{}, fmt.Errorf("start TUN layer: %w", err)
 	}
-	s.tun = inst
+	s.tunUp(inst, gen, opts, started)
 	s.hub.publish(Event{Kind: "tun", Reason: "up"})
-	go s.watchTUN(inst, gen)
 
-	guardCfg := dnsguard.Config{
+	s.guardCfg = dnsguard.Config{
 		Interface: tunlayer.DefaultInterface,
 		Servers:   []netip.Addr{tunlayer.DNSAddress(tunlayer.DefaultAddress)},
 		Strict:    o.DNS.Strict,
 	}
-	if err := s.cfg.guard.Apply(ctx, guardCfg); err != nil {
+	if err := s.cfg.guard.Apply(ctx, s.guardCfg); err != nil {
 		return netip.Addr{}, fmt.Errorf("redirect system DNS: %w", err)
 	}
 	s.hub.publish(Event{Kind: "dns", Reason: "applied"})
@@ -507,9 +507,28 @@ func (s *Service) teardown(gen int, cause error) {
 	}()
 }
 
-func (s *Service) watchTUN(t TUNInstance, gen int) {
+// tunUp makes inst, started at started with o, connection gen's TUN layer.
+// Called with s.op held.
+func (s *Service) tunUp(inst TUNInstance, gen int, o tunlayer.Options, started time.Time) {
+	s.tunSeq++
+	s.tun, s.tunOpts, s.tunAt = inst, o, started
+	go s.watchTUN(inst, gen, s.tunSeq)
+}
+
+// watchTUN tears connection gen down when its TUN layer, start seq, dies;
+// not when it was stopped to start again (applyTUN), which counts a start.
+func (s *Service) watchTUN(t TUNInstance, gen, seq int) {
 	<-t.Exited()
-	s.teardown(gen, fmt.Errorf("TUN layer stopped: %w", t.ExitError()))
+	s.op.Lock()
+	defer s.op.Unlock()
+	s.mu.Lock()
+	stale := gen != s.gen
+	s.mu.Unlock()
+	if stale || seq != s.tunSeq {
+		return
+	}
+	s.stopLocked()
+	s.fail(fmt.Errorf("TUN layer stopped: %w", t.ExitError()))
 }
 
 func (s *Service) onSupervisorEvent(e supervisor.Event) {

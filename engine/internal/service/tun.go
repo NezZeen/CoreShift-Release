@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"coreshift/engine/internal/core"
+	"coreshift/engine/internal/coreupdate"
 	"coreshift/engine/internal/proc"
 	"coreshift/engine/internal/tunlayer"
 )
@@ -25,6 +27,22 @@ type TUNInstance interface {
 	Exited() <-chan struct{}
 	ExitError() error
 	Stop()
+}
+
+// tunUpdatable is a TUN layer run from the sing-box executable, as the
+// desktop's is: a sing-box update replaces the file under the running
+// layer, which keeps the old version until it starts again (coreapply.go).
+// Android's runs inside the app and is not one.
+type tunUpdatable interface {
+	TUNLayer
+	// Check has the installed executable validate the config of o without
+	// starting it, so a version that refuses it never takes the interface
+	// down.
+	Check(ctx context.Context, o tunlayer.Options) error
+	// StartPrevious starts o on the version the last update replaced, kept
+	// next to the executable (coreupdate.Previous), for when the new one
+	// does not start.
+	StartPrevious(ctx context.Context, o tunlayer.Options) (TUNInstance, error)
 }
 
 // singBoxTUN runs the layer as a dedicated sing-box process, separate from
@@ -105,6 +123,33 @@ func (t *singBoxTUN) Start(ctx context.Context, o tunlayer.Options) (TUNInstance
 		case <-time.After(delay):
 		}
 	}
+}
+
+func (t *singBoxTUN) Check(ctx context.Context, o tunlayer.Options) error {
+	cfg, err := tunlayer.Build(o)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(t.dir, 0o700); err != nil {
+		return err
+	}
+	// Beside tun.json, which the running layer was started with.
+	path := filepath.Join(t.dir, "tun-check.json")
+	if err := os.WriteFile(path, cfg, 0o600); err != nil {
+		return err
+	}
+	defer os.Remove(path)
+	return core.Check(ctx, core.SingBox, t.bin, path, t.dir)
+}
+
+func (t *singBoxTUN) StartPrevious(ctx context.Context, o tunlayer.Options) (TUNInstance, error) {
+	prev := coreupdate.Previous(t.bin)
+	if _, err := os.Stat(prev); err != nil {
+		return nil, fmt.Errorf("the previous sing-box is gone: %w", err)
+	}
+	c := *t
+	c.bin = prev
+	return c.Start(ctx, o)
 }
 
 // start runs the layer and returns once its interface is up with its

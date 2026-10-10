@@ -189,6 +189,8 @@ func (g *linuxGuard) revertLocked(ctx context.Context) error {
 
 func (g *linuxGuard) Recover(ctx context.Context) error { return g.Revert(ctx) }
 
+func (*linuxGuard) LinkBound() {}
+
 // Keep writes our resolv.conf again when someone replaced it while the
 // tunnel is up: NetworkManager or a DHCP client does so on every lease
 // renewal. What they wrote becomes the original restored on disconnect, as

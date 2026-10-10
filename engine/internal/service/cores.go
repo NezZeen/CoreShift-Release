@@ -29,7 +29,10 @@ type coreState struct {
 	// stale holds the updates installed while a connection may run the
 	// old version; applying is the connection whose applyCores runs, 0
 	// for none (coreapply.go).
-	stale    map[core.Kind]staleCore
+	stale map[core.Kind]staleCore
+	// tun is an update of sing-box the TUN layer, a sing-box process of its
+	// own on the desktop, may still run the old version of; nil for none.
+	tun      *staleCore
 	applying int
 }
 

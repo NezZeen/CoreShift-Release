@@ -74,6 +74,15 @@ type Keeper interface {
 	Keep(ctx context.Context) error
 }
 
+// LinkBound is a Guard whose changes belong to the TUN interface itself
+// (Linux: systemd-resolved's servers of the link, firewalld's zone), so
+// they are gone when the TUN layer starts again and makes the interface
+// anew: Apply runs again then. Windows' NRPT rule names no interface and
+// is left as it is.
+type LinkBound interface {
+	LinkBound()
+}
+
 type noopGuard struct{}
 
 func (noopGuard) Apply(context.Context, Config) error { return nil }

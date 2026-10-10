@@ -367,6 +367,11 @@ func extract(archive string, rel Release, bin string) ([]file, error) {
 	return nil, fmt.Errorf("unknown archive type %s", rel.Asset)
 }
 
+// Previous is where the version an update replaced is kept, next to bin,
+// until Cleanup or the next update: a process that ran it can be started
+// on it again.
+func Previous(bin string) string { return bin + ".old" }
+
 // swap puts every file in place, keeping the old ones as .old. On failure
 // it puts back what it already moved; undo does the same after success.
 func swap(files []file) (undo func(), err error) {
@@ -389,7 +394,7 @@ func swap(files []file) (undo func(), err error) {
 		}
 	}
 	for _, f := range files {
-		old := f.dst + ".old"
+		old := Previous(f.dst)
 		os.Remove(old) // a leftover from an earlier update, unless still running
 		if _, err := os.Stat(f.dst); err == nil {
 			if err := os.Rename(f.dst, old); err != nil {

@@ -692,6 +692,10 @@ class AppState extends ChangeNotifier {
         // The failed attempt's own FATAL line is in the journal just above:
         // this one says the next attempt follows.
         _log(e.time, 'TUN', 'интерфейс не поднялся: Windows ещё убирает прежний адаптер; повтор через ${e.line}. Причина: ${e.error}', LogLevel.warn);
+      case 'tun' when e.reason == 'updated':
+        // The desktop's TUN layer is a sing-box of its own: after the core,
+        // it moves to an updated sing-box too, restarting the interface.
+        _log(e.time, 'TUN', 'слой TUN перешёл на sing-box ${e.line}: интерфейс перезапущен, VPN не отключался', LogLevel.ok);
       case 'dns' when e.reason == 'network-changed':
         // The reconnect that follows says why it happens.
         _log(e.time, 'сеть', e.line.isNotEmpty ? e.line : _layerText(e.kind, e.reason), LogLevel.swap);
