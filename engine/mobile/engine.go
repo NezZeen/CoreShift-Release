@@ -50,9 +50,12 @@ type Platform interface {
 	// StateChanged reports the connection for the notification and the
 	// quick settings tile: the state ("idle", "connecting", "connected",
 	// "disconnecting", "failed", or "no-network": waiting for a network to
-	// connect, or with the VPN held until it returns), the server and when
-	// it connected (Unix milliseconds, 0 when not connected).
-	StateChanged(state, node string, sinceMillis int64)
+	// connect, or with the VPN held until it returns), the server, when
+	// it connected (Unix milliseconds, 0 when not connected) and whether
+	// the connection is the proxy without the VPN ("Прокси без VPN"),
+	// which the app keeps alive in a foreground service of its own, no
+	// VpnService built.
+	StateChanged(state, node string, sinceMillis int64, proxyOnly bool)
 	// Traffic reports the speed while connected and the screen is on, in
 	// bytes per second: every second, every other in battery saver.
 	Traffic(downRate, upRate int64)
@@ -90,6 +93,8 @@ type Status struct {
 	State       string
 	Node        string
 	SinceMillis int64
+	// ProxyOnly: the connection is the proxy without the VPN.
+	ProxyOnly bool
 }
 
 func statusOf(svc *service.Service) *Status {
@@ -98,7 +103,7 @@ func statusOf(svc *service.Service) *Status {
 	if !st.Since.IsZero() {
 		since = st.Since.UnixMilli()
 	}
-	return &Status{State: string(st.State), Node: st.Node, SinceMillis: since}
+	return &Status{State: string(st.State), Node: st.Node, SinceMillis: since, ProxyOnly: !st.TUN}
 }
 
 // CurrentStatus returns the connection now; idle before the engine runs.
@@ -155,7 +160,7 @@ func report(ctx context.Context, svc *service.Service, p Platform) {
 			switch e.Kind {
 			case "state":
 				st := statusOf(svc)
-				p.StateChanged(st.State, st.Node, st.SinceMillis)
+				p.StateChanged(st.State, st.Node, st.SinceMillis, st.ProxyOnly)
 			case "traffic":
 				// With the screen off no one sees the notification's speed;
 				// the first sample after it comes on brings it up to date.
@@ -302,6 +307,17 @@ func Stop() {
 		e.srv.Close() // event streams never go idle
 	}
 	os.Remove(e.apiFile)
+}
+
+// ProxyOnly reports whether the settings choose the proxy without the VPN
+// ("Все приложения через VPN" off): connecting then needs no VPN
+// permission, and the app keeps the engine alive with a foreground
+// service of its own.
+func ProxyOnly() bool {
+	mu.Lock()
+	e := running
+	mu.Unlock()
+	return e != nil && !e.svc.Options().TUN
 }
 
 // AutoConnectEnabled reports whether the settings ask to connect on start

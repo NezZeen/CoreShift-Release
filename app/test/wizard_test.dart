@@ -115,12 +115,14 @@ void main() {
     expect(text(WizardStrings.modeTitle), findsOneWidget);
     expect(text(WizardStrings.modeAllTitle), findsOneWidget);
     expect(text(WizardStrings.modeProxyTitle), findsOneWidget);
+    expect(text(WizardStrings.modeSystemProxyTitle), findsOneWidget);
     expect(text(WizardStrings.modeRecommended), findsOneWidget);
     await tester.tap(text(WizardStrings.modeProxyTitle));
     await tester.pump();
     await tester.tap(text(WizardStrings.next));
     await settle(tester, 600);
     expect(s.setting('tun', true), isFalse);
+    expect(s.setting('proxy.system', true), isFalse);
 
     // Done: connect.
     expect(text(WizardStrings.doneTitle), findsOneWidget);
@@ -307,7 +309,7 @@ void main() {
       await finish(tester);
     });
 
-    testWidgets('Android has the one mode, VPN', (tester) async {
+    testWidgets('Android has the VPN and the proxy without it', (tester) async {
       clipboard(tester, _link);
       tester.view.physicalSize = phone;
       tester.view.devicePixelRatio = 1;
@@ -340,8 +342,15 @@ void main() {
       expect(text(WizardStrings.modeVpnTitle), findsOneWidget);
       expect(text(WizardStrings.modeAllTitle), findsNothing);
       expect(text(WizardStrings.modeProxyTitle), findsNothing);
+      expect(text(WizardStrings.modeSystemProxyTitle), findsNothing);
+      expect(text(WizardStrings.modeProxyOnlyTitle), findsOneWidget);
       expect(text(WizardStrings.modeRecommended), findsOneWidget);
-      await tester.tap(text(WizardStrings.skip));
+      await tester.tap(text(WizardStrings.modeProxyOnlyTitle));
+      await tester.pump();
+      await tester.tap(text(WizardStrings.next));
+      await settle(tester, 600);
+      expect(s.setting('tun', true), isFalse, reason: 'the proxy without the VPN is TUN off');
+      await tester.tap(text(WizardStrings.doneLater));
       await settle(tester, 600);
       await finish(tester);
     });

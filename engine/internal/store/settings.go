@@ -40,6 +40,8 @@ type Settings struct {
 	// looked at less often (service/power.go). On by default, also for
 	// settings saved before it existed. The desktop has no use for it.
 	BatterySaving bool `json:"battery_saving"`
+	// Proxy is the local proxy without the TUN layer (proxy.go).
+	Proxy ProxySettings `json:"proxy"`
 }
 
 // LogSettings say how much the journal tells.
@@ -374,6 +376,9 @@ func (s Settings) normalize() (Settings, error) {
 	if strings.ContainsAny(s.Updates.UserAgent, "\r\n") {
 		errs = append(errs, errors.New("updates.user_agent: must be one line"))
 	}
+	var perr error
+	s.Proxy, perr = s.Proxy.normalize()
+	errs = append(errs, perr)
 	s.AppUpdate.Source = strings.TrimSpace(s.AppUpdate.Source)
 	if s.AppUpdate.Source != "" {
 		if _, err := selfupdate.ParseSource(s.AppUpdate.Source); err != nil {

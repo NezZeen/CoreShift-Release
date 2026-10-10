@@ -599,7 +599,18 @@ class DaemonInfo {
   final bool tunAvailable;
   final String tunUnavailable;
 
-  const DaemonInfo({this.version = '', this.build = 0, this.commit = '', this.cores = const [], this.tunAvailable = false, this.tunUnavailable = ''});
+  /// The port of the proxy without TUN (SOCKS5 and HTTP on 127.0.0.1).
+  final int proxyPort;
+
+  const DaemonInfo({
+    this.version = '',
+    this.build = 0,
+    this.commit = '',
+    this.cores = const [],
+    this.tunAvailable = false,
+    this.tunUnavailable = '',
+    this.proxyPort = 17890,
+  });
 
   factory DaemonInfo.fromJson(Json j) => DaemonInfo(
     version: j['version'] ?? '',
@@ -608,6 +619,7 @@ class DaemonInfo {
     cores: ((j['cores'] as List?) ?? []).map((c) => CoreInfo.fromJson((c as Map).cast())).toList(),
     tunAvailable: j['tun_available'] == true,
     tunUnavailable: j['tun_unavailable'] ?? '',
+    proxyPort: (j['proxy_port'] as num?)?.toInt() ?? 17890,
   );
 
   bool installed(String kind) => cores.any((c) => c.kind == kind && c.installed);

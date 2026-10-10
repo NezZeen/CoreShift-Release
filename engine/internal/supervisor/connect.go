@@ -23,7 +23,7 @@ func (s *Supervisor) Connect(ctx context.Context, n node.Node, serverAddr string
 	if err != nil {
 		return err
 	}
-	gate, err := socksgate.Listen(socksgate.Config{Listen: s.cfg.Listen, Auth: s.cfg.Auth, Open: s.cfg.OpenInbound})
+	gate, err := socksgate.Listen(s.cfg.gateConfig())
 	if err != nil {
 		return portError(s.cfg.Listen, err)
 	}

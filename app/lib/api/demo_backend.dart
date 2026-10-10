@@ -60,6 +60,9 @@ class DemoBackend implements Backend {
     'updates': {'auto': true, 'interval_hours': 12, 'user_agent': ''},
     'app_update': {'auto': true, 'source': ''},
     'log': {'verbose': true, 'version': 1},
+    // The proxy without TUN: the system proxy on a computer, the
+    // credentials of «Прокси без VPN» on a phone (made up for the demo).
+    'proxy': {'system': false, 'user': 'csdemo7', 'pass': 'Demo7Passw0rdNotReal', 'open_http': false},
   };
 
   Json _appUpdate = {'state': 'idle', 'checked_at': DateTime.now().toUtc().toIso8601String()};
@@ -94,7 +97,12 @@ class DemoBackend implements Backend {
   /// The settings the connection uses, as the service compares them: not
   /// auto-connect, nor the updates.
   String _connSettings = '';
-  String _connPart(Json s) => jsonEncode({...s}..removeWhere((k, _) => const {'auto_connect', 'updates', 'app_update'}.contains(k)));
+  String _connPart(Json s) {
+    final part = jsonDecode(jsonEncode(s)) as Json..removeWhere((k, _) => const {'auto_connect', 'updates', 'app_update'}.contains(k));
+    // The app sets the system proxy at once: no reason to reconnect.
+    (part['proxy'] as Map?)?.remove('system');
+    return jsonEncode(part);
+  }
 
   /// Traffic per day, oldest first, ending with today (GET /v1/stats).
   final List<List<int>> _history = [];
@@ -324,6 +332,8 @@ class DemoBackend implements Backend {
     if (tun) {
       _emit({'kind': 'tun', 'reason': 'up'});
       _emit({'kind': 'dns', 'reason': 'applied'});
+    } else {
+      _emit({'kind': 'proxy', 'reason': 'up', 'line': 'прокси SOCKS5 и HTTP на 127.0.0.1:17890 открыт для программ, настроенных на него'});
     }
     _status = {..._status, 'state': 'connected', 'core': chain.first, 'failed': <String, String>{}, 'since': DateTime.now().toUtc().toIso8601String()};
     _emit({'kind': 'core-state', 'core': chain.first, 'reason': 'connected'});
@@ -386,6 +396,8 @@ class DemoBackend implements Backend {
     if (_status['tun'] == true) {
       _emit({'kind': 'dns', 'reason': 'reverted'});
       _emit({'kind': 'tun', 'reason': 'down'});
+    } else {
+      _emit({'kind': 'proxy', 'reason': 'down', 'line': 'прокси закрыт'});
     }
     _status = {'state': 'idle', 'tun': _settings['tun']};
     if (!silent) _emit({'kind': 'state', 'state': 'idle'});
@@ -573,6 +585,7 @@ class DemoBackend implements Backend {
               },
           ],
           'tun_available': true,
+          'proxy_port': 17890,
           'store': true,
         };
       case 'POST /connect':

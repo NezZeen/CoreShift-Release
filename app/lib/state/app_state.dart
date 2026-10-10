@@ -14,6 +14,7 @@ import 'import_link.dart';
 import 'leak.dart';
 import 'plural.dart';
 import 'redact.dart';
+import 'system_proxy_sync.dart';
 import '../version.dart';
 
 export 'import_link.dart' show ImportLink;
@@ -39,6 +40,7 @@ part 'app_state/feedback.dart';
 part 'app_state/address.dart';
 part 'app_state/view.dart';
 part 'app_state/selection.dart';
+part 'app_state/system_proxy.dart';
 
 /// Everything the UI shows, kept in sync with the daemon through its event
 /// stream. Widgets listen to it and call its actions.
@@ -470,6 +472,7 @@ class AppState extends ChangeNotifier {
 
   void _notify() {
     if (!_disposed) notifyListeners();
+    _syncSystemProxy();
   }
 
   @override

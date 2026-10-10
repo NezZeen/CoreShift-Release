@@ -15,6 +15,8 @@
 //	coreshiftd service {install|uninstall|start|stop|run}   the Windows service;
 //	                                          on Linux {run|start|stop|status}, under systemd
 //	coreshiftd cores fetch -dir DIR           download the latest cores for this platform (builds)
+//	coreshiftd sysproxy {apply|restore|logon|guard|status}
+//	                                          the system proxy, run by the app as the user
 //	coreshiftd update check [-source github:OWNER/REPO|DIR] [-download DIR]
 //	                                          find and verify the latest release of
 //	                                          CoreShift, without installing it
@@ -70,6 +72,8 @@ func main() {
 		err = runUpdate(ctx, os.Args[2:])
 	case "cores":
 		err = runCores(ctx, os.Args[2:])
+	case "sysproxy":
+		err = runSysProxy(ctx, os.Args[2:])
 	case "version", "-v", "--version":
 		fmt.Println("coreshiftd", service.VersionString())
 	default:
@@ -91,6 +95,7 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "       coreshiftd serve [flags]")
 	fmt.Fprintln(os.Stderr, "       coreshiftd service {install|uninstall|start|stop|run}")
 	fmt.Fprintln(os.Stderr, "       coreshiftd cores fetch -dir DIR [-only xray,sing-box,mihomo]")
+	fmt.Fprintln(os.Stderr, "       coreshiftd sysproxy {apply [-addr 127.0.0.1:17890]|restore|logon|guard|status}")
 	fmt.Fprintln(os.Stderr, "       coreshiftd version")
 	os.Exit(2)
 }

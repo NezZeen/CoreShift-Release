@@ -16,6 +16,7 @@ type Policy struct {
 	ReturnToPrimaryAfter time.Duration
 	Fragment             bool
 	OpenInbound          bool // Config.OpenInbound
+	Inbound              Inbound
 	// LogLevel is the cores' (Config.LogLevel); "" is the default, warn.
 	LogLevel string
 }
@@ -29,7 +30,7 @@ func (s *Supervisor) SetPolicy(p Policy) {
 	c := s.cfg
 	c.Priority, c.Mode, c.ManualCore = slices.Clone(p.Priority), p.Mode, p.ManualCore
 	c.Health, c.ReturnToPrimaryAfter, c.Fragment = p.Health, p.ReturnToPrimaryAfter, p.Fragment
-	c.OpenInbound = p.OpenInbound
+	c.OpenInbound, c.Inbound = p.OpenInbound, p.Inbound
 	c.LogLevel = p.LogLevel
 	s.cfg = c.withDefaults()
 }

@@ -42,8 +42,15 @@ class WizardMode {
   static String _nothing(AppState _) => '';
 }
 
+/// Sets «Системный прокси» in [j], when the service knows the setting.
+void _systemProxy(Json j, bool on) {
+  if (j['proxy'] is Map) (j['proxy'] as Map)['system'] = on;
+}
+
 /// The modes of this system, in the order the wizard lists them. Only the
-/// existing settings are used: the "tun" switch.
+/// existing settings are used: the "tun" switch and the proxy without it
+/// ("proxy": «Системный прокси» on a computer, the credentials of «Прокси
+/// без VPN» on a phone), offered when the service knows them.
 List<WizardMode> wizardModes({required bool android}) {
   if (android) {
     return [
@@ -55,6 +62,16 @@ List<WizardMode> wizardModes({required bool android}) {
         recommended: true,
         isActive: (s) => s.setting('tun', true),
         apply: (j) => j['tun'] = true,
+      ),
+      WizardMode(
+        id: 'proxy-only',
+        title: WizardStrings.modeProxyOnlyTitle,
+        text: WizardStrings.modeProxyOnlyText,
+        icon: Icons.lan_outlined,
+        available: (s) => s.hasSetting('proxy.user'),
+        unavailable: (_) => WizardStrings.modeNeedsUpdate,
+        isActive: (s) => !s.setting('tun', true),
+        apply: (j) => j['tun'] = false,
       ),
     ];
   }
@@ -71,12 +88,28 @@ List<WizardMode> wizardModes({required bool android}) {
       apply: (j) => j['tun'] = true,
     ),
     WizardMode(
+      id: 'system-proxy',
+      title: WizardStrings.modeSystemProxyTitle,
+      text: WizardStrings.modeSystemProxyText,
+      icon: Icons.settings_ethernet,
+      available: (s) => s.hasSetting('proxy.system'),
+      unavailable: (_) => WizardStrings.modeNeedsUpdate,
+      isActive: (s) => !s.setting('tun', false) && s.setting('proxy.system', false) == true,
+      apply: (j) {
+        j['tun'] = false;
+        _systemProxy(j, true);
+      },
+    ),
+    WizardMode(
       id: 'proxy',
       title: WizardStrings.modeProxyTitle,
       text: WizardStrings.modeProxyText,
       icon: Icons.lan_outlined,
-      isActive: (s) => !s.setting('tun', false),
-      apply: (j) => j['tun'] = false,
+      isActive: (s) => !s.setting('tun', false) && s.setting('proxy.system', false) != true,
+      apply: (j) {
+        j['tun'] = false;
+        _systemProxy(j, false);
+      },
     ),
   ];
 }

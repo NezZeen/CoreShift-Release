@@ -54,7 +54,16 @@ abstract final class WizardStrings {
   static const modeAllTitle = 'Все приложения';
   static const modeAllText = 'Через VPN идёт весь интернет-трафик компьютера, программам ничего настраивать не нужно. Режим TUN.';
   static const modeProxyTitle = 'Только прокси';
-  static const modeProxyText = 'Через VPN пойдут только программы, в которых указан прокси SOCKS5 127.0.0.1:17890. Остальные работают как раньше.';
+  static const modeProxyText = 'Через VPN пойдут только программы, в которых указан прокси SOCKS5 или HTTP 127.0.0.1:17890. Остальные работают как раньше.';
+  static const modeSystemProxyTitle = 'Системный прокси';
+  static const modeSystemProxyText =
+      'Если «Все приложения» не включаются: CoreShift сам пропишет прокси в системе. '
+      'Работает для браузеров и большинства программ, но не для игр и всего, что прокси не понимает.';
+  static const modeProxyOnlyTitle = 'Прокси без VPN';
+  static const modeProxyOnlyText =
+      'VPN не включается: через CoreShift идут только приложения, в которых указан прокси (Telegram, браузер). '
+      'Подходит, если место VPN занято другим приложением или рабочим профилем. Логин и пароль — в настройках.';
+  static const modeNeedsUpdate = 'Нужна более новая служба CoreShift';
   static const modeVpnTitle = 'VPN';
   static const modeVpnText = 'Через VPN идёт весь трафик телефона. Android один раз спросит разрешение на VPN.';
   static const modeUnavailable = 'Недоступно на этом компьютере';

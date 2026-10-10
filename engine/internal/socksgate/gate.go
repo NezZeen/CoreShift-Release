@@ -57,6 +57,18 @@ type Config struct {
 	// Wait is how long a connection that comes while no core runs, during
 	// a swap, waits for the next one; zero means DefaultWait.
 	Wait time.Duration
+	// Guest are other credentials the gate takes besides Auth: those the
+	// user's apps are given (Android's proxy without the VPN, where any
+	// app on the phone could reach an open port).
+	Guest core.SOCKSAuth
+	// HTTP serves HTTP proxy requests on the same port too (http.go): what
+	// the system proxy of Windows and most programs speak. They need
+	// Auth or Guest as Basic proxy credentials, unless the gate is Open
+	// or OpenHTTP.
+	HTTP bool
+	// OpenHTTP lets HTTP requests in without credentials while SOCKS still
+	// needs them: Android's Wi-Fi proxy setting has no field for them.
+	OpenHTTP bool
 }
 
 // DefaultWait covers a core starting (a few seconds at most): what
@@ -77,6 +89,9 @@ type Gate struct {
 	auth core.SOCKSAuth
 	open bool
 	wait time.Duration
+	// guest, http and openHTTP are Config's Guest, HTTP and OpenHTTP.
+	guest          core.SOCKSAuth
+	http, openHTTP bool
 
 	// up and down count the bytes clients sent through the cores and got
 	// back, TCP and UDP payload alike.
@@ -118,6 +133,7 @@ func Listen(cfg Config) (*Gate, error) {
 	}
 	g := &Gate{
 		ln: ln, auth: cfg.Auth, open: cfg.Open || !cfg.Auth.Set(), wait: cfg.Wait,
+		guest: cfg.Guest, http: cfg.HTTP, openHTTP: cfg.OpenHTTP,
 		changed: make(chan struct{}), conns: map[*session]struct{}{},
 	}
 	if g.wait <= 0 {
@@ -203,7 +219,8 @@ func (g *Gate) serve() {
 			continue
 		}
 		backoff = 0
-		s := &session{client: c}
+		// Buffered, so the first byte tells SOCKS from HTTP (http.go).
+		s := &session{client: newBufConn(c)}
 		g.mu.Lock()
 		if g.closed {
 			g.mu.Unlock()
@@ -240,6 +257,21 @@ func (g *Gate) handle(s *session) {
 		up, err := g.dialCore(ctx, s)
 		ch <- dialed{up, err}
 	}()
+	if first, err := s.client.(*bufConn).r.Peek(1); err == nil && first[0] != 5 && g.http {
+		used := false
+		g.serveHTTP(s, func() (net.Conn, error) {
+			used = true
+			d := <-ch
+			return d.up, d.err
+		})
+		if !used {
+			cancel()
+			if d := <-ch; d.up != nil {
+				d.up.Close()
+			}
+		}
+		return
+	}
 	var req request
 	err := g.greet(c)
 	if err == nil {
@@ -324,7 +356,7 @@ func (g *Gate) greet(c net.Conn) error {
 		return err
 	}
 	// An open gate takes whatever a program was set up with.
-	ok := g.open || (equal(user, g.auth.User) && equal(pass, g.auth.Pass))
+	ok := g.open || g.known(user, pass)
 	if !ok {
 		c.Write([]byte{1, 1})
 		return errAuth
@@ -351,6 +383,13 @@ func readUserPass(c net.Conn) (user, pass []byte, err error) {
 	pass = make([]byte, b[0])
 	_, err = io.ReadFull(c, pass)
 	return user, pass, err
+}
+
+// known reports whether user and pass are Auth or Guest.
+func (g *Gate) known(user, pass []byte) bool {
+	own := equal(user, g.auth.User) && equal(pass, g.auth.Pass)
+	guest := g.guest.Set() && equal(user, g.guest.User) && equal(pass, g.guest.Pass)
+	return own || guest
 }
 
 func equal(got []byte, want string) bool {

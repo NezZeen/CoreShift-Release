@@ -119,6 +119,7 @@ type Config struct {
 	// it is the proxy the user's programs are set to use, and they have
 	// none to give (browsers cannot). The cores keep theirs.
 	OpenInbound bool
+	Inbound     Inbound // inbound.go
 
 	Health       Health
 	StartTimeout time.Duration

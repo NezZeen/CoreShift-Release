@@ -123,6 +123,12 @@ class _DesktopFrameState extends State<DesktopFrame> with WindowListener {
         // The service disconnects by itself once the app is gone.
       }
     }
+    // The proxy of the system goes back before the app does.
+    try {
+      await widget.state.settleSystemProxy().timeout(const Duration(seconds: 5));
+    } catch (_) {
+      // The guard and the sign-in entry put it back later.
+    }
     try {
       _tray?.dispose();
     } catch (_) {

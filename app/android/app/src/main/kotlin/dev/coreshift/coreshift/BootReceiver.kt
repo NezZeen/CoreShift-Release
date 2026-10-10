@@ -14,11 +14,14 @@ import dev.coreshift.mobile.Mobile
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
-        if (VpnService.prepare(context) != null || !Mobile.autoConnectEnabled()) return
+        val proxyOnly = Mobile.proxyOnly()
+        // The proxy without the VPN needs no permission.
+        if ((!proxyOnly && VpnService.prepare(context) != null) || !Mobile.autoConnectEnabled()) return
         // In the foreground now, while Android still allows it after boot;
         // the engine then builds the VPN in the running service.
         context.startForegroundService(
-            Intent(context, CoreShiftVpnService::class.java).setAction(CoreShiftVpnService.ACTION_CONNECTING),
+            Intent(context, CoreShiftVpnService::class.java)
+                .setAction(if (proxyOnly) CoreShiftVpnService.ACTION_PROXY else CoreShiftVpnService.ACTION_CONNECTING),
         )
         Engine.autoConnect()
     }

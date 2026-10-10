@@ -21,6 +21,7 @@ import com.google.mlkit.common.MlKitException
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
+import dev.coreshift.mobile.Mobile
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -47,7 +48,8 @@ class MainActivity : FlutterActivity() {
         super.onCreate(savedInstanceState)
         // "Автозапуск" connects when CoreShift opens, once the VPN is allowed;
         // not when Android only recreates the screen.
-        if (savedInstanceState == null && VpnService.prepare(this) == null) Engine.autoConnect()
+        // The proxy without the VPN needs no permission.
+        if (savedInstanceState == null && (Mobile.proxyOnly() || VpnService.prepare(this) == null)) Engine.autoConnect()
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {

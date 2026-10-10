@@ -54,7 +54,7 @@ extension AppStateActions on AppState {
       'CoreShift: приложение ${version.label} (${version.commit.isEmpty ? '—' : version.commit}), '
           'служба ${info.buildVersion.label} (${info.commit.isEmpty ? '—' : info.commit})',
       'Система: ${platform.osDescription}',
-      'Режим: ${setting('tun', false) ? 'все приложения (TUN)' : 'только прокси'}; ядра: $cores; '
+      'Режим: ${setting('tun', false) ? 'все приложения (TUN)' : _proxyModeName}; ядра: $cores; '
           'маршруты: ${setting('routing.mode', 'all') == 'selected' ? 'только выбранное' : 'всё через VPN'}; '
           'Россия напрямую: ${on('routing.russia_direct')}; IPv6: ${on('ipv6')}; fake-IP: ${on('dns.fake_ip')}',
       'Сейчас: ${AppState._stateText(status.state.name)}${status.core.isEmpty ? '' : ' через ${status.core}'}'

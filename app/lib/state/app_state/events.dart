@@ -137,6 +137,8 @@ extension AppStateEvents on AppState {
           e.error.isNotEmpty ? e.error : AppState._layerText(e.kind, e.reason),
           e.error.isNotEmpty ? LogLevel.warn : LogLevel.info,
         );
+      case 'proxy':
+        _log(e.time, 'прокси', e.error.isNotEmpty ? e.error : e.line, e.error.isNotEmpty ? LogLevel.warn : LogLevel.info);
       case 'action':
         // Why the connection changes, when not by the window's buttons:
         // Android's tile and notification, "Автозапуск", the service itself.

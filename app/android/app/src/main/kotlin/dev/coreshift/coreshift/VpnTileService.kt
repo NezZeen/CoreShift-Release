@@ -35,15 +35,18 @@ class VpnTileService : TileService() {
             Thread { Mobile.disconnect("tile") }.start()
             return
         }
-        // The VPN was never allowed: that takes the app.
-        if (VpnService.prepare(this) != null) {
+        // The VPN was never allowed: that takes the app. The proxy without
+        // the VPN needs no permission.
+        val proxyOnly = Mobile.proxyOnly()
+        if (!proxyOnly && VpnService.prepare(this) != null) {
             openApp()
             return
         }
         // In the foreground now, while the tap lets it; the engine then
         // builds the VPN in the running service.
         startForegroundService(
-            Intent(this, CoreShiftVpnService::class.java).setAction(CoreShiftVpnService.ACTION_CONNECTING),
+            Intent(this, CoreShiftVpnService::class.java)
+                .setAction(if (proxyOnly) CoreShiftVpnService.ACTION_PROXY else CoreShiftVpnService.ACTION_CONNECTING),
         )
         Engine.connect()
         qsTile?.let {
@@ -56,10 +59,10 @@ class VpnTileService : TileService() {
     private fun update() {
         val tile = qsTile ?: return
         tile.state = if (VpnStatus.active) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
-        tile.label = "CoreShift"
+        tile.label = if (VpnStatus.proxyOnly) "CoreShift · прокси" else "CoreShift"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             tile.subtitle = when (VpnStatus.state) {
-                "connected" -> VpnStatus.node.ifEmpty { "Подключено" }
+                "connected" -> if (VpnStatus.proxyOnly) "Прокси без VPN" else VpnStatus.node.ifEmpty { "Подключено" }
                 "connecting" -> "Подключение…"
                 "no-network" -> "Нет сети"
                 "disconnecting" -> "Отключение…"

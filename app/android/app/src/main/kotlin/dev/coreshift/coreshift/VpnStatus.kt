@@ -29,13 +29,22 @@ object VpnStatus {
     var up = 0L
         private set
 
+    /**
+     * The connection is the proxy without the VPN («Прокси без VPN»): no
+     * VpnService is built, the service only keeps the engine alive.
+     */
+    @Volatile
+    var proxyOnly = false
+        private set
+
     /** "no-network": waiting for a network to connect, or held until it returns. */
     val active get() = state == "connecting" || state == "connected" || state == "no-network"
 
-    fun set(state: String, node: String, since: Long) {
+    fun set(state: String, node: String, since: Long, proxyOnly: Boolean) {
         this.state = state
         this.node = node
         this.since = since
+        this.proxyOnly = proxyOnly
         if (state != "connected") {
             down = 0
             up = 0

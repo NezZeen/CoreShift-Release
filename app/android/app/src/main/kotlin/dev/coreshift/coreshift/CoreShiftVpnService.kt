@@ -85,8 +85,9 @@ class CoreShiftVpnService : VpnService() {
     @Synchronized
     fun stopIfIdle() {
         // Waiting for a network keeps the service, and with it the engine's
-        // process, until the connection is made or cancelled.
-        if (tun == null && VpnStatus.state != "no-network") shutdown()
+        // process, until the connection is made or cancelled; so does the
+        // proxy without the VPN while it is on.
+        if (tun == null && VpnStatus.state != "no-network" && !(VpnStatus.proxyOnly && VpnStatus.active)) shutdown()
     }
 
     /**
@@ -219,7 +220,13 @@ class CoreShiftVpnService : VpnService() {
             .setOnlyAlertOnce(true)
             .setCategory(Notification.CATEGORY_SERVICE)
             .addAction(Notification.Action.Builder(null, "Отключить", disconnect).build())
-        if (tun != null && s.state == "connected") {
+        if (tun == null && s.proxyOnly && s.state == "connected") {
+            // No VPN: apps set to the proxy go through it, the others do not.
+            b.setContentTitle(s.node.ifEmpty { "CoreShift" })
+                .setContentText("Прокси 127.0.0.1:$PROXY_PORT    ↓ ${VpnStatus.formatRate(s.down)}    ↑ ${VpnStatus.formatRate(s.up)}")
+                .setSubText("Прокси без VPN")
+            if (s.since > 0) b.setWhen(s.since).setUsesChronometer(true).setShowWhen(true)
+        } else if (tun != null && s.state == "connected") {
             b.setContentTitle(s.node.ifEmpty { "CoreShift" })
                 .setContentText("↓ ${VpnStatus.formatRate(s.down)}    ↑ ${VpnStatus.formatRate(s.up)}")
                 .setSubText("Подключено")
@@ -233,7 +240,7 @@ class CoreShiftVpnService : VpnService() {
                 .setShowWhen(false)
         } else {
             b.setContentTitle(if (s.state == "disconnecting") "Отключение…" else "Подключение…")
-                .setContentText(s.node.ifEmpty { "CoreShift" })
+                .setContentText(if (s.proxyOnly) "Прокси без VPN · ${s.node.ifEmpty { "CoreShift" }}" else s.node.ifEmpty { "CoreShift" })
                 .setShowWhen(false)
         }
         return b.build()
@@ -245,6 +252,12 @@ class CoreShiftVpnService : VpnService() {
         private const val ACTION_DISCONNECT = "dev.coreshift.DISCONNECT"
         /** Started before the engine connects: at boot, from the tile. */
         const val ACTION_CONNECTING = "dev.coreshift.CONNECTING"
+
+        /** Started for the proxy without the VPN: no TUN, only the engine kept alive. */
+        const val ACTION_PROXY = "dev.coreshift.PROXY"
+
+        /** The engine's proxy port (core.DefaultListen). */
+        const val PROXY_PORT = 17890
 
         @Volatile
         private var instance: CoreShiftVpnService? = null

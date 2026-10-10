@@ -84,6 +84,7 @@ func (s *Service) connectOp(ctx context.Context, n node.Node) error {
 	// are set to use, with no credentials to give. Android always has its
 	// VPN, and there other apps must not reach the port.
 	pol.OpenInbound = !opts.TUN && !s.cfg.AppOutsideVPN
+	pol.Inbound = s.inbound(opts)
 	s.sup.SetPolicy(pol)
 	s.setStatus(Status{State: Connecting, Node: n.Name, Protocol: string(n.Protocol), TUN: opts.TUN, Since: time.Now()})
 	if s.networkGone(ctx) {
@@ -319,6 +320,7 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 		return netip.Addr{}, err
 	}
 	if !o.TUN {
+		s.proxyUp(o)
 		return serverIP, nil
 	}
 
@@ -488,6 +490,7 @@ func (s *Service) stopLocked() {
 		s.hub.publish(Event{Kind: "tun", Reason: "down"})
 	}
 	s.sup.Disconnect()
+	s.proxyDown()
 	// The repeats counted so far belong to this connection: told now,
 	// before "отключено", not seconds after it.
 	s.logs.flushAll()

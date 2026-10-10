@@ -186,6 +186,9 @@ type Service struct {
 	netSeen  atomic.Bool
 	netBlind atomic.Bool
 	healthOK atomic.Int64
+	// proxyOpen is set while a connection without the TUN layer serves
+	// the user's apps (proxymode.go).
+	proxyOpen atomic.Bool
 }
 
 func New(cfg Config) (*Service, error) {
@@ -193,6 +196,7 @@ func New(cfg Config) (*Service, error) {
 		cfg.DataDir = DefaultDataDir()
 	}
 	if cfg.Store != nil {
+		ensureProxyAuth(cfg.Store, cfg.AppOutsideVPN)
 		cfg.Options = OptionsFromSettings(cfg.Store.Settings())
 	}
 	cfg.Options = cfg.Options.withDefaults()
@@ -462,6 +466,8 @@ func (s *Service) SetOptions(o Options) {
 	cmp := o
 	cmp.Verbose = s.connOpts.Verbose
 	cmp.NoBatterySaving = s.connOpts.NoBatterySaving // applies at once, power.go
+	// The app sets the system proxy itself, at once (proxymode.go).
+	cmp.SystemProxy = s.connOpts.SystemProxy
 	s.optsPending = active && !reflect.DeepEqual(cmp, s.connOpts)
 	if !active {
 		s.status.TUN = o.TUN

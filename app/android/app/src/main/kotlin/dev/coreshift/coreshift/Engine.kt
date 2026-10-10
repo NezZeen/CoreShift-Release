@@ -50,7 +50,7 @@ object Engine {
             Log.e(TAG, "engine did not start", e)
             return
         }
-        Mobile.currentStatus().let { VpnStatus.set(it.state, it.node, it.sinceMillis) }
+        Mobile.currentStatus().let { VpnStatus.set(it.state, it.node, it.sinceMillis, it.proxyOnly) }
         watchNetwork(app)
         watchPower(app)
     }
@@ -174,8 +174,21 @@ object Engine {
 
         override fun installUpdate(path: String) = Updater.install(context, path)
 
-        override fun stateChanged(state: String, node: String, sinceMillis: Long) {
-            VpnStatus.set(state, node, sinceMillis)
+        override fun stateChanged(state: String, node: String, sinceMillis: Long, proxyOnly: Boolean) {
+            VpnStatus.set(state, node, sinceMillis, proxyOnly)
+            // The proxy without the VPN builds no TUN, so nothing else starts
+            // the service that keeps the engine's process alive meanwhile.
+            if (proxyOnly && VpnStatus.active && CoreShiftVpnService.current() == null) {
+                try {
+                    context.startForegroundService(
+                        Intent(context, CoreShiftVpnService::class.java).setAction(CoreShiftVpnService.ACTION_PROXY),
+                    )
+                } catch (e: Exception) {
+                    // From the background Android may refuse: the proxy
+                    // then works while the app is open.
+                    Log.w(TAG, "proxy service: ${e.message}")
+                }
+            }
             CoreShiftVpnService.current()?.refreshNotification()
             // A wait for the network that ended without a VPN (cancelled,
             // failed) leaves no TUN to close: the service goes by itself.

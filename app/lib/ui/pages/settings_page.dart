@@ -10,6 +10,7 @@ import '../shell.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'leak_check.dart';
+import 'proxy_mode.dart';
 
 /// What the self-update is doing, in words.
 String _appUpdateText(AppState state) {
@@ -109,9 +110,13 @@ class SettingsPage extends StatelessWidget {
 
     // On Android with every app through the VPN the panel may have nothing
     // to offer: then it is left out.
+    // «Прокси без VPN» on Android, with an engine that knows it.
+    final androidProxy = platform.isAndroid && state.hasSetting('proxy.user');
+    final tunOff = !state.setting('tun', true);
     final rowsBefore =
         !platform.isAndroid ||
-        !state.setting('tun', true) ||
+        androidProxy ||
+        tunOff ||
         state.hasSetting('ipv6') ||
         state.hasSetting('cores.fragment') ||
         state.hasSetting('cores.switch_server');
@@ -123,18 +128,22 @@ class SettingsPage extends StatelessWidget {
           const PanelTitle('Подключение'),
           // On Android every app goes through the VPN: the switch shows
           // only to undo a proxy-only mode chosen somehow.
-          if (!platform.isAndroid || !state.setting('tun', true))
+          if (androidProxy) ...[
+            ProxyOnlyRow(state: state, first: true),
+            if (tunOff) ProxyAccessCard(state: state),
+          ] else if (!platform.isAndroid || tunOff)
             SettingRow(
               first: true,
               title: 'Все приложения через VPN',
               description: info.tunAvailable
-                  ? 'Режим TUN. Если выключить, через VPN пойдут только программы с прокси SOCKS5 127.0.0.1:17890'
+                  ? 'Режим TUN. Если выключить, через VPN пойдут только программы с прокси SOCKS5 или HTTP 127.0.0.1:${info.proxyPort}'
                   : info.tunUnavailable,
               trailing: _switch('tun', enabled: info.tunAvailable || state.setting('tun', false)),
             ),
+          if (!platform.isAndroid && tunOff && state.hasSetting('proxy.system')) SystemProxyRow(state: state),
           if (state.hasSetting('ipv6'))
             SettingRow(
-              first: platform.isAndroid && state.setting('tun', true),
+              first: platform.isAndroid && !androidProxy && state.setting('tun', true),
               title: 'IPv6 через туннель',
               description:
                   'IPv6-трафик тоже идёт через VPN. Если выключить, IPv6 при подключении не работает вовсе и сайты открываются по IPv4. '
@@ -143,7 +152,7 @@ class SettingsPage extends StatelessWidget {
             ),
           if (state.hasSetting('cores.fragment'))
             SettingRow(
-              first: platform.isAndroid && state.setting('tun', true) && !state.hasSetting('ipv6'),
+              first: platform.isAndroid && !androidProxy && state.setting('tun', true) && !state.hasSetting('ipv6'),
               title: 'Обход блокировок (DPI)',
               description:
                   'Делит начало защищённого соединения с сервером на части, чтобы провайдер не узнал его. '

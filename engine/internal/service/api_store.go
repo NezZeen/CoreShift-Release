@@ -105,6 +105,8 @@ func (a *api) info(w http.ResponseWriter, r *http.Request) {
 		"tun_available":   tunReason == "",
 		"tun_unavailable": tunReason,
 		"store":           a.svc.Store() != nil,
+		// The port of the proxy without the TUN layer.
+		"proxy_port": a.svc.cfg.Listen.Port(),
 	})
 }
 

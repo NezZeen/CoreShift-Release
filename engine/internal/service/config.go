@@ -92,6 +92,11 @@ type Options struct {
 	Rules    []store.Rule
 	Geo      store.GeoSource
 	BlockAds bool
+	// SystemProxy, ProxyAuth and ProxyOpenHTTP are store.ProxySettings:
+	// the proxy without the TUN layer (proxymode.go).
+	SystemProxy   bool
+	ProxyAuth     core.SOCKSAuth
+	ProxyOpenHTTP bool
 }
 
 type Config struct {
@@ -272,6 +277,9 @@ func OptionsFromSettings(set store.Settings) Options {
 		Rules:                slices.Clone(set.Routing.Rules),
 		Geo:                  set.Routing.Geo,
 		BlockAds:             set.Routing.BlockAds,
+		SystemProxy:          set.Proxy.System,
+		ProxyAuth:            core.SOCKSAuth{User: set.Proxy.User, Pass: set.Proxy.Pass},
+		ProxyOpenHTTP:        set.Proxy.OpenHTTP,
 		DNS: DNSSettings{
 			Remote:          set.DNS.Remote,
 			Direct:          set.DNS.Direct,

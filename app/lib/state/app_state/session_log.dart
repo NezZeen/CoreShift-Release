@@ -52,7 +52,7 @@ extension AppStateSessionLog on AppState {
     final node = selection.node;
     final version = info.versionOf(core);
     final route = [
-      if (!on('tun')) 'только прокси',
+      if (!on('tun')) _proxyModeName,
       setting('routing.mode', 'all') == 'selected' ? 'только выбранное через VPN' : 'всё через VPN',
       if (on('routing.russia_direct')) 'Россия напрямую',
       if (setting('routing.block_ads', false) == true) 'без рекламы',
