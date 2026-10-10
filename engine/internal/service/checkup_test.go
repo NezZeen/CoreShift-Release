@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"coreshift/engine/internal/msg"
+	"coreshift/engine/internal/node"
 	"coreshift/engine/internal/ping"
 	"coreshift/engine/internal/store"
 )
@@ -92,11 +94,15 @@ func TestCheckupWhenAllWorks(t *testing.T) {
 		if s.Title == "" || s.Detail == "" {
 			t.Errorf("step %+v has no title or detail", s)
 		}
+		// The app words it from the code; the Russian is the same words.
+		if !msg.Has(s.Code) || s.detail().String() != s.Detail {
+			t.Errorf("step %s: code %q, args %v, detail %q", s.ID, s.Code, s.Args, s.Detail)
+		}
 	}
 	if !slices.Equal(ids, checkupOrder) {
 		t.Errorf("steps %v, want %v", ids, checkupOrder)
 	}
-	if v := res.Verdict; v.Cause != "ok" || v.Status != CheckOK || v.Title != "Всё работает" {
+	if v := res.Verdict; v.Cause != "ok" || v.Status != CheckOK || v.Code != "checkup.verdict.ok" || v.Title != "Всё работает" {
 		t.Errorf("verdict = %+v", v)
 	}
 	steps := stepsOf(res)
@@ -105,6 +111,9 @@ func TestCheckupWhenAllWorks(t *testing.T) {
 	}
 	if !strings.Contains(steps[stepServer].Detail, "«Trojan»") || strings.Contains(steps[stepServer].Detail, "203.0.113.5") {
 		t.Errorf("the server is named by its name only: %q", steps[stepServer].Detail)
+	}
+	if s := steps[stepServer]; s.Code != "checkup.server.ok" || s.Args["who"].(msg.Msg).Args["name"] != "Trojan" {
+		t.Errorf("server step %+v", s)
 	}
 	if res.State != Connected || res.Server != "Trojan" {
 		t.Errorf("result %+v", res)
@@ -121,6 +130,12 @@ func TestCheckupWhenAllWorks(t *testing.T) {
 		kinds = append(kinds, e.Reason)
 		if e.Reason == "step" {
 			told[e.Step] = e.Status
+			if !msg.Has(e.Code) || e.Line == "" {
+				t.Errorf("step event %+v", e)
+			}
+		}
+		if e.Reason == "done" && (e.Code != "checkup.verdict.ok.title" || e.Line != "Всё работает") {
+			t.Errorf("done event %+v", e)
 		}
 	}
 	if len(kinds) != len(checkupOrder)+2 || kinds[0] != "started" || kinds[len(kinds)-1] != "done" {
@@ -163,8 +178,17 @@ func TestCheckupFindsDirectConnectionsBlocked(t *testing.T) {
 		t.Errorf("steps %+v", res.Steps)
 	}
 	v := res.Verdict
-	if v.Cause != "direct-blocked" || !slices.Equal(v.Actions, []string{actionRouting}) || !strings.Contains(v.Advice, "Уберите из своих списков") {
+	if v.Cause != "direct-blocked" || !slices.Equal(v.Actions, []string{actionRouting}) || v.Code != "checkup.verdict.direct_blocked" {
 		t.Errorf("verdict = %+v", v)
+	}
+	if a, _ := v.Args["advice"].(msg.Msg); a.Code != "direct.advice.lists" {
+		t.Errorf("advice %+v", v.Args["advice"])
+	}
+	if !strings.Contains(v.Advice, "Уберите из своих списков") {
+		t.Errorf("advice in Russian: %q", v.Advice)
+	}
+	if s := steps[stepInternet]; s.Code != "checkup.internet.none" {
+		t.Errorf("internet step %+v", s)
 	}
 }
 
@@ -280,14 +304,31 @@ func TestCheckupVerdict(t *testing.T) {
 		if v.Title == "" || v.Advice == "" || v.Status == "" {
 			t.Errorf("%s: %+v", c.cause, v)
 		}
+		if !msg.Has(v.Code+".title") || !msg.Has(v.Code+".advice") {
+			t.Errorf("%s: code %q", c.cause, v.Code)
+		}
+	}
+	// No server selected: said by the step's cause, not its words.
+	if v := checkupVerdict(Idle, "", map[string]CheckStep{stepServer: skipStepNone()}, nil); v.Cause != "no-server" || v.Code != "checkup.verdict.no_server" {
+		t.Errorf("no server: %+v", v)
 	}
 	// With the settings sending something direct the network's DNS counts.
 	if v := checkupVerdict(Connected, "", steps(stepTunnel, CheckOK, stepDNS, CheckFail), []string{routeRussia}); v.Cause != "dns" {
 		t.Errorf("verdict %+v", v)
 	}
-	if v := checkupVerdict(Connected, "Польша", steps(stepTunnel, CheckFail, stepServer+"/port", CheckFail, stepInternet, CheckOK), nil); !strings.Contains(v.Title, "«Польша»") {
+	v := checkupVerdict(Connected, "Польша", steps(stepTunnel, CheckFail, stepServer+"/port", CheckFail, stepInternet, CheckOK), nil)
+	if !strings.Contains(v.Title, "«Польша»") {
 		t.Errorf("title %q", v.Title)
 	}
+	if srv, _ := v.Args["srv"].(msg.Msg); v.Code != "checkup.verdict.server_down" || srv.Code != "checkup.srv" || srv.Args["name"] != "Польша" {
+		t.Errorf("verdict %+v", v)
+	}
+}
+
+// skipStepNone is the server step with no server selected.
+func skipStepNone() CheckStep {
+	s := (&Service{}).checkServer(context.Background(), node.Node{}, false, netip.Addr{})
+	return s
 }
 
 func TestLeakVerdict(t *testing.T) {

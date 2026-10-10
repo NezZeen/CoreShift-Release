@@ -35,6 +35,7 @@ import (
 	"coreshift/engine/internal/core"
 	"coreshift/engine/internal/coreupdate"
 	"coreshift/engine/internal/dnsguard"
+	"coreshift/engine/internal/msg"
 	"coreshift/engine/internal/node"
 	"coreshift/engine/internal/ping"
 	"coreshift/engine/internal/proc"
@@ -73,6 +74,10 @@ type Status struct {
 	TUN      bool                 `json:"tun"`
 	Since    time.Time            `json:"since,omitzero"`
 	Error    string               `json:"error,omitempty"`
+	// ErrorCode and ErrorArgs say Error in the app's language when it is a
+	// sentence of CoreShift's own (internal/msg, as Event.Code).
+	ErrorCode string         `json:"error_code,omitempty"`
+	ErrorArgs map[string]any `json:"error_args,omitempty"`
 	// Pending is set when settings changed during this connection; they
 	// apply after reconnecting.
 	Pending bool `json:"settings_pending,omitempty"`
@@ -355,6 +360,9 @@ func New(cfg Config) (*Service, error) {
 	s.logs = newLogGrouper(logGroupEvery, func(source, line string, at time.Time) {
 		s.hub.publish(Event{Kind: "log", Source: source, Line: line, Time: at})
 	})
+	s.logs.emitMsg = func(source string, m msg.Msg, at time.Time) {
+		s.hub.publish(Event{Kind: "log", Source: source, Time: at}.withLine(m))
+	}
 	s.rules = newRuleSets(filepath.Join(cfg.DataDir, "rules"), s.hub.publish)
 	s.stats = openStats(filepath.Join(cfg.DataDir, "traffic.json"))
 	s.upd.checkNow = make(chan struct{}, 1)

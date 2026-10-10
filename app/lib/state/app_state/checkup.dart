@@ -15,6 +15,9 @@ const checkupSteps = [
   ('direct', 'Прямые соединения'),
 ];
 
+/// A step's name in the app's language; [fallback] for one it does not know.
+String checkupStepTitle(String id, String fallback) => engineText('checkup.step.$id', null, fallback.isEmpty ? id : fallback);
+
 /// One step of a checkup: [status] is "ok", "warn", "fail" or "skipped",
 /// "" while it runs.
 class CheckStep {
@@ -28,11 +31,13 @@ class CheckStep {
 
   bool get running => status.isEmpty;
 
+  /// The title and the detail in the app's language: the engine's codes
+  /// (l10n/engine_strings.dart), else its Russian.
   factory CheckStep.fromJson(Json j) => CheckStep(
     id: j['id'] ?? '',
-    title: j['title'] ?? '',
+    title: checkupStepTitle(j['id'] ?? '', j['title'] ?? ''),
     status: j['status'] ?? '',
-    detail: j['detail'] ?? '',
+    detail: engineText(j['code'] ?? '', j['args'], j['detail'] ?? ''),
     latencyMs: (j['latency_ms'] as num?)?.toInt() ?? 0,
     downloadBps: (j['download_bps'] as num?)?.toInt() ?? 0,
   );
@@ -58,11 +63,13 @@ class CheckVerdict {
   final List<String> actions;
   const CheckVerdict({this.cause = '', this.status = '', this.title = '', this.advice = '', this.actions = const []});
 
+  /// The words in the app's language: the code with ".title" and
+  /// ".advice", else the engine's Russian.
   factory CheckVerdict.fromJson(Json j) => CheckVerdict(
     cause: j['cause'] ?? '',
     status: j['status'] ?? '',
-    title: j['title'] ?? '',
-    advice: j['advice'] ?? '',
+    title: (j['code'] ?? '') == '' ? j['title'] ?? '' : engineText('${j['code']}.title', j['args'], j['title'] ?? ''),
+    advice: (j['code'] ?? '') == '' ? j['advice'] ?? '' : engineText('${j['code']}.advice', j['args'], j['advice'] ?? ''),
     actions: [for (final a in j['actions'] as List? ?? const []) '$a'],
   );
 }
@@ -103,7 +110,7 @@ extension AppStateCheckup on AppState {
     }
     checkup = CheckupState(
       running: true,
-      steps: [for (final (id, title) in checkupSteps) CheckStep(id: id, title: title)],
+      steps: [for (final (id, title) in checkupSteps) CheckStep(id: id, title: checkupStepTitle(id, title))],
     );
     _notify();
     try {
@@ -136,7 +143,7 @@ extension AppStateCheckup on AppState {
     final steps = [...checkup.steps];
     final i = steps.indexWhere((s) => s.id == e.step);
     final title = i >= 0 ? steps[i].title : e.step;
-    final step = CheckStep(id: e.step, title: title, status: e.status, detail: e.line, latencyMs: e.latencyMs);
+    final step = CheckStep(id: e.step, title: title, status: e.status, detail: e.lineText, latencyMs: e.latencyMs);
     if (i >= 0) {
       steps[i] = step;
     } else {

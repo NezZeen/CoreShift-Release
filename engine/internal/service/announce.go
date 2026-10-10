@@ -4,6 +4,7 @@ import (
 	"strings"
 	"sync"
 
+	"coreshift/engine/internal/msg"
 	"coreshift/engine/internal/store"
 )
 
@@ -49,25 +50,26 @@ func (s *Service) noteAnnouncement(c store.Change) {
 	if text == "" || text == prev {
 		return
 	}
-	s.LogAction("подписка", announceLine(announceName(sub), text))
+	s.LogActionMsg("подписка", announceLine(announceName(sub), text))
 }
 
 // announceName is the subscription's name as the app shows it.
-func announceName(sub store.Subscription) string {
+func announceName(sub store.Subscription) msg.Msg {
 	switch n := sub.DisplayName(); n {
 	case "Local nodes":
-		return "Мои серверы"
+		return msg.New("sub.name.local")
 	case "Subscription":
-		return "Подписка"
+		return msg.New("sub.name.default")
 	default:
-		return n
+		return msg.Raw(n)
 	}
 }
 
-func announceLine(name, text string) string {
+// announceLine is the journal's line: the provider's text, said as it is.
+func announceLine(name msg.Msg, text string) msg.Msg {
 	text = strings.Join(strings.Fields(text), " ")
 	if r := []rune(text); len(r) > announceExcerpt {
 		text = strings.TrimSpace(string(r[:announceExcerpt])) + "…"
 	}
-	return "объявление от «" + name + "»: " + text
+	return msg.New("announce.line", "name", name, "text", text)
 }

@@ -1,4 +1,23 @@
+import '../l10n/engine_strings.dart';
 import '../platform/platform.dart' as platform;
+
+/// An engine's error for a toast, a dialog or the status: its [code], worded
+/// in the app's language, as a sentence; [humanError] of its [raw] text when
+/// it has no code the app knows.
+String humanCodedError(String code, Map<String, dynamic> args, String raw) {
+  final t = code.isEmpty ? null : engineMessage(code, args);
+  return t == null ? humanError(raw) : sentence(t);
+}
+
+/// [humanCodedError] for the journal: as the engine says it, else
+/// [journalError].
+String journalCodedError(String code, Map<String, dynamic> args, String raw) {
+  final t = code.isEmpty ? null : engineMessage(code, args);
+  return t ?? journalError(raw);
+}
+
+/// [s] with a capital and a full stop.
+String sentence(String s) => s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}${s.endsWith('.') ? '' : '.'}';
 
 /// Said when a subscription with a plain http:// link is added.
 const insecureLinkWarning = 'Ссылка без шифрования, токен виден в сети. Попросите у поставщика ссылку https://';

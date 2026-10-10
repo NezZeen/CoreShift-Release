@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"coreshift/engine/internal/fsutil"
+	"coreshift/engine/internal/msg"
 	"coreshift/engine/internal/ruleset"
 	"coreshift/engine/internal/tunlayer"
 )
@@ -29,7 +30,8 @@ type geoSet struct {
 	// Proxy marks sets that go through the tunnel even when a direct list
 	// also has them.
 	Proxy bool
-	// Lost is what goes amiss without the set, for the journal.
+	// Lost is what goes amiss without the set, for the journal: a code of
+	// internal/msg, "rules.lost.sites" when empty.
 	Lost string
 }
 
@@ -47,16 +49,16 @@ var (
 	russiaSuffixes = []string{"ru", "su", "xn--p1ai"}
 	russiaAlways   = []string{"2ip.io"}
 	russiaSets     = []geoSet{
-		{Tag: "geosite-category-ru", Lost: "её сайты пойдут через туннель"},
-		{Tag: "geoip-ru", IP: true, Lost: "российские адреса пойдут через туннель"},
-		{Tag: "geosite-category-media-ru-blocked", Proxy: true, Lost: "заблокированные СМИ на .ru могут не открыться"},
-		{Tag: "geosite-ru-blocked", Proxy: true, Lost: "заблокированные сайты на .ru могут не открыться"},
+		{Tag: "geosite-category-ru", Lost: "rules.lost.sites"},
+		{Tag: "geoip-ru", IP: true, Lost: "rules.lost.geoip_ru"},
+		{Tag: "geosite-category-media-ru-blocked", Proxy: true, Lost: "rules.lost.media_ru"},
+		{Tag: "geosite-ru-blocked", Proxy: true, Lost: "rules.lost.ru_blocked"},
 		googleSet,
 	}
 )
 
 // adsSet is refused with BlockAds.
-var adsSet = geoSet{Tag: "geosite-category-ads-all", Lost: "реклама не блокируется"}
+var adsSet = geoSet{Tag: "geosite-category-ads-all", Lost: "rules.lost.ads"}
 
 // Google, YouTube included, stays in the tunnel with the Russian preset on,
 // whatever address a name resolves to: geosite-google, and googleSuffixes
@@ -73,7 +75,7 @@ var adsSet = geoSet{Tag: "geosite-category-ads-all", Lost: "реклама не 
 // sends direct takes Google out of the tunnel (they are pinned, see
 // tunlayer.DNSOptions.PinnedSuffixes); only blocks come first, so with
 // BlockAds Google's ad and analytics servers are refused.
-var googleSet = geoSet{Tag: "geosite-google", Proxy: true, Lost: "Google пойдёт через туннель по встроенному списку"}
+var googleSet = geoSet{Tag: "geosite-google", Proxy: true, Lost: "rules.lost.google"}
 
 var googleSuffixes = []string{
 	// Search and the national domains people in and around Russia meet.
@@ -268,16 +270,15 @@ func (r *ruleSets) builtin(ctx context.Context, gs geoSet, proxy *url.URL) (stri
 
 // lost reports a preset set that could not be had.
 func (r *ruleSets) lost(gs geoSet, err error) {
-	what := gs.Lost
-	if what == "" {
-		what = "её сайты пойдут через туннель"
+	what := msg.New("rules.lost.sites")
+	if gs.Lost != "" {
+		what = msg.New(gs.Lost)
 	}
 	if errors.Is(err, errPending) {
-		r.publish(Event{Kind: "rules", Reason: gs.Tag, Line: "pending",
-			Error: fmt.Sprintf("база %s ещё загружается, до переподключения %s", gs.Tag, what)})
+		r.publish(Event{Kind: "rules", Reason: gs.Tag, Line: "pending"}.withError(msg.New("rules.pending", "set", gs.Tag, "lost", what)))
 		return
 	}
-	r.publish(Event{Kind: "rules", Reason: gs.Tag, Error: fmt.Sprintf("база %s не загрузилась, %s: %v", gs.Tag, what, err)})
+	r.publish(Event{Kind: "rules", Reason: gs.Tag}.withError(msg.New("rules.failed", "set", gs.Tag, "lost", what, "err", msg.Raw(err.Error()))))
 }
 
 // refresh replaces an old file in the background; the TUN layer picks the
@@ -298,7 +299,7 @@ func (r *ruleSets) refresh(gs geoSet, path string, proxy *url.URL) {
 	changed, err := r.download(context.Background(), gs, path, proxy)
 	if err != nil {
 		// Line "kept": the set still works, only not updated.
-		r.publish(Event{Kind: "rules", Reason: gs.Tag, Line: "kept", Error: fmt.Sprintf("база %s не обновилась, работает прежняя: %v", gs.Tag, err)})
+		r.publish(Event{Kind: "rules", Reason: gs.Tag, Line: "kept"}.withError(msg.New("rules.kept", "set", gs.Tag, "err", msg.Raw(err.Error()))))
 		return
 	}
 	if changed {
@@ -324,7 +325,7 @@ func (r *ruleSets) ready(gs geoSet, path string) (time.Time, bool) {
 			err = ruleset.Check(gs.Tag, cur)
 		}
 		if err != nil {
-			r.publish(Event{Kind: "rules", Reason: gs.Tag, Line: "damaged", Error: fmt.Sprintf("база %s испорчена: %v", gs.Tag, err)})
+			r.publish(Event{Kind: "rules", Reason: gs.Tag, Line: "damaged"}.withError(msg.New("rules.damaged", "set", gs.Tag, "err", msg.Raw(err.Error()))))
 			os.Remove(path)
 			cur = nil
 		}
@@ -338,7 +339,7 @@ func (r *ruleSets) ready(gs geoSet, path string) (time.Time, bool) {
 		return time.Time{}, false
 	}
 	if err := writeAtomic(path, base); err != nil {
-		r.publish(Event{Kind: "rules", Reason: gs.Tag, Error: fmt.Sprintf("база %s не записалась: %v", gs.Tag, err)})
+		r.publish(Event{Kind: "rules", Reason: gs.Tag}.withError(msg.New("rules.write_failed", "set", gs.Tag, "err", msg.Raw(err.Error()))))
 		return time.Time{}, false
 	}
 	os.Chtimes(path, fetched, fetched)

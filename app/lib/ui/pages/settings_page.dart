@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../l10n/strings.dart';
 import '../../platform/desktop.dart' as desktop;
 import '../../platform/platform.dart' as platform;
 import '../../state/app_state.dart';
@@ -102,6 +103,14 @@ class SettingsPage extends StatelessWidget {
               value: themeMode,
               options: const [(ThemeMode.dark, 'Тёмная'), (ThemeMode.light, 'Светлая'), (ThemeMode.system, 'Как в системе')],
               onChanged: onThemeMode,
+            ),
+          ),
+          SettingRow(
+            title: tr('settings.language'),
+            trailing: Seg<String>(
+              value: state.languagePref,
+              options: [('system', tr('settings.language.system')), ('ru', tr('settings.language.ru')), ('en', tr('settings.language.en'))],
+              onChanged: state.setLanguage,
             ),
           ),
         ],

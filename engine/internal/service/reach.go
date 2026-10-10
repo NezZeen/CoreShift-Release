@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"coreshift/engine/internal/msg"
 	"coreshift/engine/internal/node"
 	"coreshift/engine/internal/ping"
 )
@@ -53,7 +54,7 @@ const reachTimeout = 8 * time.Second
 
 // checkReach tells whether n's server at ip, or the network, is at fault.
 // detail says what was seen, for the journal.
-func (s *Service) checkReach(ctx context.Context, n node.Node, ip netip.Addr) (r Reach, detail string) {
+func (s *Service) checkReach(ctx context.Context, n node.Node, ip netip.Addr) (r Reach, detail msg.Msg) {
 	ctx, cancel := context.WithTimeout(ctx, reachTimeout)
 	defer cancel()
 	bind, berr := s.cfg.physical()
@@ -108,48 +109,60 @@ func (s *Service) checkReach(ctx context.Context, n node.Node, ip netip.Addr) (r
 	where := fmt.Sprintf("%s:%d", ip, n.Port)
 	switch {
 	case serverKnown && serverErr == nil:
-		return ReachServerUp, fmt.Sprintf("сервер %s отвечает напрямую, но соединение через него не проходит", where)
+		return ReachServerUp, msg.New("reach.server_up", "addr", where)
 	case netKnown && !online:
-		return ReachOffline, fmt.Sprintf("не отвечают ни сервер, ни известные узлы: %s", netErrsText(netErrs))
+		return ReachOffline, msg.New("reach.offline", "errs", netErrsText(netErrs))
 	case serverKnown && online:
-		return ReachServerDown, fmt.Sprintf("сервер %s не отвечает напрямую (%s), а интернет работает", where, netErrText(serverErr))
+		return ReachServerDown, msg.New("reach.server_down", "addr", where, "err", netErrText(serverErr))
 	case !netKnown:
-		return ReachUnknown, "не удалось проверить, сервер виноват или сеть: не найден сетевой интерфейс в обход туннеля"
+		return ReachUnknown, msg.New("reach.no_bypass")
 	case overUDP(&n):
-		return ReachUnknown, "интернет работает, а сервер по UDP на ping не отвечает: жив ли он, не понять"
+		return ReachUnknown, msg.New("reach.udp_silent")
 	}
-	return ReachUnknown, "интернет работает, а проверить сервер напрямую не удалось"
+	return ReachUnknown, msg.New("reach.unknown")
 }
 
-// netErrText says in a few words why a probe failed.
-func netErrText(err error) string {
+// netErrText says in a few words why a probe failed: a code for the usual
+// failures, the error's own text otherwise.
+func netErrText(err error) msg.Msg {
+	if m, ok := msg.Of(err); ok {
+		return m
+	}
 	var ne net.Error
-	msg := strings.ToLower(fmt.Sprint(err))
+	low := strings.ToLower(fmt.Sprint(err))
 	switch {
 	case err == nil:
-		return "нет ответа"
-	case errors.Is(err, context.DeadlineExceeded), errors.As(err, &ne) && ne.Timeout(), strings.Contains(msg, "timeout"), strings.Contains(msg, "timed out"):
-		return "нет ответа"
-	case strings.Contains(msg, "refused"):
-		return "соединение отклонено"
-	case strings.Contains(msg, "unreachable"), strings.Contains(msg, "no route"):
-		return "адрес недоступен"
-	case strings.Contains(msg, "reset"), strings.Contains(msg, "forcibly closed"):
-		return "соединение сброшено"
+		return msg.New("net.timeout")
+	case errors.Is(err, context.DeadlineExceeded), errors.As(err, &ne) && ne.Timeout(), strings.Contains(low, "timeout"), strings.Contains(low, "timed out"):
+		return msg.New("net.timeout")
+	case strings.Contains(low, "refused"):
+		return msg.New("net.refused")
+	case strings.Contains(low, "unreachable"), strings.Contains(low, "no route"):
+		return msg.New("net.unreachable")
+	case strings.Contains(low, "reset"), strings.Contains(low, "forcibly closed"):
+		return msg.New("net.reset")
 	}
-	return fmt.Sprint(err)
+	return msg.Raw(fmt.Sprint(err))
 }
 
 // netErrsText says why each well-known host failed, "1.1.1.1:443 — нет
 // ответа; …". The errors start with the host (checkReach).
-func netErrsText(errs []error) string {
-	parts := make([]string, 0, len(errs))
+func netErrsText(errs []error) msg.List {
+	type part struct {
+		host string
+		m    msg.Msg
+	}
+	parts := make([]part, 0, len(errs))
 	for _, e := range errs {
 		host, _, _ := strings.Cut(e.Error(), ": ")
-		parts = append(parts, host+" — "+netErrText(errors.Unwrap(e)))
+		parts = append(parts, part{host, msg.New("net.host_err", "host", host, "err", netErrText(errors.Unwrap(e)))})
 	}
-	slices.Sort(parts)
-	return strings.Join(parts, "; ")
+	slices.SortFunc(parts, func(a, b part) int { return strings.Compare(a.m.String(), b.m.String()) })
+	out := make([]msg.Msg, len(parts))
+	for i, p := range parts {
+		out[i] = p.m
+	}
+	return msg.Join("; ", out...)
 }
 
 // diagnose runs checkReach for connection gen when every core failed,
@@ -194,7 +207,7 @@ func (s *Service) diagnose(gen int) {
 		}
 		s.status.Problem = string(r)
 		s.mu.Unlock()
-		s.hub.publish(Event{Kind: "server", Reason: string(r), From: n.Name, Line: detail})
+		s.hub.publish(Event{Kind: "server", Reason: string(r), From: n.Name}.withLine(detail))
 		s.failoverSoon(r)
 	}()
 }

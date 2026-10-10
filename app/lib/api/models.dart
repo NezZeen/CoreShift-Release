@@ -1,5 +1,6 @@
 // Types mirroring the daemon's JSON API (engine/internal/service/api*.go).
 
+import '../l10n/engine_strings.dart';
 import '../version.dart';
 
 typedef Json = Map<String, dynamic>;
@@ -37,6 +38,11 @@ class Status {
   final bool tun;
   final DateTime? since;
   final String error;
+
+  /// [error] as a code of the engine's, for the app to word it
+  /// (l10n/engine_strings.dart); empty for an error that is not one.
+  final String errorCode;
+  final Map<String, dynamic> errorArgs;
   final bool settingsPending;
 
   /// While connected and nothing gets through: who is at fault, as the
@@ -66,6 +72,8 @@ class Status {
     this.tun = false,
     this.since,
     this.error = '',
+    this.errorCode = '',
+    this.errorArgs = const {},
     this.settingsPending = false,
     this.problem = '',
     this.waiting = false,
@@ -82,6 +90,8 @@ class Status {
     tun: j['tun'] == true,
     since: _time(j['since']),
     error: j['error'] ?? '',
+    errorCode: j['error_code'] ?? '',
+    errorArgs: (j['error_args'] as Map?)?.cast<String, dynamic>() ?? const {},
     settingsPending: j['settings_pending'] == true,
     problem: j['problem'] ?? '',
     waiting: j['waiting'] == true,
@@ -91,6 +101,9 @@ class Status {
   /// On, coming up, or waiting for the network to do either: the button
   /// then disconnects (or cancels).
   bool get active => state == ConnState.connected || state == ConnState.connecting || state == ConnState.noNetwork;
+
+  /// [error] in the app's language when the engine sent its code.
+  String get errorText => engineText(errorCode, errorArgs, error);
 }
 
 class Event {
@@ -119,6 +132,13 @@ class Event {
   final String step;
   final String status;
 
+  /// What [error] says, when the event carries one, else what [line] says,
+  /// as a code of the engine's (l10n/engine_strings.dart): [errorText] and
+  /// [lineText] word it in the app's language. Empty for the cores' raw
+  /// output and errors, and from engines before the codes.
+  final String code;
+  final Map<String, dynamic> args;
+
   const Event({
     required this.time,
     required this.kind,
@@ -140,7 +160,15 @@ class Event {
     this.downRate = 0,
     this.step = '',
     this.status = '',
+    this.code = '',
+    this.args = const {},
   });
+
+  /// [error] in the app's language.
+  String get errorText => error.isNotEmpty ? engineText(code, args, error) : error;
+
+  /// [line] in the app's language, when the code is its.
+  String get lineText => error.isEmpty ? engineText(code, args, line) : line;
 
   factory Event.fromJson(Json j) => Event(
     time: _time(j['time']) ?? DateTime.now(),
@@ -163,6 +191,8 @@ class Event {
     downRate: (j['down_rate'] as num?)?.toInt() ?? 0,
     step: j['step'] ?? '',
     status: j['status'] ?? '',
+    code: j['code'] ?? '',
+    args: (j['args'] as Map?)?.cast<String, dynamic>() ?? const {},
   );
 }
 
@@ -288,10 +318,13 @@ String formatQuota(num b) {
     return s.endsWith('.0') ? s.substring(0, s.length - 2) : s;
   }
 
-  if (b >= k * k * k * k) return '${n(b / (k * k * k * k))} ТБ';
-  if (b >= k * k * k) return '${n(b / (k * k * k))} ГБ';
-  if (b >= k * k) return '${(b / (k * k)).toStringAsFixed(0)} МБ';
-  return '${(b / k).toStringAsFixed(0)} КБ';
+  // The units are the engine's words (l10n/engine_strings.dart), as its
+  // notifications on Android write them.
+  String unit(String code, String v) => engineMessage(code, {'n': v}) ?? v;
+  if (b >= k * k * k * k) return unit('unit.tb', n(b / (k * k * k * k)));
+  if (b >= k * k * k) return unit('unit.gb', n(b / (k * k * k)));
+  if (b >= k * k) return unit('unit.mb', (b / (k * k)).toStringAsFixed(0));
+  return unit('unit.kb', (b / k).toStringAsFixed(0));
 }
 
 /// A subscription link as the daemon shows it (maskURL in

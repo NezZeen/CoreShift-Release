@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"coreshift/engine/internal/msg"
 	"coreshift/engine/internal/node"
 	"coreshift/engine/internal/ping"
 	"coreshift/engine/internal/store"
@@ -61,50 +62,61 @@ func TestReachTellsServerFromNetwork(t *testing.T) {
 		outside bool
 		n       node.Node
 		want    Reach
+		code    string
 	}{
-		"the server is down, the internet is not": {cfg: network(false, "1.1.1.1:443"), n: n, want: ReachServerDown},
-		"only Yandex answers":                     {cfg: network(false, "77.88.8.8:443"), n: n, want: ReachServerDown},
-		"nothing answers":                         {cfg: network(false), n: n, want: ReachOffline},
-		"the server answers, the tunnel does not": {cfg: network(false, "203.0.113.13:443", "1.1.1.1:443"), n: n, want: ReachServerUp},
+		"the server is down, the internet is not": {cfg: network(false, "1.1.1.1:443"), n: n, want: ReachServerDown, code: "reach.server_down"},
+		"only Yandex answers":                     {cfg: network(false, "77.88.8.8:443"), n: n, want: ReachServerDown, code: "reach.server_down"},
+		"nothing answers":                         {cfg: network(false), n: n, want: ReachOffline, code: "reach.offline"},
+		"the server answers, the tunnel does not": {cfg: network(false, "203.0.113.13:443", "1.1.1.1:443"), n: n, want: ReachServerUp, code: "reach.server_up"},
 		// Through the tunnel, which is down, the well-known hosts prove nothing.
-		"no way around the tunnel": {cfg: network(true), n: n, want: ReachUnknown},
+		"no way around the tunnel": {cfg: network(true), n: n, want: ReachUnknown, code: "reach.no_bypass"},
 		// Android keeps the app outside its VPN: the default route will do.
-		"android":           {cfg: network(true, "8.8.8.8:443"), outside: true, n: n, want: ReachServerDown},
-		"a server over UDP": {cfg: network(false, "203.0.113.13", "1.1.1.1:443"), n: hy, want: ReachServerUp},
+		"android":           {cfg: network(true, "8.8.8.8:443"), outside: true, n: n, want: ReachServerDown, code: "reach.server_down"},
+		"a server over UDP": {cfg: network(false, "203.0.113.13", "1.1.1.1:443"), n: hy, want: ReachServerUp, code: "reach.server_up"},
 	} {
 		cfg := Config{AppOutsideVPN: c.outside}
 		c.cfg(&cfg, nil)
 		s := &Service{cfg: cfg}
 		got, detail := s.checkReach(context.Background(), c.n, ip)
-		if got != c.want {
-			t.Errorf("%s: %s (%s), want %s", name, got, detail, c.want)
+		if got != c.want || detail.Code != c.code {
+			t.Errorf("%s: %s (%+v), want %s (%s)", name, got, detail, c.want, c.code)
 		}
 		// The journal shows it as it is: in Russian, the errors in words.
-		if !strings.ContainsAny(detail, "аеиоуы") || strings.Contains(detail, "i/o timeout") {
-			t.Errorf("%s: detail %q", name, detail)
+		if text := detail.String(); !strings.ContainsAny(text, "аеиоуы") || strings.Contains(text, "i/o timeout") {
+			t.Errorf("%s: detail %q", name, text)
 		}
 	}
 }
 
 func TestNetErrText(t *testing.T) {
 	for err, want := range map[error]string{
-		context.DeadlineExceeded:                        "нет ответа",
-		errors.New("dial tcp 1.1.1.1:443: i/o timeout"): "нет ответа",
-		errors.New("connectex: A socket operation was attempted to an unreachable host."): "адрес недоступен",
-		errors.New("connect: connection refused"):                                         "соединение отклонено",
-		errors.New("request timed out"):                                                   "нет ответа",
-		errors.New("weird"):                                                               "weird",
+		context.DeadlineExceeded:                        "net.timeout",
+		errors.New("dial tcp 1.1.1.1:443: i/o timeout"): "net.timeout",
+		errors.New("connectex: A socket operation was attempted to an unreachable host."): "net.unreachable",
+		errors.New("connect: connection refused"):                                         "net.refused",
+		errors.New("request timed out"):                                                   "net.timeout",
+		errors.New("weird"):                                                               msg.CodeRaw,
+		msg.Err("net.status", "status", "503"):                                            "net.status",
 	} {
-		if got := netErrText(err); got != want {
-			t.Errorf("%v: %q, want %q", err, got, want)
+		if got := netErrText(err); got.Code != want {
+			t.Errorf("%v: %+v, want %q", err, got, want)
 		}
+	}
+	if got := netErrText(errors.New("weird")).String(); got != "weird" {
+		t.Errorf("raw: %q", got)
+	}
+	if got := netErrText(errors.New("connect: connection refused")).String(); got != "соединение отклонено" {
+		t.Errorf("Russian: %q", got)
 	}
 	got := netErrsText([]error{
 		fmt.Errorf("%s: %w", "8.8.8.8:443", errors.New("i/o timeout")),
 		fmt.Errorf("%s: %w", "1.1.1.1:443", errors.New("network is unreachable")),
 	})
-	if got != "1.1.1.1:443 — адрес недоступен; 8.8.8.8:443 — нет ответа" {
-		t.Errorf("hosts: %q", got)
+	if len(got.Items) != 2 || got.Items[0].Code != "net.host_err" || got.Items[0].Args["host"] != "1.1.1.1:443" {
+		t.Errorf("hosts: %+v", got)
+	}
+	if text := msg.New("reach.offline", "errs", got).String(); text != "не отвечают ни сервер, ни известные узлы: 1.1.1.1:443 — адрес недоступен; 8.8.8.8:443 — нет ответа" {
+		t.Errorf("hosts in words: %q", text)
 	}
 }
 

@@ -1,7 +1,6 @@
 package service
 
 import (
-	"fmt"
 	"regexp"
 	"slices"
 	"strconv"
@@ -9,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"coreshift/engine/internal/msg"
 	"coreshift/engine/internal/proc"
 )
 
@@ -154,7 +154,10 @@ const maxLogGroups = 256
 const maxLookupTwins = 64
 
 type logGroup struct {
-	shape   string
+	shape string
+	// m is the shape as a sentence of CoreShift's own (addMsg), zero for
+	// a line of output.
+	m       msg.Msg
 	source  string
 	repeats int       // not reported yet
 	since   time.Time // the start of the period the repeats are counted in
@@ -165,10 +168,13 @@ type logGroup struct {
 type logGrouper struct {
 	every time.Duration // how often a repeating line is reported
 	// emit passes a line on; at is when it was seen, zero for now.
-	emit   func(source, line string, at time.Time)
-	now    func() time.Time
-	mu     sync.Mutex
-	groups map[string]*logGroup
+	emit func(source, line string, at time.Time)
+	// emitMsg, when set, passes on what CoreShift says itself, a count
+	// of repeats included, in place of emit.
+	emitMsg func(source string, m msg.Msg, at time.Time)
+	now     func() time.Time
+	mu      sync.Mutex
+	groups  map[string]*logGroup
 	// Failed lookups lately seen, by request id and name: which report
 	// came ("dns: lookup failed for", "router: lookup", "both"), and the
 	// order they came in, to forget the oldest.
@@ -194,7 +200,16 @@ func (g *logGrouper) addTidy(source, line string) {
 		g.emit(source, line, time.Time{})
 		return
 	}
-	g.addShape(source, line, shape)
+	g.addShape(source, line, shape, msg.Msg{})
+}
+
+// say passes on line, or m, its words, where emitMsg takes them.
+func (g *logGrouper) say(source, line string, m msg.Msg, at time.Time) {
+	if !m.IsZero() && g.emitMsg != nil {
+		g.emitMsg(source, m, at)
+		return
+	}
+	g.emit(source, line, at)
 }
 
 // twin reports whether a tidied line is the second report of a failed
@@ -227,11 +242,14 @@ func (g *logGrouper) twin(line string) bool {
 	return false
 }
 
-// addAs passes text on, or counts it as a repeat: for lines that say the
+// addMsg passes m on, or counts it as a repeat: for lines that say the
 // same in other words, whatever their own text.
-func (g *logGrouper) addAs(source, text string) { g.addShape(source, text, text) }
+func (g *logGrouper) addMsg(source string, m msg.Msg) {
+	text := m.String()
+	g.addShape(source, text, text, m)
+}
 
-func (g *logGrouper) addShape(source, line, shape string) {
+func (g *logGrouper) addShape(source, line, shape string, m msg.Msg) {
 	key := source + "\x00" + shape
 	g.mu.Lock()
 	if grp, ok := g.groups[key]; ok {
@@ -242,14 +260,14 @@ func (g *logGrouper) addShape(source, line, shape string) {
 	}
 	if len(g.groups) >= maxLogGroups {
 		g.mu.Unlock()
-		g.emit(source, line, time.Time{})
+		g.say(source, line, m, time.Time{})
 		return
 	}
-	grp := &logGroup{shape: shape, source: source, since: g.now()}
+	grp := &logGroup{shape: shape, m: m, source: source, since: g.now()}
 	g.groups[key] = grp
 	grp.timer = time.AfterFunc(g.every, func() { g.flush(key, grp) })
 	g.mu.Unlock()
-	g.emit(source, line, time.Time{})
+	g.say(source, line, m, time.Time{})
 }
 
 // flush reports the repeats since the last report. A period without any
@@ -271,7 +289,8 @@ func (g *logGrouper) flush(key string, grp *logGroup) {
 	grp.since = g.now()
 	grp.timer.Reset(g.every)
 	g.mu.Unlock()
-	g.emit(grp.source, repeatsText(grp.shape, n, g.every), time.Time{})
+	m := repeatsMsg(grp, n, g.every)
+	g.say(grp.source, m.String(), m, time.Time{})
 }
 
 // flushAll reports the repeats not reported yet and ends every group: the
@@ -280,8 +299,9 @@ func (g *logGrouper) flush(key string, grp *logGroup) {
 // took, not at the end of a period that would close after the disconnect.
 func (g *logGrouper) flushAll() {
 	type pending struct {
-		source, text string
-		at           time.Time
+		source string
+		m      msg.Msg
+		at     time.Time
 	}
 	if g == nil {
 		return
@@ -292,30 +312,36 @@ func (g *logGrouper) flushAll() {
 		grp.timer.Stop()
 		delete(g.groups, key)
 		if grp.repeats > 0 {
-			out = append(out, pending{grp.source, repeatsText(grp.shape, grp.repeats, grp.last.Sub(grp.since)), grp.last})
+			out = append(out, pending{grp.source, repeatsMsg(grp, grp.repeats, grp.last.Sub(grp.since)), grp.last})
 		}
 	}
 	g.mu.Unlock()
 	slices.SortFunc(out, func(a, b pending) int { return a.at.Compare(b.at) })
 	for _, p := range out {
-		g.emit(p.source, p.text, p.at)
+		g.say(p.source, p.m.String(), p.m, p.at)
 	}
 }
 
-// repeatsText is a group's count: "<line> — ещё 2 раза за 30 с". Less
+// repeatsMsg is a group's count: "<line> — ещё 2 раза за 30 с". Less
 // than a second is told as one.
-func repeatsText(shape string, n int, period time.Duration) string {
+func repeatsMsg(grp *logGroup, n int, period time.Duration) msg.Msg {
 	period = max(period.Round(time.Second), time.Second)
-	return fmt.Sprintf("%s — ещё %d %s за %s", shape, n, ruPlural(n, "раз", "раза", "раз"), durationText(period))
+	line := grp.m
+	if line.IsZero() {
+		line = msg.Raw(grp.shape)
+	}
+	return msg.New("log.repeats", "line", line, "n", n, "period", durationMsg(period))
 }
 
 // durationText is a period for the log: "30 с", "2 мин".
-func durationText(d time.Duration) string {
+func durationText(d time.Duration) string { return durationMsg(d).String() }
+
+func durationMsg(d time.Duration) msg.Msg {
 	if d >= time.Minute && d%time.Minute == 0 {
-		return fmt.Sprintf("%d мин", int(d/time.Minute))
+		return msg.New("time.min", "n", int(d/time.Minute))
 	}
 	if d >= time.Second {
-		return fmt.Sprintf("%d с", int(d.Round(time.Second)/time.Second))
+		return msg.New("time.sec", "n", int(d.Round(time.Second)/time.Second))
 	}
-	return d.String()
+	return msg.Raw(d.String())
 }

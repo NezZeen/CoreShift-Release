@@ -4,6 +4,7 @@ import (
 	"strings"
 	"time"
 
+	"coreshift/engine/internal/msg"
 	"coreshift/engine/internal/supervisor"
 )
 
@@ -31,11 +32,11 @@ func (s *Service) Log(source, line string) {
 		// An app still holds an address from before the TUN layer
 		// restarted (the app updated or was killed): it asks the name
 		// again and connects. Said in words, once for every burst.
-		s.logs.addAs(source, staleFakeIPText)
+		s.logs.addMsg(source, msg.New(staleFakeIPCode))
 	case s.healthFails.Load() >= upstreamDeadChecks && lookupTimeout(line):
 		// Every app's lookups through the tunnel time out while the
 		// server does not answer: one line says it, not one per name.
-		s.logs.addAs(source, upstreamDNSDead)
+		s.logs.addMsg(source, msg.New(upstreamDNSDeadCode))
 	default:
 		s.logs.addTidy(source, line)
 	}
@@ -58,7 +59,8 @@ func (s *Service) onCoreEvent(e supervisor.Event) {
 // tunnel's own DNS cannot answer either.
 const upstreamDeadChecks = 2
 
-const upstreamDNSDead = "DNS через VPN не отвечает: сервер недоступен"
+// upstreamDNSDeadCode says it in the journal.
+const upstreamDNSDeadCode = "log.dns_dead"
 
 // lookupTimeout recognises the TUN layer's lookup that timed out, as every
 // lookup through a tunnel whose server is gone does.
@@ -67,7 +69,7 @@ func lookupTimeout(l string) bool {
 		(strings.Contains(l, "context deadline exceeded") || strings.Contains(l, "i/o timeout"))
 }
 
-const staleFakeIPText = "программа обратилась по адресу Fake-IP из прежнего подключения: она запросит адрес заново и соединится — обычно в первую минуту после перезапуска CoreShift"
+const staleFakeIPCode = "log.stale_fakeip"
 
 // staleFakeIP recognises sing-box's report of a connection to a fake-IP
 // address it has no name for: one handed out before the TUN layer last

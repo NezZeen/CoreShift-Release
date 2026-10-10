@@ -59,7 +59,7 @@ extension AppStateAppUpdate on AppState {
   void updateOffered() => _updateOffered = appUpdate.label;
 
   Future<void> _onAppUpdate(Event e, bool live) async {
-    if (e.error.isNotEmpty) _log(e.time, 'обновление', journalError(e.error), LogLevel.warn);
+    if (e.error.isNotEmpty) _log(e.time, 'обновление', journalCodedError(e.code, e.args, e.error), LogLevel.warn);
     // A check that found nothing says so too: the journal shows it ran.
     final checked = _appUpdateWas == 'checking' && e.reason == 'idle' && e.error.isEmpty;
     _appUpdateWas = e.reason;

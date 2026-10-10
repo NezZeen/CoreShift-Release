@@ -25,7 +25,7 @@ extension AppStateEvents on AppState {
           _log(
             e.time,
             'служба',
-            _sessionStateText(e) + (e.error.isNotEmpty ? ': ${journalError(e.error)}' : ''),
+            _sessionStateText(e) + (e.error.isNotEmpty ? ': ${journalCodedError(e.code, e.args, e.error)}' : ''),
             e.state == 'failed' ? LogLevel.err : (e.state == 'connected' ? LogLevel.ok : LogLevel.info),
           );
         }
@@ -43,8 +43,9 @@ extension AppStateEvents on AppState {
         // waits for it to settle.
         if ((e.state == 'idle' || e.state == 'connected') && live && coreUpdatesWaiting.isNotEmpty) Timer(const Duration(seconds: 2), installCoreUpdates);
         if (e.state == 'failed' && live) {
-          toast(humanError(e.error), ToastKind.err);
-          _alerts.add(Alert('VPN отключился', humanError(e.error)));
+          final why = humanCodedError(e.code, e.args, e.error);
+          toast(why, ToastKind.err);
+          _alerts.add(Alert('VPN отключился', why));
         }
         _statusSoon();
       case 'core-state':
@@ -114,7 +115,7 @@ extension AppStateEvents on AppState {
           _notify();
         }
       case 'log':
-        _log(e.time, e.source, e.line, _outputLevel(e.line), output: true);
+        _log(e.time, e.source, e.lineText, _outputLevel(e.line), output: true);
       case 'app-update':
         _onAppUpdate(e, live);
       case 'tun' when e.reason == 'retry':
@@ -127,14 +128,14 @@ extension AppStateEvents on AppState {
         _log(e.time, 'TUN', 'слой TUN перешёл на sing-box ${e.line}: интерфейс перезапущен, VPN не отключался', LogLevel.ok);
       case 'dns' when e.reason == 'network-changed':
         // The reconnect that follows says why it happens.
-        _log(e.time, 'сеть', e.line.isNotEmpty ? e.line : AppState._layerText(e.kind, e.reason), LogLevel.swap);
+        _log(e.time, 'сеть', e.line.isNotEmpty ? e.lineText : AppState._layerText(e.kind, e.reason), LogLevel.swap);
         if (live) toast('Сеть сменилась — CoreShift переподключается');
       case 'tun':
       case 'dns':
         _log(
           e.time,
           e.kind.toUpperCase(),
-          e.error.isNotEmpty ? e.error : AppState._layerText(e.kind, e.reason),
+          e.error.isNotEmpty ? e.errorText : AppState._layerText(e.kind, e.reason),
           e.error.isNotEmpty ? LogLevel.warn : LogLevel.info,
         );
       case 'proxy':
@@ -142,7 +143,7 @@ extension AppStateEvents on AppState {
       case 'action':
         // Why the connection changes, when not by the window's buttons:
         // Android's tile and notification, "Автозапуск", the service itself.
-        _log(e.time, e.source.isEmpty ? 'действие' : e.source, e.line, LogLevel.info);
+        _log(e.time, e.source.isEmpty ? 'действие' : e.source, e.lineText, LogLevel.info);
       case 'error':
         // Services before 0.7.2 sent a failure twice: in the state and here.
         if (e.error == _failedWith) break;
@@ -152,7 +153,7 @@ extension AppStateEvents on AppState {
         _onNetworkEvent(e, live);
       case 'netinfo':
         // Which network the connection runs over, and a move to another.
-        _log(e.time, 'сеть', e.line, e.reason == 'changed' ? LogLevel.swap : LogLevel.info);
+        _log(e.time, 'сеть', e.lineText, e.reason == 'changed' ? LogLevel.swap : LogLevel.info);
       case 'traffic':
         // Hidden, the samples come every few seconds: the graph, a sample a
         // second, keeps only the latest of them rather than squeezing
@@ -199,7 +200,7 @@ extension AppStateEvents on AppState {
         _onCheckupEvent(e);
       case 'rules':
         if (e.error.isNotEmpty) {
-          _log(e.time, 'правила', e.error, LogLevel.warn);
+          _log(e.time, 'правила', e.errorText, LogLevel.warn);
           // Only the direct sets of the Russian preset failing changes much
           // at once. A set that was not updated ("kept"), damaged on disk or
           // not had from the chosen source (the copy built into CoreShift
@@ -230,7 +231,7 @@ extension AppStateEvents on AppState {
       'lost' => ('сеть пропала: VPN ждёт её, ядра и сервер не меняются', LogLevel.warn, 'Пропала сеть — VPN подождёт её'),
       'back' => ('сеть вернулась', LogLevel.ok, 'Сеть вернулась'),
       'reconnect' => ('сеть вернулась, но связь через сервер не восстановилась: переподключаюсь', LogLevel.swap, ''),
-      _ => (e.line.isNotEmpty ? e.line : e.reason, LogLevel.info, ''),
+      _ => (e.line.isNotEmpty ? e.lineText : e.reason, LogLevel.info, ''),
     };
     _log(e.time, 'сеть', text, level);
     if (live && note.isNotEmpty) toast(note, level == LogLevel.ok ? ToastKind.ok : ToastKind.info);
@@ -248,7 +249,7 @@ extension AppStateEvents on AppState {
     }
     _serverProblem = e.reason;
     final (title, body) = AppState.serverProblemText(e.reason, e.from);
-    _log(e.time, 'сервер', '$title${e.line.isEmpty ? '' : ' (${e.line})'}', LogLevel.err);
+    _log(e.time, 'сервер', '$title${e.line.isEmpty ? '' : ' (${e.lineText})'}', LogLevel.err);
     if (live) {
       toast(title, ToastKind.err);
       // Out of the window's sight: the desktop's tray, the phone's

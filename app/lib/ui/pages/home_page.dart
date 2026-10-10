@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../api/models.dart';
+import '../../l10n/strings.dart';
 import '../../platform/platform.dart' as platform;
 import '../../state/announcements.dart';
 import '../../state/app_state.dart';

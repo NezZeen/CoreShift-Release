@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"coreshift/engine/internal/dnsguard"
+	"coreshift/engine/internal/msg"
 	"coreshift/engine/internal/node"
 	"coreshift/engine/internal/supervisor"
 	"coreshift/engine/internal/tunlayer"
@@ -158,7 +159,7 @@ func (s *Service) keepDNS(ctx context.Context, k dnsguard.Keeper) {
 		}
 		if ctx.Err() == nil {
 			if err := k.Keep(ctx); err != nil {
-				s.hub.publish(Event{Kind: "dns", Error: "не удалось снова направить системный DNS в туннель: " + err.Error()})
+				s.hub.publish(Event{Kind: "dns"}.withError(msg.New("dns.keep_failed", "err", err)))
 			}
 		}
 		s.op.Unlock()
@@ -197,8 +198,8 @@ func (s *Service) watchNetwork(ctx context.Context, gen int, direct netip.Addr) 
 			t.Reset(s.resolverEvery(seen))
 			continue
 		}
-		s.hub.publish(Event{Kind: "dns", Reason: "network-changed",
-			Line: fmt.Sprintf("сеть сменилась: DNS %s больше нет, теперь система спрашивает %s; переподключаюсь", direct, addrs[0])})
+		s.hub.publish(Event{Kind: "dns", Reason: "network-changed"}.withLine(
+			msg.New("dns.network_changed", "old", direct.String(), "new", addrs[0].String())))
 		s.reconnectGen(gen)
 		return
 	}
@@ -294,11 +295,11 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 			addrs := resolvers
 			if err != nil || len(addrs) == 0 {
 				direct = "1.1.1.1"
-				why := "система не назвала ни одного"
+				why := msg.New("dns.system_none")
 				if err != nil {
-					why = err.Error()
+					why = msg.Raw(err.Error())
 				}
-				s.hub.publish(Event{Kind: "dns", Error: fmt.Sprintf("системный DNS не найден (%s): прямые адреса узнаю через %s", why, direct)})
+				s.hub.publish(Event{Kind: "dns"}.withError(msg.New("dns.system_missing", "why", why, "direct", direct)))
 			} else {
 				direct = addrs[0].String()
 				s.mu.Lock()
@@ -378,7 +379,7 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 		// The system would not give the interface IPv6 after all (Windows
 		// with IPv6 switched off in a way ipv6Off cannot see). IPv4-only,
 		// strict_route still keeps IPv6 out of reach.
-		s.hub.publish(Event{Kind: "tun", Error: fmt.Sprintf("интерфейс не принял IPv6 (%v): туннель только IPv4", err)})
+		s.hub.publish(Event{Kind: "tun"}.withError(msg.New("tun.ipv6_refused", "err", msg.Raw(err.Error()))))
 		opts.RefuseIPv6 = false
 		inst, err = tun.Start(ctx, opts)
 	}
@@ -479,7 +480,7 @@ func (s *Service) stopLocked() {
 	}
 	s.hub.clearTraffic()
 	if err := s.cfg.guard.Revert(context.Background()); err != nil {
-		s.hub.publish(Event{Kind: "dns", Error: "не удалось восстановить системный DNS: " + err.Error()})
+		s.hub.publish(Event{Kind: "dns"}.withError(msg.New("dns.revert_failed", "err", msg.Raw(err.Error()))))
 	} else if s.tun != nil {
 		// Said aloud, so a journal shows the system got its DNS back.
 		s.hub.publish(Event{Kind: "dns", Reason: "reverted"})
@@ -577,14 +578,18 @@ func (s *Service) onSupervisorEvent(e supervisor.Event) {
 // fail reports a connection that failed. The state event carries the
 // error: a second event with it made the journal say it twice.
 func (s *Service) fail(err error) {
-	s.setStatus(Status{State: Failed, TUN: s.Options().TUN, Error: err.Error(), Since: time.Now()})
+	st := Status{State: Failed, TUN: s.Options().TUN, Error: err.Error(), Since: time.Now()}
+	if m, ok := msg.Of(err); ok {
+		st.ErrorCode, st.ErrorArgs = m.Code, m.Args
+	}
+	s.setStatus(st)
 }
 
 func (s *Service) setStatus(st Status) {
 	s.mu.Lock()
 	s.status = st
 	s.mu.Unlock()
-	s.hub.publish(Event{Kind: "state", State: st.State, Core: string(st.Core), Error: st.Error})
+	s.hub.publish(stateEvent(st))
 	if st.State == Connected {
 		s.retryAfterConnect()
 	}

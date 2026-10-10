@@ -1,12 +1,13 @@
 package service
 
 import (
-	"fmt"
 	"regexp"
 	"slices"
 	"strings"
 	"sync"
 	"time"
+
+	"coreshift/engine/internal/msg"
 )
 
 // Some networks let nothing through but a list of allowed addresses (Russian
@@ -187,7 +188,7 @@ func (s *Service) directChecked(passed bool) {
 	s.mu.Unlock()
 	e := Event{Kind: "direct", Reason: "blocked"}
 	if loud {
-		e.Line = directHint(n, routes)
+		e = e.withLine(directHint(n, routes))
 	}
 	s.hub.publish(e)
 }
@@ -221,42 +222,24 @@ func directRoutes(o Options) []string {
 }
 
 // directHint is the journal's line: what was seen, and what to change.
-func directHint(n int, routes []string) string {
-	return fmt.Sprintf("Прямые соединения не проходят (%d за минуту), а через VPN всё работает: похоже, сеть пропускает только белый список или российские сайты отсюда недоступны.%s", n, directAdvice(routes))
+func directHint(n int, routes []string) msg.Msg {
+	return msg.New("direct.blocked", "n", n, "advice", directAdvice(routes))
 }
 
 // directAdvice is what to change of the settings that send traffic
-// direct, routes as directRoutes names them: " Включите …." with a
-// leading space, or "" when nothing does.
-func directAdvice(routes []string) string {
-	var do []string
-	has := func(r string) bool { return slices.Contains(routes, r) }
-	if has(routeSelected) {
-		do = append(do, "включите «Всё через VPN»")
-	}
-	if has(routeRussia) {
-		do = append(do, "выключите «Российские сайты напрямую»")
-	}
-	advice := ""
-	switch {
-	case len(do) > 0:
-		advice = strings.Join(do, " и ")
-		if has(routeLists) {
-			advice += "; проверьте и свои списки «напрямую»"
+// direct, routes as directRoutes names them: «Включите «Всё через VPN».»,
+// or nothing ("direct.advice.none") when nothing does. Its code names
+// what to change: "all" (the mode), "russia" (the preset), "lists" (the
+// user's own lists).
+func directAdvice(routes []string) msg.Msg {
+	var parts []string
+	for _, r := range []struct{ route, part string }{{routeSelected, "all"}, {routeRussia, "russia"}, {routeLists, "lists"}} {
+		if slices.Contains(routes, r.route) {
+			parts = append(parts, r.part)
 		}
-	case has(routeLists):
-		advice = "уберите из своих списков «напрямую» то, что здесь не открывается"
 	}
-	if advice != "" {
-		advice = " " + upperFirst(advice) + "."
+	if len(parts) == 0 {
+		return msg.New("direct.advice.none")
 	}
-	return advice
-}
-
-// upperFirst capitalises the first letter, whatever its alphabet.
-func upperFirst(s string) string {
-	for i, r := range s {
-		return strings.ToUpper(string(r)) + s[i+len(string(r)):]
-	}
-	return s
+	return msg.New("direct.advice." + strings.Join(parts, "_"))
 }

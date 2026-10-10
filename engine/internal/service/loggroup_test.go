@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"coreshift/engine/internal/core"
+	"coreshift/engine/internal/msg"
 	"coreshift/engine/internal/supervisor"
 )
 
@@ -20,6 +21,9 @@ const (
 	floodC = "\x1b[31mERROR\x1b[0m[15421] [ \x1b[38;5;49m1838926625\x1b[0m 2m12s] connection: open connection to [23.207.210.130,23.207.210.157,23.207.210.158] using outbound/socks[proxy]: socks5: request rejected, code=1"
 	other  = "\x1b[31mERROR\x1b[0m[15500] [ \x1b[38;5;49m1111\x1b[0m 0ms] connection: open connection to 203.0.113.50:443 using outbound/socks[proxy]: dial tcp 127.0.0.1:17890: connect: connection refused"
 )
+
+// upstreamDNSDead is the journal's line for it, in Russian.
+var upstreamDNSDead = msg.New(upstreamDNSDeadCode).String()
 
 type collected struct {
 	mu    sync.Mutex

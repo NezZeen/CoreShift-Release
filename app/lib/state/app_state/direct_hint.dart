@@ -19,7 +19,7 @@ extension AppStateDirectHint on AppState {
 
   void _onDirectEvent(Event e) {
     _directBlocked = true;
-    if (e.line.isNotEmpty) _log(e.time, 'сеть', e.line, LogLevel.warn);
+    if (e.line.isNotEmpty) _log(e.time, 'сеть', e.lineText, LogLevel.warn);
     _notify();
   }
 

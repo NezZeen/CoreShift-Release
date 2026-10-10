@@ -34,49 +34,34 @@ extension AppStateSubAlerts on AppState {
     final now = DateTime.now();
     final out = <SubWarning>[];
     for (final s in subscriptions) {
-      final i = s.info, name = '«${s.displayName}»';
+      // The words are the engine's (l10n/engine_strings.dart, "sub."): the
+      // same as Android's notifications, which it posts itself.
+      final i = s.info, name = s.displayName;
+      String w(String code, [Map<String, Object?> args = const {}]) => engineMessage(code, {'name': name, ...args}) ?? code;
       if (i.expire != null) {
         final left = i.expire!.difference(now);
         if (left.isNegative) {
-          out.add(
-            SubWarning(s, traffic: false, level: 3, title: 'Подписка $name закончилась', body: 'Продлите её у провайдера: без этого серверы не работают.'),
-          );
+          out.add(SubWarning(s, traffic: false, level: 3, title: w('sub.expired.title'), body: w('sub.expired.body')));
         } else if (left.inHours < 24) {
           // Within a day: tonight or tomorrow morning.
-          final e = i.expire!.toLocal(), day = e.year == now.year && e.month == now.month && e.day == now.day ? 'сегодня' : 'завтра';
-          out.add(SubWarning(s, traffic: false, level: 2, title: 'Подписка $name закончится $day', body: 'Продлите её у провайдера, чтобы VPN не отключился.'));
+          final e = i.expire!.toLocal(), today = e.year == now.year && e.month == now.month && e.day == now.day;
+          out.add(SubWarning(s, traffic: false, level: 2, title: w(today ? 'sub.today.title' : 'sub.tomorrow.title'), body: w('sub.day.body')));
         } else if (left.inHours < 72) {
           final days = subscriptionDaysLeft(i.expire!, now);
-          out.add(
-            SubWarning(
-              s,
-              traffic: false,
-              level: 1,
-              title: 'Подписка $name закончится через $days ${days == 1 ? 'день' : 'дня'}',
-              body: 'Продлите её у провайдера заранее.',
-            ),
-          );
+          out.add(SubWarning(s, traffic: false, level: 1, title: w('sub.days.title', {'days': days}), body: w('sub.days.body')));
         }
       }
       if (i.total > 0) {
         if (i.used >= i.total) {
-          out.add(
-            SubWarning(
-              s,
-              traffic: true,
-              level: 3,
-              title: 'Трафик подписки $name закончился',
-              body: 'Докупите трафик у провайдера или дождитесь его обновления.',
-            ),
-          );
+          out.add(SubWarning(s, traffic: true, level: 3, title: w('sub.traffic_over.title'), body: w('sub.traffic_over.body')));
         } else if (i.used / i.total >= .9) {
           out.add(
             SubWarning(
               s,
               traffic: true,
               level: 1,
-              title: 'Трафик подписки $name почти израсходован',
-              body: 'Осталось ${formatQuota(i.total - i.used)} из ${formatQuota(i.total)}.',
+              title: w('sub.traffic_low.title'),
+              body: w('sub.traffic_low.body', {'left': formatQuota(i.total - i.used), 'total': formatQuota(i.total)}),
             ),
           );
         }

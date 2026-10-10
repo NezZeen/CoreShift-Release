@@ -16,7 +16,7 @@ class _BottomNav extends StatelessWidget {
       labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
       selectedIndex: index,
       onDestinationSelected: (i) => onPage(mainPages[i].$1),
-      destinations: [for (final (_, icon, label) in mainPages) NavigationDestination(icon: Icon(icon), label: label)],
+      destinations: [for (final (_, icon, label) in mainPages) NavigationDestination(icon: Icon(icon), label: tr(label))],
     );
   }
 }
@@ -67,7 +67,7 @@ class _Sidebar extends StatelessWidget {
           const SizedBox(height: 18),
           // The pages as stations on one line.
           for (final (i, (id, icon, label)) in mainPages.indexed)
-            _NavItem(icon: icon, label: label, active: stationOf(page) == id, first: i == 0, last: i == mainPages.length - 1, onTap: () => onPage(id)),
+            _NavItem(icon: icon, label: tr(label), active: stationOf(page) == id, first: i == 0, last: i == mainPages.length - 1, onTap: () => onPage(id)),
           const Spacer(),
         ],
       ),

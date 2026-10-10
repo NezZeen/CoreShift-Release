@@ -3,9 +3,10 @@ package service
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"time"
+
+	"coreshift/engine/internal/msg"
 )
 
 // AutoConnectEnabled reports whether the settings ask to connect the
@@ -23,7 +24,7 @@ func (s *Service) AutoConnect(ctx context.Context) error {
 	if !s.AutoConnectEnabled() {
 		return nil
 	}
-	return s.connectAtStart(ctx, "", "подключить%s (автозапуск)")
+	return s.connectAtStart(ctx, "", "action.autostart")
 }
 
 // Resume connects the selected node again after a restart of the service
@@ -31,7 +32,7 @@ func (s *Service) AutoConnect(ctx context.Context) error {
 // the auto-connect setting says. Like AutoConnect it leaves alone a VPN the
 // user connected or turned off meanwhile.
 func (s *Service) Resume(ctx context.Context) error {
-	return s.connectAtStart(ctx, "служба", "служба перезапустилась посреди соединения, подключаюсь снова%s")
+	return s.connectAtStart(ctx, "служба", "action.resume")
 }
 
 // LogAction notes in the journal why a connection is about to change, when
@@ -39,8 +40,14 @@ func (s *Service) Resume(ctx context.Context) error {
 // user's action elsewhere, with source "" (Android's tile or notification,
 // "Автозапуск"), or the service's own reason, with the journal's source
 // for it ("служба", "обновление"). The app shows it as an "action" event.
+// line goes as it is: LogActionMsg says it in the app's language.
 func (s *Service) LogAction(source, line string) {
 	s.hub.publish(Event{Kind: "action", Source: source, Line: line})
+}
+
+// LogActionMsg is LogAction for a sentence of CoreShift's own, internal/msg.
+func (s *Service) LogActionMsg(source string, line msg.Msg) {
+	s.hub.publish(Event{Kind: "action", Source: source}.withLine(line))
 }
 
 // SelectedName returns the name of the store's selected node, if there is
@@ -60,8 +67,8 @@ func (s *Service) SelectedName() (string, bool) {
 // second Connect tore down the first connection a second after it came
 // up, and made it again. Whichever comes first connects; the other
 // returns nil, and so does a later one that finds the VPN already up.
-// Each attempt is noted in the journal first (LogAction): why, with ": "
-// and the node's name in place of its %s.
+// Each attempt is noted in the journal first (LogAction): why, the code of
+// internal/msg, which with "_node" names the node too.
 func (s *Service) connectAtStart(ctx context.Context, source, why string) error {
 	if !s.startConn.TryLock() {
 		return nil // the other one connects
@@ -80,14 +87,14 @@ func (s *Service) connectAtStart(ctx context.Context, source, why string) error 
 			return nil
 		}
 		if name, ok := s.SelectedName(); ok {
+			line := msg.New(why)
 			if name != "" {
-				name = ": " + name
+				line = msg.New(why+"_node", "name", name)
 			}
-			line := fmt.Sprintf(why, name)
 			if i > 0 {
-				line += ", ещё одна попытка"
+				line = msg.New("action.retry", "what", line)
 			}
-			s.LogAction(source, line)
+			s.LogActionMsg(source, line)
 		}
 		err = s.ConnectSelected(ctx)
 		if err == nil || errors.Is(err, ErrNoSelection) || errors.Is(err, ErrDisconnected) || ctx.Err() != nil {

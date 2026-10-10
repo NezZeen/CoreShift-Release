@@ -8,6 +8,7 @@ import (
 
 	"coreshift/engine/internal/core"
 	"coreshift/engine/internal/dnsguard"
+	"coreshift/engine/internal/msg"
 	"coreshift/engine/internal/supervisor"
 	"coreshift/engine/internal/tunlayer"
 )
@@ -237,8 +238,7 @@ func (s *Service) applyTUN(gen int, u staleCore) {
 	opts := s.tunOpts
 	if err := up.Check(tctx, opts); err != nil {
 		if !disconnected(ctx) {
-			s.hub.publish(Event{Kind: "tun", Error: fmt.Sprintf(
-				"sing-box %s не принял настройки слоя TUN (%v): слой остаётся на прежней версии до следующего подключения", u.version, err)})
+			s.hub.publish(Event{Kind: "tun"}.withError(msg.New("tun.update_refused", "version", u.version, "err", msg.Raw(err.Error()))))
 		}
 		return
 	}
@@ -260,14 +260,13 @@ func (s *Service) applyTUN(gen int, u staleCore) {
 	started = time.Now()
 	if prev, perr := up.StartPrevious(tctx, opts); perr == nil {
 		if s.tunBack(ctx, prev, gen, opts, started) {
-			s.hub.publish(Event{Kind: "tun", Error: fmt.Sprintf(
-				"слой TUN не запустился на sing-box %s (%v): вернул прежнюю версию до следующего подключения", u.version, err)})
+			s.hub.publish(Event{Kind: "tun"}.withError(msg.New("tun.update_rollback", "version", u.version, "err", msg.Raw(err.Error()))))
 		}
 		return
 	} else if disconnected(ctx) {
 		return
 	}
-	s.hub.publish(Event{Kind: "tun", Error: fmt.Sprintf("слой TUN не запустился на sing-box %s (%v): переподключаюсь", u.version, err)})
+	s.hub.publish(Event{Kind: "tun"}.withError(msg.New("tun.update_reconnect", "version", u.version, "err", msg.Raw(err.Error()))))
 	_ = s.connectOp(ctx, n)
 }
 

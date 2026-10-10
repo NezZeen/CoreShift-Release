@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"coreshift/engine/internal/core"
+	"coreshift/engine/internal/msg"
 	"coreshift/engine/internal/ping"
 	"coreshift/engine/internal/service"
 	"coreshift/engine/internal/store"
@@ -70,8 +71,9 @@ type Platform interface {
 func watchSubscriptions(ctx context.Context, st *store.Store, dataDir string, p Platform) {
 	alerts := subAlerts{path: filepath.Join(dataDir, "sub_warned.json")}
 	check := func() {
+		lang := uiLang(dataDir)
 		for _, w := range alerts.due(st.Subscriptions(), time.Now()) {
-			p.Notify(w.title, w.body)
+			p.Notify(w.title.In(lang), w.body.In(lang))
 		}
 	}
 	// A moment for the subscriptions due a refresh to get it first.
@@ -117,16 +119,16 @@ func CurrentStatus() *Status {
 	return statusOf(e.svc)
 }
 
-// actionFrom names, for the journal, where an action without the UI came
+// actionFrom says, for the journal, where an action without the UI came
 // from: "tile" (the quick settings tile) or "notification".
-func actionFrom(from string) string {
+func actionFrom(what msg.Msg, from string) msg.Msg {
 	switch from {
 	case "tile":
-		return " (плитка)"
+		return msg.New("action.from_tile", "what", what)
 	case "notification":
-		return " (уведомление)"
+		return msg.New("action.from_notification", "what", what)
 	}
-	return ""
+	return what
 }
 
 // Connect connects the selected server without the UI, from the quick
@@ -140,10 +142,11 @@ func Connect(from string) error {
 		return errors.New("the engine is not running")
 	}
 	if name, ok := e.svc.SelectedName(); ok {
+		what := msg.New("action.connect")
 		if name != "" {
-			name = ": " + name
+			what = msg.New("action.connect_node", "name", name)
 		}
-		e.svc.LogAction("", "подключить"+name+actionFrom(from))
+		e.svc.LogActionMsg("", actionFrom(what, from))
 	}
 	return e.svc.ConnectSelected(e.ctx)
 }
@@ -351,7 +354,7 @@ func Disconnect(from string) {
 	mu.Unlock()
 	if e != nil {
 		if e.svc.Status().State != service.Idle {
-			e.svc.LogAction("", "отключить"+actionFrom(from))
+			e.svc.LogActionMsg("", actionFrom(msg.New("action.disconnect"), from))
 		}
 		e.svc.Disconnect()
 	}

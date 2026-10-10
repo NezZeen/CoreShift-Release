@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"coreshift/engine/internal/msg"
 	"coreshift/engine/internal/node"
 	"coreshift/engine/internal/ping"
 	"coreshift/engine/internal/supervisor"
@@ -83,17 +84,9 @@ const (
 
 var checkupOrder = []string{stepNetwork, stepInternet, stepDNS, stepServer, stepTunnel, stepTunnelDNS, stepLeak, stepSpeed, stepDirect}
 
-var checkupTitles = map[string]string{
-	stepNetwork:   "Сеть устройства",
-	stepInternet:  "Интернет напрямую",
-	stepDNS:       "DNS сети",
-	stepServer:    "Сервер",
-	stepTunnel:    "Связь через VPN",
-	stepTunnelDNS: "DNS через VPN",
-	stepLeak:      "Утечка DNS",
-	stepSpeed:     "Скорость",
-	stepDirect:    "Прямые соединения",
-}
+// checkupTitle is a step's name in Russian; the app has its own,
+// "checkup.step." and the id.
+func checkupTitle(id string) string { return msg.New("checkup.step." + id).String() }
 
 // What the actions of a verdict do, in the app.
 const (
@@ -110,14 +103,20 @@ type CheckStep struct {
 	Title string `json:"title"`
 	// Status is CheckOK, CheckWarn, CheckFail or CheckSkipped.
 	Status string `json:"status"`
-	// Detail says what was seen, in Russian, for the user and support.
-	Detail      string `json:"detail"`
-	LatencyMS   int64  `json:"latency_ms,omitempty"`
-	DownloadBps int64  `json:"download_bps,omitempty"`
+	// Detail says what was seen, in Russian, for the user and support;
+	// Code and Args say it in the app's language (internal/msg).
+	Detail      string         `json:"detail"`
+	Code        string         `json:"code,omitempty"`
+	Args        map[string]any `json:"args,omitempty"`
+	LatencyMS   int64          `json:"latency_ms,omitempty"`
+	DownloadBps int64          `json:"download_bps,omitempty"`
 	// cause tells failures of one step apart for the verdict: the server's
-	// "resolve" or "port".
+	// "resolve" or "port", "none" when no server is selected.
 	cause string
 }
+
+// detail is what the step says.
+func (c CheckStep) detail() msg.Msg { return msg.Msg{Code: c.Code, Args: c.Args} }
 
 // CheckVerdict is what a checkup found: the most likely cause, in words,
 // and what the app offers to do about it.
@@ -128,8 +127,12 @@ type CheckVerdict struct {
 	Cause string `json:"cause"`
 	// Status is CheckOK, CheckWarn or CheckFail.
 	Status string `json:"status"`
-	Title  string `json:"title"`
-	Advice string `json:"advice"`
+	// Title and Advice in Russian; Code+".title" and Code+".advice" with
+	// Args say them in the app's language (internal/msg).
+	Title  string         `json:"title"`
+	Advice string         `json:"advice"`
+	Code   string         `json:"code,omitempty"`
+	Args   map[string]any `json:"args,omitempty"`
 	// Actions are the app's buttons, the first the main one: "servers",
 	// "reconnect", "connect", "routing", "leak".
 	Actions []string `json:"actions,omitempty"`
@@ -184,11 +187,11 @@ func (s *Service) Checkup(ctx context.Context, o CheckupOptions) (CheckupResult,
 	var mu sync.Mutex
 	steps := map[string]CheckStep{}
 	done := func(id string, step CheckStep) CheckStep {
-		step.ID, step.Title = id, checkupTitles[id]
+		step.ID, step.Title = id, checkupTitle(id)
 		mu.Lock()
 		steps[id] = step
 		mu.Unlock()
-		s.hub.publish(Event{Kind: "checkup", Reason: "step", Step: id, Status: step.Status, Line: step.Detail, LatencyMS: step.LatencyMS})
+		s.hub.publish(Event{Kind: "checkup", Reason: "step", Step: id, Status: step.Status, LatencyMS: step.LatencyMS}.withLine(step.detail()))
 		return step
 	}
 
@@ -233,7 +236,7 @@ func (s *Service) Checkup(ctx context.Context, o CheckupOptions) (CheckupResult,
 		res.Steps = append(res.Steps, steps[id])
 	}
 	res.Verdict = checkupVerdict(st.State, n.Name, steps, routes)
-	s.hub.publish(Event{Kind: "checkup", Reason: "done", Status: res.Verdict.Status, Line: res.Verdict.Title})
+	s.hub.publish(Event{Kind: "checkup", Reason: "done", Status: res.Verdict.Status}.withLine(msg.Msg{Code: res.Verdict.Code + ".title", Args: res.Verdict.Args}))
 	return res, nil
 }
 
@@ -254,30 +257,35 @@ func (a *api) checkup(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func okStep(detail string) CheckStep   { return CheckStep{Status: CheckOK, Detail: detail} }
-func warnStep(detail string) CheckStep { return CheckStep{Status: CheckWarn, Detail: detail} }
-func failStep(detail string) CheckStep { return CheckStep{Status: CheckFail, Detail: detail} }
-func skipStep(detail string) CheckStep { return CheckStep{Status: CheckSkipped, Detail: detail} }
+// step is a step of status that says code with its arguments.
+func step(status, code string, kv ...any) CheckStep {
+	m := msg.New(code, kv...)
+	return CheckStep{Status: status, Detail: m.String(), Code: m.Code, Args: m.Args}
+}
 
-const notConnected = "VPN не подключён"
+func okStep(code string, kv ...any) CheckStep   { return step(CheckOK, code, kv...) }
+func warnStep(code string, kv ...any) CheckStep { return step(CheckWarn, code, kv...) }
+func failStep(code string, kv ...any) CheckStep { return step(CheckFail, code, kv...) }
+func skipStep(code string, kv ...any) CheckStep { return step(CheckSkipped, code, kv...) }
+
+const notConnected = "checkup.not_connected"
 
 // checkNetwork: the device has a network at all (netwatch.go).
 func (s *Service) checkNetwork() CheckStep {
 	if s.noNetwork() {
-		return failStep("устройство не подключено к сети: нет Wi-Fi, кабеля или мобильного интернета")
+		return failStep("checkup.network.none")
 	}
-	detail := "подключено"
 	if name := s.cfg.netName(); name != "" {
-		detail += ": " + networkLabel(name)
+		return okStep("checkup.network.ok_named", "net", networkLabel(name))
 	}
-	return okStep(detail)
+	return okStep("checkup.network.ok")
 }
 
 // reachNames name the well-known hosts of checkReach.
-var reachNames = map[netip.AddrPort]string{
-	netip.MustParseAddrPort("1.1.1.1:443"):   "Cloudflare",
-	netip.MustParseAddrPort("8.8.8.8:443"):   "Google",
-	netip.MustParseAddrPort("77.88.8.8:443"): "Яндекс",
+var reachNames = map[netip.AddrPort]msg.Msg{
+	netip.MustParseAddrPort("1.1.1.1:443"):   msg.Raw("Cloudflare"),
+	netip.MustParseAddrPort("8.8.8.8:443"):   msg.Raw("Google"),
+	netip.MustParseAddrPort("77.88.8.8:443"): msg.New("checkup.host.yandex"),
 }
 
 // reachHome is the host of reachHosts that answers where nothing foreign
@@ -299,7 +307,7 @@ func (s *Service) checkInternet(ctx context.Context, connected bool) (CheckStep,
 	if err != nil {
 		// Without the tunnel the default route is the network's anyway.
 		if connected && !s.cfg.AppOutsideVPN {
-			return skipStep("не найден сетевой интерфейс в обход туннеля: напрямую не проверить"), internetSeen{}
+			return skipStep("checkup.no_bypass"), internetSeen{}
 		}
 		bind = ping.Bind{}
 	}
@@ -326,21 +334,21 @@ func (s *Service) checkInternet(ctx context.Context, connected bool) (CheckStep,
 	wg.Wait()
 	seen := internetSeen{known: true, online: len(answered) > 0}
 	if !seen.online {
-		return failStep("не отвечают ни Cloudflare, ни Google, ни Яндекс: " + netErrsText(errs)), seen
+		return failStep("checkup.internet.none", "errs", netErrsText(errs)), seen
 	}
-	var names []string
+	var names []msg.Msg
 	for _, h := range reachHosts {
 		if slices.Contains(answered, h) {
 			names = append(names, reachNames[h])
 		}
 	}
-	step := okStep(fmt.Sprintf("отвечают %s (%d мс)", strings.Join(names, ", "), latencyMS(best)))
+	st := okStep("checkup.internet.ok", "hosts", msg.Join(", ", names...), "ms", latencyMS(best))
 	if len(answered) == 1 && answered[0] == reachHome {
 		seen.onlyHome = true
-		step = warnStep(fmt.Sprintf("отвечает только Яндекс (%d мс), а Cloudflare и Google нет: похоже, сеть пропускает только белый список", latencyMS(best)))
+		st = warnStep("checkup.internet.only_home", "ms", latencyMS(best))
 	}
-	step.LatencyMS = latencyMS(best)
-	return step, seen
+	st.LatencyMS = latencyMS(best)
+	return st, seen
 }
 
 // checkupNames are looked up to test DNS: one foreign, one Russian, so a
@@ -369,25 +377,25 @@ func (s *Service) checkDNS(ctx context.Context) CheckStep {
 	for range checkupNames {
 		r := <-results
 		if r.err == nil {
-			step := okStep(fmt.Sprintf("адреса сайтов находятся (%d мс)", latencyMS(r.rtt)))
-			step.LatencyMS = latencyMS(r.rtt)
-			return step
+			st := okStep("checkup.dns.ok", "ms", latencyMS(r.rtt))
+			st.LatencyMS = latencyMS(r.rtt)
+			return st
 		}
 		if firstErr == nil {
 			firstErr = r.err
 		}
 	}
-	return failStep("DNS сети не отвечает: " + dnsErrText(firstErr))
+	return failStep("checkup.dns.fail", "err", dnsErrText(firstErr))
 }
 
 // dnsErrText says in a few words why a lookup failed.
-func dnsErrText(err error) string {
+func dnsErrText(err error) msg.Msg {
 	var de *net.DNSError
 	switch {
 	case errors.As(err, &de) && de.IsNotFound:
-		return "имя не найдено"
+		return msg.New("dns.not_found")
 	case errors.As(err, &de) && de.IsTimeout:
-		return "нет ответа"
+		return msg.New("net.timeout")
 	}
 	var re *resolveError
 	if errors.As(err, &re) {
@@ -397,11 +405,11 @@ func dnsErrText(err error) string {
 }
 
 // quoted is a server's display name in quotes, or "сервер" without one.
-func quoted(name string) string {
+func quoted(name string) msg.Msg {
 	if name == "" {
-		return "сервер"
+		return msg.New("checkup.who_none")
 	}
-	return "«" + name + "»"
+	return msg.New("checkup.who", "name", name)
 }
 
 // checkServer: the server's name resolves, as for connecting and, failing
@@ -410,7 +418,9 @@ func quoted(name string) string {
 // connected.
 func (s *Service) checkServer(ctx context.Context, n node.Node, has bool, known netip.Addr) CheckStep {
 	if !has {
-		return skipStep("сервер не выбран")
+		st := skipStep("checkup.server.none")
+		st.cause = "none"
+		return st
 	}
 	ctx, cancel := context.WithTimeout(ctx, checkupServerFor)
 	defer cancel()
@@ -419,7 +429,7 @@ func (s *Service) checkServer(ctx context.Context, n node.Node, has bool, known 
 	if err != nil {
 		bind = ping.Bind{}
 	}
-	ip, note := known, ""
+	ip, viaDoH := known, false
 	if a, err := netip.ParseAddr(n.Server); err == nil {
 		ip = a
 	}
@@ -430,11 +440,11 @@ func (s *Service) checkServer(ctx context.Context, n node.Node, has bool, known 
 		if err != nil {
 			ips, derr := s.cfg.dohLookup(ctx, n.Server, bindFor(bind, dohProbe))
 			if a, derr = preferIPv4(ips, derr); derr != nil {
-				step := failStep(who + ": адрес сервера не находится (" + dnsErrText(err) + ")")
-				step.cause = "resolve"
-				return step
+				st := failStep("checkup.server.resolve_fail", "who", who, "err", dnsErrText(err))
+				st.cause = "resolve"
+				return st
 			}
-			note = "; DNS сети не знает имени сервера, адрес нашёлся через DNS over HTTPS"
+			viaDoH = true
 		}
 		ip = a
 	}
@@ -442,33 +452,34 @@ func (s *Service) checkServer(ctx context.Context, n node.Node, has bool, known 
 		rtt, err := checkPing(ip)(s.cfg.icmpPing(ctx, ip, bindFor(bind, ip)))
 		switch {
 		case errors.Is(err, ping.ErrUnsupported):
-			return skipStep(who + ": сервер работает по UDP, а ping здесь недоступен: жив ли он, скажет связь через VPN")
+			return skipStep("checkup.server.udp_no_ping", "who", who)
 		case errors.Is(err, errLocalAnswer):
-			return warnStep(who + ": за сервер ответил другой VPN на этом устройстве")
+			return warnStep("checkup.server.local_answer", "who", who)
 		case err != nil:
-			return warnStep(who + ": сервер работает по UDP и на ping не отвечает (" + netErrText(err) + "): многие серверы ping не пропускают")
+			return warnStep("checkup.server.udp_silent", "who", who, "err", netErrText(err))
 		}
-		return serverAnswered(who, "отвечает на ping", rtt, note)
+		return serverAnswered(who, msg.New("checkup.server.ping_ok"), rtt, viaDoH)
 	}
 	rtt, err := checkPing(ip)(s.cfg.tcpPing(ctx, netip.AddrPortFrom(ip, n.Port), bindFor(bind, ip)))
 	switch {
 	case errors.Is(err, errLocalAnswer):
-		return warnStep(who + ": за сервер ответил другой VPN на этом устройстве")
+		return warnStep("checkup.server.local_answer", "who", who)
 	case err != nil:
-		step := failStep(who + ": порт сервера не отвечает (" + netErrText(err) + ")")
-		step.cause = "port"
-		return step
+		st := failStep("checkup.server.port_fail", "who", who, "err", netErrText(err))
+		st.cause = "port"
+		return st
 	}
-	return serverAnswered(who, "порт отвечает", rtt, note)
+	return serverAnswered(who, msg.New("checkup.server.port_ok"), rtt, viaDoH)
 }
 
-func serverAnswered(who, what string, rtt time.Duration, note string) CheckStep {
-	step := okStep(fmt.Sprintf("%s: адрес найден, %s (%d мс)%s", who, what, latencyMS(rtt), note))
-	if note != "" {
-		step.Status = CheckWarn
+// serverAnswered: a warning when only DNS over HTTPS found the address.
+func serverAnswered(who, what msg.Msg, rtt time.Duration, viaDoH bool) CheckStep {
+	st := okStep("checkup.server.ok", "who", who, "what", what, "ms", latencyMS(rtt))
+	if viaDoH {
+		st = warnStep("checkup.server.ok_doh", "who", who, "what", what, "ms", latencyMS(rtt))
 	}
-	step.LatencyMS = latencyMS(rtt)
-	return step
+	st.LatencyMS = latencyMS(rtt)
+	return st
 }
 
 // checkupHealthURLs are fetched through the tunnel: the settings' check,
@@ -496,15 +507,15 @@ func (s *Service) checkTunnel(ctx context.Context, st Status) CheckStep {
 	s.mu.Unlock()
 	lat, err := s.throughTunnel(ctx, checkupHealthURLs(primary))
 	if err != nil {
-		return failStep("запросы через сервер не проходят: " + netErrText(err))
+		return failStep("checkup.tunnel.fail", "err", netErrText(err))
 	}
 	ms := latencyMS(lat)
-	step := okStep(fmt.Sprintf("работает, задержка %d мс", ms))
+	out := okStep("checkup.tunnel.ok", "ms", ms)
 	if lat > checkupSlow {
-		step = warnStep(fmt.Sprintf("работает, но задержка большая: %d мс", ms))
+		out = warnStep("checkup.tunnel.slow", "ms", ms)
 	}
-	step.LatencyMS = ms
-	return step
+	out.LatencyMS = ms
+	return out
 }
 
 // throughTunnel fetches the urls through the core's SOCKS inbound, all at
@@ -569,7 +580,7 @@ func timedGet(ctx context.Context, client *http.Client, u string) (time.Duration
 	resp.Body.Close()
 	lat := time.Since(start)
 	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("ответ %s", resp.Status)
+		return 0, msg.Err("net.status", "status", resp.Status)
 	}
 	return lat, nil
 }
@@ -584,7 +595,7 @@ func (s *Service) checkTunnelDNS(ctx context.Context, st Status) CheckStep {
 	case st.State != Connected:
 		return skipStep(notConnected)
 	case !st.TUN:
-		return skipStep("режим «только прокси»: адреса ищут сами программы")
+		return skipStep("checkup.tunnel_dns.proxy")
 	}
 	ctx, cancel := context.WithTimeout(ctx, checkupDNSFor)
 	defer cancel()
@@ -596,21 +607,21 @@ func (s *Service) checkTunnelDNS(ctx context.Context, st Status) CheckStep {
 	addrs, err := lookup(ctx, checkupTunnelName)
 	rtt := time.Since(t)
 	if err == nil && len(addrs) == 0 {
-		err = errors.New("пустой ответ")
+		err = msg.Err("net.empty_answer")
 	}
 	if err != nil {
-		return failStep("адреса сайтов не находятся: " + dnsErrText(err))
+		return failStep("checkup.tunnel_dns.fail", "err", dnsErrText(err))
 	}
 	fake := true
 	for _, a := range addrs {
 		fake = fake && isFakeIP(a)
 	}
-	step := okStep(fmt.Sprintf("отвечает (%d мс)", latencyMS(rtt)))
+	out := okStep("checkup.tunnel_dns.ok", "ms", latencyMS(rtt))
 	if fake {
-		step.Detail = "отвечает сам туннель (Fake-IP), имена сайтов ищет VPN-сервер"
+		out = okStep("checkup.tunnel_dns.fakeip")
 	}
-	step.LatencyMS = latencyMS(rtt)
-	return step
+	out.LatencyMS = latencyMS(rtt)
+	return out
 }
 
 // checkLeak runs the DNS leak test and sums it up as the app does.
@@ -625,20 +636,20 @@ func (s *Service) checkLeak(ctx context.Context, st Status) CheckStep {
 		if errors.Is(err, supervisor.ErrNotConnected) {
 			return skipStep(notConnected)
 		}
-		return warnStep("сервис проверки bash.ws не ответил через VPN: утечку проверить не удалось")
+		return warnStep("checkup.leak.no_service")
 	}
 	switch v, isp := leakVerdict(res); v {
 	case leakOK:
-		return okStep("утечки нет: DNS-запросы провайдер не видит")
+		return okStep("checkup.leak.ok")
 	case leakFound:
 		if isp {
-			return failStep("часть DNS-запросов обрабатывает DNS провайдера: он видит, какие сайты открываются")
+			return failStep("checkup.leak.isp")
 		}
-		return failStep("часть DNS-запросов обрабатывают DNS-серверы не из страны VPN-сервера")
+		return failStep("checkup.leak.foreign")
 	case leakBypass:
-		return warnStep("проверка прошла мимо VPN: похоже, сервер пускает bash.ws напрямую")
+		return warnStep("checkup.leak.bypass")
 	default:
-		return warnStep("результат неточный: не удалось узнать адрес без VPN")
+		return warnStep("checkup.leak.unknown")
 	}
 }
 
@@ -697,7 +708,7 @@ func leakVerdict(r LeakResult) (verdict string, isp bool) {
 // connected, else of the network itself.
 func (s *Service) checkSpeed(ctx context.Context, st Status) CheckStep {
 	if !s.speedMu.TryLock() {
-		return skipStep("идёт тест скорости")
+		return skipStep("checkup.speed.busy")
 	}
 	defer s.speedMu.Unlock()
 	var proxy *url.URL
@@ -720,21 +731,21 @@ func (s *Service) checkSpeed(ctx context.Context, st Status) CheckStep {
 	elapsed := max(time.Since(start), time.Millisecond)
 	if moved.Load() == 0 {
 		if err == nil {
-			err = errors.New("ничего не скачалось")
+			err = msg.Err("net.nothing_downloaded")
 		}
-		return warnStep("замер не удался: " + netErrText(err))
+		return warnStep("checkup.speed.fail", "err", netErrText(err))
 	}
 	bps := int64(float64(moved.Load()) / elapsed.Seconds())
-	mbit := fmt.Sprintf("%.1f Мбит/с", float64(bps)*8/1e6)
+	mbit := fmt.Sprintf("%.1f", float64(bps)*8/1e6)
 	if bps*8 >= 100e6 {
-		mbit = fmt.Sprintf("%.0f Мбит/с", float64(bps)*8/1e6)
+		mbit = fmt.Sprintf("%.0f", float64(bps)*8/1e6)
 	}
-	step := okStep("загрузка ≈ " + mbit)
+	out := okStep("checkup.speed.ok", "mbit", mbit)
 	if bps < checkupSlowBps {
-		step = warnStep("медленно: загрузка ≈ " + mbit)
+		out = warnStep("checkup.speed.slow", "mbit", mbit)
 	}
-	step.DownloadBps = bps
-	return step
+	out.DownloadBps = bps
+	return out
 }
 
 // speedSample downloads up to speedSampleBytes from the speed test's server,
@@ -754,7 +765,7 @@ func speedSample(ctx context.Context, client *http.Client, base string, moved *a
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("ответ %s", resp.Status)
+		return msg.Err("net.status", "status", resp.Status)
 	}
 	_, err = io.Copy(io.Discard, &countingReader{r: resp.Body, n: moved})
 	if ctx.Err() != nil {
@@ -771,23 +782,23 @@ func (s *Service) checkDirect(connected, blocked bool, routes []string, inet int
 	works := tunnel.Status == CheckOK || tunnel.Status == CheckWarn
 	switch {
 	case !connected && inet.onlyHome:
-		return warnStep("напрямую отвечает только Яндекс: похоже, оператор пропускает только белый список")
+		return warnStep("checkup.direct.whitelist")
 	case !connected && inet.known && !inet.online:
-		return skipStep("интернет не отвечает")
+		return skipStep("checkup.direct.offline")
 	case !connected:
-		return okStep("проходят")
+		return okStep("checkup.direct.ok")
 	case len(routes) == 0:
-		return okStep("не используются: весь трафик идёт через VPN")
+		return okStep("checkup.direct.unused")
 	case blocked:
-		return failStep("за это подключение прямые соединения не проходили, а через VPN всё работало")
+		return failStep("checkup.direct.blocked")
 	case works && inet.known && !inet.online:
-		return failStep("известные сайты напрямую не отвечают, а через VPN работают: похоже, сеть пропускает только белый список")
+		return failStep("checkup.direct.whitelist_vpn")
 	case works && inet.onlyHome:
-		return warnStep("напрямую отвечает только Яндекс: похоже, оператор пропускает только белый список")
+		return warnStep("checkup.direct.whitelist")
 	case !inet.known:
-		return skipStep("не найден сетевой интерфейс в обход туннеля: напрямую не проверить")
+		return skipStep("checkup.no_bypass")
 	}
-	return okStep("проходят")
+	return okStep("checkup.direct.ok")
 }
 
 // checkupVerdict names the most likely cause of what the steps found, from
@@ -798,12 +809,27 @@ func checkupVerdict(state State, server string, steps map[string]CheckStep, rout
 	is := func(id, status string) bool { return steps[id].Status == status }
 	connected := state == Connected
 	works := connected && (is(stepTunnel, CheckOK) || is(stepTunnel, CheckWarn))
-	srv := "Сервер"
-	if server != "" {
-		srv = "Сервер «" + server + "»"
+	verdict := pickVerdict(state, steps, routes, connected, works, is)
+	if verdict.Args == nil {
+		verdict.Args = map[string]any{}
 	}
-	v := func(cause, status, title, advice string, actions ...string) CheckVerdict {
-		return CheckVerdict{Cause: cause, Status: status, Title: title, Advice: advice, Actions: actions}
+	// The server's name for the titles that name it, what to change for the
+	// advice on direct connections.
+	verdict.Args["srv"] = msg.New("checkup.srv_none")
+	if server != "" {
+		verdict.Args["srv"] = msg.New("checkup.srv", "name", server)
+	}
+	verdict.Args["advice"] = directAdvice(routes)
+	verdict.Title = msg.Msg{Code: verdict.Code + ".title", Args: verdict.Args}.String()
+	verdict.Advice = msg.Msg{Code: verdict.Code + ".advice", Args: verdict.Args}.String()
+	return verdict
+}
+
+// pickVerdict is checkupVerdict's choice: the cause, how bad, the code of
+// the words ("checkup.verdict." and a name) and the actions.
+func pickVerdict(state State, steps map[string]CheckStep, routes []string, connected, works bool, is func(id, status string) bool) CheckVerdict {
+	v := func(cause, status, code string, actions ...string) CheckVerdict {
+		return CheckVerdict{Cause: cause, Status: status, Code: "checkup.verdict." + code, Actions: actions}
 	}
 	servers := []string{actionServers}
 	if connected {
@@ -811,61 +837,41 @@ func checkupVerdict(state State, server string, steps map[string]CheckStep, rout
 	}
 	switch {
 	case is(stepNetwork, CheckFail):
-		return v("no-network", CheckFail, "Нет сети", "Устройство не подключено к сети. Включите Wi-Fi или мобильный интернет, проверьте кабель.")
+		return v("no-network", CheckFail, "no_network")
 	case works:
 		switch {
 		case is(stepTunnelDNS, CheckFail):
-			return v("tunnel-dns", CheckFail, "DNS через VPN не отвечает",
-				"Соединение через сервер есть, а адреса сайтов не находятся. Переподключитесь; если не поможет — выберите другой сервер.",
-				actionReconnect, actionServers)
+			return v("tunnel-dns", CheckFail, "tunnel_dns", actionReconnect, actionServers)
 		case is(stepDirect, CheckFail):
-			return v("direct-blocked", CheckWarn, "Оператор режет прямые соединения — включите «Всё через VPN»",
-				"Через VPN всё работает, а сайты, которые идут напрямую, не открываются: похоже, сеть пропускает только белый список или российские сайты отсюда недоступны."+directAdvice(routes),
-				actionRouting)
+			return v("direct-blocked", CheckWarn, "direct_blocked", actionRouting)
 		case is(stepDNS, CheckFail) && len(routes) > 0:
-			return v("dns", CheckWarn, "DNS сети не отвечает",
-				"Через VPN всё работает, а сайты, которые идут напрямую, не открываются: DNS сети не находит их адресов. Пустите всё через VPN или укажите в настройках свой DNS для прямых запросов.",
-				actionRouting)
+			return v("dns", CheckWarn, "dns_direct", actionRouting)
 		case is(stepLeak, CheckFail):
-			return v("leak", CheckWarn, "Есть утечка DNS",
-				"VPN работает, но часть DNS-запросов видна провайдеру. Подробности и что изменить — в проверке утечки DNS в настройках.",
-				actionLeak)
+			return v("leak", CheckWarn, "leak", actionLeak)
 		case is(stepDirect, CheckWarn):
-			return v("whitelist", CheckWarn, "Похоже, оператор пропускает только белый список",
-				"Через VPN всё работает, а напрямую отвечает только Яндекс: сайты, которые идут напрямую, могут не открываться."+directAdvice(routes),
-				actionRouting)
+			return v("whitelist", CheckWarn, "whitelist_vpn", actionRouting)
 		case is(stepTunnel, CheckWarn) || is(stepSpeed, CheckWarn):
-			return v("slow", CheckWarn, "VPN работает, но медленно",
-				"Задержка большая или скорость низкая. Выберите сервер поближе или с меньшим пингом.", actionServers)
+			return v("slow", CheckWarn, "slow", actionServers)
 		}
-		return v("ok", CheckOK, "Всё работает", "Сеть, сервер и VPN в порядке. Если какой-то сайт не открывается, дело, скорее всего, в нём самом.")
+		return v("ok", CheckOK, "ok")
 	case is(stepInternet, CheckFail):
-		return v("offline", CheckFail, "Нет интернета — проверьте Wi-Fi",
-			"Сеть есть, но интернет не отвечает: дело в сети, а не в VPN. Проверьте Wi-Fi или мобильный интернет и баланс у оператора, перезагрузите роутер.")
+		return v("offline", CheckFail, "offline")
 	case is(stepServer, CheckFail) && steps[stepServer].cause == "resolve":
-		return v("server-dns", CheckFail, "Адрес сервера не находится",
-			"Имя сервера не находится в DNS: его убрали или переименовали. Обновите подписку или выберите другой сервер.", servers...)
+		return v("server-dns", CheckFail, "server_dns", servers...)
 	case is(stepServer, CheckFail):
-		return v("server-down", CheckFail, srv+" не отвечает — выберите другой",
-			"Интернет работает, а сервер нет: он выключен или заблокирован.", servers...)
+		return v("server-down", CheckFail, "server_down", servers...)
 	case connected && is(stepServer, CheckOK):
-		return v("server-blocked", CheckFail, srv+" на связи, но VPN через него не работает",
-			"Соединение с сервером блокируют или изменились его настройки. Обновите подписку, включите «Обход блокировок (DPI)» или выберите другой сервер.",
-			actionServers, actionReconnect)
+		return v("server-blocked", CheckFail, "server_blocked", actionServers, actionReconnect)
 	case connected:
-		return v("tunnel", CheckFail, "Связь через VPN не проходит",
-			"Не удалось понять, виноват сервер или сеть. Переподключитесь; если не поможет — выберите другой сервер.", actionReconnect, actionServers)
+		return v("tunnel", CheckFail, "tunnel", actionReconnect, actionServers)
 	case is(stepDNS, CheckFail):
-		return v("dns", CheckFail, "DNS сети не отвечает",
-			"Интернет есть, а адреса сайтов не находятся. Подключите VPN — адреса будет искать сервер; или укажите другой DNS в настройках сети.", actionConnect)
-	case is(stepServer, CheckSkipped) && steps[stepServer].Detail == "сервер не выбран":
-		return v("no-server", CheckWarn, "Сервер не выбран", "Выберите сервер, чтобы подключиться.", actionServers)
+		return v("dns", CheckFail, "dns", actionConnect)
+	case is(stepServer, CheckSkipped) && steps[stepServer].cause == "none":
+		return v("no-server", CheckWarn, "no_server", actionServers)
 	case is(stepDirect, CheckWarn):
-		return v("whitelist", CheckWarn, "Похоже, сеть пропускает только белый список",
-			"Напрямую отвечает только Яндекс. VPN может не подключиться; если так — попробуйте другой сервер.", actionConnect, actionServers)
+		return v("whitelist", CheckWarn, "whitelist", actionConnect, actionServers)
 	case state == Failed:
-		return v("connect-failed", CheckWarn, "Сеть и сервер отвечают, а подключиться не удалось",
-			"Попробуйте подключиться ещё раз; если не выйдет — выберите другой сервер или отправьте отчёт в поддержку.", actionConnect, actionServers)
+		return v("connect-failed", CheckWarn, "connect_failed", actionConnect, actionServers)
 	}
-	return v("ready", CheckOK, "Сеть в порядке, VPN не подключён", "Интернет и сервер отвечают. Нажмите «Подключить».", actionConnect)
+	return v("ready", CheckOK, "ready", actionConnect)
 }

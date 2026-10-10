@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
+import '../l10n/engine_strings.dart';
+import '../l10n/strings.dart';
 import 'backend.dart';
 import 'models.dart';
 import 'punycode.dart';
@@ -274,6 +276,7 @@ class DemoBackend implements Backend {
     at(0, {'kind': 'dns', 'reason': 'applied'});
     at(0, {'kind': 'core-state', 'core': 'xray', 'reason': 'connected'});
     at(0, {'kind': 'state', 'state': 'connected', 'core': 'xray'});
+    at(0, _netinfo());
     at(1500, {'kind': 'health', 'core': 'xray', 'error': 'context deadline exceeded'});
     at(15, {'kind': 'health', 'core': 'xray', 'error': 'context deadline exceeded'});
     at(2, {'kind': 'core-failed', 'core': 'xray', 'reason': 'health-check', 'error': 'проверка связи не прошла 3 раза подряд'});
@@ -338,6 +341,7 @@ class DemoBackend implements Backend {
     _status = {..._status, 'state': 'connected', 'core': chain.first, 'failed': <String, String>{}, 'since': DateTime.now().toUtc().toIso8601String()};
     _emit({'kind': 'core-state', 'core': chain.first, 'reason': 'connected'});
     _emit({'kind': 'state', 'state': 'connected', 'core': chain.first});
+    _emit(_netinfo());
     _startTimers(chain);
   }
 
@@ -436,77 +440,134 @@ class DemoBackend implements Backend {
     return res;
   }
 
+  /// The network the connection runs over, as the engine tells the journal:
+  /// a code, its arguments and the Russian beside them.
+  Json _netinfo() {
+    final args = {
+      'net': {
+        'sep': ' · ',
+        'items': [
+          {
+            'code': 'net.label',
+            'args': {
+              'kind': {'code': 'net.kind.wifi'},
+              'name': 'wlan0',
+            },
+          },
+          {'code': 'net.ipv6.no'},
+          {
+            'code': 'net.dns_count',
+            'args': {'n': 2},
+          },
+        ],
+      },
+    };
+    return {'kind': 'netinfo', 'code': 'net.info', 'args': args, 'line': engineMessage('net.info', args, Lang.ru)};
+  }
+
   /// «Проверить всё» as the service runs it: the steps finish one by one,
   /// each told as an event, then the verdict. Everything works here: the
   /// demo's network is fine, and its server answers.
   Future<Json> _checkup(bool speed) async {
     final connected = _status['state'] == 'connected';
     final server = connected ? '${_status['node']}' : '${_selectionJson()['node']?['name'] ?? ''}';
-    const titles = {
-      'network': 'Сеть устройства',
-      'internet': 'Интернет напрямую',
-      'dns': 'DNS сети',
-      'server': 'Сервер',
-      'tunnel': 'Связь через VPN',
-      'tunnel-dns': 'DNS через VPN',
-      'leak': 'Утечка DNS',
-      'speed': 'Скорость',
-      'direct': 'Прямые соединения',
+    // As the engine sends them: codes and their arguments, beside the
+    // Russian for older apps (l10n/engine_strings.dart).
+    const ids = ['network', 'internet', 'dns', 'server', 'tunnel', 'tunnel-dns', 'leak', 'speed', 'direct'];
+    Json raw(String text) => {
+      'code': 'raw',
+      'args': {'text': text},
     };
-    const notConnected = 'VPN не подключён';
-    final plan = <(String, String, String, int)>[
-      ('network', 'ok', 'подключено: Wi-Fi (wlan0)', 0),
-      ('dns', 'ok', 'адреса сайтов находятся (18 мс)', 18),
-      ('internet', 'ok', 'отвечают Cloudflare, Google, Яндекс (21 мс)', 21),
-      ('server', server.isEmpty ? 'skipped' : 'ok', server.isEmpty ? 'сервер не выбран' : '«$server»: адрес найден, порт отвечает (46 мс)', 46),
-      connected ? ('tunnel', 'ok', 'работает, задержка 168 мс', 168) : ('tunnel', 'skipped', notConnected, 0),
-      connected ? ('tunnel-dns', 'ok', 'отвечает сам туннель (Fake-IP), имена сайтов ищет VPN-сервер', 2) : ('tunnel-dns', 'skipped', notConnected, 0),
-      if (speed) ('speed', 'ok', connected ? 'загрузка ≈ 64.2 Мбит/с' : 'загрузка ≈ 92.0 Мбит/с', 0),
-      ('direct', 'ok', 'проходят', 0),
-      connected ? ('leak', 'ok', 'утечки нет: DNS-запросы провайдер не видит', 0) : ('leak', 'skipped', notConnected, 0),
+    Json msg(String code, [Json args = const {}]) => {'code': code, if (args.isNotEmpty) 'args': args};
+    final who = msg('checkup.who', {'name': server});
+    const notConnected = ('checkup.not_connected', <String, dynamic>{});
+    final plan = <(String, String, (String, Json), int)>[
+      (
+        'network',
+        'ok',
+        (
+          'checkup.network.ok_named',
+          {
+            'net': msg('net.label', {'kind': msg('net.kind.wifi'), 'name': 'wlan0'}),
+          },
+        ),
+        0,
+      ),
+      ('dns', 'ok', ('checkup.dns.ok', {'ms': 18}), 18),
+      (
+        'internet',
+        'ok',
+        (
+          'checkup.internet.ok',
+          {
+            'hosts': {
+              'sep': ', ',
+              'items': [raw('Cloudflare'), raw('Google'), msg('checkup.host.yandex')],
+            },
+            'ms': 21,
+          },
+        ),
+        21,
+      ),
+      server.isEmpty
+          ? ('server', 'skipped', ('checkup.server.none', <String, dynamic>{}), 0)
+          : ('server', 'ok', ('checkup.server.ok', {'who': who, 'what': msg('checkup.server.port_ok'), 'ms': 46}), 46),
+      connected ? ('tunnel', 'ok', ('checkup.tunnel.ok', {'ms': 168}), 168) : ('tunnel', 'skipped', notConnected, 0),
+      connected ? ('tunnel-dns', 'ok', ('checkup.tunnel_dns.fakeip', <String, dynamic>{}), 2) : ('tunnel-dns', 'skipped', notConnected, 0),
+      if (speed) ('speed', 'ok', ('checkup.speed.ok', {'mbit': connected ? '64.2' : '92.0'}), 0),
+      ('direct', 'ok', ('checkup.direct.ok', <String, dynamic>{}), 0),
+      connected ? ('leak', 'ok', ('checkup.leak.ok', <String, dynamic>{}), 0) : ('leak', 'skipped', notConnected, 0),
     ];
-    _emit({'kind': 'checkup', 'reason': 'started', 'line': titles.keys.where((k) => speed || k != 'speed').join(',')});
+    _emit({'kind': 'checkup', 'reason': 'started', 'line': ids.where((k) => speed || k != 'speed').join(',')});
     final done = <String, Json>{};
-    for (final (id, status, detail, ms) in plan) {
+    for (final (id, status, (code, args), ms) in plan) {
       await Future.delayed(Duration(milliseconds: 150 + _rand.nextInt(150)));
+      final detail = engineMessage(code, args, Lang.ru) ?? code;
       done[id] = {
         'id': id,
-        'title': titles[id],
+        'title': engineMessage('checkup.step.$id', null, Lang.ru) ?? id,
         'status': status,
         'detail': detail,
+        'code': code,
+        if (args.isNotEmpty) 'args': args,
         if (ms > 0) 'latency_ms': ms,
         if (id == 'speed') 'download_bps': connected ? 8025000 : 11500000,
       };
-      _emit({'kind': 'checkup', 'reason': 'step', 'step': id, 'status': status, 'line': detail, if (ms > 0) 'latency_ms': ms});
+      _emit({
+        'kind': 'checkup',
+        'reason': 'step',
+        'step': id,
+        'status': status,
+        'line': detail,
+        'code': code,
+        if (args.isNotEmpty) 'args': args,
+        if (ms > 0) 'latency_ms': ms,
+      });
     }
-    final verdict = connected
-        ? {
-            'cause': 'ok',
-            'status': 'ok',
-            'title': 'Всё работает',
-            'advice': 'Сеть, сервер и VPN в порядке. Если какой-то сайт не открывается, дело, скорее всего, в нём самом.',
-          }
+    final (cause, vstatus, vcode, actions) = connected
+        ? ('ok', 'ok', 'ok', const <String>[])
         : server.isEmpty
-        ? {
-            'cause': 'no-server',
-            'status': 'warn',
-            'title': 'Сервер не выбран',
-            'advice': 'Выберите сервер, чтобы подключиться.',
-            'actions': ['servers'],
-          }
-        : {
-            'cause': 'ready',
-            'status': 'ok',
-            'title': 'Сеть в порядке, VPN не подключён',
-            'advice': 'Интернет и сервер отвечают. Нажмите «Подключить».',
-            'actions': ['connect'],
-          };
-    _emit({'kind': 'checkup', 'reason': 'done', 'status': verdict['status'], 'line': verdict['title']});
+        ? ('no-server', 'warn', 'no_server', const ['servers'])
+        : ('ready', 'ok', 'ready', const ['connect']);
+    final vargs = {
+      'srv': server.isEmpty ? msg('checkup.srv_none') : msg('checkup.srv', {'name': server}),
+      'advice': msg('direct.advice.none'),
+    };
+    final verdict = {
+      'cause': cause,
+      'status': vstatus,
+      'code': 'checkup.verdict.$vcode',
+      'args': vargs,
+      'title': engineMessage('checkup.verdict.$vcode.title', vargs, Lang.ru),
+      'advice': engineMessage('checkup.verdict.$vcode.advice', vargs, Lang.ru),
+      if (actions.isNotEmpty) 'actions': actions,
+    };
+    _emit({'kind': 'checkup', 'reason': 'done', 'status': vstatus, 'line': verdict['title'], 'code': 'checkup.verdict.$vcode.title', 'args': vargs});
     return {
       'state': _status['state'],
       if (server.isNotEmpty) 'server': server,
       'steps': [
-        for (final id in titles.keys)
+        for (final id in ids)
           if (done[id] != null) done[id],
       ],
       'verdict': verdict,

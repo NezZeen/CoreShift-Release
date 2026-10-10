@@ -9,14 +9,16 @@ import (
 	"sync"
 	"testing"
 
+	"coreshift/engine/internal/msg"
 	"coreshift/engine/internal/store"
 )
 
 func TestAnnounceLine(t *testing.T) {
-	if got, want := announceLine("Мой VPN", "Профилактика\nв пятницу"), "объявление от «Мой VPN»: Профилактика в пятницу"; got != want {
-		t.Errorf("line = %q", got)
+	m := announceLine(msg.Raw("Мой VPN"), "Профилактика\nв пятницу")
+	if got, want := m.String(), "объявление от «Мой VPN»: Профилактика в пятницу"; got != want || m.Code != "announce.line" || m.Args["text"] != "Профилактика в пятницу" {
+		t.Errorf("line = %q (%+v)", got, m)
 	}
-	long := announceLine("S", strings.Repeat("ж", 200))
+	long := announceLine(msg.Raw("S"), strings.Repeat("ж", 200)).String()
 	if want := "объявление от «S»: " + strings.Repeat("ж", 80) + "…"; long != want {
 		t.Errorf("long line = %q", long)
 	}

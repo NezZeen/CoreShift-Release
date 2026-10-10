@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"coreshift/engine/internal/msg"
 	"coreshift/engine/internal/node"
 	"coreshift/engine/internal/ping"
 	"coreshift/engine/internal/tunlayer"
@@ -163,7 +164,7 @@ func (s *Service) watchNet(ctx context.Context, gen int) {
 	// it moves to another.
 	names := netNamer{last: s.cfg.netName()}
 	if names.last != "" {
-		s.hub.publish(Event{Kind: "netinfo", Line: "сеть: " + s.describeNetwork(ctx, names.last)})
+		s.hub.publish(Event{Kind: "netinfo"}.withLine(msg.New("net.info", "net", s.describeNetwork(ctx, names.last))))
 	}
 	for {
 		select {
@@ -184,7 +185,7 @@ func (s *Service) watchNet(ctx context.Context, gen int) {
 		up := raw || s.netBlind.Load()
 		if raw {
 			if line, ok := names.look(ctx, s); ok {
-				s.hub.publish(Event{Kind: "netinfo", Reason: "changed", Line: line})
+				s.hub.publish(Event{Kind: "netinfo", Reason: "changed"}.withLine(line))
 			}
 		}
 		switch {
@@ -209,8 +210,7 @@ func (s *Service) watchNet(ctx context.Context, gen int) {
 				continue
 			}
 			if time.Since(back) >= s.cfg.netGrace {
-				s.hub.publish(Event{Kind: "network", Reason: "reconnect",
-					Line: "сеть вернулась, но связь через сервер не восстановилась: переподключаюсь"})
+				s.hub.publish(Event{Kind: "network", Reason: "reconnect"}.withLine(msg.New("net.reconnect")))
 				s.reconnectGen(gen)
 				return
 			}
@@ -236,8 +236,7 @@ func (s *Service) holdForNetwork(gen int) bool {
 	s.status.Problem = "" // neither the server's fault nor the network's beyond
 	st := s.status
 	s.mu.Unlock()
-	s.hub.publish(Event{Kind: "network", Reason: "lost",
-		Line: "сеть пропала: соединение ждёт её, ядра и сервер не меняются"})
+	s.hub.publish(Event{Kind: "network", Reason: "lost"}.withLine(msg.New("net.lost")))
 	s.publishState(st)
 	return true
 }
@@ -257,7 +256,7 @@ func (s *Service) resumeNetwork(gen int) bool {
 	s.status.State = Connected
 	st := s.status
 	s.mu.Unlock()
-	s.hub.publish(Event{Kind: "network", Reason: "back", Line: "сеть вернулась"})
+	s.hub.publish(Event{Kind: "network", Reason: "back"}.withLine(msg.New("net.back")))
 	s.publishState(st)
 	// Connected again without setStatus: what failed for want of the
 	// network is tried now, as after any connect.
@@ -278,8 +277,7 @@ func (s *Service) waitNetwork(n node.Node, o Options) {
 	s.waitCancel = cancel
 	s.mu.Unlock()
 	s.setStatus(Status{State: NoNetwork, Waiting: true, Node: n.Name, Protocol: string(n.Protocol), TUN: o.TUN, Since: time.Now()})
-	s.hub.publish(Event{Kind: "network", Reason: "waiting",
-		Line: "сети нет: подключусь, как только она появится"})
+	s.hub.publish(Event{Kind: "network", Reason: "waiting"}.withLine(msg.New("net.waiting")))
 	go s.awaitNetwork(ctx, gen, n)
 }
 
@@ -308,7 +306,7 @@ func (s *Service) awaitNetwork(ctx context.Context, gen int, n node.Node) {
 	if !current || ctx.Err() != nil || disconnected(opCtx) {
 		return
 	}
-	s.hub.publish(Event{Kind: "network", Reason: "back", Line: "сеть появилась"})
+	s.hub.publish(Event{Kind: "network", Reason: "back"}.withLine(msg.New("net.appeared")))
 	_ = s.connectOp(opCtx, n) // a failure is reported as for any connection
 }
 
@@ -349,5 +347,10 @@ func (s *Service) serverAnswersNow(ctx context.Context, n node.Node) bool {
 
 // publishState tells the UI the state, as setStatus does.
 func (s *Service) publishState(st Status) {
-	s.hub.publish(Event{Kind: "state", State: st.State, Core: string(st.Core), Error: st.Error})
+	s.hub.publish(stateEvent(st))
+}
+
+// stateEvent is the "state" event of st, with its error's code.
+func stateEvent(st Status) Event {
+	return Event{Kind: "state", State: st.State, Core: string(st.Core), Error: st.Error, Code: st.ErrorCode, Args: st.ErrorArgs}
 }

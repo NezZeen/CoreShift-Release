@@ -1,6 +1,7 @@
 package mobile
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -34,7 +35,7 @@ func TestSubWarnings(t *testing.T) {
 		{"traffic 90%", store.Info{Total: 100 * gb, Download: 85 * gb, Upload: 7 * gb}, "Трафик подписки «A» почти израсходован", "Осталось 8 ГБ из 100 ГБ.", 1},
 	} {
 		w := subWarnings([]store.Subscription{sub("s1", "A", c.info)}, now)
-		if len(w) != 1 || w[0].title != c.title || w[0].body != c.body || w[0].level != c.level {
+		if len(w) != 1 || w[0].title.String() != c.title || w[0].body.String() != c.body || w[0].level != c.level {
 			t.Errorf("%s: %+v", c.name, w)
 		}
 	}
@@ -48,8 +49,49 @@ func TestSubWarnings(t *testing.T) {
 		t.Errorf("quiet: %+v", w)
 	}
 	// The placeholder reads as the app names it.
-	if w := subWarnings([]store.Subscription{{ID: "p", URL: "https://x.example/s", Info: store.Info{Expire: now.Add(-time.Hour)}}}, now); len(w) != 1 || w[0].title != "Подписка «Подписка» закончилась" {
+	if w := subWarnings([]store.Subscription{{ID: "p", URL: "https://x.example/s", Info: store.Info{Expire: now.Add(-time.Hour)}}}, now); len(w) != 1 || w[0].title.String() != "Подписка «Подписка» закончилась" {
 		t.Errorf("placeholder: %+v", w)
+	}
+}
+
+// In English when the app shows English: the same codes as the app's
+// banners (app/lib/l10n/engine_strings.dart).
+func TestSubWarningsInEnglish(t *testing.T) {
+	now := time.Date(2026, 10, 10, 12, 0, 0, 0, time.Local)
+	for _, c := range []struct {
+		info        store.Info
+		code, title string
+		body        string
+	}{
+		{store.Info{Expire: now.Add(36 * time.Hour)}, "sub.days.title", "Subscription “A” ends in 2 days", "Renew it with your provider in advance."},
+		{store.Info{Expire: now.Add(6 * time.Hour)}, "sub.today.title", "Subscription “A” ends today", "Renew it with your provider so the VPN does not stop."},
+		{store.Info{Total: 100 * gb, Download: 92 * gb}, "sub.traffic_low.title", "Subscription “A” is almost out of traffic", "8 GB of 100 GB left."},
+	} {
+		w := subWarnings([]store.Subscription{sub("s1", "A", c.info)}, now)
+		if len(w) != 1 || w[0].title.Code != c.code || w[0].title.In("en") != c.title || w[0].body.In("en") != c.body {
+			t.Errorf("%s: %+v (%q, %q)", c.code, w, w[0].title.In("en"), w[0].body.In("en"))
+		}
+	}
+	w := subWarnings([]store.Subscription{{ID: "p", URL: "https://x.example/s", Info: store.Info{Expire: now.Add(-time.Hour)}}}, now)
+	if len(w) != 1 || w[0].title.In("en") != "Subscription “Subscription” has ended" {
+		t.Errorf("placeholder: %+v", w)
+	}
+}
+
+// The language is the one the app noted in its ui.json, beside the data.
+func TestUILang(t *testing.T) {
+	root := t.TempDir()
+	data := filepath.Join(root, "engine")
+	if got := uiLang(data); got != "ru" {
+		t.Errorf("no file: %q", got)
+	}
+	os.WriteFile(filepath.Join(root, "ui.json"), []byte(`{"theme":"dark","lang_used":"en"}`), 0o600)
+	if got := uiLang(data); got != "en" {
+		t.Errorf("noted: %q", got)
+	}
+	os.WriteFile(filepath.Join(root, "ui.json"), []byte(`not json`), 0o600)
+	if got := uiLang(data); got != "ru" {
+		t.Errorf("damaged: %q", got)
 	}
 }
 

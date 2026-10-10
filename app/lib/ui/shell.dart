@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../api/models.dart';
+import '../l10n/strings.dart';
 import '../platform/api_access.dart' show windowsGroup;
 import '../platform/platform.dart' as platform;
 import '../state/app_state.dart';
@@ -37,13 +38,14 @@ PageId stationOf(PageId p) => switch (p) {
   _ => p,
 };
 
-/// The main pages in the order the navigation shows them.
+/// The main pages in the order the navigation shows them; their names are
+/// keys of the dictionary (l10n/strings.dart), said with [tr] where shown.
 const mainPages = [
-  (PageId.home, Icons.power_settings_new, 'Главная'),
-  (PageId.servers, Icons.public, 'Серверы'),
-  (PageId.routing, Icons.alt_route, 'Правила'),
-  (PageId.logs, Icons.receipt_long_outlined, 'Журнал'),
-  (PageId.settings, Icons.tune, 'Настройки'),
+  (PageId.home, Icons.power_settings_new, 'nav.home'),
+  (PageId.servers, Icons.public, 'nav.servers'),
+  (PageId.routing, Icons.alt_route, 'nav.routing'),
+  (PageId.logs, Icons.receipt_long_outlined, 'nav.logs'),
+  (PageId.settings, Icons.tune, 'nav.settings'),
 ];
 
 /// Lets pages switch to another page, e.g. the home page's node picker.

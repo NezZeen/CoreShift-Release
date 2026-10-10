@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"coreshift/engine/internal/msg"
 	"coreshift/engine/internal/ruleset"
 	"coreshift/engine/internal/store"
 	"coreshift/engine/internal/tunlayer"
@@ -69,14 +70,14 @@ func isSagerNet(link string) bool {
 
 // sourceName names where link leads, for the journal: never the link,
 // which may carry a token.
-func sourceName(link string) string {
+func sourceName(link string) msg.Msg {
 	switch link {
 	case ruleset.SagerNetGeosite, ruleset.SagerNetGeoIP:
-		return "SagerNet"
+		return msg.Raw("SagerNet")
 	case ruleset.RunetFreedomDat:
-		return "runetfreedom"
+		return msg.Raw("runetfreedom")
 	}
-	return "своей ссылки"
+	return msg.New("rules.source.own")
 }
 
 func kindOf(ip bool) string {
@@ -216,12 +217,12 @@ func (r *ruleSets) preset(ctx context.Context, gs geoSet, src geoSource, fromSou
 		if err == nil {
 			return p, nil
 		}
-		why := fmt.Sprintf("не загрузилась: %v", err)
+		set := kindOf(gs.IP) + ":" + name
+		m := msg.New("rules.fallback.failed", "set", set, "src", sourceName(link), "err", msg.Raw(err.Error()), "tag", gs.Tag)
 		if errors.Is(err, errPending) {
-			why = "ещё загружается"
+			m = msg.New("rules.fallback.pending", "set", set, "src", sourceName(link), "tag", gs.Tag)
 		}
-		r.publish(Event{Kind: "rules", Reason: gs.Tag, Line: "fallback",
-			Error: fmt.Sprintf("база %s:%s из %s %s, пока работает встроенная %s", kindOf(gs.IP), name, sourceName(link), why, gs.Tag)})
+		r.publish(Event{Kind: "rules", Reason: gs.Tag, Line: "fallback"}.withError(m))
 	}
 	return r.builtin(ctx, gs, proxy)
 }
@@ -242,13 +243,15 @@ func (r *ruleSets) userSet(ctx context.Context, src geoSource, ip bool, name str
 
 // skipped reports a rule left out for want of its set.
 func (r *ruleSets) skipped(rule store.Rule, link string, err error) {
-	why := fmt.Sprintf("база из %s не загрузилась: %v", sourceName(link), err)
-	if errors.Is(err, errPending) {
-		why = fmt.Sprintf("база из %s ещё загружается, правило заработает после переподключения", sourceName(link))
+	action := msg.Raw("")
+	if a, ok := map[string]string{store.RuleProxy: "proxy", store.RuleDirect: "direct", store.RuleBlock: "block"}[rule.Action]; ok {
+		action = msg.New("rules.action." + a)
 	}
-	action := map[string]string{store.RuleProxy: "через VPN", store.RuleDirect: "напрямую", store.RuleBlock: "блокировать"}[rule.Action]
-	r.publish(Event{Kind: "rules", Reason: rule.Match, Line: "skipped",
-		Error: fmt.Sprintf("правило «%s → %s» пропущено: %s", rule.Match, action, why)})
+	m := msg.New("rules.skipped.failed", "match", rule.Match, "action", action, "src", sourceName(link), "err", msg.Raw(err.Error()))
+	if errors.Is(err, errPending) {
+		m = msg.New("rules.skipped.pending", "match", rule.Match, "action", action, "src", sourceName(link))
+	}
+	r.publish(Event{Kind: "rules", Reason: rule.Match, Line: "skipped"}.withError(m))
 }
 
 // category returns the rule set file of the category name (of addresses
@@ -354,7 +357,7 @@ func announce(r *ruleSets, label string, do func(context.Context) error) func(co
 func (r *ruleSets) refreshGeo(path, label string, do func(context.Context) error) {
 	r.start(path, func(ctx context.Context) error {
 		if err := do(ctx); err != nil {
-			r.publish(Event{Kind: "rules", Reason: label, Line: "kept", Error: fmt.Sprintf("база %s не обновилась, работает прежняя: %v", label, err)})
+			r.publish(Event{Kind: "rules", Reason: label, Line: "kept"}.withError(msg.New("rules.kept", "set", label, "err", msg.Raw(err.Error()))))
 			return err
 		}
 		r.publish(Event{Kind: "rules", Reason: label, Line: "updated"})

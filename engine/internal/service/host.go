@@ -9,6 +9,7 @@ import (
 	"slices"
 	"time"
 
+	"coreshift/engine/internal/msg"
 	"coreshift/engine/internal/tunlayer"
 )
 
@@ -41,15 +42,18 @@ type resolveError struct {
 	err  error
 }
 
-func (e *resolveError) Error() string {
+func (e *resolveError) Error() string { return e.Message().String() }
+
+// Message is what Error says, for the app to say it in its language.
+func (e *resolveError) Message() msg.Msg {
 	var de *net.DNSError
 	switch {
 	case errors.As(e.err, &de) && de.IsNotFound:
-		return fmt.Sprintf("адрес сервера %s не найден в DNS: имя неверное или сервер убран, обновите подписку", e.host)
+		return msg.New("server.resolve.not_found", "host", e.host)
 	case errors.As(e.err, &de) && de.IsTimeout, errors.Is(e.err, context.DeadlineExceeded):
-		return fmt.Sprintf("DNS не ответил, когда узнавали адрес сервера %s", e.host)
+		return msg.New("server.resolve.timeout", "host", e.host)
 	}
-	return fmt.Sprintf("не удалось узнать адрес сервера %s: %v", e.host, e.err)
+	return msg.New("server.resolve.failed", "host", e.host, "err", msg.Raw(fmt.Sprint(e.err)))
 }
 
 func (e *resolveError) Unwrap() []error { return []error{errResolve, e.err} }

@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"coreshift/engine/internal/msg"
 	"coreshift/engine/internal/selfupdate"
 	"coreshift/engine/internal/store"
 )
@@ -208,7 +209,7 @@ func (s *Service) findRelease(ctx context.Context, srcs []selfupdate.Source) (se
 		})
 		if err == nil {
 			if i > 0 {
-				s.logUpdate(fmt.Sprintf("%s недоступен, проверено через %s", srcs[0].Site(), src.Site()))
+				s.logUpdate(msg.New("update.mirror_checked", "site", siteName(srcs[0]), "via", siteName(src)))
 			}
 			return rel, i, nil
 		}
@@ -258,13 +259,21 @@ func (s *Service) downloadUpdate(ctx context.Context, srcs []selfupdate.Source, 
 	if oerr != nil {
 		return "", fmt.Errorf("%w; %s: %w", err, srcs[1].Site(), oerr)
 	}
-	s.logUpdate(fmt.Sprintf("%s недоступен, обновление скачано через %s", srcs[0].Site(), srcs[1].Site()))
+	s.logUpdate(msg.New("update.mirror_downloaded", "site", siteName(srcs[0]), "via", siteName(srcs[1])))
 	return path, nil
 }
 
 // logUpdate notes in the journal how the update was had.
-func (s *Service) logUpdate(line string) {
-	s.hub.publish(Event{Kind: "action", Source: "обновления", Line: line})
+func (s *Service) logUpdate(line msg.Msg) {
+	s.hub.publish(Event{Kind: "action", Source: "обновления"}.withLine(line))
+}
+
+// siteName is src.Site() for the journal: "GitHub", "GitLab", or a folder.
+func siteName(src selfupdate.Source) msg.Msg {
+	if src.GitLab || src.Repo != "" {
+		return msg.Raw(src.Site())
+	}
+	return msg.New("update.site.folder")
 }
 
 func (s *Service) checkAppUpdate(ctx context.Context) {
@@ -385,7 +394,7 @@ func (s *Service) installAppUpdate(reconnect bool) error {
 	// Disconnecting first restores DNS at once; the installer stops the
 	// service anyway.
 	if s.Status().State != Idle {
-		s.LogAction("обновление", "отключаюсь, чтобы установить версию "+rel.Label())
+		s.LogActionMsg("обновление", msg.New("update.disconnecting", "version", rel.Label()))
 	}
 	s.Disconnect()
 	if err := s.cfg.launchInstaller(path, filepath.Join(s.updatesDir(), "install.log")); err != nil {
@@ -393,7 +402,7 @@ func (s *Service) installAppUpdate(reconnect bool) error {
 		staged.Close()
 		os.RemoveAll(staged.dir)
 		if reconnect {
-			s.LogAction("обновление", "установщик не запустился, подключаюсь снова")
+			s.LogActionMsg("обновление", msg.New("update.installer_failed"))
 			go s.ConnectSelected(context.Background())
 		}
 		return fail(fmt.Errorf("start the installer: %w", err))
@@ -436,11 +445,11 @@ func (s *Service) finishAppUpdate(ctx context.Context) {
 	}
 	if len(p.Sessions) > 0 {
 		if err := s.cfg.startApp(p.Sessions); err != nil {
-			s.hub.publish(Event{Kind: "app-update", Error: "не удалось запустить приложение после обновления: " + err.Error()})
+			s.hub.publish(Event{Kind: "app-update"}.withError(msg.New("update.restart_failed", "err", msg.Raw(err.Error()))))
 		}
 	}
 	if p.Reconnect {
-		go s.connectAtStart(ctx, "обновление", "обновление прервало соединение, подключаюсь снова%s")
+		go s.connectAtStart(ctx, "обновление", "action.update_resume")
 	}
 }
 

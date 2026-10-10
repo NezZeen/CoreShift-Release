@@ -6,6 +6,7 @@ import (
 	"slices"
 	"sync"
 
+	"coreshift/engine/internal/msg"
 	"coreshift/engine/internal/node"
 	"coreshift/engine/internal/ping"
 	"coreshift/engine/internal/store"
@@ -178,7 +179,7 @@ func (s *Service) switchServer(gen int, r Reach) {
 			return group[n.Fingerprint()] && !sub.IsHidden(n.Fingerprint()) && len(s.Compatible(&n)) > 0 && answers(n)
 		})
 		if !ok {
-			s.hub.publish(Event{Kind: "failover", From: from.Name, Error: "ни один другой сервер подписки не отвечает"})
+			s.hub.publish(Event{Kind: "failover", From: from.Name}.withError(msg.New("failover.none")))
 			return
 		}
 		if _, err := st.Select(sub.ID, next.Fingerprint(), next.Name); err != nil {

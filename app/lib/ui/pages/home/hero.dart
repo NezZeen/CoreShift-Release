@@ -2,12 +2,12 @@ part of '../home_page.dart';
 
 /// The state in words and the colour of its lamp.
 (String, Color) _stateTitle(BuildContext context, Status st) => switch (st.state) {
-  ConnState.connected => ('Подключено', context.pal.okInk),
-  ConnState.connecting => ('Подключение…', context.pal.accentInk),
-  ConnState.disconnecting => ('Отключение…', context.pal.muted),
-  ConnState.failed => ('Ошибка подключения', context.pal.errInk),
-  ConnState.noNetwork => (st.waiting ? 'Ждём сеть…' : 'Нет сети', context.pal.warnInk),
-  ConnState.idle => ('Отключено', context.pal.text),
+  ConnState.connected => (tr('home.state.connected'), context.pal.okInk),
+  ConnState.connecting => (tr('home.state.connecting'), context.pal.accentInk),
+  ConnState.disconnecting => (tr('home.state.disconnecting'), context.pal.muted),
+  ConnState.failed => (tr('home.state.failed'), context.pal.errInk),
+  ConnState.noNetwork => (tr(st.waiting ? 'home.state.waiting' : 'home.state.no_network'), context.pal.warnInk),
+  ConnState.idle => (tr('home.state.idle'), context.pal.text),
 };
 
 /// The button, the state in big letters, and what to do about it: the
@@ -29,7 +29,13 @@ class _Hero extends StatelessWidget {
       ConnState.connected when st.since != null => ConnectedTime(since: st.since!, tun: st.tun, short: isCompact(context)),
       ConnState.failed => Tooltip(
         message: st.error,
-        child: Text(humanError(st.error), textAlign: TextAlign.center, maxLines: 3, overflow: TextOverflow.ellipsis, style: muted),
+        child: Text(
+          humanCodedError(st.errorCode, st.errorArgs, st.error),
+          textAlign: TextAlign.center,
+          maxLines: 3,
+          overflow: TextOverflow.ellipsis,
+          style: muted,
+        ),
       ),
       ConnState.idle when sel.isEmpty => Text('Сначала выберите сервер', style: muted),
       ConnState.idle when !sel.available => Text(

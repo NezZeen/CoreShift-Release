@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'api/backend.dart';
 import 'api/demo_backend.dart';
+import 'l10n/strings.dart';
 import 'platform/desktop.dart' as desktop;
 import 'platform/platform.dart' as platform;
 import 'state/app_state.dart';
@@ -24,16 +25,19 @@ Future<void> main(List<String> args) async {
   if (!demo) await platform.initPlatform();
   final prefs = await platform.loadPrefs();
   final Backend backend = demo ? DemoBackend(empty: demoEmpty) : platform.createBackend();
-  final state = AppState(
-    backend,
-    prefs: prefs,
-    savePrefs: platform.savePrefs,
-    daemonStarter: demo ? null : platform.daemonStarter,
-    autostartSetter: demo ? null : platform.autostartSetter,
-    askDisclaimer: true,
-    askWizard: true,
-    journalSaver: demo ? null : platform.saveJournal,
-  )..start();
+  final state =
+      AppState(
+          backend,
+          prefs: prefs,
+          savePrefs: platform.savePrefs,
+          daemonStarter: demo ? null : platform.daemonStarter,
+          autostartSetter: demo ? null : platform.autostartSetter,
+          askDisclaimer: true,
+          askWizard: true,
+          journalSaver: demo ? null : platform.saveJournal,
+        )
+        ..applyLanguage()
+        ..start();
   // Links from a panel's "add to app" button: the one CoreShift was opened
   // with, and those opened while it runs.
   platform.onLink((link) => state.offerImport(link, ImportFrom.link));
@@ -66,6 +70,11 @@ class _CoreShiftAppState extends State<CoreShiftApp> {
 
   @override
   Widget build(BuildContext context) {
+    // Another language (the settings' «Язык») builds everything again.
+    return ValueListenableBuilder<Lang>(valueListenable: appLang, builder: (context, _, _) => _app());
+  }
+
+  Widget _app() {
     return MaterialApp(
       title: 'CoreShift',
       debugShowCheckedModeBanner: false,

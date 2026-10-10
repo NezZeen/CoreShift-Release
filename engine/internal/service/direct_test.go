@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"coreshift/engine/internal/msg"
 )
 
 // The TUN layer's reports, as seen on a phone in a "white list" network and
@@ -132,16 +134,29 @@ func TestDirectRoutesAndHint(t *testing.T) {
 	sel := Options{TUN: true, Selective: true, DNS: DNSSettings{RussiaDirect: true}}
 	lists := Options{TUN: true, DirectIPs: []netip.Prefix{netip.MustParsePrefix("203.0.113.0/24")}}
 	for _, c := range []struct {
-		o    Options
-		want []string // in the hint
-		not  []string
+		o      Options
+		advice string   // the advice's code
+		want   []string // in the hint's Russian
+		not    []string
 	}{
-		{ru, []string{"(17 за минуту)", "Выключите «Российские сайты напрямую»."}, []string{"Всё через VPN", "списк"}},
-		{sel, []string{"Включите «Всё через VPN» и выключите «Российские сайты напрямую»."}, nil},
-		{lists, []string{"Уберите из своих списков «напрямую»"}, []string{"Российские"}},
-		{Options{TUN: true, DNS: DNSSettings{RussiaDirect: true, DirectSuffixes: []string{"bank.example"}}}, []string{"Выключите «Российские сайты напрямую»; проверьте и свои списки"}, nil},
+		{ru, "direct.advice.russia", []string{"(17 за минуту)", "Выключите «Российские сайты напрямую»."}, []string{"Всё через VPN", "списк"}},
+		{sel, "direct.advice.all_russia", []string{"Включите «Всё через VPN» и выключите «Российские сайты напрямую»."}, nil},
+		{lists, "direct.advice.lists", []string{"Уберите из своих списков «напрямую»"}, []string{"Российские"}},
+		{Options{TUN: true, DNS: DNSSettings{RussiaDirect: true, DirectSuffixes: []string{"bank.example"}}}, "direct.advice.russia_lists",
+			[]string{"Выключите «Российские сайты напрямую»; проверьте и свои списки"}, nil},
+		{Options{TUN: true}, "direct.advice.none", []string{"отсюда недоступны."}, []string{"  ", "недоступны. "}},
 	} {
-		h := directHint(17, directRoutes(c.o))
+		m := directHint(17, directRoutes(c.o))
+		if m.Code != "direct.blocked" || m.Args["n"] != 17 {
+			t.Errorf("hint = %+v", m)
+		}
+		if a, _ := m.Args["advice"].(msg.Msg); a.Code != c.advice || !msg.Has(a.Code) {
+			t.Errorf("advice = %+v, want %s", m.Args["advice"], c.advice)
+		}
+		h := m.String()
+		if strings.HasSuffix(h, " ") {
+			t.Errorf("hint %q ends in a space", h)
+		}
 		for _, w := range c.want {
 			if !strings.Contains(h, w) {
 				t.Errorf("hint %q lacks %q", h, w)
@@ -180,8 +195,12 @@ func TestServiceDirectBlocked(t *testing.T) {
 			got = append(got, e)
 		}
 	}
-	if len(got) != 1 || !strings.Contains(got[0].Line, "Прямые соединения не проходят (60 за минуту)") || !strings.Contains(got[0].Line, "Уберите") {
+	if len(got) != 1 || got[0].Code != "direct.blocked" || got[0].Args["n"] != 60 {
 		t.Fatalf("direct events: %+v", got)
+	}
+	// The Russian for older apps and the journal.
+	if !strings.Contains(got[0].Line, "Прямые соединения не проходят (60 за минуту)") || !strings.Contains(got[0].Line, "Уберите") {
+		t.Errorf("fallback text: %q", got[0].Line)
 	}
 	if !h.svc.Status().DirectBlocked {
 		t.Error("status has no direct_blocked")

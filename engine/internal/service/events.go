@@ -4,6 +4,7 @@ import (
 	"sync"
 	"time"
 
+	"coreshift/engine/internal/msg"
 	"coreshift/engine/internal/supervisor"
 )
 
@@ -67,6 +68,26 @@ type Event struct {
 	// (CheckOK, CheckWarn, CheckFail, CheckSkipped).
 	Step   string `json:"step,omitempty"`
 	Status string `json:"status,omitempty"`
+	// Code and Args say in the app's language what Error says, when the
+	// event carries an error, else what Line says, when it is a sentence
+	// of CoreShift's own (internal/msg): the app looks the code up in its
+	// dictionary. Error and Line keep the Russian text for apps before the
+	// codes and for the journal. The cores' raw errors and output have no
+	// code.
+	Code string         `json:"code,omitempty"`
+	Args map[string]any `json:"args,omitempty"`
+}
+
+// withLine is e with Line saying m, and its code.
+func (e Event) withLine(m msg.Msg) Event {
+	e.Line, e.Code, e.Args = m.String(), m.Code, m.Args
+	return e
+}
+
+// withError is e with Error saying m, and its code.
+func (e Event) withError(m msg.Msg) Event {
+	e.Error, e.Code, e.Args = m.String(), m.Code, m.Args
+	return e
 }
 
 func fromSupervisor(e supervisor.Event) Event {

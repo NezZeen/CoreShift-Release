@@ -8,6 +8,8 @@ import 'package:flutter/services.dart';
 import '../api/backend.dart';
 import '../api/demo_backend.dart';
 import '../api/models.dart';
+import '../l10n/engine_strings.dart';
+import '../l10n/strings.dart';
 import '../platform/platform.dart' as platform;
 import 'errors.dart';
 import 'import_link.dart';
@@ -443,6 +445,33 @@ class AppState extends ChangeNotifier {
 
   void setPref(String key, Object value) {
     prefs[key] = value;
+    savePrefs?.call(prefs);
+    _notify();
+  }
+
+  /// The language chosen in the settings: "system", "ru" or "en".
+  String get languagePref => switch (prefs[langPref]) {
+    'ru' => 'ru',
+    'en' => 'en',
+    _ => 'system',
+  };
+
+  /// Shows the app in the language of the settings ([languagePref]), the
+  /// system's by default, and notes it for the engine ([langUsedPref]):
+  /// Android's notifications about subscriptions follow it. [systemLanguage]
+  /// stands in for the system's, for tests.
+  void applyLanguage({String? systemLanguage}) {
+    appLang.value = langFor(prefs[langPref], systemLanguage: systemLanguage);
+    if (prefs[langUsedPref] != appLang.value.name) {
+      prefs[langUsedPref] = appLang.value.name;
+      savePrefs?.call(prefs);
+    }
+  }
+
+  /// «Язык» in the settings: "system", "ru" or "en".
+  void setLanguage(String pref) {
+    prefs[langPref] = pref;
+    applyLanguage();
     savePrefs?.call(prefs);
     _notify();
   }
