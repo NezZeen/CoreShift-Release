@@ -179,6 +179,15 @@ type DNSOptions struct {
 	// the proxy. Usually a resolver captured from the system before connecting.
 	// Must be an IP address.
 	Direct string
+	// DirectFallback are the network's own resolvers (the system's, as the
+	// router announced them), asked in turn for what Direct does not
+	// answer: a resolver the user set that the provider blocks must not
+	// leave direct names without addresses. At most two are used; plain
+	// UDP, and only addresses (the lookups are direct, and so is the
+	// network's resolver anyway). Empty where Direct already is the
+	// network's resolver. Never the remote resolver's fallback: that one
+	// goes through the tunnel, and a lookup that leaves it would leak.
+	DirectFallback []netip.Addr
 
 	FakeIP       bool
 	FakeIPRange  netip.Prefix

@@ -24,6 +24,7 @@ class DemoBackend implements Backend {
   Timer? _health;
   Timer? _crash;
   Timer? _traffic;
+  Timer? _dnsDown;
   int _up = 0, _down = 0;
   final Map<String, String> _versions = {'xray': '26.3.27', 'sing-box': '1.14.2', 'mihomo': '1.19.31'};
 
@@ -350,6 +351,91 @@ class DemoBackend implements Backend {
     _emit({'kind': 'state', 'state': 'connected', 'core': chain.first});
     _emit(_netinfo());
     _startTimers(chain);
+    _startDnsFallback(tun);
+  }
+
+  /// A DNS of the user's own for direct sites that this pretend network
+  /// blocks (AdGuard's addresses, as a white list does): a while after
+  /// connecting the demo says the network's DNS answers instead, as the
+  /// engine does when lookups fail.
+  void _startDnsFallback(bool tun) {
+    final direct = '${(_settings['dns'] as Map)['direct'] ?? ''}'.trim();
+    final kind = tun ? _demoDnsBlock(direct) : null;
+    if (kind == null) return;
+    final addr = RegExp(r'(\d+\.\d+\.\d+\.\d+)').firstMatch(direct)?[1] ?? direct;
+    _dnsDown = Timer(const Duration(seconds: 2), () {
+      final why = {'code': 'dns.why.$kind'};
+      _status = {..._status, 'direct_dns': addr, 'direct_dns_why': why};
+      final reason = kind == 'refused' ? 'соединение отклонено' : 'нет ответа';
+      _emit({
+        'kind': 'dns-direct',
+        'reason': 'down',
+        'line': 'DNS напрямую ($addr) недоступен в этой сети ($reason) — использую DNS сети',
+        'code': 'dns.direct_down',
+        'args': {'addr': addr, 'why': why},
+      });
+    });
+  }
+
+  /// How the demo network treats a DNS server: "refused" for the addresses
+  /// of AdGuard, "timeout" for 10.255.x.x, null for the rest.
+  static String? _demoDnsBlock(String server) {
+    if (server.contains('94.140.')) return 'refused';
+    if (server.contains('10.255.')) return 'timeout';
+    return null;
+  }
+
+  Json _dnsItem(String status, String code, String line, {Map<String, dynamic>? args, int ms = 0, String kind = ''}) => {
+    'status': status,
+    'code': code,
+    'line': line,
+    'args': ?args,
+    if (ms > 0) 'ms': ms,
+    if (kind.isNotEmpty) 'kind': kind,
+  };
+
+  /// POST /v1/dnscheck: the direct server from the physical network, the
+  /// one in the tunnel through it, once connected.
+  Json _dnsCheck(Json b) {
+    final out = <String, dynamic>{};
+    final scheme = RegExp(r'^(https?|tls|udp|tcp|quic|h3)://|^\d|^\[');
+    for (final which in ['direct', 'remote']) {
+      final v = '${b[which] ?? ''}'.trim();
+      if (v.isEmpty) continue;
+      if (!scheme.hasMatch(v)) throw ApiError(400, 'not a DNS server address: $which: DNS server "$v": unsupported scheme');
+      if (v.startsWith('quic://') || v.startsWith('h3://')) {
+        out[which] = _dnsItem('skipped', 'dnscheck.skip.unsupported', 'этот вид DNS (QUIC, HTTP/3) не проверяется', kind: 'unsupported');
+      } else if (which == 'direct') {
+        final kind = _demoDnsBlock(v);
+        const words = {'refused': 'соединение отклонено', 'timeout': 'нет ответа'};
+        out[which] = kind == null
+            ? _dnsItem('ok', 'dnscheck.ok', 'отвечает (35 мс)', args: {'ms': 35}, ms: 35)
+            : _dnsItem(
+                'fail',
+                'dnscheck.blocked',
+                'не отвечает в этой сети: ${words[kind]} — провайдер, похоже, блокирует этот DNS',
+                args: {
+                  'why': {'code': 'dns.why.$kind'},
+                },
+                kind: kind,
+              );
+      } else if (_status['state'] != 'connected') {
+        out[which] = _dnsItem('skipped', 'dnscheck.skip.not_connected', 'через VPN проверю, когда он подключён', kind: 'not_connected');
+      } else if (v.contains('203.0.113.')) {
+        out[which] = _dnsItem(
+          'fail',
+          'dnscheck.remote_fail',
+          'не отвечает через VPN: нет ответа',
+          args: {
+            'why': {'code': 'dns.why.timeout'},
+          },
+          kind: 'timeout',
+        );
+      } else {
+        out[which] = _dnsItem('ok', 'dnscheck.ok', 'отвечает (48 мс)', args: {'ms': 48}, ms: 48);
+      }
+    }
+    return out;
   }
 
   /// Health checks, traffic and the pretend crash of a connected demo.
@@ -396,12 +482,14 @@ class DemoBackend implements Backend {
     _health?.cancel();
     _crash?.cancel();
     _traffic?.cancel();
+    _dnsDown?.cancel();
   }
 
   void _stop({bool silent = false}) {
     _health?.cancel();
     _crash?.cancel();
     _traffic?.cancel();
+    _dnsDown?.cancel();
     if (_status['state'] == 'idle') return;
     if (!silent) _emit({'kind': 'state', 'state': 'disconnecting'});
     if (_status['tun'] == true) {
@@ -806,6 +894,8 @@ class DemoBackend implements Backend {
         return leakSample();
       case 'POST /checkup':
         return _checkup(b['speed'] == true);
+      case 'POST /dnscheck':
+        return _dnsCheck(b);
       case 'POST /reconnect':
         if (_lastNode == null) throw const ApiError(502, 'nothing to reconnect');
         await _connect(_lastNode!);

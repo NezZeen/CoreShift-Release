@@ -106,6 +106,24 @@ var ru = map[string]string{
 	"net.appeared":    "сеть появилась",
 	"net.reconnect":   "сеть вернулась, но связь через сервер не восстановилась: переподключаюсь",
 
+	// The direct resolver and the check of the DNS settings (dnsfallback.go, dnscheck.go).
+	"dns.direct_down":             "DNS напрямую ({addr}) недоступен в этой сети ({why}) — использую DNS сети",
+	"dns.direct_restored":         "DNS напрямую ({addr}) снова отвечает",
+	"dns.why.refused":             "соединение отклонено",
+	"dns.why.timeout":             "нет ответа",
+	"dns.why.tls":                 "не удалось установить защищённое соединение",
+	"dns.why.reset":               "соединение оборвано",
+	"dns.why.unreachable":         "сеть не достигает этого адреса",
+	"dns.why.rcode":               "ответил ошибкой {code}",
+	"dns.why.http":                "веб-сервер ответил ошибкой {code}",
+	"dnscheck.ok":                 "отвечает ({ms} мс)",
+	"dnscheck.fail":               "не отвечает в этой сети: {why}",
+	"dnscheck.blocked":            "не отвечает в этой сети: {why} — провайдер, похоже, блокирует этот DNS",
+	"dnscheck.remote_fail":        "не отвечает через VPN: {why}",
+	"dnscheck.skip.not_connected": "через VPN проверю, когда он подключён",
+	"dnscheck.skip.unsupported":   "этот вид DNS (QUIC, HTTP/3) не проверяется",
+	"dnscheck.skip.no_physical":   "не удалось выйти в сеть мимо VPN для проверки",
+
 	// The proxy without the TUN layer (proxymode.go).
 	"proxy.up.system":    "прокси SOCKS5 и HTTP на {addr} открыт; системный прокси настроит приложение",
 	"proxy.up.manual":    "прокси SOCKS5 и HTTP на {addr} открыт для программ, настроенных на него",

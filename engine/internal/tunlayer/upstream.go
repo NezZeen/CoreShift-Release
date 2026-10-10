@@ -101,6 +101,20 @@ func (u upstream) server(tag string) obj {
 	return s
 }
 
+// DNSServer is a DNS server address the layer accepts, taken apart.
+type DNSServer struct {
+	Type string // sing-box DNS server type: udp, tcp, tls, https, h3 or quic
+	Host string
+	Port uint16 // 0 = the protocol's default
+	Path string // https and h3 only; empty = /dns-query
+}
+
+// ParseDNSServer takes raw apart (see upstream for the forms).
+func ParseDNSServer(raw string) (DNSServer, error) {
+	u, err := parseUpstream(raw)
+	return DNSServer(u), err
+}
+
 // ValidateDNSServer reports whether raw is a DNS server address the layer
 // accepts (see upstream for the forms).
 func ValidateDNSServer(raw string) error {

@@ -336,6 +336,7 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 		DNS: tunlayer.DNSOptions{
 			Remote:          o.DNS.Remote,
 			Direct:          direct,
+			DirectFallback:  directFallback(o.DNS.Direct, resolvers),
 			FakeIP:          o.DNS.FakeIP,
 			BlockBrowserDoH: o.DNS.BlockBrowserDoH,
 			BlockDoT:        o.DNS.BlockDoT,
@@ -388,6 +389,9 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 	}
 	s.tunUp(inst, gen, opts, started)
 	s.hub.publish(Event{Kind: "tun", Reason: "up"})
+	if len(opts.DNS.DirectFallback) > 0 {
+		s.dnsDirect.arm(gen, opts.DNS.Direct)
+	}
 
 	s.guardCfg = dnsguard.Config{
 		Interface: tunlayer.DefaultInterface,
@@ -468,6 +472,7 @@ func (s *Service) stopLocked() {
 	s.gen++ // turns pending teardowns for this connection into no-ops
 	s.tunDNS = netip.AddrPort{}
 	s.autoDNS = netip.Addr{}
+	s.dnsDirect.disarm()
 	if s.waitCancel != nil {
 		s.waitCancel() // a wait for the network ends with its connection
 		s.waitCancel = nil

@@ -62,6 +62,13 @@ class Status {
   /// direct had better go through the VPN.
   final bool directBlocked;
 
+  /// While connected: the resolver chosen for sites that go direct («DNS
+  /// напрямую») is out of reach in this network, and the network's own
+  /// resolvers answer for it. Its address, and why, as an engine message
+  /// (`{code, args}`, see [directDnsWhyText]). Empty while it answers.
+  final String directDns;
+  final Map<String, dynamic> directDnsWhy;
+
   const Status({
     this.state = ConnState.idle,
     this.node = '',
@@ -78,6 +85,8 @@ class Status {
     this.problem = '',
     this.waiting = false,
     this.directBlocked = false,
+    this.directDns = '',
+    this.directDnsWhy = const {},
   });
 
   factory Status.fromJson(Json j) => Status(
@@ -96,7 +105,12 @@ class Status {
     problem: j['problem'] ?? '',
     waiting: j['waiting'] == true,
     directBlocked: j['direct_blocked'] == true,
+    directDns: j['direct_dns'] ?? '',
+    directDnsWhy: (j['direct_dns_why'] as Map?)?.cast<String, dynamic>() ?? const {},
   );
+
+  /// [directDnsWhy] in the app's language.
+  String get directDnsWhyText => engineJson(directDnsWhy) ?? '';
 
   /// On, coming up, or waiting for the network to do either: the button
   /// then disconnects (or cancels).

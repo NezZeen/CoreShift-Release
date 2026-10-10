@@ -211,14 +211,17 @@ class Fold extends StatefulWidget {
   final String title;
   final String? sub;
   final Widget child;
-  const Fold({super.key, required this.title, this.sub, required this.child});
+
+  /// Opens unfolded, as when the user was sent to what is inside.
+  final bool initiallyOpen;
+  const Fold({super.key, required this.title, this.sub, required this.child, this.initiallyOpen = false});
 
   @override
   State<Fold> createState() => _FoldState();
 }
 
 class _FoldState extends State<Fold> {
-  bool open = false;
+  late bool open = widget.initiallyOpen;
 
   @override
   Widget build(BuildContext context) {

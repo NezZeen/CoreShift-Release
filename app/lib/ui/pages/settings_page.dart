@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../l10n/strings.dart';
@@ -10,6 +12,7 @@ import '../disclaimer.dart';
 import '../shell.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'dns_check.dart';
 import 'leak_check.dart';
 import 'proxy_mode.dart';
 
@@ -65,6 +68,8 @@ class SettingsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.pal;
     final info = state.info;
+    // The home page sent the user to the DNS fields: the fold opens on them.
+    final openDns = state.takeDnsSettingsRequest();
 
     final general = Panel(
       child: Column(
@@ -225,27 +230,39 @@ class SettingsPage extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 14),
-        const SectionLabel('DNS'),
+        // «Настройки DNS» on the home page brings the user here.
+        ScrollIntoViewOnce(request: openDns, child: const SectionLabel('DNS')),
+        const DnsHint(),
         SettingRow(
           first: true,
           title: 'DNS через VPN',
           description: 'DoH, DoT, DoQ или обычный адрес: https://1.1.1.1/dns-query, tls://dns.google, 8.8.8.8',
+          descriptionWidget: DnsCheckLine(state: state, which: 'remote'),
           trailing: SavingField(
             value: state.setting('dns.remote', ''),
             width: 230,
             mono: true,
-            onSave: (v) => state.updateSettings((s) => s['dns']['remote'] = v.trim()),
+            onSave: (v) async {
+              final err = await state.updateSettings((s) => s['dns']['remote'] = v.trim());
+              if (err == null) unawaited(state.checkDns('remote'));
+              return err;
+            },
           ),
         ),
         SettingRow(
-          title: 'DNS для сайтов без VPN',
-          description: 'Пусто — DNS, который был в системе до подключения',
+          title: 'DNS напрямую',
+          description: 'Для сайтов без VPN. Пусто — DNS, который был в системе до подключения',
+          descriptionWidget: DnsCheckLine(state: state, which: 'direct'),
           trailing: SavingField(
             value: state.setting('dns.direct', ''),
             width: 230,
             mono: true,
             hint: 'системный',
-            onSave: (v) => state.updateSettings((s) => s['dns']['direct'] = v.trim()),
+            onSave: (v) async {
+              final err = await state.updateSettings((s) => s['dns']['direct'] = v.trim());
+              if (err == null) unawaited(state.checkDns('direct'));
+              return err;
+            },
           ),
         ),
         SettingRow(title: 'Fake-IP', description: 'Имена резолвятся на стороне сервера — быстрее и без утечек DNS', trailing: _switch('dns.fake_ip')),
@@ -383,7 +400,12 @@ class SettingsPage extends StatelessWidget {
               children: [
                 const PageHeader('Настройки'),
                 for (final w in [general, if (hasNetwork) network, cores, about]) Padding(padding: const EdgeInsets.only(bottom: 16), child: w),
-                Fold(title: 'Дополнительно', sub: 'обновление подписок, User-Agent, DNS-серверы, защита DNS по отдельности', child: expert),
+                Fold(
+                  title: 'Дополнительно',
+                  sub: 'обновление подписок, User-Agent, DNS-серверы, защита DNS по отдельности',
+                  initiallyOpen: openDns,
+                  child: expert,
+                ),
               ],
             ),
           ),

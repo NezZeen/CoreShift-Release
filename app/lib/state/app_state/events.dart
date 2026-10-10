@@ -11,6 +11,8 @@ extension AppStateEvents on AppState {
           _healthFailing.clear();
           _healthStreak.clear();
           _directBlocked = false;
+          _dnsDown = _dnsDownWhy = '';
+          _dnsDownDismissed = false;
         }
         if (e.state != 'connected') _serverProblem = null;
         // A connection that ends is summed up, before the line that says
@@ -81,6 +83,8 @@ extension AppStateEvents on AppState {
         _onServerEvent(e, live);
       case 'direct':
         _onDirectEvent(e);
+      case 'dns-direct':
+        _onDnsDirectEvent(e);
       case 'failover':
         if (e.error.isNotEmpty) {
           _log(e.time, 'автопереход', 'ни один другой сервер подписки не отвечает', LogLevel.err);

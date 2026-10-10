@@ -14,6 +14,7 @@ import (
 
 	"coreshift/engine/internal/core"
 	"coreshift/engine/internal/dnsguard"
+	"coreshift/engine/internal/dnsprobe"
 	"coreshift/engine/internal/ping"
 	"coreshift/engine/internal/selfupdate"
 	"coreshift/engine/internal/store"
@@ -207,6 +208,11 @@ type Config struct {
 	leakDomain string
 	leakHome   func(ctx context.Context) (IPInfo, error)
 	leakASN    func(ctx context.Context, ip string) (uint32, error)
+
+	// dnsProbe tries a DNS server (dnscheck.go); dnsRecheck stands in for
+	// directDNSRecheck.
+	dnsProbe   func(ctx context.Context, raw string, tunnel bool) (res dnsprobe.Result, skip string)
+	dnsRecheck time.Duration
 
 	// dohLookup looks a server name up over DNS over HTTPS, leaving as b
 	// says, when the system's resolver fails it in a latency test.

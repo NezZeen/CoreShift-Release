@@ -45,6 +45,9 @@ var (
 	// a line for each.
 	lookupRE       = regexp.MustCompile(`(lookup failed for) [^\s:]+`)
 	routerLookupRE = regexp.MustCompile(`(router: lookup) [^\s:]+`)
+	// A lookup the TUN layer's resolvers did not answer, "exchange failed
+	// for site.example. IN A": one line for all the names (dnsfallback.go).
+	exchangeNameRE = regexp.MustCompile(`(exchange failed for) \S+ IN \w+`)
 	targetRE       = regexp.MustCompile(`(open connection to) \S+ (using)`)
 	// mihomo names the rule that sent the connection: "(match Match/)",
 	// "(match GeoIP/ru)". Every rule's connections fail alike.
@@ -136,6 +139,7 @@ func logShape(line string) string {
 	s = uptimeRE.ReplaceAllString(s, "")
 	s = lookupRE.ReplaceAllString(s, "$1 <имя>")
 	s = routerLookupRE.ReplaceAllString(s, "$1 <имя>")
+	s = exchangeNameRE.ReplaceAllString(s, "$1 <имя>")
 	s = targetRE.ReplaceAllString(s, "$1 <адрес> $2")
 	s = mihomoRuleRE.ReplaceAllString(s, "(match <правило>)")
 	s = exchangeRE.ReplaceAllString(s, "($2 | $1)")

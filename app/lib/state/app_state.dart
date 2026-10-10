@@ -32,6 +32,7 @@ part 'app_state/speed_test.dart';
 part 'app_state/imports.dart';
 part 'app_state/sub_alerts.dart';
 part 'app_state/direct_hint.dart';
+part 'app_state/dns_check.dart';
 part 'app_state/session_log.dart';
 part 'app_state/checkup.dart';
 part 'app_state/events.dart';
@@ -102,6 +103,20 @@ class AppState extends ChangeNotifier {
   /// _directDismissed: the user put the hint off for this run of the app.
   bool _directBlocked = false;
   bool _directDismissed = false;
+
+  /// How the DNS fields of the settings checked out, by field ("direct",
+  /// "remote"), and whether the service has no such check ([AppStateDnsCheck]).
+  final Map<String, DnsCheck> dnsChecks = {};
+  bool dnsCheckUnsupported = false;
+
+  /// The engine's "dns-direct" event came for this connection: the address
+  /// of «DNS напрямую» out of reach and why (see [dnsFallbackHint]); put off
+  /// by the user for this run of the app; the settings page is asked to open
+  /// the DNS fields.
+  String _dnsDown = '';
+  String _dnsDownWhy = '';
+  bool _dnsDownDismissed = false;
+  bool dnsSettingsRequested = false;
 
   /// Feeds an event as if the service had sent it, for tests.
   @visibleForTesting

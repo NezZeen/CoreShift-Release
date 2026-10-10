@@ -31,11 +31,26 @@ func buildDNS(o Options) (obj, error) {
 	// No detour: new-style DNS servers dial directly by default.
 	servers := []any{remoteSrv, directUp.server(tagDNSDirect)}
 
+	// The network's own resolvers stand behind the direct one (see
+	// DNSOptions.DirectFallback).
+	chain := &directChain{}
+	for _, a := range o.DNS.DirectFallback {
+		if len(chain.tags) == maxDirectFallback {
+			break
+		}
+		if !a.IsValid() || a.String() == directUp.Host || (a.IsLinkLocalUnicast() && a.Zone() == "") || slices.Contains(chain.addrs, a) {
+			continue
+		}
+		tag := fmt.Sprintf("%s%d", tagDNSNetwork, len(chain.tags)+1)
+		servers = append(servers, upstream{Type: "udp", Host: a.String()}.server(tag))
+		chain.tags, chain.addrs = append(chain.tags, tag), append(chain.addrs, a)
+	}
+
 	var rules []any
 	if procs := slices.Concat(o.BypassProcesses, o.DirectDNSProcesses); len(procs) > 0 {
 		// Cores resolving their proxy server must not depend on the proxy,
 		// and fake addresses are of no use to the daemon.
-		rules = append(rules, obj{"process_path": procs, "server": tagDNSDirect})
+		rules = append(rules, chain.rules(obj{"process_path": procs})...)
 	}
 	if len(o.DNS.BlockSuffixes) > 0 {
 		rules = append(rules, obj{"domain_suffix": o.DNS.BlockSuffixes, "action": "predefined", "rcode": "NXDOMAIN"})
@@ -79,15 +94,17 @@ func buildDNS(o Options) (obj, error) {
 	// matches every name.
 	direct := func(key string, value any) {
 		aaaa := obj{"query_type": []string{"AAAA"}, "action": "predefined", "rcode": "NOERROR"}
-		to := obj{"server": tagDNSDirect}
+		match := obj{}
 		if key != "" {
-			aaaa[key], to[key] = value, value
+			aaaa[key], match[key] = value, value
 		}
 		if o.DNS.DirectIPv4Only && o.ipv6() {
 			rules = append(rules, aaaa)
 		}
-		if key != "" {
-			rules = append(rules, to)
+		// Without a key the direct resolver is the final one, or, with
+		// resolvers behind it, a rule for every name that is left.
+		if key != "" || chain.any() {
+			rules = append(rules, chain.rules(match)...)
 		}
 	}
 	// In the order of the route rules (buildRoute): the user's lists, the

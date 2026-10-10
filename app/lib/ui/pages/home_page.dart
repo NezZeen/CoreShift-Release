@@ -25,6 +25,7 @@ part 'home/quick_pick.dart';
 part 'home/traffic.dart';
 part 'home/speed_test.dart';
 part 'home/direct_hint.dart';
+part 'home/dns_fallback.dart';
 
 class HomePage extends StatelessWidget {
   final AppState state;
@@ -66,6 +67,7 @@ class HomePage extends StatelessWidget {
             if (st.state == ConnState.noNetwork) ...[const SizedBox(height: 16), _NoNetworkBanner(state: state)],
             if (state.serverUnresponsive) ...[const SizedBox(height: 16), _UnresponsiveBanner(state: state)],
             if (state.directHint) ...[const SizedBox(height: 16), _DirectHintBanner(state: state)],
+            if (state.dnsFallbackHint) ...[const SizedBox(height: 16), _DnsFallbackBanner(state: state)],
             if (st.settingsPending) ...[const SizedBox(height: 16), _PendingBanner(state: state)],
             _BackupBanner(state: state),
           ],

@@ -153,6 +153,25 @@ func TestSingBoxAcceptsConfig(t *testing.T) {
 			o.DNS.Direct = "fe80::1%eth0"
 			o.LANResolvers = []netip.Addr{netip.MustParseAddr("fe80::52ff:20ff:feb4:407b"), netip.MustParseAddr("fe80::1%eth0"), netip.MustParseAddr("192.168.1.1")}
 		},
+		"direct DNS with the network's behind it": func(o *Options) {
+			o.DNS.Direct = "https://94.140.14.14/dns-query"
+			o.DNS.DirectFallback = []netip.Addr{netip.MustParseAddr("192.168.1.1"), netip.MustParseAddr("192.168.1.2")}
+			o.BypassProcesses = []string{`C:\Program Files\CoreShift\cores\xray.exe`}
+			o.DirectDNSProcesses = []string{`C:\Program Files\CoreShift\coreshiftd.exe`}
+			o.Address6 = DefaultAddress6
+			o.DNS.DirectIPv4Only = true
+			o.DNS.DirectSuffixes = []string{"ru", "lan"}
+			o.DNS.HomeSuffixes = []string{"su"}
+			o.DNS.DirectRuleSets = []RuleSet{{Tag: "geosite-ru", Path: geosite}}
+			o.Rules = []Rule{{Action: ActionDirect, Domains: []string{"bank.example"}}, {Action: ActionDirect, Set: &RuleSet{Tag: "user-geosite-ru", Path: geosite}}}
+		},
+		"direct DNS with the network's behind it, selective": func(o *Options) {
+			o.Selective = true
+			o.DNS.Direct = "tls://94.140.14.14"
+			o.DNS.DirectFallback = []netip.Addr{netip.MustParseAddr("192.168.1.1")}
+			o.DNS.ProxySuffixes = []string{"youtube.com"}
+			o.Rules = []Rule{{Action: ActionDirect, Domains: []string{"bank.example"}}}
+		},
 		"cache file": func(o *Options) {
 			o.CacheFile = filepath.Join(t.TempDir(), "cache.db")
 		},

@@ -91,6 +91,12 @@ type Status struct {
 	// connections do not get through the network while the tunnel works
 	// (direct.go): the settings that send traffic direct should go.
 	DirectBlocked bool `json:"direct_blocked,omitempty"`
+	// DirectDNS is set while the resolver the user chose for sites that go
+	// direct (DNS напрямую) is out of reach in this network, and the
+	// network's own resolvers answer for it (dnsfallback.go): its address,
+	// and DirectDNSWhy, why, as a message for the app to word.
+	DirectDNS    string   `json:"direct_dns,omitempty"`
+	DirectDNSWhy *msg.Msg `json:"direct_dns_why,omitempty"`
 }
 
 type Service struct {
@@ -115,6 +121,9 @@ type Service struct {
 	verbose atomic.Bool
 	// direct counts direct connections the network refuses (direct.go).
 	direct directWatch
+	// dnsDirect follows the user's own resolver for direct sites
+	// (dnsfallback.go).
+	dnsDirect directDNSWatch
 	// bg is set while the device is idle (SetBackground); awake tells the
 	// traffic watcher it no longer is.
 	bg    atomic.Bool
@@ -248,6 +257,9 @@ func New(cfg Config) (*Service, error) {
 	if cfg.dohLookup == nil {
 		cfg.dohLookup = (&dohPool{}).lookup
 	}
+	if cfg.dnsRecheck == 0 {
+		cfg.dnsRecheck = directDNSRecheck
+	}
 	if cfg.netInterval == 0 {
 		cfg.netInterval = networkCheckInterval
 	}
@@ -355,6 +367,9 @@ func New(cfg Config) (*Service, error) {
 
 	s := &Service{cfg: cfg, hub: newHub(), opts: cfg.Options, status: Status{State: Idle, TUN: cfg.TUN}, socks: core.NewSOCKSAuth(),
 		awake: make(chan struct{}, 1), netKick: make(chan struct{}, 1)}
+	if s.cfg.dnsProbe == nil {
+		s.cfg.dnsProbe = s.probeDNS
+	}
 	s.verbose.Store(cfg.Options.Verbose)
 	s.power.off.Store(cfg.Options.NoBatterySaving)
 	s.logs = newLogGrouper(logGroupEvery, func(source, line string, at time.Time) {

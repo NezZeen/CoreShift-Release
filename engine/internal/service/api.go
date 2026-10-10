@@ -76,6 +76,7 @@ func NewAPI(svc *Service, token string, listen netip.AddrPort) http.Handler {
 	mux.HandleFunc("POST /v1/speedtest", a.speedTest)
 	mux.HandleFunc("POST /v1/leaktest", a.leakTest)
 	mux.HandleFunc("POST /v1/checkup", a.checkup)
+	mux.HandleFunc("POST /v1/dnscheck", a.dnsCheck)
 	a.routeStore(mux)
 	a.routeGeo(mux)
 	return a.guard(mux)

@@ -21,10 +21,15 @@ func (s *Service) Log(source, line string) {
 		s.kickNetwork()
 	}
 	line = tidy(line)
+	// The user's resolver for direct sites failing a lookup: the layer asks
+	// the network's for it (dnsfallback.go), and the journal says so once.
+	var directDNS bool
 	if source == "tun" {
 		s.noteDial(line)
+		directDNS = s.noteDirectDNS(line)
 	}
 	switch {
+	case directDNS && !s.verbose.Load():
 	case noiseLine(line) && !s.verbose.Load():
 	case s.logs.twin(line):
 		// sing-box's second report of a lookup it just reported.
