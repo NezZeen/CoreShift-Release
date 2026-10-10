@@ -105,14 +105,15 @@ class SettingsPage extends StatelessWidget {
               onChanged: onThemeMode,
             ),
           ),
-          SettingRow(
-            title: tr('settings.language'),
-            trailing: Seg<String>(
-              value: state.languagePref,
-              options: [('system', tr('settings.language.system')), ('ru', tr('settings.language.ru')), ('en', tr('settings.language.en'))],
-              onChanged: state.setLanguage,
+          if (englishReady)
+            SettingRow(
+              title: tr('settings.language'),
+              trailing: Seg<String>(
+                value: state.languagePref,
+                options: [('system', tr('settings.language.system')), ('ru', tr('settings.language.ru')), ('en', tr('settings.language.en'))],
+                onChanged: state.setLanguage,
+              ),
             ),
-          ),
         ],
       ),
     );

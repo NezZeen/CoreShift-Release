@@ -46,9 +46,16 @@ const langPref = 'lang';
 /// subwarn.go reads "lang_used" from ui.json).
 const langUsedPref = 'lang_used';
 
+/// Whether the English dictionary is complete. Until it is, the app speaks
+/// Russian whatever the system's language, and the settings offer no
+/// choice: a half-translated UI is worse than none.
+const englishReady = false;
+
 /// The language for a choice in the settings: "ru", "en", or the system's
 /// for anything else; the system's is Russian unless it speaks English.
-Lang langFor(Object? pref, {String? systemLanguage}) {
+/// Russian always while English is not [ready].
+Lang langFor(Object? pref, {String? systemLanguage, bool ready = englishReady}) {
+  if (!ready) return Lang.ru;
   switch (pref) {
     case 'ru':
       return Lang.ru;

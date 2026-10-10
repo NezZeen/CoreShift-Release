@@ -103,18 +103,20 @@ void main() {
     });
 
     test('the language: the choice in the settings, else the system\'s', () {
-      expect(langFor('ru', systemLanguage: 'en'), Lang.ru);
-      expect(langFor('en', systemLanguage: 'ru'), Lang.en);
-      expect(langFor('system', systemLanguage: 'en'), Lang.en);
-      expect(langFor(null, systemLanguage: 'de'), Lang.ru);
+      expect(langFor('ru', systemLanguage: 'en', ready: true), Lang.ru);
+      expect(langFor('en', systemLanguage: 'ru', ready: true), Lang.en);
+      expect(langFor('system', systemLanguage: 'en', ready: true), Lang.en);
+      expect(langFor(null, systemLanguage: 'de', ready: true), Lang.ru);
+      // Until the English dictionary is complete, Russian whatever is chosen.
+      expect(langFor('en', systemLanguage: 'en', ready: false), Lang.ru);
     });
 
     test('the settings keep the choice and note the language for the engine', () {
       final saved = <Json>[];
       final s = AppState(DemoBackend(), prefs: {}, savePrefs: (p) async => saved.add({...p}));
       s.applyLanguage(systemLanguage: 'en');
-      expect(lang, Lang.en);
-      expect(s.prefs[langUsedPref], 'en');
+      expect(lang, englishReady ? Lang.en : Lang.ru);
+      expect(s.prefs[langUsedPref], englishReady ? 'en' : 'ru');
       expect(s.languagePref, 'system');
       s.setLanguage('ru');
       expect(lang, Lang.ru);
