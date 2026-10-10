@@ -202,12 +202,12 @@ type Config struct {
 	speedURL           string // instead of speedServer
 	ookla              func(proxy *url.URL) ooklaTest
 	// leakBase and leakDomain stand in for bash.ws; leakHome for looking
-	// up the address outside the VPN, leakASN for the autonomous system of
-	// an address.
+	// up the address outside the VPN; leakGeo for the second geolocation
+	// services of the exit address.
 	leakBase   string
 	leakDomain string
 	leakHome   func(ctx context.Context) (IPInfo, error)
-	leakASN    func(ctx context.Context, ip string) (uint32, error)
+	leakGeo    []exitGeoSource
 
 	// dnsProbe tries a DNS server (dnscheck.go); dnsRecheck stands in for
 	// directDNSRecheck.

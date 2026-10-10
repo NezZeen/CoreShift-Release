@@ -279,7 +279,9 @@ func newHarness(t *testing.T, mutate func(*Config)) *harness {
 		},
 		// No speedtest.net from tests: the speed test goes to speedURL.
 		ookla: noOokla,
-		netUp: func() bool { return !h.offline.Load() },
+		// No second geolocation service for the leak test either.
+		leakGeo: []exitGeoSource{},
+		netUp:   func() bool { return !h.offline.Load() },
 		// Not the computer's own network: netinfo_test.go names its own.
 		netName:   func() string { return h.netName() },
 		netPoll:   50 * time.Millisecond,

@@ -1,9 +1,11 @@
 package service
 
 import (
-	"context"
-	"errors"
+	"io/fs"
 	"net/netip"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -137,21 +139,44 @@ func TestLeakJudge(t *testing.T) {
 			want:  leakOK,
 			roles: []string{""},
 		},
-		"the device's ASN, wherever the server is": {
+		// Without a look at the device's network the ISP's resolver in the
+		// server's country cannot be told from the server's: no verdict on it.
+		"a resolver of the device's ISP where the server is": {
 			r: LeakResult{Exit: de, Home: &IPInfo{IP: "198.51.100.20", Country: "DE"}, DNS: []LeakHost{
 				{IP: "12", Country: "de", Org: "AS64501 Home ISP", ASN: 64501, Path: "system"},
 			}},
-			judge: leakJudge{homeASN: 64501},
+			want:  leakOK,
+			roles: []string{leakRoleVPN},
+		},
+		"the home country's resolver when the exit is elsewhere, however named": {
+			r: LeakResult{Exit: ua, Home: home, DNS: []LeakHost{
+				{IP: "13", Country: "ru", Org: "AS64501 Home ISP", ASN: 64501, Path: "system"},
+			}},
 			want:  leakFound,
 			roles: []string{leakRoleISP},
 		},
-		"the exit shares the device's ASN": {
-			r: LeakResult{Exit: &LeakHost{IP: "203.0.113.5", Country: "de", ASN: 64501}, Home: home, DNS: []LeakHost{
-				{IP: "12", Country: "de", Org: "AS64501 Hosting", ASN: 64501, Path: "proxy"},
+		"the home country's resolver when the exit is there too": {
+			r: LeakResult{Exit: &LeakHost{IP: "203.0.113.7", Country: "ru"}, Home: home, DNS: []LeakHost{
+				{IP: "14", Country: "ru", Org: "Some Hosting", Path: "system"},
 			}},
-			judge: leakJudge{homeASN: 64501},
 			want:  leakOK,
 			roles: []string{leakRoleVPN},
+		},
+		"an unknown resolver elsewhere is neutral": {
+			r: LeakResult{Exit: ua, Home: home, DNS: []LeakHost{
+				{IP: "15", Country: "nl", Org: "Other Hosting", Path: "system"},
+				{IP: "16", Org: "Nobody Knows", Path: "system"},
+			}},
+			want:  leakOK,
+			roles: []string{"", ""},
+		},
+		"the network's DNS wins over where it is": {
+			r: LeakResult{Exit: ua, Home: home, DNS: []LeakHost{
+				{IP: "192.0.2.1", Country: "ua", Org: "Hosting", Path: "system"},
+			}},
+			judge: leakJudge{network: netip.MustParseAddr("192.0.2.1")},
+			want:  leakFound,
+			roles: []string{leakRoleISP},
 		},
 		"the network's own DNS server": {
 			r:     LeakResult{Exit: de, Home: home, DNS: []LeakHost{{IP: "192.0.2.1", Country: "de", Org: "Hosting", Path: "system"}}},
@@ -190,44 +215,49 @@ func TestLeakJudge(t *testing.T) {
 	}
 }
 
-// The device's ASN is looked up only when a server on the apps' path is
-// known by no more than its place, and a match then makes it the ISP's.
-func TestJudgeLeakLooksTheASNUp(t *testing.T) {
+// The verdict is made from what bash.ws reported and what the service knows
+// itself: it asks nobody about the device's address, so a Service with no
+// way to ask judges all the same.
+func TestJudgeLeakAsksNobody(t *testing.T) {
 	de := &LeakHost{IP: "203.0.113.5", Country: "de", ASN: 64500}
 	home := &IPInfo{IP: "198.51.100.20", Country: "DE"}
-	run := func(dns []LeakHost, asn uint32, err error) (LeakResult, int) {
-		calls := 0
-		s := &Service{cfg: Config{leakASN: func(context.Context, string) (uint32, error) { calls++; return asn, err }}}
-		s.connOpts.DNS.Remote = "203.0.113.9"
-		r := LeakResult{Exit: de, Home: home, DNS: dns}
-		s.judgeLeak(context.Background(), nil, &r)
-		return r, calls
+	s := &Service{}
+	s.connOpts.DNS.Remote = "203.0.113.9"
+	s.autoDNS = netip.MustParseAddr("192.0.2.1")
+	r := LeakResult{Exit: de, Home: home, DNS: []LeakHost{
+		{IP: "192.0.2.1", Country: "de", Org: "Hosting", Path: "system"},
+		{IP: "1", Country: "de", Org: "AS64501 Home ISP", ASN: 64501, Path: "system"},
+	}}
+	s.judgeLeak(&r)
+	if r.Verdict != leakFound || r.DNS[0].Role != leakRoleISP || r.DNS[1].Role != leakRoleVPN {
+		t.Errorf("result = %+v", r)
 	}
-	isp := LeakHost{IP: "1", Country: "de", Org: "AS64501 Home ISP", ASN: 64501, Path: "system"}
+}
 
-	r, calls := run([]LeakHost{isp}, 64501, nil)
-	if calls != 1 || r.Verdict != leakFound || r.HomeASN != 64501 || r.DNS[0].Role != leakRoleISP {
-		t.Errorf("same country as the server: %d lookups, %+v", calls, r)
-	}
-	if r, calls = run([]LeakHost{isp}, 64999, nil); calls != 1 || r.Verdict != leakOK || r.HomeASN != 64999 {
-		t.Errorf("another ASN: %d lookups, %+v", calls, r)
-	}
-	if r, calls = run([]LeakHost{isp}, 0, errors.New("offline")); calls != 1 || r.Verdict != leakOK || r.HomeASN != 0 {
-		t.Errorf("no ASN: %d lookups, %+v", calls, r)
-	}
-	// What the VPN server's own resolvers asked needs no look.
-	proxy := isp
-	proxy.Path = "proxy"
-	if r, calls = run([]LeakHost{proxy}, 64501, nil); calls != 0 || r.Verdict != leakOK {
-		t.Errorf("proxy path: %d lookups, %+v", calls, r)
-	}
-	// Nor does a server of the DNS the user set.
-	s := &Service{cfg: Config{leakASN: func(context.Context, string) (uint32, error) { t.Error("looked up"); return 0, nil }}}
-	s.connOpts.DNS.Remote = "https://94.140.14.14/dns-query"
-	own := LeakResult{Exit: de, Home: home, DNS: []LeakHost{{IP: "5", Country: "de", Org: "DataCamp Limited", Path: "system"}}}
-	s.judgeLeak(context.Background(), nil, &own)
-	if own.Verdict != leakOK || own.DNS[0].Role != leakRoleOwn {
-		t.Errorf("own = %+v", own)
+// The device's address goes to no third party for a verdict: no lookup of
+// the network it belongs to remains anywhere in the sources.
+func TestNoLookupOfTheHomeAddressNetwork(t *testing.T) {
+	banned := []string{"rip" + "estat", "stat.rip" + "e.net", "rip" + "eASN", "leak" + "ASN", "home" + "ASN", "home_" + "asn"}
+	for _, root := range []string{"../..", "../../../app/lib"} {
+		if _, err := os.Stat(root); err != nil {
+			continue
+		}
+		filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() || (!strings.HasSuffix(path, ".go") && !strings.HasSuffix(path, ".dart")) {
+				return nil
+			}
+			b, err := os.ReadFile(path)
+			if err != nil {
+				return nil
+			}
+			low := strings.ToLower(string(b))
+			for _, w := range banned {
+				if strings.Contains(low, strings.ToLower(w)) {
+					t.Errorf("%s mentions %q", path, w)
+				}
+			}
+			return nil
+		})
 	}
 }
 

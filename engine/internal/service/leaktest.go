@@ -101,8 +101,10 @@ type LeakResult struct {
 	// Home is the device's address outside the VPN; nil when it could not
 	// be learned.
 	Home *IPInfo `json:"home,omitempty"`
-	// HomeASN is its autonomous system, when it had to be looked up.
-	HomeASN uint32 `json:"home_asn,omitempty"`
+	// ExitGeo is the exit address as a second geolocation service sees it
+	// (leakgeo.go); nil when none answered. bash.ws and the other services
+	// often say different countries for the same address.
+	ExitGeo *LeakGeo `json:"exit_geo,omitempty"`
 	// Verdict is "ok", "leak", "bypass" or "unknown": a leak is DNS that
 	// does not go through the tunnel (see leakjudge.go).
 	Verdict string `json:"verdict"`
@@ -111,8 +113,15 @@ type LeakResult struct {
 	Provider string `json:"provider,omitempty"`
 }
 
-// LeakTest runs the DNS leak test through the connection.
+// LeakTest runs the DNS leak test through the connection, and asks a second
+// service where the exit address is.
 func (s *Service) LeakTest(ctx context.Context) (LeakResult, error) {
+	return s.leakTest(ctx, true)
+}
+
+// leakTest is LeakTest; geo says whether to look the exit address up at a
+// second geolocation service, which only the leak test's page shows.
+func (s *Service) leakTest(ctx context.Context, geo bool) (LeakResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, leakTimeout)
 	defer cancel()
 	st := s.Status()
@@ -159,7 +168,12 @@ func (s *Service) LeakTest(ctx context.Context) (LeakResult, error) {
 		return LeakResult{}, err
 	}
 	res.Server, res.ServerIP, res.Home = st.Node, serverIP, home
-	s.judgeLeak(ctx, p.client, &res)
+	s.judgeLeak(&res)
+	// Only the VPN's address goes to the second service, and only when the
+	// verdict is sure it is the VPN's: never the device's own.
+	if geo && (res.Verdict == leakOK || res.Verdict == leakFound) {
+		res.ExitGeo = s.exitGeo(ctx, p.client, res.Exit.IP)
+	}
 	return res, nil
 }
 

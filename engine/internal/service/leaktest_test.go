@@ -28,6 +28,10 @@ type fakeBash struct {
 	ids  int
 	seen map[string][]string // test id -> DNS servers that looked its names up
 	hits int
+	// geo answers the geolocation services by host ("geo1.test"); geoSeen
+	// lists what they were asked, "geo1.test/203.0.113.5".
+	geo     map[string]http.HandlerFunc
+	geoSeen []string
 }
 
 const (
@@ -74,6 +78,9 @@ func (b *fakeBash) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		entries = append(entries, map[string]string{"ip": "DNS may be leaking.", "type": "conclusion"})
 		json.NewEncoder(w).Encode(entries)
+	case b.geo[host] != nil:
+		b.geoSeen = append(b.geoSeen, host+r.URL.Path)
+		b.geo[host](w, r)
 	case strings.HasSuffix(host, ".bash.test"):
 		// <n>.<id>.bash.test: the core sent the name on, so the server's
 		// resolver looked it up.
@@ -98,6 +105,12 @@ func (b *fakeBash) lookedUp(name, resolver string) {
 	b.seen[id] = append(b.seen[id], resolver)
 }
 
+func (b *fakeBash) geoRequests() []string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return append([]string(nil), b.geoSeen...)
+}
+
 func (b *fakeBash) requests() int {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -105,14 +118,25 @@ func (b *fakeBash) requests() int {
 }
 
 // leakHarness is connected through the fake core, which reaches the fake
-// bash.ws; lookup answers the apps' path.
+// bash.ws; lookup answers the apps' path. No second geolocation service is
+// asked.
 func leakHarness(t *testing.T, lookup func(ctx context.Context, host string) ([]netip.Addr, error)) (*harness, *fakeBash) {
 	t.Helper()
+	return leakGeoHarness(t, lookup, nil, nil, "198.51.100.20")
+}
+
+// leakGeoHarness is leakHarness with geolocation services at geo's hosts
+// (all in the zone .test, reached only through the core) and sources that
+// ask them; home is the device's address.
+func leakGeoHarness(t *testing.T, lookup func(ctx context.Context, host string) ([]netip.Addr, error), geo map[string]http.HandlerFunc, sources []exitGeoSource, home string) (*harness, *fakeBash) {
+	t.Helper()
 	b := newFakeBash(t)
-	t.Setenv("FAKECORE_FORWARD", "bash.test="+b.srv.Listener.Addr().String())
+	b.geo = geo
+	t.Setenv("FAKECORE_FORWARD", "test="+b.srv.Listener.Addr().String())
 	h := newHarness(t, func(c *Config) {
 		c.leakBase, c.leakDomain = "http://bash.test", "bash.test"
-		c.leakHome = func(context.Context) (IPInfo, error) { return IPInfo{IP: "198.51.100.20", Country: "RU"}, nil }
+		c.leakHome = func(context.Context) (IPInfo, error) { return IPInfo{IP: home, Country: "RU"}, nil }
+		c.leakGeo = append([]exitGeoSource{}, sources...)
 		c.TUNLookup = lookup
 	})
 	if err := h.connect(t, trojanLink); err != nil {

@@ -1,12 +1,7 @@
 package service
 
 import (
-	"context"
-	"encoding/json"
-	"errors"
-	"io"
 	"net"
-	"net/http"
 	"net/netip"
 	"net/url"
 	"strings"
@@ -23,11 +18,16 @@ import (
 //   - own: it belongs to the DNS the user set for the tunnel (dns.remote),
 //     recognised by the provider's name in bash.ws's ASN/organisation.
 //   - isp: it is the ISP's or the network's: the network's own DNS server,
-//     the device's ASN, or, when the VPN server is in another country than
-//     the device, the device's country.
+//     or, when the VPN server is in another country than the device, the
+//     device's country.
 //   - vpn: it is on the VPN's side: asked by the VPN server, a public
 //     resolver, or in the VPN server's country.
 //   - none: nothing is known about it; it counts neither way.
+//
+// The verdict rests on what bash.ws reports and on what the engine knows
+// locally (the network's DNS server, the device's country, the DNS set for
+// the tunnel). The device's address never goes to a third party for it: no
+// lookup of the network the home address belongs to is made.
 const (
 	leakRoleOwn = "own"
 	leakRoleISP = "isp"
@@ -147,14 +147,10 @@ type leakJudge struct {
 	remote string
 	// network is the DNS server the network gave (invalid when not known).
 	network netip.Addr
-	// homeASN is the device's autonomous system outside the VPN (0 when not
-	// known).
-	homeASN uint32
 }
 
-// classify says whose a DNS server is. weak: the role rests on no more
-// than where the server is, so the device's ASN might still change it.
-func (j leakJudge) classify(r *LeakResult, d LeakHost, own *dnsProvider) (role string, weak bool) {
+// classify says whose a DNS server is; empty when nothing is known.
+func (j leakJudge) classify(r *LeakResult, d LeakHost, own *dnsProvider) string {
 	exit := r.Exit.Country
 	home := ""
 	if r.Home != nil {
@@ -162,21 +158,19 @@ func (j leakJudge) classify(r *LeakResult, d LeakHost, own *dnsProvider) (role s
 	}
 	switch {
 	case own != nil && own.owns(d):
-		return leakRoleOwn, false
+		return leakRoleOwn
 	case j.network.IsValid() && d.IP == j.network.String():
-		return leakRoleISP, false
-	case j.homeASN != 0 && d.ASN == j.homeASN && r.Exit.ASN != j.homeASN:
-		return leakRoleISP, false
+		return leakRoleISP
 	case containsAny(strings.ToLower(d.Org), leakPublic):
-		return leakRoleVPN, false
+		return leakRoleVPN
 	case d.Country != "" && home != "" && d.Country == home && exit != home:
-		return leakRoleISP, false
+		return leakRoleISP
 	case d.Path == "proxy":
-		return leakRoleVPN, false
+		return leakRoleVPN
 	case d.Country != "" && d.Country == exit:
-		return leakRoleVPN, true
+		return leakRoleVPN
 	}
-	return "", true
+	return ""
 }
 
 func containsAny(s string, parts []string) bool {
@@ -208,7 +202,7 @@ func (j leakJudge) apply(r *LeakResult) {
 	}
 	leaked := false
 	for i, d := range r.DNS {
-		role, _ := j.classify(r, d, own)
+		role := j.classify(r, d, own)
 		r.DNS[i].Role = role
 		leaked = leaked || role == leakRoleISP
 	}
@@ -236,21 +230,6 @@ func (r *LeakResult) bypassed() bool {
 	return len(e) == 4 && len(h) == 4 && strings.Join(e[:3], ".") == strings.Join(h[:3], ".")
 }
 
-// undecided: some server on the apps' path is known only by where it is,
-// so the device's ASN might tell more.
-func (j leakJudge) undecided(r *LeakResult) bool {
-	if r.Verdict != leakOK && r.Verdict != leakFound || r.Home == nil || r.Home.IP == "" {
-		return false
-	}
-	own := providerOf(j.remote)
-	for _, d := range r.DNS {
-		if _, weak := j.classify(r, d, own); weak && d.Path != "proxy" {
-			return true
-		}
-	}
-	return false
-}
-
 // ownDNS: the apps' lookups reached the DNS the user set for the tunnel.
 func (r LeakResult) ownDNS() bool {
 	for _, d := range r.DNS {
@@ -261,9 +240,9 @@ func (r LeakResult) ownDNS() bool {
 	return false
 }
 
-// judgeLeak gives r its verdict. The device's ASN is looked up (through the
-// VPN, by client) only when the servers seen cannot be told apart otherwise.
-func (s *Service) judgeLeak(ctx context.Context, client *http.Client, r *LeakResult) {
+// judgeLeak gives r its verdict from what bash.ws reported and what the
+// service knows of the network.
+func (s *Service) judgeLeak(r *LeakResult) {
 	s.mu.Lock()
 	j := leakJudge{remote: s.connOpts.DNS.Remote, network: s.autoDNS}
 	s.mu.Unlock()
@@ -271,47 +250,4 @@ func (s *Service) judgeLeak(ctx context.Context, client *http.Client, r *LeakRes
 		j.remote = s.Options().DNS.Remote
 	}
 	j.apply(r)
-	if !j.undecided(r) {
-		return
-	}
-	lookup := s.cfg.leakASN
-	if lookup == nil {
-		lookup = func(ctx context.Context, ip string) (uint32, error) { return ripeASN(ctx, client, ip) }
-	}
-	if asn, err := lookup(ctx, r.Home.IP); err == nil && asn != 0 {
-		j.homeASN = asn
-		r.HomeASN = asn
-		j.apply(r)
-	}
-}
-
-// ripeASN is the autonomous system announcing ip, from RIPEstat.
-func ripeASN(ctx context.Context, client *http.Client, ip string) (uint32, error) {
-	if _, err := netip.ParseAddr(ip); err != nil {
-		return 0, err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://stat.ripe.net/data/prefix-overview/data.json?resource="+url.QueryEscape(ip), nil)
-	if err != nil {
-		return 0, err
-	}
-	req.Header.Set("User-Agent", "CoreShift")
-	resp, err := client.Do(req)
-	if err != nil {
-		return 0, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return 0, errors.New("stat.ripe.net: " + resp.Status)
-	}
-	var out struct {
-		Data struct {
-			ASNs []struct {
-				ASN uint32 `json:"asn"`
-			} `json:"asns"`
-		} `json:"data"`
-	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&out); err != nil || len(out.Data.ASNs) == 0 {
-		return 0, errors.New("stat.ripe.net: no autonomous system")
-	}
-	return out.Data.ASNs[0].ASN, nil
 }
