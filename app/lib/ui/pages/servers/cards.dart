@@ -43,20 +43,19 @@ class _SortChip extends StatelessWidget {
   final AppState state;
   const _SortChip({required this.state});
 
-  static const _orders = [('sub', 'Как в подписке'), ('ping', 'По пингу'), ('name', 'По имени')];
-
   @override
   Widget build(BuildContext context) {
     final sort = state.serverSort;
     // A phone: the numbers are off unless the user turns them on.
     final numbers = serverNumbersOn(state, true);
+    final orders = [('sub', 'Как в подписке'), ('ping', 'По пингу'), if (state.speedSupported) ('speed', 'По скорости'), ('name', 'По имени')];
     return PopupMenuButton<String>(
       tooltip: 'Порядок серверов',
       // The switch's item is the numbers' value; the rest are the orders.
       onSelected: (v) => v == 'numbers' ? state.setPref('server_numbers', !numbers) : state.setPref('server_sort', v),
       position: PopupMenuPosition.under,
       itemBuilder: (_) => [
-        for (final (v, title) in _orders) CheckedPopupMenuItem(value: v, checked: sort == v, child: Text(title)),
+        for (final (v, title) in orders) CheckedPopupMenuItem(value: v, checked: sort == v, child: Text(title)),
         const PopupMenuDivider(),
         PopupMenuItem(
           value: 'numbers',
@@ -72,7 +71,7 @@ class _SortChip extends StatelessWidget {
         ),
       ],
       child: IgnorePointer(
-        child: _Chip(label: _orders.firstWhere((e) => e.$1 == sort).$2, icon: Icons.swap_vert, on: sort != 'sub', onTap: () {}),
+        child: _Chip(label: orders.firstWhere((e) => e.$1 == sort).$2, icon: Icons.swap_vert, on: sort != 'sub', onTap: () {}),
       ),
     );
   }

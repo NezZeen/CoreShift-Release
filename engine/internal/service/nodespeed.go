@@ -342,6 +342,7 @@ func (s *Service) runNodeSpeed(ctx context.Context, nodes []node.Node, subs, fps
 		if ctx.Err() != nil {
 			break
 		}
+		s.hub.publish(Event{Kind: "nodespeed", Reason: "testing", Subscription: subs[i], Fingerprint: fps[i]})
 		res := s.measureNodeSpeed(ctx, &nodes[i], addrs[i], limit, sources)
 		l.mu.Lock()
 		l.bytes += res.Bytes // what a stopped server downloaded was used too

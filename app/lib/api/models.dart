@@ -141,6 +141,14 @@ class Event {
   final int upRate;
   final int downRate;
 
+  /// A "nodespeed" event (the speed test of the servers): [mbps] of the
+  /// server [fingerprint], the [bytes] it downloaded, the servers [total];
+  /// on "done" and "stopped" [bytes] is all that was downloaded. [source]
+  /// names the file downloaded.
+  final double mbps;
+  final int bytes;
+  final int total;
+
   /// A "checkup" event's step and how it went ("ok", "warn", "fail",
   /// "skipped"); the verdict's status on "done".
   final String step;
@@ -172,6 +180,9 @@ class Event {
     this.down = 0,
     this.upRate = 0,
     this.downRate = 0,
+    this.mbps = 0,
+    this.bytes = 0,
+    this.total = 0,
     this.step = '',
     this.status = '',
     this.code = '',
@@ -203,6 +214,9 @@ class Event {
     down: (j['down'] as num?)?.toInt() ?? 0,
     upRate: (j['up_rate'] as num?)?.toInt() ?? 0,
     downRate: (j['down_rate'] as num?)?.toInt() ?? 0,
+    mbps: (j['mbps'] as num?)?.toDouble() ?? 0,
+    bytes: (j['bytes'] as num?)?.toInt() ?? 0,
+    total: (j['total'] as num?)?.toInt() ?? 0,
     step: j['step'] ?? '',
     status: j['status'] ?? '',
     code: j['code'] ?? '',
@@ -222,6 +236,38 @@ class Latency {
   bool get ok => error.isEmpty && ms > 0;
 }
 
+/// A node's last speed test (POST /v1/speedtest/nodes): the download speed
+/// [mbps] in megabits per second when it worked, else [error], worded by
+/// [errorText]. [bytes] is what the test downloaded, [at] when.
+class NodeSpeed {
+  final double mbps;
+  final int bytes;
+  final String source;
+  final String error;
+  final String errorCode;
+  final Map<String, dynamic> errorArgs;
+  final DateTime? at;
+  const NodeSpeed({this.mbps = 0, this.bytes = 0, this.source = '', this.error = '', this.errorCode = '', this.errorArgs = const {}, this.at});
+
+  bool get ok => error.isEmpty && mbps > 0;
+
+  /// [error] in the app's language.
+  String get errorText => engineText(errorCode, errorArgs, error);
+
+  /// The result from a node's JSON, null when it was never tested.
+  static NodeSpeed? fromNode(Json j) => j['speed_mbps'] != null || j['speed_error'] != null
+      ? NodeSpeed(
+          mbps: (j['speed_mbps'] as num?)?.toDouble() ?? 0,
+          bytes: (j['speed_bytes'] as num?)?.toInt() ?? 0,
+          source: j['speed_source'] ?? '',
+          error: j['speed_error'] ?? '',
+          errorCode: j['speed_error_code'] ?? '',
+          errorArgs: (j['speed_error_args'] as Map?)?.cast<String, dynamic>() ?? const {},
+          at: _time(j['speed_at']),
+        )
+      : null;
+}
+
 class NodeView {
   final String fingerprint;
   final String name;
@@ -232,6 +278,9 @@ class NodeView {
   final int port;
   final List<String> cores;
   final Latency? latency;
+
+  /// The last speed test of the server, if it was tested.
+  final NodeSpeed? speed;
 
   /// The user removed the server from the list (Subscription.hiddenNodes).
   final bool hidden;
@@ -246,6 +295,7 @@ class NodeView {
     required this.port,
     required this.cores,
     this.latency,
+    this.speed,
     this.hidden = false,
   });
 
@@ -266,6 +316,7 @@ class NodeView {
             method: j['latency_method'] ?? '',
           )
         : null,
+    speed: NodeSpeed.fromNode(j),
     hidden: j['hidden'] == true,
   );
 }

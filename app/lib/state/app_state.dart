@@ -29,6 +29,7 @@ part 'app_state/settings_diff.dart';
 part 'app_state/servers.dart';
 part 'app_state/traffic.dart';
 part 'app_state/speed_test.dart';
+part 'app_state/node_speed.dart';
 part 'app_state/imports.dart';
 part 'app_state/sub_alerts.dart';
 part 'app_state/direct_hint.dart';
@@ -310,6 +311,20 @@ class AppState extends ChangeNotifier {
   /// How far the running test is: nodes answered of nodes asked.
   int latencyDone = 0;
   int latencyTotal = 0;
+
+  /// Last speed test per node, by subscription + '/' + fingerprint.
+  final Map<String, NodeSpeed> nodeSpeeds = {};
+
+  /// Set while the service tests the servers' download speed.
+  bool testingSpeed = false;
+
+  /// How far the running speed test is: servers through of servers asked,
+  /// the bytes downloaded so far, and the server measured now (as the
+  /// keys of [nodeSpeeds]).
+  int speedDone = 0;
+  int speedTotal = 0;
+  int speedBytes = 0;
+  String? speedCurrent;
 
   /// Whether the servers page has already tested latency on its own this
   /// session, so opening it again does not start another test.

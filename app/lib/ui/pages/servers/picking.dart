@@ -140,9 +140,8 @@ class _Picking extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// «Удалить из подписки»: the picked servers leave their lists at once,
-  /// with one toast to bring them back.
-  Future<void> delete() async {
+  /// The picked servers, in the subscriptions' order.
+  List<(Subscription, NodeView)> get pickedRows {
     final rows = <(Subscription, NodeView)>[];
     final seen = <String>{};
     for (final sub in s.subscriptions) {
@@ -151,6 +150,20 @@ class _Picking extends ChangeNotifier {
         if (picked.contains(k) && canPick(sub, n) && seen.add(k)) rows.add((sub, n));
       }
     }
+    return rows;
+  }
+
+  /// «Скорость»: the picked servers are tested, the picking ends.
+  void testSpeed(BuildContext context) {
+    final rows = pickedRows;
+    cancel();
+    _startSpeedTest(context, s, rows);
+  }
+
+  /// «Удалить из подписки»: the picked servers leave their lists at once,
+  /// with one toast to bring them back.
+  Future<void> delete() async {
+    final rows = pickedRows;
     cancel();
     await s.hideNodes(rows, label: rows.length == 1 ? cleanNodeName(rows.single.$2.name) : null);
   }
@@ -288,6 +301,16 @@ class _PickBar extends StatelessWidget {
       child: const Text('Выбрать все', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
     );
     final delete = Btn(label: 'Удалить из подписки', icon: Icons.delete_outline, kind: BtnKind.danger, small: true, onPressed: n == 0 ? null : picking.delete);
+    // The phone's way to test one server: hold a row, then «Скорость».
+    final speed = !picking.s.speedSupported
+        ? null
+        : Btn(
+            label: 'Скорость',
+            icon: Icons.download_rounded,
+            small: true,
+            tooltip: 'Проверить скорость скачивания выбранных серверов',
+            onPressed: n == 0 || picking.s.testingSpeed || picking.s.testingLatency ? null : () => picking.testSpeed(context),
+          );
     final box = BoxDecoration(
       color: accent.withValues(alpha: .08),
       borderRadius: BorderRadius.circular(12),
@@ -312,7 +335,16 @@ class _PickBar extends StatelessWidget {
             const SizedBox(height: 2),
             Align(
               alignment: Alignment.centerLeft,
-              child: Padding(padding: const EdgeInsets.only(left: 6), child: delete),
+              child: Padding(
+                padding: const EdgeInsets.only(left: 6),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (speed != null) ...[speed, const SizedBox(width: 8)],
+                    delete,
+                  ],
+                ),
+              ),
             ),
           ],
         ),
@@ -329,6 +361,7 @@ class _PickBar extends StatelessWidget {
             Expanded(child: count),
             all,
             const SizedBox(width: 8),
+            if (speed != null) ...[speed, const SizedBox(width: 8)],
             delete,
           ],
         ),

@@ -198,7 +198,20 @@ class SettingsPage extends StatelessWidget {
                 onChanged: (v) => state.updateSettings((s) => s['cores']['latency_test'] = v),
               ),
             ),
-          _LeakGuard(state: state, first: !rowsBefore && !state.hasSetting('cores.latency_test')),
+          if (state.hasSetting('cores.speed_mb'))
+            SettingRow(
+              first: !rowsBefore && !state.hasSetting('cores.latency_test'),
+              title: 'Проверка скорости',
+              description:
+                  'Сколько данных скачивает один сервер при проверке скорости на странице «Серверы»: проверка идёт до 5 секунд или до этого объёма. '
+                  'Больше — точнее, но и трафика уходит больше',
+              trailing: Seg<int>(
+                value: state.setting<num>('cores.speed_mb', 10).toInt(),
+                options: const [(5, '5 МБ'), (10, '10 МБ'), (25, '25 МБ')],
+                onChanged: (v) => state.updateSettings((s) => s['cores']['speed_mb'] = v),
+              ),
+            ),
+          _LeakGuard(state: state, first: !rowsBefore && !state.hasSetting('cores.latency_test') && !state.hasSetting('cores.speed_mb')),
           // The test of what the switch guards against, beside it.
           LeakCheck(state: state),
           // Every check at once, the leak test among them.

@@ -69,7 +69,9 @@ type Event struct {
 	// Service.StartNodeSpeed): Total servers and Bytes, the cap of each, on
 	// "started"; for each server, Reason "node" with Mbps, the bytes it
 	// downloaded (Bytes), the file's name (Source) and the core, or Error;
-	// Reason "done" or "stopped" last, with Bytes all that was downloaded.
+	// Reason "done" or "stopped" last, with Bytes all that was downloaded;
+	// Reason "testing" says which server (Subscription, Fingerprint) is
+	// being measured now.
 	Mbps  float64 `json:"mbps,omitempty"`
 	Bytes int64   `json:"bytes,omitempty"`
 	Total int     `json:"total,omitempty"`

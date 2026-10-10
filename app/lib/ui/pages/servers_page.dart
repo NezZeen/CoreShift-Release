@@ -21,6 +21,7 @@ part 'servers/nodes.dart';
 part 'servers/dialogs.dart';
 part 'servers/actions.dart';
 part 'servers/picking.dart';
+part 'servers/speed.dart';
 
 class ServersPage extends StatefulWidget {
   final AppState state;
@@ -133,7 +134,8 @@ class _ServersPageState extends State<ServersPage> {
   /// order of their names.
   List<_Section> _sections(List<(Subscription, NodeView)> rows, {required bool multi}) {
     final sort = s.serverSort;
-    List<(Subscription, NodeView)> order(List<(Subscription, NodeView)> r) => sortServers(r, sort, (sub, n) => s.latencyOf(sub.id, n.fingerprint));
+    List<(Subscription, NodeView)> order(List<(Subscription, NodeView)> r) =>
+        sortServers(r, sort, (sub, n) => s.latencyOf(sub.id, n.fingerprint), speedOf: (sub, n) => s.speedOf(sub.id, n.fingerprint));
     final favs = s.favorites;
     bool isFav((Subscription, NodeView) r) => favs.contains(AppStateServers.key(r.$1.id, r.$2.fingerprint));
     final fav = rows.where(isFav).toList();
@@ -234,7 +236,8 @@ class _ServersPageState extends State<ServersPage> {
       small: true,
       loading: s.testingLatency,
       tooltip: subFilter == null ? 'Проверить все серверы' : 'Проверить серверы этой подписки',
-      onPressed: () => s.testLatency(subFilter),
+      // Not while the speed test downloads: the two would spoil each other.
+      onPressed: s.testingSpeed ? null : () => s.testLatency(subFilter),
     );
 
     // The back gesture, like Esc, ends the picking before it leaves.
@@ -375,11 +378,26 @@ class _ServersPageState extends State<ServersPage> {
   }) {
     final current = _current();
     final sort = Seg<String>(
-      options: const [('sub', 'Как в подписке'), ('ping', 'По пингу'), ('name', 'По имени')],
+      options: [('sub', 'Как в подписке'), ('ping', 'По пингу'), if (s.speedSupported) ('speed', 'По скорости'), ('name', 'По имени')],
       value: s.serverSort,
       onChanged: (v) => s.setPref('server_sort', v),
-      tooltips: const {'ping': 'Сначала самые быстрые; без ответа — в конце'},
+      tooltips: const {
+        'ping': 'Сначала самые быстрые; без ответа — в конце',
+        'speed': 'Сначала самые быстрые по скорости скачивания; не проверенные — в конце',
+      },
     );
+    // The download speed of the servers shown: a button that becomes the
+    // way to stop the test while it runs.
+    final testing = s.testingSpeed;
+    final speed = !s.speedSupported
+        ? null
+        : Btn(
+            label: compact ? null : (testing ? 'Остановить' : 'Скорость'),
+            icon: testing ? Icons.stop_rounded : Icons.download_rounded,
+            small: !compact,
+            tooltip: testing ? 'Остановить проверку скорости' : 'Проверить скорость скачивания показанных серверов (${rows.length})',
+            onPressed: testing ? s.stopNodeSpeed : (s.testingLatency ? null : () => _startSpeedTest(context, s, rows)),
+          );
     final Widget toolbar;
     if (compact) {
       // A phone: the search with the ping as an icon, then the filters.
@@ -391,6 +409,7 @@ class _ServersPageState extends State<ServersPage> {
               Expanded(child: search),
               const SizedBox(width: 8),
               Btn(icon: ping.icon, tooltip: ping.tooltip, loading: ping.loading, onPressed: ping.onPressed),
+              if (speed != null) ...[const SizedBox(width: 8), speed],
             ],
           ),
           const SizedBox(height: 10),
@@ -421,6 +440,7 @@ class _ServersPageState extends State<ServersPage> {
                 ...filters,
                 const SizedBox(width: 10),
                 ping,
+                if (speed != null) ...[const SizedBox(width: 8), speed],
               ],
             );
           }
@@ -432,6 +452,7 @@ class _ServersPageState extends State<ServersPage> {
                   Expanded(child: search),
                   const SizedBox(width: 10),
                   ping,
+                  if (speed != null) ...[const SizedBox(width: 8), speed],
                 ],
               ),
               const SizedBox(height: 10),
@@ -458,6 +479,7 @@ class _ServersPageState extends State<ServersPage> {
               ),
           ],
         ),
+        if (testing) ...[const SizedBox(height: 10), _SpeedBar(state: s)],
         if (compact && rows.isNotEmpty && s.prefs[serverHintPref] != true) _SwipeHint(onClose: () => s.setPref(serverHintPref, true)),
         // Kept while picking, only idle: gone, it would move the rows under
         // the finger.

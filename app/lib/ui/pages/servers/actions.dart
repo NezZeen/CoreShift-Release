@@ -5,23 +5,39 @@ part of '../servers_page.dart';
 const serverHintPref = 'server_hint';
 
 /// What can be done with one server from the desktop's right click.
-enum _NodeAction { connect, favorite, hide }
+enum _NodeAction { connect, favorite, speed, hide }
 
 /// The servers in the order [sort] names: "ping" puts the fastest first,
-/// then those not tested yet and those that did not answer; "name" goes by
+/// then those not tested yet and those that did not answer; "speed" the
+/// ones that download fastest, then the untested and the failed; "name" goes by
 /// the name without its flag, numbers as numbers («Server 2» before
 /// «Server 10»); "sub" keeps the subscription's order, as ties do.
-List<(Subscription, NodeView)> sortServers(List<(Subscription, NodeView)> rows, String sort, Latency? Function(Subscription, NodeView) latencyOf) {
-  if (sort != 'ping' && sort != 'name') return rows;
+List<(Subscription, NodeView)> sortServers(
+  List<(Subscription, NodeView)> rows,
+  String sort,
+  Latency? Function(Subscription, NodeView) latencyOf, {
+  NodeSpeed? Function(Subscription, NodeView)? speedOf,
+}) {
+  if (sort != 'ping' && sort != 'name' && sort != 'speed') return rows;
   int ping((Subscription, NodeView) r) {
     final l = latencyOf(r.$1, r.$2);
     if (l == null) return 1 << 30;
     return l.ok && r.$2.cores.isNotEmpty ? l.ms : (1 << 30) + 1;
   }
 
-  final keyed = [for (final (i, r) in rows.indexed) (i, r, sort == 'ping' ? ping(r) : 0, sort == 'name' ? cleanNodeName(r.$2.name).toLowerCase() : '')];
+  // Slowest last, so a bigger speed is a smaller key; in tenths of a Mbit/s.
+  int speed((Subscription, NodeView) r) {
+    final sp = speedOf?.call(r.$1, r.$2);
+    if (sp == null) return 1 << 30;
+    return sp.ok && r.$2.cores.isNotEmpty ? -(sp.mbps * 10).round() : (1 << 30) + 1;
+  }
+
+  final keyed = [
+    for (final (i, r) in rows.indexed)
+      (i, r, sort == 'ping' ? ping(r) : (sort == 'speed' ? speed(r) : 0), sort == 'name' ? cleanNodeName(r.$2.name).toLowerCase() : ''),
+  ];
   keyed.sort((a, b) {
-    final c = sort == 'ping' ? a.$3.compareTo(b.$3) : compareNatural(a.$4, b.$4);
+    final c = sort == 'name' ? compareNatural(a.$4, b.$4) : a.$3.compareTo(b.$3);
     return c != 0 ? c : a.$1.compareTo(b.$1);
   });
   return [for (final k in keyed) k.$2];
@@ -89,6 +105,14 @@ List<PopupMenuEntry<_NodeAction>> _serverMenuItems(AppState s, Subscription sub,
       fav ? 'Убрать из избранного' : 'В избранное',
       color: fav ? warnColor : null,
     ),
+    if (s.speedSupported)
+      item(
+        _NodeAction.speed,
+        Icons.download_rounded,
+        'Проверить скорость',
+        enabled: n.cores.isNotEmpty && !s.testingSpeed && !s.testingLatency,
+        note: s.testingSpeed ? 'Уже идёт проверка скорости' : null,
+      ),
     const PopupMenuDivider(height: 9),
     item(
       _NodeAction.hide,
@@ -101,12 +125,14 @@ List<PopupMenuEntry<_NodeAction>> _serverMenuItems(AppState s, Subscription sub,
   ];
 }
 
-void _runServerAction(AppState s, Subscription sub, NodeView n, _NodeAction a) {
+void _runServerAction(AppState s, Subscription sub, NodeView n, _NodeAction a, [BuildContext? context]) {
   switch (a) {
     case _NodeAction.connect:
       if (_canConnect(s, sub, n)) s.connect(subscription: sub.id, fingerprint: n.fingerprint, name: n.name);
     case _NodeAction.favorite:
       s.toggleFavorite(sub, n);
+    case _NodeAction.speed:
+      if (context != null && context.mounted) _startSpeedTest(context, s, [(sub, n)]);
     case _NodeAction.hide:
       if (!_inUse(s, sub, n)) s.hideNode(sub, n, label: cleanNodeName(n.name));
   }

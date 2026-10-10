@@ -200,6 +200,8 @@ extension AppStateEvents on AppState {
         _notify();
       case 'speedtest':
         _onSpeedEvent(e);
+      case 'nodespeed':
+        _onNodeSpeedEvent(e);
       case 'checkup':
         _onCheckupEvent(e);
       case 'rules':

@@ -100,6 +100,7 @@ extension AppStateConnection on AppState {
     checkSubscriptions();
     // Optional, so it does not hold up the rest.
     unawaited(_loadAppUpdate().then((_) => _notify()));
+    unawaited(syncNodeSpeed());
   }
 
   List<Subscription> _subs(dynamic j) {
@@ -107,6 +108,7 @@ extension AppStateConnection on AppState {
     for (final s in subs) {
       for (final n in s.nodes) {
         if (n.latency != null) latency['${s.id}/${n.fingerprint}'] = n.latency!;
+        if (n.speed != null) nodeSpeeds['${s.id}/${n.fingerprint}'] = n.speed!;
       }
     }
     return subs;

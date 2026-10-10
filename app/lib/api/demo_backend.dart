@@ -26,6 +26,15 @@ class DemoBackend implements Backend {
   Timer? _traffic;
   Timer? _dnsDown;
   int _up = 0, _down = 0;
+
+  /// The speed test of the servers: running, asked to stop, how far it is
+  /// and what it has downloaded.
+  bool _speedRunning = false, _speedStop = false;
+  int _speedDone = 0, _speedTotal = 0, _speedBytes = 0, _speedEach = 0;
+
+  /// Whether the device is on mobile data, which the speed test's question
+  /// on a phone says; a test sets it.
+  bool mobileData = false;
   final Map<String, String> _versions = {'xray': '26.3.27', 'sing-box': '1.14.2', 'mihomo': '1.19.31'};
 
   Json _settings = {
@@ -42,6 +51,7 @@ class DemoBackend implements Backend {
       'return_after_min': 10,
       'latency_test': 'proxy', // ping on Android, set by the constructor
       'latency_version': 1,
+      'speed_mb': 10,
       'fragment': false,
       'switch_server': true,
     },
@@ -146,7 +156,11 @@ class DemoBackend implements Backend {
   ///
   /// [android] starts with the phone's way to test latency, a TCP ping; the
   /// desktop's goes through the server, as the engine's defaults do.
+  bool get android => _android;
+  bool _android = false;
+
   DemoBackend({bool empty = false, bool android = false}) {
+    _android = android;
     if (android) _settings['cores']['latency_test'] = 'ping';
     _history.addAll(_makeHistory());
     _seedJournal();
@@ -687,6 +701,80 @@ class DemoBackend implements Backend {
     ],
   };
 
+  /// The demo's download speeds in Mbit/s: the nearer, the faster.
+  static const _speeds = {
+    'Amsterdam': 94.3,
+    'Rotterdam': 88.0,
+    'Warsaw': 62.0,
+    'Frankfurt': 71.0,
+    'Nuremberg': 57.0,
+    'Falkenstein': 44.0,
+    'Riga': 38.0,
+    'Helsinki': 33.0,
+    'London': 27.0,
+    'Stockholm': 21.0,
+    'New York': 15.4,
+    'Los Angeles': 8.6,
+    'Singapore': 6.2,
+    'Almaty': 3.1,
+    'Tokyo': 12.0,
+  };
+
+  /// The speed test of the servers, one after another as the engine's is.
+  Future<void> _runNodeSpeed(List<(Json, Json)> targets, int each) async {
+    for (final (s, n) in targets) {
+      if (_speedStop) break;
+      _emit({'kind': 'nodespeed', 'reason': 'testing', 'subscription': s['id'], 'fingerprint': n['fingerprint']});
+      await Future.delayed(const Duration(milliseconds: 250));
+      if (_speedStop) break;
+      final name = n['name'] as String;
+      final core = (n['cores'] as List).isEmpty ? '' : (n['cores'] as List).first as String;
+      var mbps = 0.0;
+      for (final e in _speeds.entries) {
+        if (name.endsWith(e.key)) mbps = e.value;
+      }
+      if (mbps == 0 && !name.endsWith('Istanbul') && name.length % 3 != 0) mbps = 5.0 + (name.length * 7 % 60);
+      final bad = mbps == 0 || core.isEmpty;
+      // At the speed it measured, five seconds download, but never over the cap.
+      final bytes = bad ? 0 : min(each, (mbps * 1e6 / 8 * 5).round());
+      final at = DateTime.now().toUtc().toIso8601String();
+      final err = {
+        'code': 'raw',
+        'args': {'text': 'cloudflare: 204 No Content'},
+      };
+      final args = {'err': err};
+      n
+        ..remove('speed_mbps')
+        ..remove('speed_error')
+        ..remove('speed_error_code')
+        ..remove('speed_error_args');
+      if (bad) {
+        n['speed_error'] = engineMessage('speed.nodata', args, Lang.ru);
+        n['speed_error_code'] = 'speed.nodata';
+        n['speed_error_args'] = args;
+      } else {
+        n['speed_mbps'] = mbps;
+        n['speed_bytes'] = bytes;
+        n['speed_source'] = 'cloudflare';
+      }
+      n['speed_at'] = at;
+      _speedDone++;
+      _speedBytes += bytes;
+      _emit({
+        'kind': 'nodespeed',
+        'reason': 'node',
+        'subscription': s['id'],
+        'fingerprint': n['fingerprint'],
+        'core': core,
+        if (bad) ...{'error': n['speed_error'], 'code': 'speed.nodata', 'args': args} else ...{'mbps': mbps, 'bytes': bytes, 'source': 'cloudflare'},
+      });
+    }
+    final stopped = _speedStop;
+    _speedRunning = false;
+    _speedStop = false;
+    _emit({'kind': 'nodespeed', 'reason': stopped ? 'stopped' : 'done', 'bytes': _speedBytes, 'total': _speedTotal});
+  }
+
   /// The demo's pings: steady, so the order by ping is the same each time,
   /// and one server that never answers.
   static const _pings = {
@@ -1081,7 +1169,19 @@ class DemoBackend implements Backend {
           for (final n in (s['nodes'] as List).cast<Json>())
             {
               ..._node([n['name'], n['protocol'], n['transport'], n['security'], n['server']]),
-              for (final k in const ['latency_ms', 'latency_error', 'latency_core', 'latency_method'])
+              for (final k in const [
+                'latency_ms',
+                'latency_error',
+                'latency_core',
+                'latency_method',
+                'speed_mbps',
+                'speed_bytes',
+                'speed_source',
+                'speed_error',
+                'speed_error_code',
+                'speed_error_args',
+                'speed_at',
+              ])
                 if (old[n['fingerprint']]?[k] != null) k: old[n['fingerprint']]![k],
             },
         ];
@@ -1132,6 +1232,39 @@ class DemoBackend implements Backend {
         }
         _emit({'kind': 'latency', 'reason': 'finished'});
         return [];
+      case 'POST /speedtest/nodes':
+        if (_speedRunning) throw const ApiError(409, 'a server speed test is already running');
+        final subId = b['subscription'] as String?;
+        final only = (b['nodes'] as List?)?.map((e) => '$e').toSet();
+        final each = (b['bytes'] as num?)?.toInt() ?? ((_settings['cores']['speed_mb'] as num).toInt() << 20);
+        if (each < 1 << 20 || each > 100 << 20) throw ApiError(400, 'bytes: $each is outside ${1 << 20} to ${100 << 20}');
+        final targets = <(Json, Json)>[
+          for (final s in _subs.where((s) => subId == null || s['id'] == subId))
+            for (final n in (s['nodes'] as List).cast<Json>())
+              if (!_isHidden(s['id'], n) && (only == null || only.contains(n['fingerprint']))) (s, n),
+        ];
+        if (targets.isEmpty) throw const ApiError(400, 'no servers to test');
+        _speedRunning = true;
+        _speedStop = false;
+        _speedDone = 0;
+        _speedTotal = targets.length;
+        _speedBytes = 0;
+        _speedEach = each;
+        _emit({'kind': 'nodespeed', 'reason': 'started', 'total': targets.length, 'bytes': each});
+        unawaited(_runNodeSpeed(targets, each));
+        return {'total': targets.length, 'bytes': each, 'estimate': each * targets.length};
+      case 'GET /speedtest/nodes':
+        return {
+          'running': _speedRunning,
+          'done': _speedDone,
+          'total': _speedTotal,
+          'bytes': _speedBytes,
+          if (_speedRunning) 'bytes_per_node': _speedEach,
+          'mobile': mobileData,
+        };
+      case 'DELETE /speedtest/nodes':
+        _speedStop = true;
+        return {'running': _speedRunning, 'done': _speedDone, 'total': _speedTotal, 'bytes': _speedBytes, 'mobile': mobileData};
       case 'GET /apps':
         return [
           for (final (n, p) in const [

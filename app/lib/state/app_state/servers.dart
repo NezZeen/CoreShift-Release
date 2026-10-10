@@ -72,8 +72,8 @@ extension AppStateServers on AppState {
   }
 
   /// How the server list is ordered: "sub" (as the subscription has it),
-  /// "ping" or "name".
-  String get serverSort => const {'sub', 'ping', 'name'}.contains(prefs['server_sort']) ? prefs['server_sort'] as String : 'sub';
+  /// "ping", "speed" or "name".
+  String get serverSort => const {'sub', 'ping', 'speed', 'name'}.contains(prefs['server_sort']) ? prefs['server_sort'] as String : 'sub';
 
   bool get serverGroup => prefs['server_group'] == true;
 

@@ -33,7 +33,7 @@ class _NodeTable extends StatelessWidget {
     // The columns need about 600 points; narrower, the rows become a list.
     return LayoutBuilder(
       builder: (context, c) {
-        final narrow = isCompact(context) || c.maxWidth < 600;
+        final narrow = isCompact(context) || c.maxWidth < 680;
         return Column(
           children: [
             _row(
@@ -44,10 +44,7 @@ class _NodeTable extends StatelessWidget {
               badge: const SizedBox(),
               name: Text('Сервер', style: headStyle),
               proto: Text('Протокол', style: headStyle),
-              ping: Tooltip(
-                message: 'Зелёный — до 200 мс, жёлтый — до 500 мс',
-                child: Text('Пинг', style: headStyle),
-              ),
+              ping: _PingSpeedHeader(state: state, style: headStyle),
               action: const SizedBox(),
               tools: const SizedBox(),
             ),
@@ -158,7 +155,7 @@ class _NodeTable extends StatelessWidget {
             flex: 10,
             child: Align(alignment: Alignment.centerLeft, child: proto),
           ),
-          SizedBox(width: 84, child: ping),
+          SizedBox(width: 176, child: ping),
           // As tall as the "Подключить" button that shows under the pointer:
           // a row that grew when hovered would shift the rows below it and
           // jerk the list as the pointer moves.
@@ -290,7 +287,7 @@ class _NodeRowState extends State<_NodeRow> {
       items: _serverMenuItems(s, widget.sub, widget.node),
     );
     if (mounted) setState(() => hover = false);
-    if (v != null && mounted) _runServerAction(s, widget.sub, widget.node, v);
+    if (v != null && mounted) _runServerAction(s, widget.sub, widget.node, v, context);
   }
 
   @override
@@ -386,7 +383,7 @@ class _NodeRowState extends State<_NodeRow> {
         ),
       ),
       proto: ProtoBadge(n.protocol),
-      ping: _LatencyCell(latency: s.latencyOf(widget.sub.id, n.fingerprint), testing: s.testingLatency),
+      ping: _PingSpeedCell(state: s, sub: widget.sub, node: n, narrow: narrow),
       action: action,
       tools: star,
     );
