@@ -31,10 +31,28 @@ Future<void> showQuickPick(BuildContext context, AppState state, {required VoidC
 
 /// The favourites and the servers used last, the fastest one on top, and a
 /// way to the whole list: what most people want when they change server.
-class _QuickPick extends StatelessWidget {
+class _QuickPick extends StatefulWidget {
   final AppState state;
   final VoidCallback onAll;
   const _QuickPick({required this.state, required this.onAll});
+
+  @override
+  State<_QuickPick> createState() => _QuickPickState();
+}
+
+class _QuickPickState extends State<_QuickPick> {
+  /// A route has no primary scroll controller of its own, so the bar needs
+  /// the list's.
+  final _scroll = ScrollController();
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  AppState get state => widget.state;
+  VoidCallback get onAll => widget.onAll;
 
   @override
   Widget build(BuildContext context) {
@@ -50,62 +68,85 @@ class _QuickPick extends StatelessWidget {
         final starred = nodes.where(isFav).toList(), recent = nodes.where((r) => !isFav(r)).toList();
         void pick(Subscription sub, NodeView n) {
           Navigator.pop(context);
-          state.selectNode(sub.id, n.fingerprint, n.name);
+          _connectTo(state, sub, n);
         }
 
-        return SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(compact ? 12 : 18, compact ? 0 : 18, compact ? 12 : 18, compact ? 12 : 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
-                child: Row(
-                  children: [
-                    Expanded(child: Text('Выбор сервера', style: dialogTitle)),
-                    if (!compact)
-                      IconButton(
-                        onPressed: () => Navigator.pop(context),
-                        icon: Icon(Icons.close, size: 18, color: p.muted),
-                        tooltip: 'Закрыть',
-                      ),
-                  ],
-                ),
-              ),
-              _FastestTile(state: state, fastest: fastest, onPick: pick),
-              const SizedBox(height: 14),
-              if (starred.isNotEmpty) ...[
-                const Padding(padding: EdgeInsets.only(left: 4), child: SectionLabel('Избранное')),
-                for (final (sub, n) in starred) _QuickRow(state: state, sub: sub, node: n, onTap: () => pick(sub, n)),
-                if (recent.isNotEmpty) const SizedBox(height: 10),
-              ],
-              if (recent.isNotEmpty || starred.isEmpty) const Padding(padding: EdgeInsets.only(left: 4), child: SectionLabel('Недавние')),
-              if (nodes.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
-                  child: Text(
-                    'Здесь появятся серверы, к которым вы подключались, и те, что со звёздочкой.',
-                    style: TextStyle(color: p.muted, fontSize: 13, height: 1.4),
+        // A mouse drags the list too, and the bar at its side is always
+        // there on the desktop.
+        return ScrollConfiguration(
+          behavior: const DragScrollBehavior(),
+          child: Scrollbar(
+            controller: _scroll,
+            thumbVisibility: !compact,
+            child: SingleChildScrollView(
+              controller: _scroll,
+              padding: EdgeInsets.fromLTRB(compact ? 12 : 18, compact ? 0 : 18, compact ? 12 : 18, compact ? 12 : 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
+                    child: Row(
+                      children: [
+                        Expanded(child: Text('Выбор сервера', style: dialogTitle)),
+                        if (!compact)
+                          IconButton(
+                            onPressed: () => Navigator.pop(context),
+                            icon: Icon(Icons.close, size: 18, color: p.muted),
+                            tooltip: 'Закрыть',
+                          ),
+                      ],
+                    ),
                   ),
-                )
-              else
-                for (final (sub, n) in recent) _QuickRow(state: state, sub: sub, node: n, onTap: () => pick(sub, n)),
-              const SizedBox(height: 10),
-              Btn(
-                label: 'Все серверы · ${state.nodeCount}',
-                icon: Icons.public,
-                onPressed: () {
-                  Navigator.pop(context);
-                  onAll();
-                },
+                  _FastestTile(state: state, fastest: fastest, onPick: pick),
+                  const SizedBox(height: 14),
+                  if (starred.isNotEmpty) ...[
+                    const Padding(padding: EdgeInsets.only(left: 4), child: SectionLabel('Избранное')),
+                    for (final (sub, n) in starred) _QuickRow(state: state, sub: sub, node: n, onTap: () => pick(sub, n)),
+                    if (recent.isNotEmpty) const SizedBox(height: 10),
+                  ],
+                  if (recent.isNotEmpty || starred.isEmpty) const Padding(padding: EdgeInsets.only(left: 4), child: SectionLabel('Недавние')),
+                  if (nodes.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
+                      child: Text(
+                        'Здесь появятся серверы, к которым вы подключались, и те, что со звёздочкой.',
+                        style: TextStyle(color: p.muted, fontSize: 13, height: 1.4),
+                      ),
+                    )
+                  else
+                    for (final (sub, n) in recent) _QuickRow(state: state, sub: sub, node: n, onTap: () => pick(sub, n)),
+                  const SizedBox(height: 10),
+                  Btn(
+                    label: 'Все серверы · ${state.nodeCount}',
+                    icon: Icons.public,
+                    onPressed: () {
+                      Navigator.pop(context);
+                      onAll();
+                    },
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         );
       },
     );
   }
+}
+
+/// Picking a server in the quick pick is asking for it: connected, the
+/// connection moves to it; not connected, it connects there. While the
+/// connection is changing, or without a network, the server is only chosen
+/// and the user is told.
+void _connectTo(AppState state, Subscription sub, NodeView n) {
+  if (state.online && !state.busy) {
+    state.connect(subscription: sub.id, fingerprint: n.fingerprint, name: n.name);
+    return;
+  }
+  if (!state.status.active) state.selectNode(sub.id, n.fingerprint, n.name);
+  state.toast(state.busy ? 'Подключение ещё меняется: подождите немного и выберите сервер снова' : 'Нет сети: сервер выбран, подключитесь, когда она появится');
 }
 
 class _FastestTile extends StatelessWidget {

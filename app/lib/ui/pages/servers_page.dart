@@ -204,15 +204,17 @@ class _ServersPageState extends State<ServersPage> {
         if (!folded.contains(sec.id)) ...sec.rows,
     ]);
 
-    final search = TextField(
-      controller: _search,
-      focusNode: widget.searchFocus,
-      onChanged: (v) => setState(() => query = v.trim().toLowerCase()),
-      style: const TextStyle(fontSize: 13),
-      decoration: InputDecoration(
-        hintText: compact ? 'Поиск' : 'Поиск по названию, стране, протоколу (Ctrl+F)',
-        prefixIcon: Icon(Icons.search, size: 17, color: context.pal.dim),
-        prefixIconConstraints: const BoxConstraints(minWidth: 34),
+    final search = plainScroll(
+      TextField(
+        controller: _search,
+        focusNode: widget.searchFocus,
+        onChanged: (v) => setState(() => query = v.trim().toLowerCase()),
+        style: const TextStyle(fontSize: 13),
+        decoration: InputDecoration(
+          hintText: compact ? 'Поиск' : 'Поиск по названию, стране, протоколу (Ctrl+F)',
+          prefixIcon: Icon(Icons.search, size: 17, color: context.pal.dim),
+          prefixIconConstraints: const BoxConstraints(minWidth: 34),
+        ),
       ),
     );
     // The search finds protocols too, so there is no protocol filter; the
@@ -254,102 +256,107 @@ class _ServersPageState extends State<ServersPage> {
     required List<_Section> sections,
     required int hidden,
   }) {
-    return PageFrame(
-      children: [
-        PageHeader(
-          'Серверы',
-          subtitle: 'Двойной щелчок подключает. Зажмите и ведите, чтобы выбрать несколько.',
-          actions: [
-            if (subs.any((x) => !x.isLocal))
-              Btn(
-                label: compact ? null : 'Обновить все',
-                icon: Icons.refresh,
-                tooltip: compact ? 'Обновить подписки' : null,
-                loading: s.refreshing.isNotEmpty,
-                onPressed: s.refreshAll,
-              ),
-            Btn(label: compact ? 'Добавить' : 'Добавить подписку', icon: Icons.add, kind: BtnKind.primary, onPressed: () => showAddSubscription(context, s)),
-          ],
-        ),
-        if (subs.isEmpty)
-          _EmptySubs(onAdd: () => showAddSubscription(context, s))
-        else
-          LayoutBuilder(
-            builder: (context, c) {
-              Widget card(Subscription sub) =>
-                  _SubCard(state: s, sub: sub, selected: subFilter == sub.id, onTap: () => setState(() => subFilter = subFilter == sub.id ? null : sub.id));
-              final list = _serverList(context, compact: compact, search: search, chips: chips, ping: ping, rows: rows, sections: sections, hidden: hidden);
-              // A wide window: the subscriptions as a column beside the
-              // servers, like folders beside their files.
-              if (!compact && c.maxWidth >= 940) {
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(
-                      width: 330,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          for (final (i, sub) in subs.indexed) ...[if (i > 0) const SizedBox(height: 12), card(sub)],
-                          if (subs.length > 1) ...[
-                            const SizedBox(height: 10),
-                            Text(
-                              subFilter == null ? 'Нажмите на подписку, чтобы показать только её серверы' : 'Нажмите ещё раз, чтобы показать все',
-                              style: TextStyle(fontSize: 11.5, color: context.pal.dim),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 20),
-                    Expanded(child: list),
-                  ],
-                );
-              }
-              // A phone: the subscriptions side by side, swiped through,
-              // so the servers start high on the screen.
-              if (compact) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (subs.length == 1)
-                      card(subs.single)
-                    else
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        clipBehavior: Clip.none,
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+    // The servers are dragged by a mouse too, not only wheeled or scrolled
+    // by the bar.
+    return ScrollConfiguration(
+      behavior: const DragScrollBehavior(),
+      child: PageFrame(
+        children: [
+          PageHeader(
+            'Серверы',
+            subtitle: 'Двойной щелчок подключает. Зажмите и ведите, чтобы выбрать несколько.',
+            actions: [
+              if (subs.any((x) => !x.isLocal))
+                Btn(
+                  label: compact ? null : 'Обновить все',
+                  icon: Icons.refresh,
+                  tooltip: compact ? 'Обновить подписки' : null,
+                  loading: s.refreshing.isNotEmpty,
+                  onPressed: s.refreshAll,
+                ),
+              Btn(label: compact ? 'Добавить' : 'Добавить подписку', icon: Icons.add, kind: BtnKind.primary, onPressed: () => showAddSubscription(context, s)),
+            ],
+          ),
+          if (subs.isEmpty)
+            _EmptySubs(onAdd: () => showAddSubscription(context, s))
+          else
+            LayoutBuilder(
+              builder: (context, c) {
+                Widget card(Subscription sub) =>
+                    _SubCard(state: s, sub: sub, selected: subFilter == sub.id, onTap: () => setState(() => subFilter = subFilter == sub.id ? null : sub.id));
+                final list = _serverList(context, compact: compact, search: search, chips: chips, ping: ping, rows: rows, sections: sections, hidden: hidden);
+                // A wide window: the subscriptions as a column beside the
+                // servers, like folders beside their files.
+                if (!compact && c.maxWidth >= 940) {
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: 330,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            for (final (i, sub) in subs.indexed) ...[
-                              if (i > 0) const SizedBox(width: 10),
-                              SizedBox(width: min(300, c.maxWidth - 44), child: card(sub)),
+                            for (final (i, sub) in subs.indexed) ...[if (i > 0) const SizedBox(height: 12), card(sub)],
+                            if (subs.length > 1) ...[
+                              const SizedBox(height: 10),
+                              Text(
+                                subFilter == null ? 'Нажмите на подписку, чтобы показать только её серверы' : 'Нажмите ещё раз, чтобы показать все',
+                                style: TextStyle(fontSize: 11.5, color: context.pal.dim),
+                              ),
                             ],
                           ],
                         ),
                       ),
-                    const SizedBox(height: 14),
+                      const SizedBox(width: 20),
+                      Expanded(child: list),
+                    ],
+                  );
+                }
+                // A phone: the subscriptions side by side, swiped through,
+                // so the servers start high on the screen.
+                if (compact) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (subs.length == 1)
+                        card(subs.single)
+                      else
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          clipBehavior: Clip.none,
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              for (final (i, sub) in subs.indexed) ...[
+                                if (i > 0) const SizedBox(width: 10),
+                                SizedBox(width: min(300, c.maxWidth - 44), child: card(sub)),
+                              ],
+                            ],
+                          ),
+                        ),
+                      const SizedBox(height: 14),
+                      list,
+                    ],
+                  );
+                }
+                final cols = (c.maxWidth / 272).floor().clamp(1, 4);
+                final w = (c.maxWidth - 12 * (cols - 1)) / cols;
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [for (final sub in subs) SizedBox(width: w, child: card(sub))],
+                    ),
+                    const SizedBox(height: 18),
                     list,
                   ],
                 );
-              }
-              final cols = (c.maxWidth / 272).floor().clamp(1, 4);
-              final w = (c.maxWidth - 12 * (cols - 1)) / cols;
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: [for (final sub in subs) SizedBox(width: w, child: card(sub))],
-                  ),
-                  const SizedBox(height: 18),
-                  list,
-                ],
-              );
-            },
-          ),
-      ],
+              },
+            ),
+        ],
+      ),
     );
   }
 

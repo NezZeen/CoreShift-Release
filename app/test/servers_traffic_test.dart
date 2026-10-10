@@ -198,6 +198,11 @@ void main() {
       await tester.pump(const Duration(milliseconds: 600));
       await tester.pump(const Duration(milliseconds: 600));
       expect(find.text('Выбор сервера'), findsNothing);
+      // Picking asks for the server: the connection goes there.
+      await tester.pump(const Duration(seconds: 2));
+      await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 300)));
+      await tester.pump(const Duration(seconds: 1));
+      expect(state.status.node, frankfurt.name);
       expect(state.selection.name, frankfurt.name);
       expect(find.text('Frankfurt'), findsWidgets);
 
@@ -210,6 +215,9 @@ void main() {
       await tester.pump(const Duration(milliseconds: 600));
       expect(find.text('Добавить подписку').evaluate().isNotEmpty || find.text('Добавить').evaluate().isNotEmpty, isTrue);
       expect(find.byType(NavigationBar).evaluate().isNotEmpty == isPhone, isTrue);
+      // The demo's connection ticks on timers: ended, so none is left.
+      state.disconnect();
+      await tester.pump(const Duration(seconds: 2));
       await tester.pump(const Duration(seconds: 30));
     });
 

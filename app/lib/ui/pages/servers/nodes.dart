@@ -421,7 +421,10 @@ class _NodeRowState extends State<_NodeRow> {
           onDoubleTap: picking || unusable || compact || s.busy || !s.online || (sel && s.status.active) ? null : connect,
           onTap: picking
               ? () => pick.toggle(widget.sub, n)
-              : unusable || sel
+              : unusable
+              // Nothing to select: say why, a phone has no tooltip on hover.
+              ? () => s.toast('Ни одно установленное ядро не поддерживает этот сервер')
+              : sel
               ? null
               : compact && s.status.active && s.online && !s.busy
               ? connect

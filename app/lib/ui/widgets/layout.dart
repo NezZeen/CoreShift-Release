@@ -31,6 +31,21 @@ class Panel extends StatelessWidget {
   }
 }
 
+/// A list that a mouse or a touchpad also drags, as a finger does: Flutter's
+/// desktop leaves a drag to the touch, so with a mouse the list could only
+/// be scrolled by its wheel or by the bar at its side. Used on the lists the
+/// user picks a server from; a text field inside one gets [plainScroll].
+class DragScrollBehavior extends MaterialScrollBehavior {
+  const DragScrollBehavior();
+
+  @override
+  Set<PointerDeviceKind> get dragDevices => {...super.dragDevices, PointerDeviceKind.mouse, PointerDeviceKind.trackpad};
+}
+
+/// Puts the default scrolling back for [child]: a text field under
+/// [DragScrollBehavior] would scroll, not select, when dragged with a mouse.
+Widget plainScroll(Widget child) => ScrollConfiguration(behavior: const MaterialScrollBehavior(), child: child);
+
 /// The scrolling, width-limited area every page lives in.
 class PageFrame extends StatelessWidget {
   final List<Widget> children;
