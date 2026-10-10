@@ -236,6 +236,10 @@ class SubInfo {
   final String supportUrl;
   final String webPageUrl;
 
+  /// The provider's announcement and the link that goes with it.
+  final String announce;
+  final String announceUrl;
+
   const SubInfo({
     this.title = '',
     this.upload = 0,
@@ -245,6 +249,8 @@ class SubInfo {
     this.updateIntervalHours = 0,
     this.supportUrl = '',
     this.webPageUrl = '',
+    this.announce = '',
+    this.announceUrl = '',
   });
 
   factory SubInfo.fromJson(Json j) => SubInfo(
@@ -256,6 +262,8 @@ class SubInfo {
     updateIntervalHours: (j['update_interval_hours'] as num?)?.toInt() ?? 0,
     supportUrl: j['support_url'] ?? '',
     webPageUrl: j['web_page_url'] ?? '',
+    announce: j['announce'] ?? '',
+    announceUrl: j['announce_url'] ?? '',
   );
 
   int get used => upload + download;

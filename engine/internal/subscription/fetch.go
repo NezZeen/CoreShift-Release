@@ -32,6 +32,10 @@ type Info struct {
 	UpdateInterval time.Duration
 	SupportURL     string
 	WebPageURL     string
+	// Announce is the provider's announcement and AnnounceURL the link
+	// that goes with it (announce.go).
+	Announce    string
+	AnnounceURL string
 }
 
 type Fetched struct {
@@ -138,8 +142,10 @@ func parseInfo(h http.Header) Info {
 	if hours, err := strconv.Atoi(strings.TrimSpace(h.Get("Profile-Update-Interval"))); err == nil && hours > 0 {
 		info.UpdateInterval = time.Duration(hours) * time.Hour
 	}
-	info.SupportURL = h.Get("Support-Url")
-	info.WebPageURL = h.Get("Profile-Web-Page-Url")
+	// The app opens the links: web, Telegram and mail ones only.
+	info.SupportURL = cleanLink(h.Get("Support-Url"), "http", "https", "tg", "mailto")
+	info.WebPageURL = cleanLink(h.Get("Profile-Web-Page-Url"), "http", "https", "tg")
+	info.Announce, info.AnnounceURL = parseAnnounce(h)
 	return info
 }
 

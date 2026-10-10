@@ -123,6 +123,12 @@ class _SubCard extends StatelessWidget {
                 SupportButton(state: state, url: i.supportUrl, urgent: expired || sub.lastError.isNotEmpty),
                 const SizedBox(width: 4),
               ],
+              // The profile-web-page-url header: the subscription's page.
+              if (i.webPageUrl.isNotEmpty) ...[
+                SizedBox(width: i.supportUrl.isEmpty ? 8 : 4),
+                SiteButton(state: state, url: i.webPageUrl, iconOnly: true),
+                const SizedBox(width: 4),
+              ],
               if (refreshing) const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
               if (sub.lastError.isNotEmpty && !refreshing)
                 Tooltip(
@@ -278,8 +284,6 @@ class _SubMenu extends StatelessWidget {
           case 'rename':
             final name = await _askText(context, 'Переименовать', sub.name.isEmpty ? sub.displayName : sub.name);
             if (name != null) state.renameSubscription(sub.id, name);
-          case 'page':
-            state.openLink(sub.info.webPageUrl);
           case 'qr':
             final url = await state.subscriptionUrl(sub.id);
             if (url != null && context.mounted) await showSubscriptionQr(context, sub, url);
@@ -293,7 +297,6 @@ class _SubMenu extends StatelessWidget {
         if (!sub.isLocal) _item('refresh', Icons.refresh, 'Обновить'),
         _item('rename', Icons.edit_outlined, 'Переименовать'),
         if (!sub.isLocal) _item('qr', Icons.qr_code_2, platform.isAndroid ? 'Показать QR-код' : 'QR-код для телефона'),
-        if (sub.info.webPageUrl.isNotEmpty) _item('page', Icons.open_in_new, 'Открыть страницу подписки'),
         _item('delete', Icons.delete_outline, 'Удалить', color: errColor),
       ],
     );

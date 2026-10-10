@@ -118,6 +118,6 @@ func infoOf(i subscription.Info) Info {
 	return Info{
 		Title: i.Title, Upload: i.Upload, Download: i.Download, Total: i.Total,
 		Expire: i.Expire, UpdateIntervalHours: int(i.UpdateInterval.Hours()),
-		SupportURL: i.SupportURL, WebPageURL: i.WebPageURL,
+		SupportURL: i.SupportURL, WebPageURL: i.WebPageURL, Announce: i.Announce, AnnounceURL: i.AnnounceURL,
 	}
 }

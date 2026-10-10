@@ -12,6 +12,7 @@ class _CompactHome extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        AnnouncementCards(state: state),
         if (state.subscriptionWarnings.isNotEmpty) ...[_SubWarningBanner(state: state), const SizedBox(height: 14)],
         _Hero(state: state, size: 150),
         const SizedBox(height: 20),

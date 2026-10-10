@@ -95,6 +95,9 @@ type Info struct {
 	UpdateIntervalHours int       `json:"update_interval_hours,omitempty"`
 	SupportURL          string    `json:"support_url,omitempty"`
 	WebPageURL          string    `json:"web_page_url,omitempty"`
+	// Announce is the provider's announcement, AnnounceURL its link.
+	Announce    string `json:"announce,omitempty"`
+	AnnounceURL string `json:"announce_url,omitempty"`
 }
 
 // Selection names the node to connect. The fingerprint identifies it across

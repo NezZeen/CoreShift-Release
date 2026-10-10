@@ -6,8 +6,10 @@ import 'package:flutter/services.dart';
 
 import '../../api/models.dart';
 import '../../platform/platform.dart' as platform;
+import '../../state/announcements.dart';
 import '../../state/app_state.dart';
 import '../../state/errors.dart';
+import '../announcement.dart';
 import '../checkup.dart';
 import '../shell.dart';
 import 'servers_page.dart' show showAddSubscription;
@@ -54,6 +56,7 @@ class HomePage extends StatelessWidget {
         final wide = c.maxWidth >= 900;
         final st = state.status;
         final warning = state.subscriptionWarnings.isNotEmpty;
+        final announced = state.announcements.length;
         final left = Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -79,13 +82,14 @@ class HomePage extends StatelessWidget {
         );
         return PageFrame(
           children: [
-            SizedBox(height: max(0, (c.maxHeight - (wide ? 640 : 940) - (warning ? 70 : 0)) / 2)),
+            SizedBox(height: max(0, (c.maxHeight - (wide ? 640 : 940) - (warning ? 70 : 0) - announced * 150) / 2)),
             Center(
               child: ConstrainedBox(
                 constraints: BoxConstraints(maxWidth: wide ? 1040 : 600),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    AnnouncementCards(state: state, gap: 22),
                     if (warning) ...[_SubWarningBanner(state: state), const SizedBox(height: 22)],
                     wide
                         ? Row(

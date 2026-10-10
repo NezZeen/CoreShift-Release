@@ -102,6 +102,8 @@ type Service struct {
 	stats   *trafficStats
 	fo      failover
 	retry   afterConnect
+	// announced: the providers' announcements already journaled.
+	announced announceLog
 	// healthFails counts the active core's failed checks in a row.
 	healthFails atomic.Int32
 	// verbose keeps the journal's harmless lines (Options.Verbose).
@@ -473,6 +475,7 @@ func (s *Service) onStoreChange(c store.Change) {
 		s.SetOptions(OptionsFromSettings(s.cfg.Store.Settings()))
 	}
 	s.noteSubscription(c)
+	s.noteAnnouncement(c)
 	e := Event{Kind: "store", Reason: c.What, Subscription: c.ID}
 	if c.Err != nil {
 		e.Error = c.Err.Error()

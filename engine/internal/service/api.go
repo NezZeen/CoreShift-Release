@@ -472,6 +472,7 @@ func (a *api) parse(w http.ResponseWriter, r *http.Request) {
 			"title": f.Info.Title, "upload": f.Info.Upload, "download": f.Info.Download, "total": f.Info.Total,
 			"expire": expire, "update_interval_hours": int(f.Info.UpdateInterval.Hours()),
 			"support_url": f.Info.SupportURL, "web_page_url": f.Info.WebPageURL,
+			"announce": f.Info.Announce, "announce_url": f.Info.AnnounceURL,
 		},
 		"nodes":   nodes,
 		"skipped": f.Skipped,

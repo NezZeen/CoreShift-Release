@@ -155,6 +155,7 @@ class DemoBackend implements Backend {
         used: 142 * _gib,
         total: 500 * _gib,
         expireDays: 47,
+        announce: 'В пятницу с 02:00 до 04:00 по Москве обновляем серверы в Германии. Соединение может прерваться на пару минут: переподключитесь.',
       ),
     );
     _subs.add(
@@ -204,7 +205,17 @@ class DemoBackend implements Backend {
     'cores': _chain(n[1], n[2]),
   };
 
-  Json _makeSub(String id, String name, String url, List<List<String>> nodes, {String title = '', double used = 0, double total = 0, int expireDays = 0}) {
+  Json _makeSub(
+    String id,
+    String name,
+    String url,
+    List<List<String>> nodes, {
+    String title = '',
+    double used = 0,
+    double total = 0,
+    int expireDays = 0,
+    String announce = '',
+  }) {
     final now = DateTime.now();
     return {
       'id': id,
@@ -221,6 +232,9 @@ class DemoBackend implements Backend {
         'update_interval_hours': 12,
         // Both kinds of support chats, to show their buttons.
         if (url.isNotEmpty) 'support_url': url.contains('backup') ? 'https://vk.me/example_support' : 'https://t.me/example_support',
+        if (url.isNotEmpty && !url.contains('backup')) 'web_page_url': 'https://northlink.example/account',
+        // The provider's announcement and its link.
+        if (announce.isNotEmpty) ...{'announce': announce, 'announce_url': 'https://northlink.example/news/maintenance'},
       },
       'format': 'base64',
       'nodes': nodes.map(_node).toList(),

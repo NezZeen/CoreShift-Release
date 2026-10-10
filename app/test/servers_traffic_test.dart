@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:coreshift/api/demo_backend.dart';
 import 'package:coreshift/api/models.dart';
 import 'package:coreshift/main.dart';
+import 'package:coreshift/state/announcements.dart';
 import 'package:coreshift/state/app_state.dart';
 import 'package:coreshift/ui/countries.dart';
 
@@ -214,6 +215,8 @@ void main() {
 
     testWidgets('the home page shows the traffic${isPhone ? ' on a phone' : ''}', (tester) async {
       final state = await pumpApp(tester, size: isPhone ? phone : const Size(1400, 900));
+      // The provider's announcement has a «Подробнее» of its own.
+      state.announcements.forEach(state.hideAnnouncement);
       await settle(tester);
       expect(state.statsLoaded, isTrue);
       expect(state.stats.length, 30);

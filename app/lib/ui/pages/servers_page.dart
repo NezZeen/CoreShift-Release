@@ -9,6 +9,7 @@ import '../../platform/platform.dart' as platform;
 import '../../state/app_state.dart';
 import '../../state/errors.dart';
 import '../../state/import_link.dart';
+import '../announcement.dart';
 import '../countries.dart';
 import '../qr.dart';
 import '../support.dart';
