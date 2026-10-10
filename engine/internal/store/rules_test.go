@@ -14,14 +14,17 @@ func TestNormalizeRule(t *testing.T) {
 		{Match: " GeoSite:Category-Ads-All ", Action: "Block"}: {Match: "geosite:category-ads-all", Action: RuleBlock},
 		{Match: "geosite:google@cn", Action: "proxy"}:          {Match: "geosite:google@cn", Action: RuleProxy},
 		{Match: "geosite:geolocation-!cn", Action: "direct"}:   {Match: "geosite:geolocation-!cn", Action: RuleDirect},
-		{Match: "geoip:RU", Action: "direct"}:                  {Match: "geoip:ru", Action: RuleDirect},
-		{Match: "domain:Example.COM", Action: "proxy"}:         {Match: "example.com", Action: RuleProxy},
-		{Match: ".bank.example.", Action: "direct"}:            {Match: "bank.example", Action: RuleDirect},
-		{Match: "Госуслуги.РФ", Action: "direct"}:              {Match: "xn--c1aapkosapc.xn--p1ai", Action: RuleDirect},
-		{Match: " 10.8.0.1 ", Action: "direct"}:                {Match: "10.8.0.1", Action: RuleDirect},
-		{Match: "10.8.0.0/16", Action: "block"}:                {Match: "10.8.0.0/16", Action: RuleBlock},
-		{Match: "2001:db8::/32", Action: "proxy"}:              {Match: "2001:db8::/32", Action: RuleProxy},
-		{Match: "  ", Action: "nothing"}:                       {},
+		// Any spelling is stored as typed (lower case): the base decides what it is.
+		{Match: "GeoSite:Category:UA", Action: "direct"}: {Match: "geosite:category:ua", Action: RuleDirect},
+		{Match: "geosite:U_a", Action: "direct"}:         {Match: "geosite:u_a", Action: RuleDirect},
+		{Match: "geoip:RU", Action: "direct"}:            {Match: "geoip:ru", Action: RuleDirect},
+		{Match: "domain:Example.COM", Action: "proxy"}:   {Match: "example.com", Action: RuleProxy},
+		{Match: ".bank.example.", Action: "direct"}:      {Match: "bank.example", Action: RuleDirect},
+		{Match: "Госуслуги.РФ", Action: "direct"}:        {Match: "xn--c1aapkosapc.xn--p1ai", Action: RuleDirect},
+		{Match: " 10.8.0.1 ", Action: "direct"}:          {Match: "10.8.0.1", Action: RuleDirect},
+		{Match: "10.8.0.0/16", Action: "block"}:          {Match: "10.8.0.0/16", Action: RuleBlock},
+		{Match: "2001:db8::/32", Action: "proxy"}:        {Match: "2001:db8::/32", Action: RuleProxy},
+		{Match: "  ", Action: "nothing"}:                 {},
 	}
 	for in, want := range good {
 		got, err := NormalizeRule(in)

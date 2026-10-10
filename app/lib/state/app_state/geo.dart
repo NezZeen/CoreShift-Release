@@ -25,7 +25,12 @@ extension AppStateGeo on AppState {
   }
 
   Future<void> _geoPoll() async {
-    if (_geoBusy || _disposed) return;
+    if (_disposed) return;
+    if (_geoBusy) {
+      // Asked about while answering: what changed may not be in the answer.
+      _geoAgain = true;
+      return;
+    }
     _geoBusy = true;
     try {
       geo = GeoStatus.fromJson(await backend.call('GET', '/v1/geo/status') as Json);
@@ -41,6 +46,10 @@ extension AppStateGeo on AppState {
     }
     _geoTimer?.cancel();
     _geoTimer = null;
+    if (_geoAgain && _geoKnown && !_disposed) {
+      _geoAgain = false;
+      return _geoPoll();
+    }
     if (_geoWatchers > 0 && _geoKnown && !_disposed) {
       _geoTimer = Timer(Duration(seconds: geo.busy ? 1 : 15), _geoPoll);
     }

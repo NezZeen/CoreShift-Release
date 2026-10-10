@@ -303,6 +303,8 @@ extension AppStateActions on AppState {
       final before = settings;
       settings = await backend.call('PUT', '/v1/settings', draft) as Json;
       _syncAutostart();
+      // A source of categories chosen or a rule added starts a download: show it.
+      if (_geoWatchers > 0) _geoPoll();
       final changes = settingsChanges(before, settings);
       if (changes.isNotEmpty) _log(DateTime.now(), 'настройки', changes.join('; '), LogLevel.info);
       _notify();

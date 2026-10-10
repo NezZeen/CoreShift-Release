@@ -12,6 +12,8 @@ void main() {
     const good = {
       ' GeoSite:Category-Ads-All ': 'geosite:category-ads-all',
       'geosite:google@cn': 'geosite:google@cn',
+      'GeoSite:Category:UA': 'geosite:category:ua',
+      'geosite:U_a': 'geosite:u_a',
       'geosite:geolocation-!cn': 'geosite:geolocation-!cn',
       'geoip:RU': 'geoip:ru',
       'domain:Example.COM': 'example.com',

@@ -245,6 +245,7 @@ class AppState extends ChangeNotifier {
   bool _geoKnown = true;
   int _geoWatchers = 0;
   bool _geoBusy = false;
+  bool _geoAgain = false;
   Timer? _geoTimer;
   bool checkingUpdates = false;
   String updatingCore = '';

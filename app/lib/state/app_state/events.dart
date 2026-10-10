@@ -199,7 +199,10 @@ extension AppStateEvents on AppState {
       case 'checkup':
         _onCheckupEvent(e);
       case 'rules':
-        if (e.error.isNotEmpty) {
+        if (e.line == 'resolved') {
+          // The name of a rule taken for a category of the base by its spelling.
+          _log(e.time, 'правила', e.errorText, LogLevel.info);
+        } else if (e.error.isNotEmpty) {
           _log(e.time, 'правила', e.errorText, LogLevel.warn);
           // Only the direct sets of the Russian preset failing changes much
           // at once. A set that was not updated ("kept"), damaged on disk or
@@ -208,7 +211,16 @@ extension AppStateEvents on AppState {
           // built-in list keeps Google in the tunnel.
           const quiet = {'kept', 'damaged', 'fallback', 'pending'};
           if (live && e.line == 'skipped') {
-            toast('Правило «${e.reason}» пока не действует: база не загрузилась. Подробности в журнале.', ToastKind.err);
+            final why = switch (e.code) {
+              'rules.skipped.missing' => 'такой категории нет в базе',
+              'rules.skipped.ambiguous' => 'название подходит нескольким категориям',
+              'rules.skipped.empty' => 'в категории нет записей',
+              _ => 'база не загрузилась',
+            };
+            toast(
+              'Правило «${e.reason}» ${e.code == 'rules.skipped.failed' || e.code == 'rules.skipped.pending' || e.code.isEmpty ? 'пока ' : ''}не действует: $why. Подробности в журнале.',
+              ToastKind.err,
+            );
           } else if (live && !quiet.contains(e.line) && (e.reason == 'geosite-category-ru' || e.reason == 'geoip-ru')) {
             toast('Базы российских сайтов не загрузились — они пойдут через туннель. Подробности в журнале.', ToastKind.err);
           }
