@@ -1497,14 +1497,99 @@ void main() {
     await tester.pump(const Duration(seconds: 30));
   });
 
-  testWidgets('a forced test through the core goes back to the automatic one', (tester) async {
+  // «Проверка задержки»: through the server on the desktop, a TCP ping on the
+  // phone by default; the switch is in the settings of both.
+  for (final size in [const Size(1400, 900), const Size(390, 844)]) {
+    testWidgets('the latency test has a switch in the settings (${size.width.round()})', (tester) async {
+      final state = await pumpApp(tester, size: size);
+      await open(tester, 'Настройки');
+      await tester.pump();
+      expect(find.text('Проверка задержки'), findsOneWidget);
+      await tester.ensureVisible(find.text('Проверка задержки'));
+      final phone = size.width < 600;
+      // The explanations: beside the row on the desktop, behind the icon on a phone.
+      const server = 'Через сервер — запрос через сам сервер: видно, что он действительно пропускает трафик.';
+      const tcp = 'TCP-пинг — только проверка, что порт сервера открыт; быстрее и экономнее для батареи и трафика';
+      if (phone) {
+        expect(find.textContaining(server), findsNothing);
+        final row = find.ancestor(of: find.text('Проверка задержки'), matching: find.byType(Row)).first;
+        await tester.tap(find.descendant(of: row, matching: find.byIcon(Icons.info_outline)));
+        await tester.pump(const Duration(milliseconds: 400));
+      }
+      expect(find.textContaining(server), findsOneWidget);
+      expect(find.textContaining(tcp), findsOneWidget);
+      if (phone) {
+        await tester.tapAt(const Offset(5, 5));
+        await tester.pump(const Duration(milliseconds: 400));
+      }
+      // A phone has room for the words alone; the explanations carry the rest.
+      final viaServer = phone ? 'Через сервер' : 'Через сервер (точнее)';
+      final pingWay = phone ? 'TCP-пинг' : 'TCP-пинг (быстрее)';
+      expect(find.text(viaServer), findsOneWidget);
+      expect(find.text(pingWay), findsOneWidget);
+      // The demo is a computer: through the server.
+      expect(state.setting('cores.latency_test', ''), 'proxy');
+
+      await tester.runAsync(() async {
+        await tester.tap(find.text(pingWay));
+        await Future.delayed(const Duration(milliseconds: 300));
+      });
+      await tester.pump();
+      expect(state.setting('cores.latency_test', ''), 'ping');
+      await tester.runAsync(() async {
+        await tester.tap(find.text(viaServer));
+        await Future.delayed(const Duration(milliseconds: 300));
+      });
+      await tester.pump();
+      expect(state.setting('cores.latency_test', ''), 'proxy');
+      expect(tester.takeException(), isNull);
+      await tester.pump(const Duration(seconds: 6));
+    });
+  }
+
+  testWidgets('a test of the latency leaves the chosen way as it is', (tester) async {
     final state = await pumpApp(tester);
     await tester.runAsync(() async {
       await state.updateSettings((s) => s['cores']['latency_test'] = 'proxy');
       await state.testLatency();
+      expect(state.setting('cores.latency_test', ''), 'proxy');
+      await state.updateSettings((s) => s['cores']['latency_test'] = 'ping');
+      await state.testLatency();
     });
     expect(state.setting('cores.latency_test', ''), 'ping');
     await tester.pump(const Duration(seconds: 6));
+  });
+
+  test('the demo tests the latency the way the platform does', () async {
+    Future<(String, Set<String>, Set<String>)> run({required bool android}) async {
+      final backend = DemoBackend(android: android);
+      final way = ((await backend.call('GET', '/v1/settings')) as Map)['cores']['latency_test'] as String;
+      await backend.call('POST', '/v1/latency', {});
+      final nodes = [
+        for (final sub in (await backend.call('GET', '/v1/subscriptions')) as List)
+          for (final n in (sub as Map)['nodes'] as List) n as Map,
+      ];
+      final ok = {
+        for (final n in nodes)
+          if (n['latency_ms'] != null) n['latency_method'] as String,
+      };
+      final failed = {
+        for (final n in nodes)
+          if (n['latency_ms'] == null && n['latency_error'] != null) n['latency_method'] as String,
+      };
+      return (way, ok, failed);
+    }
+
+    // On a computer every number is a request through the server.
+    final (deskWay, deskOk, deskFailed) = await run(android: false);
+    expect(deskWay, 'proxy');
+    expect(deskOk, {'proxy'});
+    expect(deskFailed, {'proxy'});
+    // A phone pings: TCP, ICMP for the UDP protocols; what does not answer is a failure of the test through the core.
+    final (phoneWay, phoneOk, phoneFailed) = await run(android: true);
+    expect(phoneWay, 'ping');
+    expect(phoneOk, {'tcp', 'icmp'});
+    expect(phoneFailed, {'proxy'});
   });
 
   testWidgets('one switch guards against every DNS leak', (tester) async {

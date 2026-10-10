@@ -177,7 +177,23 @@ class SettingsPage extends StatelessWidget {
                   'Автовыбор от панели провайдера меняет сервер всегда',
               trailing: _switch('cores.switch_server'),
             ),
-          _LeakGuard(state: state, first: !rowsBefore),
+          if (state.hasSetting('cores.latency_test'))
+            SettingRow(
+              first: !rowsBefore,
+              title: 'Проверка задержки',
+              description:
+                  'Через сервер — запрос через сам сервер: видно, что он действительно пропускает трафик.\n'
+                  'TCP-пинг — только проверка, что порт сервера открыт; быстрее и экономнее для батареи и трафика',
+              trailing: Seg<String>(
+                value: state.setting('cores.latency_test', 'proxy'),
+                // Both words fit a phone's width only without the hints; the text explains them.
+                options: isCompact(context)
+                    ? const [('proxy', 'Через сервер'), ('ping', 'TCP-пинг')]
+                    : const [('proxy', 'Через сервер (точнее)'), ('ping', 'TCP-пинг (быстрее)')],
+                onChanged: (v) => state.updateSettings((s) => s['cores']['latency_test'] = v),
+              ),
+            ),
+          _LeakGuard(state: state, first: !rowsBefore && !state.hasSetting('cores.latency_test')),
           // The test of what the switch guards against, beside it.
           LeakCheck(state: state),
           // Every check at once, the leak test among them.

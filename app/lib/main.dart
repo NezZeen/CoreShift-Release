@@ -24,7 +24,7 @@ Future<void> main(List<String> args) async {
   await desktop.initWindow(hidden: args.contains('--tray'));
   if (!demo) await platform.initPlatform();
   final prefs = await platform.loadPrefs();
-  final Backend backend = demo ? DemoBackend(empty: demoEmpty) : platform.createBackend();
+  final Backend backend = demo ? DemoBackend(empty: demoEmpty, android: platform.isAndroid) : platform.createBackend();
   final state =
       AppState(
           backend,

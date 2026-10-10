@@ -259,14 +259,12 @@ extension AppStateActions on AppState {
   /// Tests the latency of the nodes of [subscription], or of all nodes.
   /// Results arrive as events while the test runs.
   ///
-  /// The method is the service's own choice: a TCP or ICMP ping, and for a
-  /// server the ping cannot time a request through its core. The setting
-  /// that forced every server through a core has no control any more, so a
-  /// copy left with it goes back to the automatic way.
+  /// The method is the setting «Проверка задержки» (`cores.latency_test`):
+  /// a request through the server itself, or a TCP or ICMP ping that is
+  /// quicker and cheaper. The engine picks the default by platform.
   Future<void> testLatency([String? subscription]) async {
     testingLatency = true;
     _notify();
-    if (setting('cores.latency_test', 'ping') == 'proxy') await updateSettings((s) => s['cores']['latency_test'] = 'ping');
     await _act(() => backend.call('POST', '/v1/latency', {'subscription': ?subscription}));
     testingLatency = false;
     _notify();

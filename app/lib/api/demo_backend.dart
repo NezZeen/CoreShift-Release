@@ -37,7 +37,8 @@ class DemoBackend implements Backend {
       'health_failures': 3,
       'max_latency_ms': 0,
       'return_after_min': 10,
-      'latency_test': 'ping',
+      'latency_test': 'proxy', // ping on Android, set by the constructor
+      'latency_version': 1,
       'fragment': false,
       'switch_server': true,
     },
@@ -139,7 +140,11 @@ class DemoBackend implements Backend {
 
   /// [empty] starts as a fresh install, without subscriptions and a chosen
   /// server, for the first-run wizard (`--dart-define=DEMO_EMPTY=true`).
-  DemoBackend({bool empty = false}) {
+  ///
+  /// [android] starts with the phone's way to test latency, a TCP ping; the
+  /// desktop's goes through the server, as the engine's defaults do.
+  DemoBackend({bool empty = false, bool android = false}) {
+    if (android) _settings['cores']['latency_test'] = 'ping';
     _history.addAll(_makeHistory());
     _seedJournal();
     if (empty) return;
@@ -873,13 +878,17 @@ class DemoBackend implements Backend {
             n['latency_error'] = bad ? 'context deadline exceeded' : null;
             final core = (n['cores'] as List).isEmpty ? '' : (n['cores'] as List).first;
             n['latency_core'] = core;
-            n['latency_method'] = 'icmp';
+            // Through the server, "proxy"; a ping is a TCP handshake, ICMP for UDP
+            // protocols. What does not answer is told by a test through the core.
+            final viaServer = _settings['cores']['latency_test'] == 'proxy' || bad;
+            final method = viaServer ? 'proxy' : (const ['hysteria2', 'tuic', 'wireguard'].contains(n['protocol']) ? 'icmp' : 'tcp');
+            n['latency_method'] = method;
             _emit({
               'kind': 'latency',
               'subscription': s['id'],
               'fingerprint': n['fingerprint'],
               'core': core,
-              'method': 'icmp',
+              'method': method,
               if (bad) 'error': 'context deadline exceeded' else 'latency_ms': ms,
             });
           }
