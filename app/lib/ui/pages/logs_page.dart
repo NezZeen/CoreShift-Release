@@ -82,7 +82,9 @@ class _LogsPageState extends State<LogsPage> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ListenableBuilder(listenable: widget.state.logTick, builder: (context, _) => _page(context));
+
+  Widget _page(BuildContext context) {
     final p = context.pal;
     final before = _linesFor;
     final lines = _shown();

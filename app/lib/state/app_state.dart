@@ -194,6 +194,14 @@ class AppState extends ChangeNotifier {
 
   /// Changes whenever [logs] does: the journal page filters it again only then.
   int logsRevision = 0;
+
+  /// Ticks when the journal shows something new, at most a few times a
+  /// second: the journal page listens to it. The cores' output (hundreds of
+  /// lines a second in a verbose journal) must not rebuild the page the user
+  /// is on, which does not show it.
+  final logTick = ValueNotifier<int>(0);
+  Timer? _logTimer;
+  bool _logPending = false;
   final List<int> latencies = []; // recent health checks, oldest first
   int swaps = 0;
 
@@ -515,6 +523,8 @@ class AppState extends ChangeNotifier {
     _statsTimer?.cancel();
     _subTimer?.cancel();
     _coreTimer?.cancel();
+    _logTimer?.cancel();
+    logTick.dispose();
     _traffic.dispose();
     _speedNow.dispose();
     _shown.dispose();

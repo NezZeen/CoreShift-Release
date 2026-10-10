@@ -36,7 +36,29 @@ extension AppStateJournal on AppState {
       logs.removeRange(0, gone);
     }
     logsRevision++;
-    if (!output || logsRevision % 20 == 0) _notify();
+    // The app's own lines can matter beyond the journal (a banner, the
+    // checkup): they notify at once. The cores' output only ticks the
+    // journal page, and not often.
+    if (!output) _notify();
+    _tickLogs();
+  }
+
+  /// Tells the journal page of new lines: at once if it has not just been
+  /// told, else once the pause (a fifth of a second) is over.
+  void _tickLogs() {
+    if (_disposed) return;
+    if (_logTimer != null) {
+      _logPending = true;
+      return;
+    }
+    logTick.value++;
+    _logTimer = Timer(const Duration(milliseconds: 200), () {
+      _logTimer = null;
+      if (_logPending && !_disposed) {
+        _logPending = false;
+        _tickLogs();
+      }
+    });
   }
 
   void clearLogs() {
@@ -44,5 +66,6 @@ extension AppStateJournal on AppState {
     _chatterLines = 0;
     logsRevision++;
     _notify();
+    _tickLogs();
   }
 }
