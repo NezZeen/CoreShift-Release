@@ -329,6 +329,11 @@ class _PickBar extends StatelessWidget {
                 cancel,
                 const SizedBox(width: 4),
                 Expanded(child: count),
+                // An icon: the label does not fit beside the removal.
+                if (speed != null) ...[
+                  Btn(icon: Icons.download_rounded, small: true, tooltip: speed.tooltip, onPressed: speed.onPressed),
+                  const SizedBox(width: 4),
+                ],
                 all,
               ],
             ),
@@ -337,13 +342,7 @@ class _PickBar extends StatelessWidget {
               alignment: Alignment.centerLeft,
               child: Padding(
                 padding: const EdgeInsets.only(left: 6),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (speed != null) ...[speed, const SizedBox(width: 8)],
-                    delete,
-                  ],
-                ),
+                child: delete,
               ),
             ),
           ],
