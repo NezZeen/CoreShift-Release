@@ -855,14 +855,39 @@ class AppState extends ChangeNotifier {
     for (var j = i - 1; j >= 0 && logs[j].time.isAtSameMomentAs(t); j--) {
       if (logs[j].source == source && logs[j].message == msg) return;
     }
-    logs.insert(i, LogLine(t, source, msg, level, output: output));
-    if (logs.length > logsKeep) logs.removeRange(0, logs.length - logsKeep);
+    final line = LogLine(t, source, msg, level, output: output);
+    logs.insert(i, line);
+    // The cores' plain output (a verbose journal: hundreds of lines a
+    // minute, which the page hides) goes first when the journal is full,
+    // so it cannot push the connection's own lines out.
+    if (_chatter(line)) _chatterLines++;
+    if (_chatterLines > chatterKeep) {
+      final j = logs.indexWhere(_chatter);
+      if (j >= 0) {
+        logs.removeAt(j);
+        _chatterLines--;
+      }
+    }
+    if (logs.length > logsKeep) {
+      final gone = logs.length - logsKeep;
+      _chatterLines -= logs.take(gone).where(_chatter).length;
+      logs.removeRange(0, gone);
+    }
     logsRevision++;
     if (!output || logsRevision % 20 == 0) _notify();
   }
 
   /// How many lines the journal keeps.
   static const logsKeep = 2000;
+
+  /// How many of them may be the cores' plain output ([_chatter]).
+  static const chatterKeep = 600;
+  int _chatterLines = 0;
+
+  /// The cores' and the TUN layer's output that is neither a warning nor an
+  /// error: what a verbose journal adds, and the page shows only when
+  /// searched for.
+  static bool _chatter(LogLine l) => l.output && l.level == LogLevel.info;
 
   static String _stateText(String s) => switch (s) {
     'connecting' => 'подключение…',
@@ -1077,6 +1102,7 @@ class AppState extends ChangeNotifier {
 
   void clearLogs() {
     logs.clear();
+    _chatterLines = 0;
     logsRevision++;
     _notify();
   }

@@ -146,4 +146,25 @@ void main() {
     expect(find.text('Показать'), findsOneWidget);
     await tester.pump(const Duration(seconds: 30));
   });
+
+  test('a flood of the cores\' output does not push the connection out of the journal', () {
+    final state = AppState(DemoBackend());
+    addTearDown(state.dispose);
+    final t0 = DateTime(2026, 10, 10, 4, 0);
+    state.injectEvent(Event(time: t0, kind: 'state', state: 'connected', core: 'xray'));
+    for (var i = 0; i < 5000; i++) {
+      state.injectEvent(
+        Event(
+          time: t0.add(Duration(milliseconds: 100 * (i + 1))),
+          kind: 'log',
+          source: 'xray',
+          line: 'INFO proxy: tunneling request $i',
+        ),
+      );
+    }
+    expect(state.logs.where((l) => l.message.startsWith('подключено')), hasLength(1));
+    expect(state.logs.where((l) => l.output && l.level == LogLevel.info).length, lessThanOrEqualTo(AppState.chatterKeep));
+    // The newest output is what stays.
+    expect(state.logs.last.message, 'INFO proxy: tunneling request 4999');
+  });
 }
