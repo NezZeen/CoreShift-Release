@@ -307,6 +307,17 @@ func TestAPILatency(t *testing.T) {
 	}
 }
 
+// chooseLatencyTest sets how the node list measures delay, as the settings
+// switch does.
+func chooseLatencyTest(t *testing.T, h *harness, srv *httptest.Server, mode string) {
+	t.Helper()
+	set := h.svc.Store().Settings()
+	set.Cores.LatencyTest = mode
+	if code := callJSON(t, srv, "PUT", "/v1/settings", set, nil); code != http.StatusOK {
+		t.Fatalf("settings: %d", code)
+	}
+}
+
 func TestLatencyPing(t *testing.T) {
 	h, srv := newStoreAPI(t, func(c *Config) {
 		c.lookup = func(context.Context, string, netip.AddrPort) (netip.Addr, error) {
@@ -336,6 +347,7 @@ func TestLatencyPing(t *testing.T) {
 			return 0, errors.New("connection refused")
 		}
 	})
+	chooseLatencyTest(t, h, srv, store.LatencyPing)
 	links := []string{
 		"trojan://pw@a.example.com:443?sni=a.example.com#TCP",
 		"trojan://pw@203.0.113.6:8443?sni=t.example.com#Down",
@@ -426,7 +438,8 @@ var latencyRigLinks = []string{
 // a provider may block the direct path, or fail the server's name, while
 // the proxy gets through.
 func TestLatencyPingFailuresGoThroughCore(t *testing.T) {
-	_, srv, dohAsked := latencyRig(t)
+	h, srv, dohAsked := latencyRig(t)
+	chooseLatencyTest(t, h, srv, store.LatencyPing)
 	var sub subscriptionView
 	callJSON(t, srv, "POST", "/v1/subscriptions", map[string]string{"content": strings.Join(latencyRigLinks, "\n")}, &sub)
 	var res []NodeLatency
@@ -460,7 +473,8 @@ func TestLatencyPingAndCoreFail(t *testing.T) {
 	for _, k := range []string{"XRAY", "SING_BOX", "MIHOMO"} {
 		t.Setenv("FAKECORE_"+k, "unhealthy")
 	}
-	_, srv, _ := latencyRig(t)
+	h, srv, _ := latencyRig(t)
+	chooseLatencyTest(t, h, srv, store.LatencyPing)
 	links := []string{latencyRigLinks[0], latencyRigLinks[4]}
 	var sub subscriptionView
 	callJSON(t, srv, "POST", "/v1/subscriptions", map[string]string{"content": strings.Join(links, "\n")}, &sub)

@@ -49,7 +49,8 @@ type Options struct {
 	ManualCore           core.Kind
 	Health               supervisor.Health
 	ReturnToPrimaryAfter time.Duration
-	// LatencyTest is store.LatencyPing (the default) or store.LatencyProxy.
+	// LatencyTest is store.LatencyProxy (the desktop's default) or
+	// store.LatencyPing (Android's).
 	LatencyTest string
 	// Fragment splits the TLS ClientHello to get past DPI.
 	Fragment bool

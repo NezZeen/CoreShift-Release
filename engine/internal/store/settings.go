@@ -68,6 +68,38 @@ func (l *LogSettings) upgrade() {
 	}
 }
 
+// latencyVersion is the version of CoreSettings.LatencyTest's defaults:
+// 1 made the test through the server the desktop's default.
+const latencyVersion = 1
+
+// latencyGOOS is the platform the defaults follow; tests change it.
+var latencyGOOS = runtime.GOOS
+
+// DefaultLatencyTest is how the node list measures delay unless the user
+// chose: through the server on the desktop, where a few test cores cost
+// nothing, a TCP ping on Android, where they cost battery and traffic.
+func DefaultLatencyTest() string { return defaultLatencyTest(latencyGOOS) }
+
+func defaultLatencyTest(goos string) string {
+	if goos == "android" {
+		return LatencyPing
+	}
+	return LatencyProxy
+}
+
+// upgradeLatency moves settings saved before latencyVersion on to its
+// defaults. Nobody could choose the way before the switch in the settings,
+// so a "ping" on the desktop was only the old default: it becomes "proxy".
+func (c *CoreSettings) upgradeLatency() {
+	if c.LatencyVersion >= latencyVersion {
+		return
+	}
+	if c.LatencyTest == LatencyPing || c.LatencyTest == "" {
+		c.LatencyTest = DefaultLatencyTest()
+	}
+	c.LatencyVersion = latencyVersion
+}
+
 type CoreSettings struct {
 	// Priority is the auto-swap order. A core left out is never used.
 	Priority []core.Kind `json:"priority"`
@@ -84,11 +116,17 @@ type CoreSettings struct {
 	// ReturnAfterMin is how long to stay on a backup core before trying the
 	// primary again; 0 means never.
 	ReturnAfterMin int `json:"return_after_min"`
-	// LatencyTest is how the node list measures delay: "ping" (the time of
-	// a TCP handshake with the server, ICMP for UDP protocols; quick, no
-	// core started) or "proxy" (a request through the node, which also
-	// shows whether it works).
+	// LatencyTest is how the node list measures delay: "proxy" (a request
+	// through the node, the second one timed after a warm-up: it shows
+	// that the server carries traffic) or "ping" (the time of a TCP
+	// handshake with the server, ICMP for UDP protocols; quick, no core
+	// started, but it shows only that the port is open). The default is
+	// DefaultLatencyTest: proxy on the desktop, ping on Android.
 	LatencyTest string `json:"latency_test"`
+	// LatencyVersion is latencyVersion once the defaults of that version
+	// applied; a file without it is moved on to them once (upgradeLatency),
+	// after which the user's choice stays.
+	LatencyVersion int `json:"latency_version"`
 	// Fragment splits the TLS ClientHello to the server to get past DPI
 	// (core.Options.Fragment).
 	Fragment bool `json:"fragment"`
@@ -241,7 +279,8 @@ func Defaults() Settings {
 			HealthIntervalS: 15,
 			HealthFailures:  3,
 			ReturnAfterMin:  10,
-			LatencyTest:     LatencyPing,
+			LatencyTest:     DefaultLatencyTest(),
+			LatencyVersion:  latencyVersion,
 			SwitchServer:    true,
 		},
 		DNS: DNSSettings{
@@ -300,7 +339,7 @@ func (s Settings) normalize() (Settings, error) {
 	c.LatencyTest = strings.ToLower(strings.TrimSpace(c.LatencyTest))
 	switch c.LatencyTest {
 	case "":
-		c.LatencyTest = LatencyPing
+		c.LatencyTest = DefaultLatencyTest()
 	case LatencyPing, LatencyProxy:
 	default:
 		errs = append(errs, fmt.Errorf("cores.latency_test: %q is neither %q nor %q", c.LatencyTest, LatencyPing, LatencyProxy))

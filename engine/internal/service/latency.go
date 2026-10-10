@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -17,9 +18,24 @@ import (
 	"coreshift/engine/internal/supervisor"
 )
 
-// latencyConcurrency is how many test cores run at once: enough to get
-// through a subscription quickly, few enough not to look like a flood.
-const latencyConcurrency = 6
+// How many test cores run at once: enough to get through a subscription
+// quickly, few enough not to look like a flood. Each is a process of its
+// own (some 20 to 50 MB), so a phone gets fewer than a computer.
+const (
+	latencyConcurrency       = 10
+	latencyConcurrencyMobile = 6
+)
+
+// latencyGOOS is the platform the concurrency follows; tests change it.
+var latencyGOOS = runtime.GOOS
+
+// coreConcurrency is how many test cores run at once on goos.
+func coreConcurrency(goos string) int {
+	if goos == "android" {
+		return latencyConcurrencyMobile
+	}
+	return latencyConcurrency
+}
 
 // lookupConcurrency bounds the name lookups, and the goroutines, of one
 // latency test: a subscription may list thousands of servers.
@@ -139,7 +155,7 @@ func (s *Service) TestLatency(ctx context.Context, subID string) ([]NodeLatency,
 	}
 	names := s.serverNames(ctx)
 	if s.Options().LatencyTest == store.LatencyProxy {
-		s.proxyLatency(ctx, nodes, all, nil, names, report)
+		s.proxyOnlyLatency(ctx, nodes, all, names, report)
 		return out, nil
 	}
 	// A node the light probes cannot time is measured through its core.
@@ -162,7 +178,7 @@ func (s *Service) proxyLatency(ctx context.Context, nodes []node.Node, idx []int
 		sub[j] = nodes[i]
 	}
 	addrs := s.resolveServers(ctx, sub, names)
-	s.sup.TestLatency(ctx, sub, addrs, latencyConcurrency, func(r supervisor.LatencyResult) {
+	s.sup.TestLatency(ctx, sub, addrs, coreConcurrency(latencyGOOS), func(r supervisor.LatencyResult) {
 		i := idx[r.Index]
 		res := NodeLatency{Core: string(r.Core), Method: methodProxy}
 		switch {
@@ -175,6 +191,60 @@ func (s *Service) proxyLatency(ctx context.Context, nodes []node.Node, idx []int
 		}
 		report(i, res)
 	})
+}
+
+// proxyOnlyLatency measures the nodes at indices idx through their cores
+// alone: the delay shown is the core test's, and a node it fails is a
+// failure, whatever a TCP handshake with its port would say. A server that
+// failed is then pinged, only to make its error say more: a port that
+// answers while no traffic passes is a different trouble from a server
+// that is not there at all. That ping is never a result.
+func (s *Service) proxyOnlyLatency(ctx context.Context, nodes []node.Node, idx []int, names *serverNames, report func(int, NodeLatency)) {
+	var mu sync.Mutex
+	failed := map[int]NodeLatency{}
+	s.proxyLatency(ctx, nodes, idx, nil, names, func(i int, r NodeLatency) {
+		if r.Error != "" {
+			mu.Lock()
+			failed[i] = r
+			mu.Unlock()
+		}
+		report(i, r)
+	})
+	if ctx.Err() != nil || len(failed) == 0 {
+		return
+	}
+	bad := make([]int, 0, len(failed))
+	for i := range failed {
+		bad = append(bad, i)
+	}
+	slices.Sort(bad)
+	sub := make([]node.Node, len(bad))
+	for j, i := range bad {
+		sub[j] = nodes[i]
+	}
+	answered := map[int]NodeLatency{}
+	_, errs := s.pingLatency(ctx, sub, names, func(j int, p NodeLatency) {
+		if p.Error == "" && p.LatencyMS > 0 {
+			mu.Lock()
+			answered[j] = p
+			mu.Unlock()
+		}
+	})
+	if ctx.Err() != nil {
+		return
+	}
+	for j, i := range bad {
+		r := failed[i]
+		switch p, ok := answered[j]; {
+		case ok:
+			r.Error = fmt.Sprintf("proxy: %s; %s ping answers in %d ms: the port is open, but the request through the server failed", r.Error, p.Method, p.LatencyMS)
+		case errs[j] != nil:
+			r.Error = fmt.Sprintf("ping: %v; proxy: %s", errs[j], r.Error)
+		default:
+			continue
+		}
+		report(i, r)
+	}
 }
 
 const (
