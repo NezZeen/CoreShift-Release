@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -97,55 +98,124 @@ func (s *Supervisor) testNode(ctx context.Context, cfg Config, n *node.Node, ser
 // testCore measures n through one core. A failure carries the core's last
 // log line, which usually says why.
 func (s *Supervisor) testCore(ctx context.Context, cfg Config, k core.Kind, n *node.Node, serverAddr string) (time.Duration, error) {
+	tc, err := s.startTestCore(ctx, cfg, k, n, serverAddr)
+	if err != nil {
+		return 0, err
+	}
+	proxy := tc.auth.ProxyURL(tc.listen)
+	lat, err := delayThrough(ctx, proxy, cfg.Health.URL, latencyTimeout)
+	// The health URL may be out of reach where others are not.
+	if err != nil && ctx.Err() == nil {
+		lat, err = checkHealth(ctx, proxy, Health{URL: cfg.Health.URL, Timeout: latencyTimeout})
+	}
+	tc.stop()
+	if err != nil {
+		return 0, tc.explain(err)
+	}
+	return max(lat, time.Microsecond), nil // the clock may not tick on loopback
+}
+
+// testCoreProc is a core started for a test, on a free loopback port.
+type testCoreProc struct {
+	p      *proc.Process
+	dir    string
+	listen netip.AddrPort
+	auth   core.SOCKSAuth
+	last   *lastLine
+}
+
+// startTestCore starts k for n on a free loopback port and waits until its
+// SOCKS port answers. The caller stops it with stop; a core that fails to
+// start is stopped here, and the error carries its last log line.
+func (s *Supervisor) startTestCore(ctx context.Context, cfg Config, k core.Kind, n *node.Node, serverAddr string) (*testCoreProc, error) {
 	a, _ := core.ByKind(k)
 	listen, err := freeLoopbackPort()
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	base := filepath.Join(cfg.WorkDir, "latency")
 	if err := os.MkdirAll(base, 0o700); err != nil {
-		return 0, err
+		return nil, err
 	}
 	dir, err := os.MkdirTemp(base, string(k)+"-")
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	defer os.RemoveAll(dir)
 	auth := core.NewSOCKSAuth()
 	conf, err := a.Render(n, core.Options{Listen: listen, Auth: auth, LogLevel: cfg.LogLevel, ServerAddr: serverAddr, Fragment: cfg.Fragment})
 	if err != nil {
-		return 0, err
+		os.RemoveAll(dir)
+		return nil, err
 	}
 	path := filepath.Join(dir, a.ConfigName())
 	if err := os.WriteFile(path, conf, 0o600); err != nil {
-		return 0, err
+		os.RemoveAll(dir)
+		return nil, err
 	}
-	var last lastLine
-	p, err := s.group.Start(proc.Spec{Name: string(k), Path: cfg.Binaries[k], Args: a.RunArgs(path, dir), Dir: dir, OnLine: last.set})
+	tc := &testCoreProc{dir: dir, listen: listen, auth: auth, last: &lastLine{}}
+	tc.p, err = s.group.Start(proc.Spec{Name: string(k), Path: cfg.Binaries[k], Args: a.RunArgs(path, dir), Dir: dir, OnLine: tc.last.set})
 	if err != nil {
-		return 0, err
+		os.RemoveAll(dir)
+		return nil, err
 	}
-	err = p.WaitFor(ctx, cfg.StartTimeout, "socks port", func() bool { return proc.PortOpen(listen) })
-	if err == nil && !coreListens(p, listen) {
+	err = tc.p.WaitFor(ctx, cfg.StartTimeout, "socks port", func() bool { return proc.PortOpen(listen) })
+	if err == nil && !coreListens(tc.p, listen) {
 		err = errPortTaken(listen)
 	}
-	var lat time.Duration
-	if err == nil {
-		proxy := auth.ProxyURL(listen)
-		lat, err = delayThrough(ctx, proxy, cfg.Health.URL, latencyTimeout)
-		// The health URL may be out of reach where others are not.
-		if err != nil && ctx.Err() == nil {
-			lat, err = checkHealth(ctx, proxy, Health{URL: cfg.Health.URL, Timeout: latencyTimeout})
-		}
-	}
-	p.Stop()
 	if err != nil {
-		if l := last.get(); l != "" {
-			err = fmt.Errorf("%w; core log: %s", err, l)
-		}
-		return 0, err
+		tc.stop()
+		return nil, tc.explain(err)
 	}
-	return max(lat, time.Microsecond), nil // the clock may not tick on loopback
+	return tc, nil
+}
+
+// stop ends the core and removes its files.
+func (tc *testCoreProc) stop() {
+	tc.p.Stop()
+	os.RemoveAll(tc.dir)
+}
+
+// explain adds the core's last log line to err, if it logged one.
+func (tc *testCoreProc) explain(err error) error {
+	if l := tc.last.get(); l != "" {
+		return fmt.Errorf("%w; core log: %s", err, l)
+	}
+	return err
+}
+
+// WithNodeProxy starts a test core for n, the first of its chain that
+// starts, and calls fn with the core's SOCKS proxy (credentials included:
+// never print it). The core stops when fn returns. A core that fails to
+// start gives way to the next of the chain, as in a latency test; an error
+// of fn is the result, for a request through the proxy that fails is the
+// server's trouble, not the core's. serverAddr is as in TestLatency. It
+// returns the core that ran fn.
+func (s *Supervisor) WithNodeProxy(ctx context.Context, n *node.Node, serverAddr string, fn func(ctx context.Context, proxy *url.URL) error) (core.Kind, error) {
+	s.mu.Lock()
+	cfg := s.cfg
+	s.mu.Unlock()
+	chain, err := cfg.chain(n)
+	if err != nil {
+		return "", err
+	}
+	var errs []error
+	for _, k := range chain {
+		tc, err := s.startTestCore(ctx, cfg, k, n, serverAddr)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", k, err))
+			if ctx.Err() != nil {
+				break
+			}
+			continue
+		}
+		err = fn(ctx, tc.auth.ProxyURL(tc.listen))
+		tc.stop()
+		if err != nil {
+			err = tc.explain(err)
+		}
+		return k, err
+	}
+	return chain[0], errors.Join(errs...)
 }
 
 // lastLine keeps the last line a test core logged. Cores run at warning

@@ -39,7 +39,8 @@ type Event struct {
 	// empty for the user's action; "checkup" while Service.Checkup runs
 	// (Reason "started", Line the steps' ids; "step" for each step as it
 	// finishes, with Step, Status, Line its detail and LatencyMS; "done",
-	// Status and Line the verdict's).
+	// Status and Line the verdict's); "nodespeed" while the servers' speed
+	// is tested one after another.
 	Kind      string `json:"kind"`
 	State     State  `json:"state,omitempty"`
 	Core      string `json:"core,omitempty"`
@@ -64,6 +65,14 @@ type Event struct {
 	Down     int64 `json:"down,omitempty"`
 	UpRate   int64 `json:"up_rate,omitempty"`
 	DownRate int64 `json:"down_rate,omitempty"`
+	// "nodespeed" events, the speed test of the servers in the list (see
+	// Service.StartNodeSpeed): Total servers and Bytes, the cap of each, on
+	// "started"; for each server, Reason "node" with Mbps, the bytes it
+	// downloaded (Bytes), the file's name (Source) and the core, or Error;
+	// Reason "done" or "stopped" last, with Bytes all that was downloaded.
+	Mbps  float64 `json:"mbps,omitempty"`
+	Bytes int64   `json:"bytes,omitempty"`
+	Total int     `json:"total,omitempty"`
 	// Step and Status of a "checkup" event: which step finished and how
 	// (CheckOK, CheckWarn, CheckFail, CheckSkipped).
 	Step   string `json:"step,omitempty"`

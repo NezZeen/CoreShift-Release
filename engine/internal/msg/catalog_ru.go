@@ -271,4 +271,7 @@ var ru = map[string]string{
 	"unit.gb":                "{n} ГБ",
 	"unit.mb":                "{n} МБ",
 	"unit.kb":                "{n} КБ",
+
+	// The speed test of the servers in the list (nodespeed.go).
+	"speed.nodata": "через сервер ничего не скачалось: {err}",
 }

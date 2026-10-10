@@ -8,6 +8,7 @@ package msg
 // so that a notification and the app's banner are one.
 var en = map[string]string{
 	"sub.name.local":         "My servers",
+	"speed.nodata":           "nothing was downloaded through the server: {err}",
 	"sub.name.default":       "Subscription",
 	"sub.expired.title":      "Subscription “{name}” has ended",
 	"sub.expired.body":       "Renew it with your provider: the servers do not work without it.",

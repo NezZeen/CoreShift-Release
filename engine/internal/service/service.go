@@ -106,6 +106,8 @@ type Service struct {
 	logs    *logGrouper
 	rules   *ruleSets
 	latency latencyState
+	// nodeSpeed is the speed test of the servers in the list (nodespeed.go).
+	nodeSpeed nodeSpeedState
 	cores   coreState
 	upd     appUpdater
 	apps    appWatch

@@ -72,6 +72,7 @@ func (s *Service) connectOp(ctx context.Context, n node.Node) error {
 		return ErrDisconnected // the user disconnected before it began
 	}
 	s.stopLatencyTest()
+	s.stopNodeSpeed()
 	s.stopLocked()
 
 	s.mu.Lock()

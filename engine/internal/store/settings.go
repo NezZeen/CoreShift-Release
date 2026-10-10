@@ -68,6 +68,12 @@ func (l *LogSettings) upgrade() {
 	}
 }
 
+// SpeedVolumes are the choices of CoreSettings.SpeedMB; DefaultSpeedMB is
+// the one taken unless the user chose.
+var SpeedVolumes = []int{5, 10, 25}
+
+const DefaultSpeedMB = 10
+
 // latencyVersion is the version of CoreSettings.LatencyTest's defaults:
 // 1 made the test through the server the desktop's default.
 const latencyVersion = 1
@@ -127,6 +133,11 @@ type CoreSettings struct {
 	// applied; a file without it is moved on to them once (upgradeLatency),
 	// after which the user's choice stays.
 	LatencyVersion int `json:"latency_version"`
+	// SpeedMB is how much one server may download in the speed test of the
+	// node list, in megabytes: one of SpeedVolumes, DefaultSpeedMB unless
+	// the user chose. Zero in a file saved before the setting means the
+	// default.
+	SpeedMB int `json:"speed_mb"`
 	// Fragment splits the TLS ClientHello to the server to get past DPI
 	// (core.Options.Fragment).
 	Fragment bool `json:"fragment"`
@@ -281,6 +292,7 @@ func Defaults() Settings {
 			ReturnAfterMin:  10,
 			LatencyTest:     DefaultLatencyTest(),
 			LatencyVersion:  latencyVersion,
+			SpeedMB:         DefaultSpeedMB,
 			SwitchServer:    true,
 		},
 		DNS: DNSSettings{
@@ -343,6 +355,11 @@ func (s Settings) normalize() (Settings, error) {
 	case LatencyPing, LatencyProxy:
 	default:
 		errs = append(errs, fmt.Errorf("cores.latency_test: %q is neither %q nor %q", c.LatencyTest, LatencyPing, LatencyProxy))
+	}
+	if c.SpeedMB == 0 {
+		c.SpeedMB = DefaultSpeedMB
+	} else if !slices.Contains(SpeedVolumes, c.SpeedMB) {
+		errs = append(errs, fmt.Errorf("cores.speed_mb: %d is not one of %v", c.SpeedMB, SpeedVolumes))
 	}
 	c.HealthURL = strings.TrimSpace(c.HealthURL)
 	if u, err := url.Parse(c.HealthURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {

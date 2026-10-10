@@ -34,6 +34,9 @@ import (
 //	GET    /v1/selection
 //	PUT    /v1/selection                       {"subscription": id, "fingerprint": …, "name": …}
 //	POST   /v1/latency                         {"subscription": id} or {} for all; results also arrive as events
+//	POST   /v1/speedtest/nodes                 {"subscription"?, "nodes"?: [fingerprints], "bytes"?}: download speed of the servers, one after another; 202 with {total, bytes, estimate} at once, progress as "nodespeed" events
+//	GET    /v1/speedtest/nodes                 how that test stands (NodeSpeedStatus), and whether the device is on mobile data
+//	DELETE /v1/speedtest/nodes                 stop it, keeping the results so far
 //	GET    /v1/apps                            running programs, for routing apps around the tunnel
 //	POST   /v1/cores/return                    move back to the primary core now
 //	GET    /v1/cores/updates                   the latest release of each installed core
@@ -64,6 +67,9 @@ func (a *api) routeStore(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/selection", a.withStore(a.getSelection))
 	mux.HandleFunc("PUT /v1/selection", a.withStore(a.putSelection))
 	mux.HandleFunc("POST /v1/latency", a.withStore(a.testLatency))
+	mux.HandleFunc("POST /v1/speedtest/nodes", a.withStore(a.startNodeSpeed))
+	mux.HandleFunc("GET /v1/speedtest/nodes", a.nodeSpeedStatus)
+	mux.HandleFunc("DELETE /v1/speedtest/nodes", a.stopNodeSpeed)
 }
 
 func (a *api) withStore(h func(http.ResponseWriter, *http.Request, *store.Store)) http.HandlerFunc {
@@ -246,6 +252,15 @@ type nodeView struct {
 	LatencyError  string `json:"latency_error,omitempty"`
 	LatencyCore   string `json:"latency_core,omitempty"`
 	LatencyMethod string `json:"latency_method,omitempty"`
+	// The last speed test of the server (nodespeed.go): its download speed
+	// in Mbit/s, or the error, and when; kept across restarts.
+	SpeedMbps      float64        `json:"speed_mbps,omitempty"`
+	SpeedBytes     int64          `json:"speed_bytes,omitempty"`
+	SpeedSource    string         `json:"speed_source,omitempty"`
+	SpeedError     string         `json:"speed_error,omitempty"`
+	SpeedErrorCode string         `json:"speed_error_code,omitempty"`
+	SpeedErrorArgs map[string]any `json:"speed_error_args,omitempty"`
+	SpeedAt        time.Time      `json:"speed_at,omitzero"`
 	// Hidden: the user removed the server from the list (Subscription.Hidden);
 	// it is listed so that it can be brought back.
 	Hidden bool `json:"hidden,omitempty"`
@@ -264,6 +279,10 @@ func (a *api) nodeView(subID string, n *node.Node, fp string) nodeView {
 	}
 	if l, ok := a.svc.Latency(subID, v.Fingerprint); ok {
 		v.LatencyMS, v.LatencyError, v.LatencyCore, v.LatencyMethod = l.LatencyMS, l.Error, l.Core, l.Method
+	}
+	if sp, ok := a.svc.NodeSpeed(subID, v.Fingerprint); ok {
+		v.SpeedMbps, v.SpeedBytes, v.SpeedSource, v.SpeedAt = sp.Mbps, sp.Bytes, sp.Source, sp.TestedAt
+		v.SpeedError, v.SpeedErrorCode, v.SpeedErrorArgs = sp.Error, sp.ErrorCode, sp.ErrorArgs
 	}
 	return v
 }
@@ -489,6 +508,31 @@ func (a *api) testLatency(w http.ResponseWriter, r *http.Request, st *store.Stor
 	default:
 		writeJSON(w, http.StatusOK, res)
 	}
+}
+
+func (a *api) startNodeSpeed(w http.ResponseWriter, r *http.Request, st *store.Store) {
+	var req NodeSpeedRequest
+	if !decode(w, r, &req) {
+		return
+	}
+	res, err := a.svc.StartNodeSpeed(req)
+	switch {
+	case errors.Is(err, ErrNodeSpeedRunning), errors.Is(err, ErrTestRunning):
+		writeError(w, http.StatusConflict, err)
+	case err != nil:
+		writeError(w, http.StatusBadRequest, err)
+	default:
+		writeJSON(w, http.StatusAccepted, res)
+	}
+}
+
+func (a *api) nodeSpeedStatus(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, a.svc.NodeSpeedStatus())
+}
+
+func (a *api) stopNodeSpeed(w http.ResponseWriter, r *http.Request) {
+	a.svc.StopNodeSpeed()
+	writeJSON(w, http.StatusOK, a.svc.NodeSpeedStatus())
 }
 
 // decode reads a JSON body; an empty body decodes as {}.

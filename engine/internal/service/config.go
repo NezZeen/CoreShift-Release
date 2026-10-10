@@ -199,7 +199,8 @@ type Config struct {
 	trafficEvery       time.Duration
 	trafficIdleEvery   time.Duration
 	trafficHiddenEvery time.Duration
-	speedURL           string // instead of speedServer
+	speedURL           string        // instead of speedServer
+	speedSources       []speedSource // instead of nodeSpeedSources
 	ookla              func(proxy *url.URL) ooklaTest
 	// leakBase and leakDomain stand in for bash.ws; leakHome for looking
 	// up the address outside the VPN; leakGeo for the second geolocation
