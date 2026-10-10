@@ -35,7 +35,10 @@ type Event struct {
 	// (direct.go, Status.DirectBlocked); "action" for why a connection is
 	// about to change, when not by the app's own buttons (Service.
 	// LogAction): Line says it, Source is the journal's source for it,
-	// empty for the user's action.
+	// empty for the user's action; "checkup" while Service.Checkup runs
+	// (Reason "started", Line the steps' ids; "step" for each step as it
+	// finishes, with Step, Status, Line its detail and LatencyMS; "done",
+	// Status and Line the verdict's).
 	Kind      string `json:"kind"`
 	State     State  `json:"state,omitempty"`
 	Core      string `json:"core,omitempty"`
@@ -60,6 +63,10 @@ type Event struct {
 	Down     int64 `json:"down,omitempty"`
 	UpRate   int64 `json:"up_rate,omitempty"`
 	DownRate int64 `json:"down_rate,omitempty"`
+	// Step and Status of a "checkup" event: which step finished and how
+	// (CheckOK, CheckWarn, CheckFail, CheckSkipped).
+	Step   string `json:"step,omitempty"`
+	Status string `json:"status,omitempty"`
 }
 
 func fromSupervisor(e supervisor.Event) Event {

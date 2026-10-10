@@ -113,6 +113,8 @@ type Service struct {
 	bg      atomic.Bool
 	awake   chan struct{}
 	speedMu sync.Mutex // one speed test at a time
+	// checkupMu: one checkup at a time (checkup.go).
+	checkupMu sync.Mutex
 	// socks are the credentials of the cores' SOCKS inbound, new each
 	// start; only the TUN layer and the service's own clients know them.
 	socks core.SOCKSAuth

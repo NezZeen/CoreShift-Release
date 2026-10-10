@@ -310,6 +310,7 @@ class _UnresponsiveBanner extends StatelessWidget {
             onPressed: state.busy ? null : () => showQuickPick(context, state, onAll: () => Nav.to(context, PageId.servers)),
           ),
         Btn(label: 'Переподключить', small: true, onPressed: state.busy ? null : state.reconnect),
+        Btn(label: 'Проверить всё', small: true, icon: Icons.fact_check_outlined, onPressed: () => showCheckup(context, state)),
       ],
     );
   }

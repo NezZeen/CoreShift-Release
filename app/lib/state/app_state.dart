@@ -29,6 +29,7 @@ part 'app_state/imports.dart';
 part 'app_state/sub_alerts.dart';
 part 'app_state/direct_hint.dart';
 part 'app_state/session_log.dart';
+part 'app_state/checkup.dart';
 
 /// Everything the UI shows, kept in sync with the daemon through its event
 /// stream. Widgets listen to it and call its actions.
@@ -225,6 +226,9 @@ class AppState extends ChangeNotifier {
 
   /// The service is older than the speed test.
   bool speedUnsupported = false;
+
+  /// «Проверить всё»: the last checkup, or the one running (checkup.dart).
+  CheckupState checkup = const CheckupState();
 
   /// A subscription to add that came from outside the add dialog, waiting
   /// for the user to agree (imports.dart).
@@ -759,6 +763,8 @@ class AppState extends ChangeNotifier {
         _notify();
       case 'speedtest':
         _onSpeedEvent(e);
+      case 'checkup':
+        _onCheckupEvent(e);
       case 'rules':
         if (e.error.isNotEmpty) {
           _log(e.time, 'правила', e.error, LogLevel.warn);

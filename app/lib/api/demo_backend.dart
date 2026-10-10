@@ -407,6 +407,84 @@ class DemoBackend implements Backend {
     return res;
   }
 
+  /// «Проверить всё» as the service runs it: the steps finish one by one,
+  /// each told as an event, then the verdict. Everything works here: the
+  /// demo's network is fine, and its server answers.
+  Future<Json> _checkup(bool speed) async {
+    final connected = _status['state'] == 'connected';
+    final server = connected ? '${_status['node']}' : '${_selectionJson()['node']?['name'] ?? ''}';
+    const titles = {
+      'network': 'Сеть устройства',
+      'internet': 'Интернет напрямую',
+      'dns': 'DNS сети',
+      'server': 'Сервер',
+      'tunnel': 'Связь через VPN',
+      'tunnel-dns': 'DNS через VPN',
+      'leak': 'Утечка DNS',
+      'speed': 'Скорость',
+      'direct': 'Прямые соединения',
+    };
+    const notConnected = 'VPN не подключён';
+    final plan = <(String, String, String, int)>[
+      ('network', 'ok', 'подключено: Wi-Fi (wlan0)', 0),
+      ('dns', 'ok', 'адреса сайтов находятся (18 мс)', 18),
+      ('internet', 'ok', 'отвечают Cloudflare, Google, Яндекс (21 мс)', 21),
+      ('server', server.isEmpty ? 'skipped' : 'ok', server.isEmpty ? 'сервер не выбран' : '«$server»: адрес найден, порт отвечает (46 мс)', 46),
+      connected ? ('tunnel', 'ok', 'работает, задержка 168 мс', 168) : ('tunnel', 'skipped', notConnected, 0),
+      connected ? ('tunnel-dns', 'ok', 'отвечает сам туннель (Fake-IP), имена сайтов ищет VPN-сервер', 2) : ('tunnel-dns', 'skipped', notConnected, 0),
+      if (speed) ('speed', 'ok', connected ? 'загрузка ≈ 64.2 Мбит/с' : 'загрузка ≈ 92.0 Мбит/с', 0),
+      ('direct', 'ok', 'проходят', 0),
+      connected ? ('leak', 'ok', 'утечки нет: DNS-запросы провайдер не видит', 0) : ('leak', 'skipped', notConnected, 0),
+    ];
+    _emit({'kind': 'checkup', 'reason': 'started', 'line': titles.keys.where((k) => speed || k != 'speed').join(',')});
+    final done = <String, Json>{};
+    for (final (id, status, detail, ms) in plan) {
+      await Future.delayed(Duration(milliseconds: 150 + _rand.nextInt(150)));
+      done[id] = {
+        'id': id,
+        'title': titles[id],
+        'status': status,
+        'detail': detail,
+        if (ms > 0) 'latency_ms': ms,
+        if (id == 'speed') 'download_bps': connected ? 8025000 : 11500000,
+      };
+      _emit({'kind': 'checkup', 'reason': 'step', 'step': id, 'status': status, 'line': detail, if (ms > 0) 'latency_ms': ms});
+    }
+    final verdict = connected
+        ? {
+            'cause': 'ok',
+            'status': 'ok',
+            'title': 'Всё работает',
+            'advice': 'Сеть, сервер и VPN в порядке. Если какой-то сайт не открывается, дело, скорее всего, в нём самом.',
+          }
+        : server.isEmpty
+        ? {
+            'cause': 'no-server',
+            'status': 'warn',
+            'title': 'Сервер не выбран',
+            'advice': 'Выберите сервер, чтобы подключиться.',
+            'actions': ['servers'],
+          }
+        : {
+            'cause': 'ready',
+            'status': 'ok',
+            'title': 'Сеть в порядке, VPN не подключён',
+            'advice': 'Интернет и сервер отвечают. Нажмите «Подключить».',
+            'actions': ['connect'],
+          };
+    _emit({'kind': 'checkup', 'reason': 'done', 'status': verdict['status'], 'line': verdict['title']});
+    return {
+      'state': _status['state'],
+      if (server.isNotEmpty) 'server': server,
+      'steps': [
+        for (final id in titles.keys)
+          if (done[id] != null) done[id],
+      ],
+      'verdict': verdict,
+      'duration_ms': 2400,
+    };
+  }
+
   Json _subBy(String id) => _subs.firstWhere((s) => s['id'] == id, orElse: () => throw const ApiError(404, 'no such subscription'));
 
   /// The servers removed from the list, by subscription: kept apart from
@@ -498,6 +576,8 @@ class DemoBackend implements Backend {
       case 'POST /leaktest':
         if (_status['state'] != 'connected') throw const ApiError(409, 'not connected');
         return leakSample();
+      case 'POST /checkup':
+        return _checkup(b['speed'] == true);
       case 'POST /reconnect':
         if (_lastNode == null) throw const ApiError(502, 'nothing to reconnect');
         await _connect(_lastNode!);

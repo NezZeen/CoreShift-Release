@@ -222,6 +222,13 @@ func directRoutes(o Options) []string {
 
 // directHint is the journal's line: what was seen, and what to change.
 func directHint(n int, routes []string) string {
+	return fmt.Sprintf("Прямые соединения не проходят (%d за минуту), а через VPN всё работает: похоже, сеть пропускает только белый список или российские сайты отсюда недоступны.%s", n, directAdvice(routes))
+}
+
+// directAdvice is what to change of the settings that send traffic
+// direct, routes as directRoutes names them: " Включите …." with a
+// leading space, or "" when nothing does.
+func directAdvice(routes []string) string {
 	var do []string
 	has := func(r string) bool { return slices.Contains(routes, r) }
 	if has(routeSelected) {
@@ -243,7 +250,7 @@ func directHint(n int, routes []string) string {
 	if advice != "" {
 		advice = " " + upperFirst(advice) + "."
 	}
-	return fmt.Sprintf("Прямые соединения не проходят (%d за минуту), а через VPN всё работает: похоже, сеть пропускает только белый список или российские сайты отсюда недоступны.%s", n, advice)
+	return advice
 }
 
 // upperFirst capitalises the first letter, whatever its alphabet.

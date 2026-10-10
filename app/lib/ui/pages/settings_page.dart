@@ -4,6 +4,7 @@ import '../../platform/desktop.dart' as desktop;
 import '../../platform/platform.dart' as platform;
 import '../../state/app_state.dart';
 import '../../state/errors.dart';
+import '../checkup.dart';
 import '../disclaimer.dart';
 import '../shell.dart';
 import '../theme.dart';
@@ -153,6 +154,8 @@ class SettingsPage extends StatelessWidget {
           _LeakGuard(state: state, first: !rowsBefore),
           // The test of what the switch guards against, beside it.
           LeakCheck(state: state),
+          // Every check at once, the leak test among them.
+          CheckupSettingRow(state: state),
         ],
       ),
     );

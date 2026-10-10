@@ -8,6 +8,7 @@ import '../../api/models.dart';
 import '../../platform/platform.dart' as platform;
 import '../../state/app_state.dart';
 import '../../state/errors.dart';
+import '../checkup.dart';
 import '../shell.dart';
 import 'servers_page.dart' show showAddSubscription;
 import '../countries.dart';

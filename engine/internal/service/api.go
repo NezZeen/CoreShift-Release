@@ -45,6 +45,9 @@ import (
 //	                             arrives as "speedtest" events
 //	POST /v1/leaktest            the DNS leak test, through the connection
 //	                             (LeakResult)
+//	POST /v1/checkup             {"speed": true}: every check at once, what is
+//	                             wrong and what to do (CheckupResult); steps
+//	                             arrive as "checkup" events as they finish
 //
 // plus the store endpoints in api_store.go.
 //
@@ -71,6 +74,7 @@ func NewAPI(svc *Service, token string, listen netip.AddrPort) http.Handler {
 	mux.HandleFunc("GET /v1/stats", a.stats)
 	mux.HandleFunc("POST /v1/speedtest", a.speedTest)
 	mux.HandleFunc("POST /v1/leaktest", a.leakTest)
+	mux.HandleFunc("POST /v1/checkup", a.checkup)
 	a.routeStore(mux)
 	return a.guard(mux)
 }

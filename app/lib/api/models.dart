@@ -114,6 +114,11 @@ class Event {
   final int upRate;
   final int downRate;
 
+  /// A "checkup" event's step and how it went ("ok", "warn", "fail",
+  /// "skipped"); the verdict's status on "done".
+  final String step;
+  final String status;
+
   const Event({
     required this.time,
     required this.kind,
@@ -133,6 +138,8 @@ class Event {
     this.down = 0,
     this.upRate = 0,
     this.downRate = 0,
+    this.step = '',
+    this.status = '',
   });
 
   factory Event.fromJson(Json j) => Event(
@@ -154,6 +161,8 @@ class Event {
     down: (j['down'] as num?)?.toInt() ?? 0,
     upRate: (j['up_rate'] as num?)?.toInt() ?? 0,
     downRate: (j['down_rate'] as num?)?.toInt() ?? 0,
+    step: j['step'] ?? '',
+    status: j['status'] ?? '',
   );
 }
 

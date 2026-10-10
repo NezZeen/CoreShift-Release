@@ -22,7 +22,11 @@ class _HomeTools extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final rows = [if (!state.speedUnsupported) _SpeedTestRow(state: state), if (!state.statsUnsupported && state.statsLoaded) _TrafficRow(state: state)];
+    final rows = [
+      _CheckupRow(state: state),
+      if (!state.speedUnsupported) _SpeedTestRow(state: state),
+      if (!state.statsUnsupported && state.statsLoaded) _TrafficRow(state: state),
+    ];
     if (rows.isEmpty) return const SizedBox();
     return Panel(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -86,6 +90,35 @@ class _ToolRow extends StatelessWidget {
           action,
         ],
       ),
+    );
+  }
+}
+
+/// «Проверить всё»: what the last checkup found, and the button that runs
+/// one and shows it.
+class _CheckupRow extends StatelessWidget {
+  final AppState state;
+  const _CheckupRow({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    final c = state.checkup;
+    final v = c.verdict;
+    final (note, color) = c.running
+        ? ('Проверяем сеть, сервер и VPN…', null)
+        : v != null
+        ? ('${v.title}, ${formatAgo(c.at)}', v.status == 'ok' ? p.okInk : (v.status == 'warn' ? p.warnInk : p.errInk))
+        : c.error.isNotEmpty
+        ? (c.error, p.errInk)
+        : ('Если что-то не работает: сеть, сервер и VPN разом, с советом, что делать', null);
+    return _ToolRow(
+      icon: Icons.fact_check_outlined,
+      iconColor: c.running ? p.accentInk : null,
+      title: const Text('Проверить всё', style: TextStyle(fontWeight: FontWeight.w600)),
+      note: note,
+      noteColor: color,
+      action: Btn(label: c.running ? 'Открыть' : (c.done ? 'Ещё раз' : 'Запустить'), small: true, onPressed: () => showCheckup(context, state)),
     );
   }
 }
