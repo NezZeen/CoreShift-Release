@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:coreshift/api/demo_backend.dart';
 import 'package:coreshift/api/models.dart';
 import 'package:coreshift/main.dart';
+import 'package:coreshift/platform/desktop_io.dart' show freezeWhenHidden;
 import 'package:coreshift/state/app_state.dart';
 
 /// «После переключения вкладок ничего не происходит»: a phone upgraded from
@@ -182,6 +183,24 @@ void main() {
     await tester.tapAt(const Offset(195, 40));
     await tester.pumpAndSettle();
     expect(find.text('Выбор сервера'), findsNothing);
+    await tester.pump(const Duration(seconds: 30));
+  });
+
+  // On Android nothing freezes: the system draws no frames for an app in the
+  // background, and an app wrongly believed hidden there froze its sheets.
+  testWidgets('on Android an app believed hidden keeps its animations', (tester) async {
+    freezeWhenHidden = false;
+    addTearDown(() => freezeWhenHidden = true);
+    final state = await pumpApp(tester, phone);
+    state.setShown(false);
+    await tester.pump();
+    expect(TickerMode.valuesOf(tester.element(find.byType(Scaffold).first)).enabled, isTrue);
+    await tester.tap(find.text('Amsterdam').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Выбор сервера'), findsOneWidget);
+    expect(state.shown.value, isTrue, reason: 'the touch still says the app is on screen, for the speed');
+    await tester.tapAt(const Offset(195, 40));
+    await tester.pumpAndSettle();
     await tester.pump(const Duration(seconds: 30));
   });
 }

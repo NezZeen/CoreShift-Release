@@ -15,6 +15,13 @@ import 'tray_balloon.dart';
 
 bool _enabled = false;
 
+/// Whether the app freezes its animations while it believes itself hidden.
+/// Only a desktop window: Android draws no frames for an app in the
+/// background anyway, and an app wrongly believed hidden there (a lifecycle
+/// event that never came) froze its sheets and pages on a tester's phone.
+@visibleForTesting
+bool freezeWhenHidden = !Platform.isAndroid;
+
 /// The session shows no tray icons (Linux): closing the window minimizes it.
 bool _noTray = false;
 
@@ -65,7 +72,11 @@ class _DesktopFrameState extends State<DesktopFrame> with WindowListener {
   void initState() {
     super.initState();
     if (!_enabled) {
-      _lifecycle = AppLifecycleListener(onHide: () => widget.state.setShown(false), onShow: () => widget.state.setShown(true));
+      _lifecycle = AppLifecycleListener(
+        onHide: () => widget.state.setShown(false),
+        onShow: () => widget.state.setShown(true),
+        onResume: () => widget.state.setShown(true),
+      );
       return;
     }
     windowManager.addListener(this);
@@ -217,11 +228,13 @@ class _DesktopFrameState extends State<DesktopFrame> with WindowListener {
       behavior: HitTestBehavior.translucent,
       onPointerDown: (_) => widget.state.setShown(true),
       onPointerHover: (_) => widget.state.setShown(true),
-      child: ValueListenableBuilder<bool>(
-        valueListenable: widget.state.shown,
-        builder: (context, shown, child) => TickerMode(enabled: shown, child: child!),
-        child: widget.child,
-      ),
+      child: freezeWhenHidden
+          ? ValueListenableBuilder<bool>(
+              valueListenable: widget.state.shown,
+              builder: (context, shown, child) => TickerMode(enabled: shown, child: child!),
+              child: widget.child,
+            )
+          : widget.child,
     );
     if (!_enabled) return app;
     return Column(
