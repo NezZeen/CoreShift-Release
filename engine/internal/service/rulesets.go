@@ -139,10 +139,13 @@ type ruleSets struct {
 
 	mu         sync.Mutex
 	refreshing map[string]bool
-	jobs       map[string]*job    // downloads under way, by the file they make
-	failed     map[string]failure // recent failed downloads, by file
-	missed     map[string]bool    // files the running connection is without
-	extract    sync.Mutex         // one category out of a v2ray list at a time
+	jobs       map[string]*job      // downloads under way, by the file they make
+	failed     map[string]failure   // recent failed downloads, by file
+	missed     map[string]bool      // files the running connection is without
+	extract    sync.Mutex           // one category out of a v2ray list at a time
+	prog       map[string]*progress // how far the downloads under way are, by file
+	cats       map[string]catalog   // the categories of the bases on disk, by file
+	noted      map[string]bool      // what the journal said once already
 }
 
 func newRuleSets(dir string, publish func(Event)) *ruleSets {
@@ -164,9 +167,7 @@ type failure struct {
 func (r *ruleSets) start(path string, do func(ctx context.Context) error) *job {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.jobs == nil {
-		r.jobs, r.failed, r.missed = map[string]*job{}, map[string]failure{}, map[string]bool{}
-	}
+	r.lazy()
 	if j := r.jobs[path]; j != nil {
 		return j
 	}

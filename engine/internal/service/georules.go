@@ -126,7 +126,7 @@ func (r *ruleSets) routing(ctx context.Context, o Options, proxy *url.URL) geoRo
 		err       error
 	}
 	got := make([]found, len(presets))
-	user := make([]found, len(o.Rules))
+	user := make([]userSet, len(o.Rules))
 	var wg sync.WaitGroup
 	for i, gs := range presets {
 		wg.Go(func() {
@@ -140,8 +140,7 @@ func (r *ruleSets) routing(ctx context.Context, o Options, proxy *url.URL) geoRo
 			continue
 		}
 		wg.Go(func() {
-			tag, p, err := r.userSet(ctx, src, kind == store.MatchGeoIP, name, proxy)
-			user[i] = found{tag, p, err}
+			user[i] = r.userSet(ctx, src, kind == store.MatchGeoIP, name, proxy)
 		})
 	}
 	wg.Wait()
@@ -168,11 +167,14 @@ func (r *ruleSets) routing(ctx context.Context, o Options, proxy *url.URL) geoRo
 	}
 	for i, rule := range o.Rules {
 		tr, ok := plainRule(rule)
-		if kind, _ := rule.Parse(); kind == store.MatchGeosite || kind == store.MatchGeoIP {
+		if kind, name := rule.Parse(); kind == store.MatchGeosite || kind == store.MatchGeoIP {
 			ip := kind == store.MatchGeoIP
 			if user[i].err != nil {
 				r.skipped(rule, src.of(ip), user[i].err)
 				continue
+			}
+			if user[i].name != name {
+				r.resolved(rule, kindOf(ip), user[i].name, src.of(ip))
 			}
 			tr.Set, tr.SetIP, ok = &tunlayer.RuleSet{Tag: user[i].tag, Path: user[i].path}, ip, true
 		}
@@ -227,31 +229,90 @@ func (r *ruleSets) preset(ctx context.Context, gs geoSet, src geoSource, fromSou
 	return r.builtin(ctx, gs, proxy)
 }
 
-// userSet returns the tag and file of a category of the user's rules. One
-// of SagerNet that CoreShift carries is the built-in set, held to its
-// checks.
-func (r *ruleSets) userSet(ctx context.Context, src geoSource, ip bool, name string, proxy *url.URL) (tag, path string, err error) {
-	link := src.of(ip)
-	tag = kindOf(ip) + "-" + name
-	if isSagerNet(link) && slices.Contains(ruleset.Known(), tag) {
-		path, err = r.builtin(ctx, geoSet{Tag: tag, IP: ip}, proxy)
-		return tag, path, err
-	}
-	path, err = r.category(ctx, link, ip, name, proxy)
-	return "user-" + tag, path, err
+// userSet is what became of the category of one of the user's rules.
+type userSet struct {
+	// tag and path are the rule set; name is the category it is of, which
+	// the name typed was matched with in the base (ruleset.Resolve).
+	tag, path, name string
+	err             error
 }
 
-// skipped reports a rule left out for want of its set.
+// userSet returns the tag and file of a category of the user's rules. The
+// name is matched with the base of the source whatever its spelling; one
+// of SagerNet that CoreShift carries is the built-in set, held to its
+// checks.
+func (r *ruleSets) userSet(ctx context.Context, src geoSource, ip bool, name string, proxy *url.URL) (res userSet) {
+	link := src.of(ip)
+	real, err := r.categoryOf(ctx, link, ip, name, proxy)
+	if err != nil {
+		return userSet{err: err}
+	}
+	tag := kindOf(ip) + "-" + fileSafe(real)
+	res.name = real
+	if isSagerNet(link) && slices.Contains(ruleset.Known(), tag) {
+		res.tag = tag
+		res.path, res.err = r.builtin(ctx, geoSet{Tag: tag, IP: ip}, proxy)
+		return res
+	}
+	res.tag = "user-" + tag
+	res.path, res.err = r.category(ctx, link, ip, real, proxy)
+	return res
+}
+
+// skipped reports a rule left out, and says why: the base has no such
+// category (a thing to correct), or it did not download (a thing to wait
+// out or retry).
 func (r *ruleSets) skipped(rule store.Rule, link string, err error) {
 	action := msg.Raw("")
 	if a, ok := map[string]string{store.RuleProxy: "proxy", store.RuleDirect: "direct", store.RuleBlock: "block"}[rule.Action]; ok {
 		action = msg.New("rules.action." + a)
 	}
-	m := msg.New("rules.skipped.failed", "match", rule.Match, "action", action, "src", sourceName(link), "err", msg.Raw(err.Error()))
-	if errors.Is(err, errPending) {
-		m = msg.New("rules.skipped.pending", "match", rule.Match, "action", action, "src", sourceName(link))
+	src := sourceName(link)
+	_, name := rule.Parse()
+	var miss *missingError
+	var amb *ambiguousError
+	var m msg.Msg
+	switch {
+	case errors.As(err, &amb):
+		m = msg.New("rules.skipped.ambiguous", "match", rule.Match, "action", action, "src", src, "name", amb.name, "list", guillemets(amb.candidates))
+	case errors.As(err, &miss):
+		m = msg.New("rules.skipped.missing", "match", rule.Match, "action", action, "src", src, "name", miss.name, "similar", similar(miss.suggestions))
+	case errors.Is(err, errPending):
+		m = msg.New("rules.skipped.pending", "match", rule.Match, "action", action, "src", src)
+	case strings.Contains(link, "{name}") && isNotFound(err):
+		// A file per category: no file is no category.
+		m = msg.New("rules.skipped.missing", "match", rule.Match, "action", action, "src", src, "name", name, "similar", msg.Raw(""))
+	default:
+		m = msg.New("rules.skipped.failed", "match", rule.Match, "action", action, "src", src, "err", msg.Raw(err.Error()))
 	}
 	r.publish(Event{Kind: "rules", Reason: rule.Match, Line: "skipped"}.withError(m))
+}
+
+// resolved says once that the name of a rule is taken for a category of
+// the base by its spelling.
+func (r *ruleSets) resolved(rule store.Rule, kind, name, link string) {
+	if !r.noteOnce("resolved|" + rule.Match + "|" + linkKey(link) + "|" + name) {
+		return
+	}
+	r.publish(Event{Kind: "rules", Reason: rule.Match, Line: "resolved"}.withError(msg.New("rules.resolved", "match", rule.Match, "name", kind+":"+name, "src", sourceName(link))))
+}
+
+// guillemets is names in guillemets, one after another.
+func guillemets(names []string) msg.List {
+	items := make([]msg.Msg, len(names))
+	for i, n := range names {
+		items[i] = msg.Raw("«" + n + "»")
+	}
+	return msg.Join(", ", items...)
+}
+
+// similar is the words after "there is no such category", with the
+// categories that may be meant, if any.
+func similar(names []string) msg.Msg {
+	if len(names) == 0 {
+		return msg.Raw("")
+	}
+	return msg.New("rules.similar", "list", guillemets(names))
 }
 
 // category returns the rule set file of the category name (of addresses
@@ -261,7 +322,7 @@ func (r *ruleSets) skipped(rule store.Rule, link string, err error) {
 func (r *ruleSets) category(ctx context.Context, link string, ip bool, name string, proxy *url.URL) (string, error) {
 	kind := kindOf(ip)
 	dir := filepath.Join(r.dir, "geo", linkKey(link))
-	out := filepath.Join(dir, kind+"-"+name+".srs")
+	out := filepath.Join(dir, kind+"-"+fileSafe(name)+".srs")
 	label := kind + ":" + name
 	if strings.Contains(link, "{name}") {
 		get := func(ctx context.Context) error {
@@ -283,31 +344,13 @@ func (r *ruleSets) category(ctx context.Context, link string, ip bool, name stri
 		return out, r.await(ctx, out, announce(r, label, get))
 	}
 
-	list := filepath.Join(dir, kind+".dat")
-	get := func(ctx context.Context) error {
-		b, err := r.viaProxy(ctx, proxy, link, ruleset.MaxDatSize)
-		if err == nil {
-			err = ruleset.CheckDat(b)
-		}
-		if err != nil {
-			return err
-		}
-		return writeAtomic(list, b)
-	}
-	fi, err := os.Lstat(list)
-	if err == nil && !fi.Mode().IsRegular() {
-		os.RemoveAll(list)
-		err = os.ErrNotExist
-	}
+	list, _, err := r.ensureBase(ctx, link, ip, proxy)
 	if err != nil {
-		if err := r.await(ctx, list, announce(r, kind+".dat", get)); err != nil {
-			return "", err
-		}
-		if fi, err = os.Stat(list); err != nil {
-			return "", err
-		}
-	} else if time.Since(fi.ModTime()) > ruleSetMaxAge {
-		r.refreshGeo(list, kind+".dat", get)
+		return "", err
+	}
+	fi, err := os.Stat(list)
+	if err != nil {
+		return "", err
 	}
 	if mod, ok := usable(out, ip); ok && !mod.Before(fi.ModTime()) {
 		return out, nil
@@ -452,9 +495,15 @@ func (r *ruleSets) httpsGet(ctx context.Context, link string, proxy *url.URL, li
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("server returned %s", resp.Status)
+		return nil, &httpStatusError{resp.StatusCode, resp.Status}
 	}
-	b, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
+	var body io.Reader = resp.Body
+	if p, _ := ctx.Value(progressKey{}).(*progress); p != nil {
+		p.got.Store(0)
+		p.total.Store(resp.ContentLength)
+		body = &countReader{resp.Body, p}
+	}
+	b, err := io.ReadAll(io.LimitReader(body, limit+1))
 	if err != nil {
 		return nil, err
 	}

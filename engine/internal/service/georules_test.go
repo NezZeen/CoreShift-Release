@@ -308,7 +308,7 @@ func TestRoutingUserRules(t *testing.T) {
 			skipped[e.Reason] = e.Error
 		}
 	}
-	if !strings.Contains(skipped["geosite:missing"], "не загрузилась") || !strings.Contains(skipped["geosite:slow"], "после переподключения") {
+	if !strings.Contains(skipped["geosite:missing"], "нет категории «missing»") || !strings.Contains(skipped["geosite:slow"], "после переподключения") {
 		t.Errorf("skipped: %v", skipped)
 	}
 	close(slow)

@@ -75,7 +75,7 @@ func FromDat(dat []byte, ip bool, name string) ([]byte, error) {
 		return nil, fmt.Errorf("damaged list: %w", err)
 	}
 	if !found {
-		return nil, fmt.Errorf("no category %q in the list", name)
+		return nil, &NoCategoryError{Name: name}
 	}
 	if len(rule.Domain)+len(rule.DomainSuffix)+len(rule.DomainKeyword)+len(rule.DomainRegex)+len(rule.IPCIDR) == 0 {
 		return nil, fmt.Errorf("category %q is empty", name)
