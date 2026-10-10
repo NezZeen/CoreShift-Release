@@ -48,11 +48,29 @@ class _SortChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sort = state.serverSort;
+    // A phone: the numbers are off unless the user turns them on.
+    final numbers = serverNumbersOn(state, true);
     return PopupMenuButton<String>(
       tooltip: 'Порядок серверов',
-      onSelected: (v) => state.setPref('server_sort', v),
+      // The switch's item is the numbers' value; the rest are the orders.
+      onSelected: (v) => v == 'numbers' ? state.setPref('server_numbers', !numbers) : state.setPref('server_sort', v),
       position: PopupMenuPosition.under,
-      itemBuilder: (_) => [for (final (v, title) in _orders) CheckedPopupMenuItem(value: v, checked: sort == v, child: Text(title))],
+      itemBuilder: (_) => [
+        for (final (v, title) in _orders) CheckedPopupMenuItem(value: v, checked: sort == v, child: Text(title)),
+        const PopupMenuDivider(),
+        PopupMenuItem(
+          value: 'numbers',
+          child: Row(
+            children: [
+              const Expanded(child: Text('Номера')),
+              // Shown as the switch; the tap is the item's.
+              IgnorePointer(
+                child: Switch(value: numbers, onChanged: (_) {}, materialTapTargetSize: MaterialTapTargetSize.shrinkWrap),
+              ),
+            ],
+          ),
+        ),
+      ],
       child: IgnorePointer(
         child: _Chip(label: _orders.firstWhere((e) => e.$1 == sort).$2, icon: Icons.swap_vert, on: sort != 'sub', onTap: () {}),
       ),
@@ -377,7 +395,7 @@ class _CurrentBar extends StatelessWidget {
                 ),
               ),
               SizedBox(
-                width: compact ? 56 : 70,
+                width: compact ? 74 : 84,
                 child: _LatencyCell(latency: state.latencyOf(sub.id, node.fingerprint), testing: false),
               ),
               Btn(label: compact ? null : 'Показать', icon: Icons.my_location, small: true, tooltip: 'Показать в списке', onPressed: onShow),

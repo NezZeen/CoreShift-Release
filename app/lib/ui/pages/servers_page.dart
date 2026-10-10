@@ -222,6 +222,8 @@ class _ServersPageState extends State<ServersPage> {
     final chips = [
       if (compact) _SortChip(state: s),
       _Chip(label: 'По странам', on: s.serverGroup, onTap: () => s.setPref('server_group', !s.serverGroup)),
+      // A computer's way to show the numbers; a phone has it in the sort menu.
+      if (!compact) _Chip(label: 'Номера', on: serverNumbersOn(s, compact), onTap: () => s.setPref('server_numbers', !serverNumbersOn(s, compact))),
       if (subFilter != null) _Chip(label: '× ${s.subscriptionById(subFilter!)?.displayName ?? ''}', on: true, onTap: () => setState(() => subFilter = null)),
     ];
     // How to ping is the service's choice: a ping, or a request through the
@@ -476,6 +478,7 @@ class _ServersPageState extends State<ServersPage> {
             collapsed: query.isEmpty ? collapsed : const {},
             onToggle: _toggle,
             picking: _picking,
+            numbers: serverNumbersOn(s, compact),
           ),
         ),
         if (hidden > 0)
@@ -503,3 +506,7 @@ class _ServersPageState extends State<ServersPage> {
 
 /// "5 серверов", with the Russian plural.
 String serversCount(int n) => '$n ${ruPlural(n, 'сервер', 'сервера', 'серверов')}';
+
+/// Whether the rows show their place in the subscription: on a computer by
+/// default, off on a phone, unless the user chose otherwise.
+bool serverNumbersOn(AppState s, bool compact) => s.prefs['server_numbers'] is bool ? s.prefs['server_numbers'] as bool : !compact;

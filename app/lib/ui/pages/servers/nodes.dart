@@ -6,7 +6,17 @@ class _NodeTable extends StatelessWidget {
   final Set<String> collapsed;
   final ValueChanged<String> onToggle;
   final _Picking picking;
-  const _NodeTable({required this.state, required this.sections, required this.collapsed, required this.onToggle, required this.picking});
+
+  /// Whether each row shows its place in the subscription.
+  final bool numbers;
+  const _NodeTable({
+    required this.state,
+    required this.sections,
+    required this.collapsed,
+    required this.onToggle,
+    required this.picking,
+    required this.numbers,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -29,6 +39,7 @@ class _NodeTable extends StatelessWidget {
             _row(
               narrow: narrow,
               header: true,
+              number: numbers ? const SizedBox() : null,
               radio: const SizedBox(),
               badge: const SizedBox(),
               name: Text('Сервер', style: headStyle),
@@ -51,7 +62,16 @@ class _NodeTable extends StatelessWidget {
                 ),
               if (!collapsed.contains(sec.id))
                 for (final (sub, n) in sec.rows)
-                  _NodeRow(key: picking.rowKey(sub, n), state: state, sub: sub, node: n, showSub: sec.showSub, narrow: narrow, picking: picking),
+                  _NodeRow(
+                    key: picking.rowKey(sub, n),
+                    state: state,
+                    sub: sub,
+                    node: n,
+                    showSub: sec.showSub,
+                    narrow: narrow,
+                    picking: picking,
+                    numbers: numbers,
+                  ),
             ],
           ],
         );
@@ -61,6 +81,7 @@ class _NodeTable extends StatelessWidget {
 
   static Widget _row({
     required bool narrow,
+    Widget? number,
     required Widget radio,
     required Widget badge,
     required Widget name,
@@ -70,6 +91,17 @@ class _NodeTable extends StatelessWidget {
     required Widget tools,
     bool header = false,
   }) {
+    // The place in the subscription, right-aligned in a slot of its own so
+    // that the names stay in line; no slot when the numbers are off.
+    final numberSlot = number == null
+        ? null
+        : SizedBox(
+            width: 30,
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: Padding(padding: const EdgeInsets.only(right: 6), child: number),
+            ),
+          );
     if (narrow) {
       // A phone: the name over the protocol, then the ping
       // and the actions; the column headings and the cores are left out.
@@ -78,6 +110,7 @@ class _NodeTable extends StatelessWidget {
         padding: const EdgeInsets.only(left: 8, right: 2, top: 4, bottom: 4),
         child: Row(
           children: [
+            ?numberSlot,
             // The radio, or the checkbox while picking: both at their own
             // size at the slot's left, clear of the flag.
             SizedBox(
@@ -99,7 +132,8 @@ class _NodeTable extends StatelessWidget {
                 ],
               ),
             ),
-            SizedBox(width: 58, child: ping),
+            // Wide enough for "123 мс" and the method's short label.
+            SizedBox(width: 74, child: ping),
             action,
             tools,
           ],
@@ -110,6 +144,7 @@ class _NodeTable extends StatelessWidget {
       padding: EdgeInsets.only(left: 12, right: 4, top: header ? 8 : 4, bottom: header ? 8 : 4),
       child: Row(
         children: [
+          ?numberSlot,
           SizedBox(
             width: 28,
             child: Align(alignment: Alignment.centerLeft, child: radio),
@@ -225,7 +260,17 @@ class _NodeRow extends StatefulWidget {
   final bool showSub;
   final bool narrow;
   final _Picking picking;
-  const _NodeRow({super.key, required this.state, required this.sub, required this.node, required this.showSub, required this.narrow, required this.picking});
+  final bool numbers;
+  const _NodeRow({
+    super.key,
+    required this.state,
+    required this.sub,
+    required this.node,
+    required this.showSub,
+    required this.narrow,
+    required this.picking,
+    required this.numbers,
+  });
 
   @override
   State<_NodeRow> createState() => _NodeRowState();
@@ -306,6 +351,15 @@ class _NodeRowState extends State<_NodeRow> {
 
     final row = _NodeTable._row(
       narrow: narrow,
+      // The place in the subscription's own order, so it stays with the
+      // server whatever the sort or the filter.
+      number: widget.numbers
+          ? Text(
+              '${widget.sub.nodes.indexOf(n) + 1}',
+              key: ValueKey('server-number/${widget.sub.id}/${n.fingerprint}'),
+              style: TextStyle(fontSize: 11, color: p.muted, fontFeatures: const [FontFeature.tabularFigures()]),
+            )
+          : null,
       radio: picking ? _PickBox(on: picked, enabled: pick.canPick(widget.sub, n)) : _Radio(on: sel, color: connected ? okColor : accent),
       badge: CountryBadge(countryOf(n.name, n.server), width: narrow ? 32 : 30),
       name: Tooltip(
@@ -495,7 +549,35 @@ class _LatencyCell extends StatelessWidget {
       );
     }
     final color = p.ink(l.ms < 200 ? okColor : (l.ms < 500 ? warnColor : errColor));
-    final text = Text('${l.ms} мс', style: mono.copyWith(color: color));
+    // A port check or a ping says only that the server answers, not that
+    // the traffic goes through it: a short label next to the number says so.
+    // A test through the server ("proxy") has none.
+    final (label, note) = switch (l.method) {
+      'tcp' => ('TCP', 'Только проверка, что порт сервера открыт: через сервер не проверялось'),
+      'icmp' => ('ping', 'Только ping до сервера: через сервер не проверялось'),
+      _ => ('', ''),
+    };
+    final tag = Text(
+      label,
+      style: TextStyle(fontSize: 10, color: p.muted, fontWeight: FontWeight.w600),
+    );
+    final text = Text.rich(
+      TextSpan(
+        style: mono.copyWith(color: color),
+        children: [
+          TextSpan(text: '${l.ms} мс'),
+          if (label.isNotEmpty) ...[
+            const TextSpan(text: ' '),
+            // A phone's long press on the row picks it, so the label has no
+            // tooltip there.
+            WidgetSpan(
+              alignment: PlaceholderAlignment.middle,
+              child: isCompact(context) ? tag : Tooltip(message: note, child: tag),
+            ),
+          ],
+        ],
+      ),
+    );
     final how = switch (l.method) {
       'icmp' => 'ICMP-пинг до сервера',
       'tcp' => 'Время TCP-подключения к серверу',
