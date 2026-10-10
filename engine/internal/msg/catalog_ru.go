@@ -64,6 +64,7 @@ var ru = map[string]string{
 	"rules.skipped.pending":   "правило «{match} → {action}» пропущено: база из {src} ещё загружается, правило заработает после переподключения",
 	"rules.skipped.missing":   "правило «{match} → {action}» не работает: в базе {src} нет категории «{name}». {similar}",
 	"rules.skipped.ambiguous": "правило «{match} → {action}» не работает: названию «{name}» в базе {src} подходит несколько категорий: {list}. Укажите точное",
+	"rules.skipped.empty":     "правило «{match} → {action}» не работает: в категории «{name}» базы {src} нет записей",
 	"rules.similar":           "Похожие: {list}",
 	"rules.resolved":          "{match} → {name}: категория подобрана по названию в базе {src}",
 	"rules.action.proxy":      "через VPN",

@@ -49,7 +49,8 @@ import (
 //	                             wrong and what to do (CheckupResult); steps
 //	                             arrive as "checkup" events as they finish
 //
-// plus the store endpoints in api_store.go.
+// plus the store endpoints in api_store.go and those of the bases of
+// categories in geoapi.go.
 //
 // Every request needs "Authorization: Bearer <token>". The Host header must
 // name the loopback listener, which stops web pages from reaching the API
@@ -76,6 +77,7 @@ func NewAPI(svc *Service, token string, listen netip.AddrPort) http.Handler {
 	mux.HandleFunc("POST /v1/leaktest", a.leakTest)
 	mux.HandleFunc("POST /v1/checkup", a.checkup)
 	a.routeStore(mux)
+	a.routeGeo(mux)
 	return a.guard(mux)
 }
 

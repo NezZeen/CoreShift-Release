@@ -13,7 +13,7 @@ String ruleActionName(String action) => ruleActions.firstWhere((a) => a.$1 == ac
 
 /// A geosite or geoip category as v2ray and SagerNet name them:
 /// "category-ads-all", "geolocation-!cn", "google@cn".
-final _category = RegExp(r'^[a-z0-9][a-z0-9!@._-]*$');
+final _category = RegExp(r'^[a-z0-9][a-z0-9!@._:-]*$');
 final _domain = RegExp(r'^[a-z0-9_-]+(\.[a-z0-9_-]+)*$');
 final _address = RegExp(r'^([0-9.]+|[0-9a-f:.]*:[0-9a-f:.]*)(/\d{1,3})?$');
 
@@ -52,7 +52,7 @@ const maxCategoryName = 64;
 String? _categoryError(String kind, String name) {
   if (name.isEmpty) return 'Укажите категорию после «$kind:», например $kind:${kind == 'geoip' ? 'ru' : 'youtube'}';
   if (name.length > maxCategoryName) return 'Имя категории длиннее $maxCategoryName знаков.';
-  if (!_category.hasMatch(name) || name.contains('..')) return 'В имени категории бывают только латинские буквы, цифры и !@._-';
+  if (!_category.hasMatch(name) || name.contains('..')) return 'В имени категории бывают только латинские буквы, цифры и !@._:-';
   final parts = name.split('@');
   if (parts.length > 1 && kind == 'geoip') return 'У категорий geoip нет атрибутов (@…).';
   if (parts.any((p) => p.isEmpty)) return 'Пустая категория или атрибут после @.';

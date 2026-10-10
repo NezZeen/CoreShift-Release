@@ -268,7 +268,7 @@ String? _settingsErrors(String e) {
     // The user's rules and where their categories come from.
     (
       RegExp(r'"(.*)": (category name may have only|category name has|empty category or attribute)'),
-      (m) => '«${m[1]}»: в имени категории бывают только латинские буквы, цифры и !@._-',
+      (m) => '«${m[1]}»: в имени категории бывают только латинские буквы, цифры и !@._:-',
     ),
     (RegExp(r'"(.*)": no category name'), (m) => '«${m[1]}»: укажите категорию, например geosite:youtube.'),
     (RegExp(r'"(.*)": category name is longer than (\d+)'), (m) => '«${m[1]}»: имя категории длиннее ${m[2]} знаков.'),

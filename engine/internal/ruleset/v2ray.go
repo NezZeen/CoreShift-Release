@@ -78,7 +78,7 @@ func FromDat(dat []byte, ip bool, name string) ([]byte, error) {
 		return nil, &NoCategoryError{Name: name}
 	}
 	if len(rule.Domain)+len(rule.DomainSuffix)+len(rule.DomainKeyword)+len(rule.DomainRegex)+len(rule.IPCIDR) == 0 {
-		return nil, fmt.Errorf("category %q is empty", name)
+		return nil, &EmptyCategoryError{Name: name}
 	}
 	var buf bytes.Buffer
 	plain := option.PlainRuleSet{Rules: []option.HeadlessRule{{Type: C.RuleTypeDefault, DefaultOptions: rule}}}

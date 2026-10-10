@@ -271,8 +271,11 @@ func (r *ruleSets) skipped(rule store.Rule, link string, err error) {
 	_, name := rule.Parse()
 	var miss *missingError
 	var amb *ambiguousError
+	var empty *ruleset.EmptyCategoryError
 	var m msg.Msg
 	switch {
+	case errors.As(err, &empty):
+		m = msg.New("rules.skipped.empty", "match", rule.Match, "action", action, "src", src, "name", empty.Name)
 	case errors.As(err, &amb):
 		m = msg.New("rules.skipped.ambiguous", "match", rule.Match, "action", action, "src", src, "name", amb.name, "list", guillemets(amb.candidates))
 	case errors.As(err, &miss):

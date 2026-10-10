@@ -17,6 +17,12 @@ type NoCategoryError struct{ Name string }
 
 func (e *NoCategoryError) Error() string { return fmt.Sprintf("no category %q in the list", e.Name) }
 
+// EmptyCategoryError is a category of a v2ray list with nothing in it, or
+// nothing with the attributes asked for ("google@cn").
+type EmptyCategoryError struct{ Name string }
+
+func (e *EmptyCategoryError) Error() string { return fmt.Sprintf("category %q is empty", e.Name) }
+
 // Categories returns the names of the categories of a v2ray list (a
 // geosite.dat or a geoip.dat), lower-case, sorted, once each. Only the first
 // field of an entry is looked at (v2ray writes the name there): a list of
@@ -282,7 +288,7 @@ func Complete(names []string, q string, limit int) []string {
 			rank = 0
 		case strings.HasPrefix(m, n):
 			rank = 1
-		case strings.Contains(m, n):
+		case len(n) > 1 && strings.Contains(m, n):
 			rank = 2
 		}
 		if rank >= 0 {

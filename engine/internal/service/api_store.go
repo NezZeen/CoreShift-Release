@@ -193,11 +193,13 @@ func (a *api) putSettings(w http.ResponseWriter, r *http.Request, st *store.Stor
 		writeBodyError(w, "invalid settings", err)
 		return
 	}
+	before := st.Settings().Routing
 	saved, err := st.SetSettings(set)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
+	a.svc.geoSettingsChanged(before, saved.Routing)
 	writeJSON(w, http.StatusOK, saved)
 }
 

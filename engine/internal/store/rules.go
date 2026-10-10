@@ -28,7 +28,7 @@ const (
 // categoryName is a geosite or geoip category as v2ray and SagerNet name
 // them: "category-ads-all", "geolocation-!cn", "google@cn" (an attribute).
 // It ends up in a file name, so nothing more.
-var categoryName = regexp.MustCompile(`^[a-z0-9][a-z0-9!@._-]*$`)
+var categoryName = regexp.MustCompile(`^[a-z0-9][a-z0-9!@._:-]*$`)
 
 // Parse splits a normalized rule into what it matches and the value:
 // (MatchGeosite, "category-ads-all"), (MatchIP, "10.0.0.0/8").
@@ -95,7 +95,7 @@ func checkCategory(kind, name string) error {
 		return fmt.Errorf("category name is longer than %d characters", maxCategoryName)
 	}
 	if !categoryName.MatchString(name) {
-		return errors.New("category name may have only a-z, 0-9 and !@._-")
+		return errors.New("category name may have only a-z, 0-9 and !@._:-")
 	}
 	if strings.Contains(name, "..") {
 		return errors.New("category name has \"..\"")

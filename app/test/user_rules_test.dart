@@ -49,7 +49,7 @@ void main() {
   });
 
   test("the service's errors about rules are said in Russian", () {
-    expect(humanError('routing.rules: "geosite:a b": category name may have only a-z, 0-9 and !@._-'), contains('только латинские'));
+    expect(humanError('routing.rules: "geosite:a b": category name may have only a-z, 0-9 and !@._:-'), contains('только латинские'));
     expect(humanError('routing.rules: "x.example": "allow" is not an action (proxy, direct or block)'), contains('неизвестное действие'));
     expect(humanError('routing.rules: at most 64 categories'), contains('не больше 64'));
     expect(humanError('routing.geo.geosite_url: link must start with https://'), contains('https://'));
