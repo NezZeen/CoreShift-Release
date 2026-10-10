@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../api/rules.dart';
 import '../../platform/platform.dart' as platform;
 import '../../state/app_state.dart';
 import '../theme.dart';
@@ -318,7 +317,7 @@ class RoutingPage extends StatelessWidget {
     if (s.hasSetting('routing.geo'))
       Fold(
         title: 'Источник баз',
-        sub: geoSources.firstWhere((g) => g.$1 == s.setting('routing.geo.source', 'sagernet'), orElse: () => geoSources.first).$2,
+        sub: geoFoldSub(s),
         child: GeoSourcePanel(state: s),
       ),
   ];

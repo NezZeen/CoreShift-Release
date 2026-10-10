@@ -8,6 +8,8 @@ import 'backend.dart';
 import 'models.dart';
 import 'punycode.dart';
 import 'rules.dart';
+import 'demo_geo.dart';
+import 'geo.dart';
 import '../version.dart';
 
 /// A simulated daemon for previewing the UI (`--dart-define=DEMO=true`, and
@@ -625,6 +627,136 @@ class DemoBackend implements Backend {
     return name.endsWith('Istanbul') || name.length % 3 == 0 ? null : 120 + _rand.nextInt(200);
   }
 
+  // The bases of categories: per kind its source, state and how far a
+  // download is. The demo's SagerNet is there from the start; any other source
+  // loads in four polls, and a link with "fail" in it fails the first time.
+  final Map<String, Json> _geoBase = {};
+
+  ({String origin, bool listed, String key}) _geoLink(String kind) {
+    final g = ((_settings['routing'] as Map?)?['geo'] as Map?) ?? const {};
+    final src = '${g['source'] ?? 'sagernet'}';
+    final url = '${g['${kind}_url'] ?? ''}'.trim();
+    if (src == 'runetfreedom' && kind == 'geosite') return (origin: 'runetfreedom', listed: true, key: 'runetfreedom');
+    if (src == 'custom' && url.isNotEmpty) return (origin: 'custom', listed: !url.contains('{name}'), key: url);
+    return (origin: 'sagernet', listed: true, key: 'sagernet');
+  }
+
+  Json _geoOf(String kind) {
+    final link = _geoLink(kind);
+    final base = _geoBase.putIfAbsent(kind, () => {});
+    if (base['key'] != link.key) {
+      base
+        ..clear()
+        ..['key'] = link.key
+        ..['state'] = !link.listed ? baseNone : (link.origin == 'sagernet' ? baseLoaded : baseIdle)
+        ..['at'] = DateTime.now().subtract(const Duration(hours: 2));
+    }
+    return base;
+  }
+
+  /// Settings changed: a base that is not there starts downloading.
+  void _geoPrefetch() {
+    for (final kind in ['geosite', 'geoip']) {
+      final base = _geoOf(kind);
+      if (base['state'] == baseIdle) {
+        base['state'] = baseLoading;
+        base['step'] = 0;
+      }
+    }
+  }
+
+  Json _geoStatus() {
+    final bases = <Json>[];
+    final names = <String, List<String>?>{};
+    for (final kind in ['geosite', 'geoip']) {
+      final link = _geoLink(kind);
+      final base = _geoOf(kind);
+      if (base['state'] == baseLoading) {
+        final step = (base['step'] as int? ?? 0) + 1;
+        base['step'] = step;
+        if (step >= 4) {
+          final fails = link.key.contains('fail') && (base['retries'] as int? ?? 0) == 0;
+          base['state'] = fails ? baseError : baseLoaded;
+          base['at'] = DateTime.now();
+          base['error'] = fails
+              ? 'through the proxy: dial tcp: lookup lists.example: no such host; directly: dial tcp: lookup lists.example: no such host'
+              : '';
+        }
+      }
+      final state = '${base['state']}';
+      final all = demoCategories(kind, link.origin);
+      names[kind] = state == baseLoaded ? all : null;
+      final step = base['step'] as int? ?? 0;
+      final total = link.origin == 'runetfreedom' ? 77594624 : 0;
+      bases.add({
+        'kind': kind,
+        'origin': link.origin,
+        'state': state,
+        if (state == baseLoading) 'percent': link.origin == 'custom' ? -1 : step * 25,
+        if (state == baseLoading && total > 0) ...{'bytes': total * step ~/ 4, 'total': total},
+        if (state == baseLoaded) ...{'loaded_at': (base['at'] as DateTime).toUtc().toIso8601String(), 'count': all.length},
+        if (state == baseError) 'error': base['error'],
+      });
+    }
+    final rules = <Json>[];
+    for (final r in ((_settings['routing'] as Map?)?['rules'] as List? ?? const [])) {
+      final match = '${(r as Map)['match']}';
+      final kind = match.startsWith('geosite:') ? 'geosite' : (match.startsWith('geoip:') ? 'geoip' : '');
+      if (kind.isEmpty) continue;
+      final base = bases.firstWhere((b) => b['kind'] == kind);
+      final state = base['state'];
+      if (state == baseNone) continue;
+      if (state == baseLoaded) {
+        final s = demoRuleState(match, names[kind]!);
+        rules.add({
+          'match': match,
+          'state': s.state,
+          if (s.name.isNotEmpty) 'name': s.name,
+          if (s.candidates.isNotEmpty) 'candidates': s.candidates,
+          if (s.suggestions.isNotEmpty) 'suggestions': s.suggestions,
+        });
+      } else {
+        rules.add({'match': match, 'state': state == baseError ? ruleError : ruleWaiting});
+      }
+    }
+    return {'bases': bases, 'rules': rules};
+  }
+
+  Json _geoCategories(Map<String, String> q) {
+    final kind = q['kind'] ?? '';
+    if (kind != 'geosite' && kind != 'geoip') throw ApiError(400, 'kind is geosite or geoip, not "$kind"');
+    final name = q['q'] ?? '';
+    final link = _geoLink(kind);
+    final base = _geoOf(kind);
+    if (base['state'] == baseIdle) {
+      base['state'] = baseLoading;
+      base['step'] = 0;
+    }
+    final state = '${base['state']}';
+    final out = <String, dynamic>{
+      'kind': kind,
+      'q': name,
+      'origin': link.origin,
+      'state': state,
+      'loaded': state == baseLoaded,
+      'listed': state != baseNone,
+      'exact': false,
+      'resolved': '',
+      'ambiguous': <String>[],
+      'suggestions': <String>[],
+      'matches': <String>[],
+    };
+    if (state != baseLoaded || name.trim().isEmpty) return out;
+    final names = demoCategories(kind, link.origin);
+    final r = resolveCategory(names, name);
+    out['exact'] = r.exact;
+    out['resolved'] = r.name;
+    out['ambiguous'] = r.ambiguous;
+    out['suggestions'] = r.suggestions;
+    out['matches'] = completeCategory(names, name);
+    return out;
+  }
+
   @override
   Future<dynamic> call(String method, String path, [Object? body]) async {
     await Future.delayed(const Duration(milliseconds: 120));
@@ -767,8 +899,23 @@ class DemoBackend implements Backend {
         _settings = jsonDecode(jsonEncode(b)) as Json;
         _settings['routing'].addAll(clean);
         if (_status['state'] == 'connected') _pending = _connPart(_settings) != _connSettings;
+        _geoPrefetch();
         _emit({'kind': 'store', 'reason': 'settings'});
         return jsonDecode(jsonEncode(_settings));
+      case 'GET /geo/status':
+        return _geoStatus();
+      case 'GET /geo/categories':
+        return _geoCategories(Uri.parse(path).queryParameters);
+      case 'POST /geo/reload':
+        for (final kind in ['geosite', 'geoip']) {
+          if (b['kind'] != null && b['kind'] != kind) continue;
+          final base = _geoOf(kind);
+          if (base['state'] == baseNone) continue;
+          base['retries'] = (base['retries'] as int? ?? 0) + 1;
+          base['state'] = baseLoading;
+          base['step'] = 0;
+        }
+        return _geoStatus();
       case 'GET /subscriptions':
         return [for (final s in _subs) _view(s)];
       case 'POST /subscriptions':

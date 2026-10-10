@@ -348,7 +348,8 @@ const engineEn = <String, String>{
   'rules.skipped.failed': 'rule “{match} → {action}” skipped: the set from {src} did not download: {err}',
   'rules.skipped.pending': 'rule “{match} → {action}” skipped: the set from {src} is still downloading, the rule works after reconnecting',
   'rules.skipped.missing': 'rule “{match} → {action}” does not work: the base from {src} has no category “{name}”. {similar}',
-  'rules.skipped.ambiguous': 'rule “{match} → {action}” does not work: the name “{name}” fits several categories in the base from {src}: {list}. Give the exact one',
+  'rules.skipped.ambiguous':
+      'rule “{match} → {action}” does not work: the name “{name}” fits several categories in the base from {src}: {list}. Give the exact one',
   'rules.skipped.empty': 'rule “{match} → {action}” does not work: the category “{name}” in the base from {src} has no entries',
   'rules.similar': 'Similar: {list}',
   'rules.resolved': '{match} → {name}: the category was matched by its name in the base from {src}',

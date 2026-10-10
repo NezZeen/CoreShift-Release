@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import '../api/backend.dart';
 import '../api/demo_backend.dart';
+import '../api/geo.dart';
 import '../api/models.dart';
 import '../l10n/engine_strings.dart';
 import '../l10n/strings.dart';
@@ -38,6 +39,7 @@ part 'app_state/journal.dart';
 part 'app_state/connection.dart';
 part 'app_state/core_updates.dart';
 part 'app_state/app_update.dart';
+part 'app_state/geo.dart';
 part 'app_state/feedback.dart';
 part 'app_state/address.dart';
 part 'app_state/view.dart';
@@ -237,6 +239,13 @@ class AppState extends ChangeNotifier {
 
   /// Updates of CoreShift itself; off with a service that cannot update.
   AppUpdateInfo appUpdate = const AppUpdateInfo();
+
+  /// Базы категорий и правила, которые их ждут (см. app_state/geo.dart).
+  GeoStatus geo = const GeoStatus();
+  bool _geoKnown = true;
+  int _geoWatchers = 0;
+  bool _geoBusy = false;
+  Timer? _geoTimer;
   bool checkingUpdates = false;
   String updatingCore = '';
 
@@ -525,6 +534,7 @@ class AppState extends ChangeNotifier {
     _coreTimer?.cancel();
     _logTimer?.cancel();
     logTick.dispose();
+    _geoTimer?.cancel();
     _traffic.dispose();
     _speedNow.dispose();
     _shown.dispose();
