@@ -196,6 +196,16 @@ func (r *ruleSets) namesOf(path string, k baseKind) ([]string, time.Time, error)
 	if ok && c.mod.Equal(fi.ModTime()) && c.size == fi.Size() {
 		return c.names, c.mod, nil
 	}
+	// One at a time: every rule asks at once, and a list can be tens of
+	// megabytes.
+	r.namesMu.Lock()
+	defer r.namesMu.Unlock()
+	r.mu.Lock()
+	c, ok = r.cats[path]
+	r.mu.Unlock()
+	if ok && c.mod.Equal(fi.ModTime()) && c.size == fi.Size() {
+		return c.names, c.mod, nil
+	}
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, time.Time{}, err

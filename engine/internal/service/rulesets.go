@@ -142,6 +142,7 @@ type ruleSets struct {
 	jobs       map[string]*job      // downloads under way, by the file they make
 	failed     map[string]failure   // recent failed downloads, by file
 	missed     map[string]bool      // files the running connection is without
+	namesMu    sync.Mutex           // one base read at a time
 	extract    sync.Mutex           // one category out of a v2ray list at a time
 	prog       map[string]*progress // how far the downloads under way are, by file
 	cats       map[string]catalog   // the categories of the bases on disk, by file
