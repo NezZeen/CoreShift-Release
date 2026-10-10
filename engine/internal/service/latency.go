@@ -23,7 +23,7 @@ import (
 // own (some 20 to 50 MB), so a phone gets fewer than a computer.
 const (
 	latencyConcurrency       = 10
-	latencyConcurrencyMobile = 6
+	latencyConcurrencyMobile = 3 // a phone's memory: three test cores at most
 )
 
 // latencyGOOS is the platform the concurrency follows; tests change it.

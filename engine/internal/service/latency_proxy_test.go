@@ -10,7 +10,7 @@ import (
 
 // Ten test cores at once on the desktop, fewer on a phone.
 func TestCoreConcurrency(t *testing.T) {
-	for goos, want := range map[string]int{"windows": 10, "linux": 10, "darwin": 10, "android": 6} {
+	for goos, want := range map[string]int{"windows": 10, "linux": 10, "darwin": 10, "android": 3} {
 		if got := coreConcurrency(goos); got != want {
 			t.Errorf("%s: %d test cores at once, want %d", goos, got, want)
 		}
