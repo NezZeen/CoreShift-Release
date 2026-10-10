@@ -298,6 +298,12 @@ class RoutingPage extends StatelessWidget {
               description:
                   'Рекламные и следящие серверы не открываются, в том числе рекламные серверы Google. '
                   'Если из-за этого сломался сайт, добавьте его в «Сайты и адреса без VPN» или «Всегда через VPN».',
+              descriptionWidget: Text(
+                'Блокирует рекламные адреса по списку. Рекламу внутри YouTube, VK, Instagram и похожих приложений так не убрать: '
+                'она идёт с тех же адресов, что и видео. Больше рекламы уберёт DNS с блокировкой (например, AdGuard) — '
+                'укажите его в поле «DNS через VPN».',
+                style: TextStyle(fontSize: 12, color: context.pal.muted, height: 1.4),
+              ),
               trailing: Switch(value: s.setting('routing.block_ads', true), onChanged: (v) => set('block_ads', v)),
             ),
         ],

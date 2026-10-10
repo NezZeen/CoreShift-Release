@@ -595,6 +595,7 @@ void main() {
     expect(find.text('Российские сайты напрямую'), findsNothing);
     expect(find.text('Программы без VPN'), findsNothing);
 
+    await tester.ensureVisible(find.text('Telegram'));
     await tester.tap(find.text('Telegram'));
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pump();
@@ -614,6 +615,7 @@ void main() {
     expect(list('proxy_domains'), contains('example.com'));
 
     // Turning a service off takes out its entries only.
+    await tester.ensureVisible(find.text('Telegram'));
     await tester.tap(find.text('Telegram'));
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pump();
@@ -622,6 +624,7 @@ void main() {
     expect(list('proxy_ips'), isEmpty);
     expect(list('proxy_apps'), ['Discord.exe']);
 
+    await tester.ensureVisible(find.text('Всё через VPN'));
     await tester.tap(find.text('Всё через VPN'));
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pump();
