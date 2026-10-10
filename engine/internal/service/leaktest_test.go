@@ -151,6 +151,9 @@ func TestLeakTestGoesThroughTheCore(t *testing.T) {
 	if !res.System.Checked || !res.System.FakeIP || res.System.Error != "" {
 		t.Errorf("system = %+v", res.System)
 	}
+	if res.Verdict != leakOK || res.Provider != "Cloudflare" || res.DNS[0].Role != leakRoleVPN {
+		t.Errorf("verdict %q, provider %q, dns %+v", res.Verdict, res.Provider, res.DNS)
+	}
 	mu.Lock()
 	if len(asked) != leakNames || !strings.HasSuffix(asked[0], ".bash.test") {
 		t.Errorf("apps' path asked %v", asked)
@@ -212,6 +215,15 @@ func TestLeakTestSeesTheISPResolver(t *testing.T) {
 	}
 	if !res.System.Checked || res.System.FakeIP {
 		t.Errorf("system = %+v, want real addresses", res.System)
+	}
+	// The ISP's resolver is a leak; the server's is on the VPN's side.
+	if res.Verdict != leakFound {
+		t.Errorf("verdict = %q, want a leak", res.Verdict)
+	}
+	for _, d := range res.DNS {
+		if want := map[string]string{ispResolver: leakRoleISP, serverResolver: leakRoleVPN}[d.IP]; d.Role != want {
+			t.Errorf("%s is %q, want %q", d.IP, d.Role, want)
+		}
 	}
 }
 

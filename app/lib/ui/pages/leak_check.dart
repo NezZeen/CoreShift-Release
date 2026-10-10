@@ -61,7 +61,6 @@ class LeakResultCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.pal;
     final verdict = report.verdict;
-    final suspicious = report.suspicious;
     final small = TextStyle(fontSize: 12, color: p.muted);
     final heading = small.copyWith(fontWeight: FontWeight.w600);
     Widget row(IconData icon, Color color, List<InlineSpan> spans) => Padding(
@@ -81,22 +80,44 @@ class LeakResultCard extends StatelessWidget {
       text: s,
       style: TextStyle(fontFamily: monoFont, fontFamilyFallback: monoFallback, color: p.text),
     );
-    Widget server(LeakServer s, {bool bad = false}) => row(bad ? Icons.warning_amber_rounded : Icons.dns_outlined, bad ? warnColor : p.dim, [
-      mono(s.ip),
-      if (s.place.isNotEmpty) TextSpan(text: '  ${s.place}'),
-    ]);
+    // A tick for the user's own DNS and the VPN's side, a warning only for
+    // what may really leak; what is not known stays neutral.
+    Widget server(LeakServer s, {bool bad = false, bool good = false}) => row(
+      bad
+          ? Icons.warning_amber_rounded
+          : good
+          ? Icons.check_circle_outline
+          : Icons.dns_outlined,
+      bad
+          ? warnColor
+          : good
+          ? okColor
+          : p.dim,
+      [mono(s.ip), if (s.place.isNotEmpty) TextSpan(text: '  ${s.place}'), if (s.role == 'own') const TextSpan(text: '  · ваш DNS')],
+    );
     List<Widget> servers(String title, List<LeakServer> list) => [
       const SizedBox(height: 8),
       Text(title, style: heading),
-      for (final d in list) server(d, bad: suspicious.contains(d)),
+      for (final d in list) server(d, bad: d.role == 'isp', good: d.role == 'own' || d.role == 'vpn'),
     ];
+    // «AdGuard, Германия»: the provider and where the answering servers are.
+    final ownPlace = [
+      if (report.provider.isNotEmpty) report.provider,
+      ...{
+        for (final d in report.ownDns)
+          if (d.country.isNotEmpty) countryName(d.country),
+      },
+    ].join(', ');
+    final appsTitle = 'DNS, которым пользуются приложения (через VPN)${report.provider.isEmpty ? '' : ' — ${report.provider}'}';
 
     final (color, icon, title, text) = switch (verdict) {
       LeakVerdict.ok => (
         okColor,
         Icons.verified_user_outlined,
         'Утечки нет',
-        report.fakeIp
+        report.ownDns.isNotEmpty
+            ? 'DNS идёт через VPN к выбранному вами DNS${ownPlace.isEmpty ? '' : ' ($ownPlace)'}. Провайдер этих запросов не видит.'
+            : report.fakeIp
             ? 'Адреса сайтов приложениям выдаёт сам туннель, а имена разрешает VPN-сервер. Провайдер ваших DNS-запросов не видит.'
             : 'DNS-запросы приложений уходят через VPN к серверам на его стороне. Провайдер их не видит.',
       ),
@@ -104,9 +125,7 @@ class LeakResultCard extends StatelessWidget {
         errColor,
         Icons.warning_amber_rounded,
         'Есть утечка DNS',
-        report.ispResolvers
-            ? 'Часть DNS-запросов обрабатывает DNS вашего провайдера: он видит, какие сайты вы открываете.'
-            : 'Часть DNS-запросов обрабатывают DNS-серверы не из страны VPN-сервера, возможно, провайдера.',
+        'Часть DNS-запросов обрабатывает DNS вашего провайдера или сети: он видит, какие сайты вы открываете.',
       ),
       LeakVerdict.bypass => (
         warnColor,
@@ -141,7 +160,11 @@ class LeakResultCard extends StatelessWidget {
       children: [
         Text(text, style: small),
         if (verdict == LeakVerdict.leak) ...[const SizedBox(height: 6), Text(_advice, style: small.copyWith(color: p.text))],
-        if (report.exit != null) ...[const SizedBox(height: 8), Text('Сайты видят вас из', style: heading), server(report.exit!, bad: report.bypassed)],
+        if (report.exit != null) ...[
+          const SizedBox(height: 8),
+          Text(report.bypassed ? 'Сайты видят вас из' : 'Адрес VPN-сервера для сайтов', style: heading),
+          server(report.exit!, bad: report.bypassed),
+        ],
         if (verdict == LeakVerdict.bypass && home != null) ...[
           const SizedBox(height: 8),
           Text('Ваш адрес без VPN', style: heading),
@@ -152,14 +175,23 @@ class LeakResultCard extends StatelessWidget {
           if (report.dns.isNotEmpty) ...servers('DNS-серверы', report.dns),
         ] else ...[
           if (system.isNotEmpty)
-            ...servers('DNS приложений', system)
+            ...servers(appsTitle, system)
           else if (report.systemChecked && report.fakeIp) ...[
             const SizedBox(height: 8),
-            Text('DNS приложений', style: heading),
+            Text(appsTitle, style: heading),
             row(Icons.shield_outlined, p.dim, [const TextSpan(text: 'Отвечает сам туннель, наружу запросы не уходят')]),
           ],
           if (proxy.isNotEmpty) ...servers('DNS на стороне VPN-сервера', proxy),
         ],
+        if (report.dns.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              'Страна — по базе сервиса проверки, у разных баз может отличаться; '
+              'у DNS вроде AdGuard и Cloudflare серверы по всему миру, отвечает ближайший к VPN-серверу',
+              style: small,
+            ),
+          ),
         if (!report.systemChecked) ...[const SizedBox(height: 8), Text('Запросы приложений через туннель проверить не удалось.', style: small)],
       ],
     );

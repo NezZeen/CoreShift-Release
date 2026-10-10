@@ -624,7 +624,7 @@ func (s *Service) checkTunnelDNS(ctx context.Context, st Status) CheckStep {
 	return out
 }
 
-// checkLeak runs the DNS leak test and sums it up as the app does.
+// checkLeak runs the DNS leak test and sums it up by its verdict.
 func (s *Service) checkLeak(ctx context.Context, st Status) CheckStep {
 	if st.State != Connected {
 		return skipStep(notConnected)
@@ -638,70 +638,19 @@ func (s *Service) checkLeak(ctx context.Context, st Status) CheckStep {
 		}
 		return warnStep("checkup.leak.no_service")
 	}
-	switch v, isp := leakVerdict(res); v {
+	switch res.Verdict {
 	case leakOK:
+		if res.ownDNS() {
+			return okStep("checkup.leak.own", "provider", res.Provider)
+		}
 		return okStep("checkup.leak.ok")
 	case leakFound:
-		if isp {
-			return failStep("checkup.leak.isp")
-		}
-		return failStep("checkup.leak.foreign")
+		return failStep("checkup.leak.isp")
 	case leakBypass:
 		return warnStep("checkup.leak.bypass")
 	default:
 		return warnStep("checkup.leak.unknown")
 	}
-}
-
-// The verdicts of a leak test, as the app tells them (app/lib/state/leak.dart).
-const (
-	leakOK      = "ok"
-	leakFound   = "leak"
-	leakBypass  = "bypass"
-	leakUnknown = "unknown"
-)
-
-// leakPublic are public resolvers, which answer from near wherever the
-// query left: not the ISP's.
-var leakPublic = []string{"google", "cloudflare", "quad9", "opendns", "cisco", "adguard", "nextdns", "cleanbrowsing", "control d", "mullvad"}
-
-// leakVerdict sums up a leak test as LeakReport.verdict does in the app;
-// isp tells that a suspicious resolver is in the device's own country.
-func leakVerdict(r LeakResult) (verdict string, isp bool) {
-	if r.Exit == nil {
-		return leakUnknown, false
-	}
-	home := ""
-	if r.Home != nil {
-		home = strings.ToLower(r.Home.Country)
-		if r.Home.IP != "" {
-			e, h := strings.Split(r.Exit.IP, "."), strings.Split(r.Home.IP, ".")
-			if r.Exit.IP == r.Home.IP || (len(e) == 4 && len(h) == 4 && slices.Equal(e[:3], h[:3])) {
-				return leakBypass, false
-			}
-		}
-	}
-	exit := r.Exit.Country
-	suspicious := false
-	for _, d := range r.DNS {
-		org := strings.ToLower(d.Org)
-		if d.Country == "" || slices.ContainsFunc(leakPublic, func(p string) bool { return strings.Contains(org, p) }) {
-			continue
-		}
-		switch {
-		case home != "" && d.Country == home && exit != home:
-			suspicious, isp = true, true
-		case d.Path != "proxy" && exit != "" && d.Country != exit:
-			suspicious = true
-		}
-	}
-	switch {
-	case suspicious:
-		return leakFound, isp
-	case r.Exit.IP != r.ServerIP && r.Home == nil:
-		return leakUnknown, false
-	}
-	return leakOK, false
 }
 
 // checkSpeed takes a short sample of the download: through the tunnel while

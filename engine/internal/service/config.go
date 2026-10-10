@@ -200,10 +200,12 @@ type Config struct {
 	speedURL           string // instead of speedServer
 	ookla              func(proxy *url.URL) ooklaTest
 	// leakBase and leakDomain stand in for bash.ws; leakHome for looking
-	// up the address outside the VPN.
+	// up the address outside the VPN, leakASN for the autonomous system of
+	// an address.
 	leakBase   string
 	leakDomain string
 	leakHome   func(ctx context.Context) (IPInfo, error)
+	leakASN    func(ctx context.Context, ip string) (uint32, error)
 
 	// dohLookup looks a server name up over DNS over HTTPS, leaving as b
 	// says, when the system's resolver fails it in a latency test.

@@ -175,7 +175,7 @@ var ru = map[string]string{
 	"checkup.leak.no_service":      "сервис проверки bash.ws не ответил через VPN: утечку проверить не удалось",
 	"checkup.leak.ok":              "утечки нет: DNS-запросы провайдер не видит",
 	"checkup.leak.isp":             "часть DNS-запросов обрабатывает DNS провайдера: он видит, какие сайты открываются",
-	"checkup.leak.foreign":         "часть DNS-запросов обрабатывают DNS-серверы не из страны VPN-сервера",
+	"checkup.leak.own":             "утечки нет: DNS идёт через VPN к выбранному вами DNS ({provider})",
 	"checkup.leak.bypass":          "проверка прошла мимо VPN: похоже, сервер пускает bash.ws напрямую",
 	"checkup.leak.unknown":         "результат неточный: не удалось узнать адрес без VPN",
 	"checkup.speed.busy":           "идёт тест скорости",

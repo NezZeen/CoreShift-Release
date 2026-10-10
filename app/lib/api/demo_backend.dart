@@ -516,7 +516,7 @@ class DemoBackend implements Backend {
       connected ? ('tunnel-dns', 'ok', ('checkup.tunnel_dns.fakeip', <String, dynamic>{}), 2) : ('tunnel-dns', 'skipped', notConnected, 0),
       if (speed) ('speed', 'ok', ('checkup.speed.ok', {'mbit': connected ? '64.2' : '92.0'}), 0),
       ('direct', 'ok', ('checkup.direct.ok', <String, dynamic>{}), 0),
-      connected ? ('leak', 'ok', ('checkup.leak.ok', <String, dynamic>{}), 0) : ('leak', 'skipped', notConnected, 0),
+      connected ? ('leak', 'ok', ('checkup.leak.own', <String, dynamic>{'provider': 'AdGuard'}), 0) : ('leak', 'skipped', notConnected, 0),
     ];
     _emit({'kind': 'checkup', 'reason': 'started', 'line': ids.where((k) => speed || k != 'speed').join(',')});
     final done = <String, Json>{};
@@ -951,8 +951,9 @@ class DemoBackend implements Backend {
   }
 
   /// The engine's DNS leak test when DNS goes through the tunnel as it
-  /// should: the tunnel answers apps itself (fake IP), and the server's
-  /// resolvers look up the names of connections.
+  /// should, to the DNS the user chose: AdGuard, whose resolvers answer
+  /// apps from Germany while the VPN server is in the Netherlands (no leak),
+  /// and the server's own resolvers look up the names of connections.
   static Future<Json> leakSample() async {
     await Future.delayed(const Duration(milliseconds: 1200));
     return {
@@ -960,11 +961,15 @@ class DemoBackend implements Backend {
       'server_ip': '203.0.113.40',
       'exit': {'ip': '203.0.113.40', 'country': 'nl', 'country_name': 'Netherlands', 'org': 'Example Hosting'},
       'dns': [
-        {'ip': '172.253.10.1', 'country': 'nl', 'country_name': 'Netherlands', 'org': 'Google LLC', 'path': 'proxy'},
-        {'ip': '162.158.1.1', 'country': 'nl', 'country_name': 'Netherlands', 'org': 'CloudFlare Inc', 'path': 'proxy'},
+        {'ip': '94.140.14.1', 'country': 'de', 'country_name': 'Germany', 'org': 'DataCamp Limited', 'path': 'system', 'role': 'own'},
+        {'ip': '94.140.14.2', 'country': 'de', 'country_name': 'Germany', 'org': 'DataCamp Limited', 'path': 'system', 'role': 'own'},
+        {'ip': '172.253.10.1', 'country': 'nl', 'country_name': 'Netherlands', 'org': 'Google LLC', 'path': 'proxy', 'role': 'vpn'},
+        {'ip': '162.158.1.1', 'country': 'nl', 'country_name': 'Netherlands', 'org': 'CloudFlare Inc', 'path': 'proxy', 'role': 'vpn'},
       ],
-      'system': {'checked': true, 'fake_ip': true},
+      'system': {'checked': true},
       'home': {'ip': '198.51.100.20', 'country': 'RU'},
+      'verdict': 'ok',
+      'provider': 'AdGuard',
     };
   }
 

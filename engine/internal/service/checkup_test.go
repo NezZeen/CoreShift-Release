@@ -331,29 +331,6 @@ func skipStepNone() CheckStep {
 	return s
 }
 
-func TestLeakVerdict(t *testing.T) {
-	de := &LeakHost{IP: "203.0.113.5", Country: "de"}
-	home := &IPInfo{IP: "198.51.100.20", Country: "RU"}
-	for name, c := range map[string]struct {
-		r    LeakResult
-		want string
-		isp  bool
-	}{
-		"the server's resolver": {LeakResult{Exit: de, Home: home, DNS: []LeakHost{{IP: "1", Country: "de", Path: "proxy"}}}, leakOK, false},
-		"the ISP's resolver":    {LeakResult{Exit: de, Home: home, DNS: []LeakHost{{IP: "2", Country: "ru", Path: "system"}}}, leakFound, true},
-		"a public resolver":     {LeakResult{Exit: de, Home: home, DNS: []LeakHost{{IP: "3", Country: "ru", Org: "Google LLC", Path: "system"}}}, leakOK, false},
-		"another country":       {LeakResult{Exit: de, Home: home, DNS: []LeakHost{{IP: "4", Country: "fr", Path: "system"}}}, leakFound, false},
-		"around the VPN":        {LeakResult{Exit: &LeakHost{IP: "198.51.100.77", Country: "ru"}, Home: home}, leakBypass, false},
-		"no exit":               {LeakResult{Home: home}, leakUnknown, false},
-		"no home":               {LeakResult{Exit: de, ServerIP: "203.0.113.9"}, leakUnknown, false},
-		"no home, the server":   {LeakResult{Exit: de, ServerIP: "203.0.113.5"}, leakOK, false},
-	} {
-		if got, isp := leakVerdict(c.r); got != c.want || isp != c.isp {
-			t.Errorf("%s: %s %v, want %s %v", name, got, isp, c.want, c.isp)
-		}
-	}
-}
-
 func TestCheckupOneAtATimeAndAPI(t *testing.T) {
 	h, srv := newAPIServer(t)
 	h.svc.checkupMu.Lock()

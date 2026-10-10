@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/netip"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -62,6 +63,12 @@ type LeakHost struct {
 	Country     string `json:"country,omitempty"`
 	CountryName string `json:"country_name,omitempty"`
 	Org         string `json:"org,omitempty"`
+	// ASN is the autonomous system number, 0 when bash.ws gave none.
+	ASN uint32 `json:"asn,omitempty"`
+	// Role, of a DNS server, is whose it is (leakjudge.go): "own" for the
+	// DNS the user set for the tunnel, "vpn" for the VPN's side, "isp" for
+	// the ISP's or the network's; empty when nothing is known.
+	Role string `json:"role,omitempty"`
 	// Path, of a DNS server: which names it looked up, "system" (apps'
 	// lookups, through the TUN layer's DNS) or "proxy" (names of
 	// connections, resolved by the VPN server).
@@ -94,6 +101,14 @@ type LeakResult struct {
 	// Home is the device's address outside the VPN; nil when it could not
 	// be learned.
 	Home *IPInfo `json:"home,omitempty"`
+	// HomeASN is its autonomous system, when it had to be looked up.
+	HomeASN uint32 `json:"home_asn,omitempty"`
+	// Verdict is "ok", "leak", "bypass" or "unknown": a leak is DNS that
+	// does not go through the tunnel (see leakjudge.go).
+	Verdict string `json:"verdict"`
+	// Provider is the name of the public DNS the user set for the tunnel
+	// (dns.remote), when it is a known one: "AdGuard".
+	Provider string `json:"provider,omitempty"`
 }
 
 // LeakTest runs the DNS leak test through the connection.
@@ -144,6 +159,7 @@ func (s *Service) LeakTest(ctx context.Context) (LeakResult, error) {
 		return LeakResult{}, err
 	}
 	res.Server, res.ServerIP, res.Home = st.Node, serverIP, home
+	s.judgeLeak(ctx, p.client, &res)
 	return res, nil
 }
 
@@ -209,7 +225,24 @@ func (e leakEntry) host(path string) LeakHost {
 	if org == "" {
 		org = e.ASN
 	}
-	return LeakHost{IP: e.IP, Country: strings.ToLower(e.Country), CountryName: e.CountryName, Org: org, Path: path}
+	return LeakHost{IP: e.IP, Country: strings.ToLower(e.Country), CountryName: e.CountryName, Org: org, ASN: e.asn(), Path: path}
+}
+
+var asnNumber = regexp.MustCompile(`(?i)\bAS\s?(\d{1,10})\b`)
+
+// asn is the autonomous system number out of "AS15169 Google LLC".
+func (e leakEntry) asn() uint32 {
+	for _, v := range []string{e.ASN, e.Org} {
+		if m := asnNumber.FindStringSubmatch(v); m != nil {
+			if n, err := strconv.ParseUint(m[1], 10, 32); err == nil {
+				return uint32(n)
+			}
+		}
+	}
+	if n, err := strconv.ParseUint(strings.TrimSpace(e.ASN), 10, 32); err == nil {
+		return uint32(n)
+	}
+	return 0
 }
 
 var leakID = regexp.MustCompile(`^[a-z0-9]{4,64}$`)

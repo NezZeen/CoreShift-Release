@@ -4,6 +4,12 @@
 // asked for them and from which address bash.ws saw the test. Not run by
 // the app itself: on Android the app is outside its own VPN, so its
 // requests would go around the tunnel and test the ISP instead.
+//
+// The verdict is the engine's (engine/internal/service/leakjudge.go): a
+// leak is DNS that does not go through the tunnel, the ISP's or the
+// network's. DNS servers in another country than the VPN server's are none
+// by themselves: a DNS the user chose for the tunnel (AdGuard, Cloudflare)
+// has servers all over the world.
 
 import '../api/models.dart';
 
@@ -17,28 +23,31 @@ class LeakServer {
   /// when the VPN server asked it for names of connections.
   final String path;
 
-  const LeakServer({this.ip = '', this.country = '', this.countryName = '', this.org = '', this.path = ''});
+  /// Whose server it is, as the engine judged: "own" for the DNS the user
+  /// set for the tunnel, "vpn" for the VPN's side, "isp" for the ISP's or
+  /// the network's; empty when nothing is known.
+  final String role;
+
+  const LeakServer({this.ip = '', this.country = '', this.countryName = '', this.org = '', this.path = '', this.role = ''});
 
   factory LeakServer.fromJson(Json j) => LeakServer(
     ip: j['ip'] ?? '',
     country: (j['country'] as String? ?? '').toLowerCase(),
     countryName: j['country_name'] ?? '',
-    org: (j['org'] as String?)?.isNotEmpty == true ? j['org'] : (j['asn'] ?? ''),
+    org: (j['org'] as String?)?.isNotEmpty == true ? j['org'] : (j['asn'] is String ? j['asn'] : ''),
     path: j['path'] ?? '',
+    role: j['role'] ?? '',
   );
 
   String get place => [countryName, org].where((s) => s.isNotEmpty).join(', ');
 }
 
-/// Public resolvers that answer from wherever they are nearest: seeing them
-/// means the queries went out through the tunnel, not to the ISP.
-const _publicResolvers = ['google', 'cloudflare', 'quad9', 'opendns', 'cisco', 'adguard', 'nextdns', 'cleanbrowsing', 'control d', 'mullvad'];
-
 enum LeakVerdict {
   /// The test went through the VPN and no DNS server is the ISP's.
   ok,
 
-  /// Some lookups reached a DNS server that is not on the VPN's side.
+  /// Some lookups reached a DNS server of the ISP or the network, not the
+  /// tunnel's.
   leak,
 
   /// bash.ws saw the device's own address: the test itself went around
@@ -50,6 +59,8 @@ enum LeakVerdict {
 }
 
 class LeakReport {
+  final LeakVerdict verdict;
+
   /// Where sites see the device coming from: the VPN server, if it works.
   final LeakServer? exit;
 
@@ -63,6 +74,9 @@ class LeakReport {
   final String server;
   final String serverIp;
 
+  /// The public DNS the user set for the tunnel ("AdGuard"), when known.
+  final String provider;
+
   /// Apps' lookups were tested: the tunnel's DNS answered them.
   final bool systemChecked;
 
@@ -72,11 +86,13 @@ class LeakReport {
   final DateTime time;
 
   const LeakReport({
+    this.verdict = LeakVerdict.unknown,
     this.exit,
     this.dns = const [],
     this.home,
     this.server = '',
     this.serverIp = '',
+    this.provider = '',
     this.systemChecked = false,
     this.fakeIp = false,
     required this.time,
@@ -87,70 +103,38 @@ class LeakReport {
     final system = (j['system'] as Map?)?.cast<String, dynamic>() ?? const {};
     final home = (j['home'] as Map?)?.cast<String, dynamic>();
     return LeakReport(
+      verdict: switch (j['verdict']) {
+        'ok' => LeakVerdict.ok,
+        'leak' => LeakVerdict.leak,
+        'bypass' => LeakVerdict.bypass,
+        _ => LeakVerdict.unknown,
+      },
       exit: j['exit'] is Map ? LeakServer.fromJson((j['exit'] as Map).cast()) : null,
       dns: [for (final d in (j['dns'] as List? ?? const [])) LeakServer.fromJson((d as Map).cast())],
       home: home == null ? null : IpInfo.fromJson(home),
       server: j['server'] ?? '',
       serverIp: j['server_ip'] ?? '',
+      provider: j['provider'] ?? '',
       systemChecked: system['checked'] == true,
       fakeIp: system['fake_ip'] == true,
       time: time ?? DateTime.now(),
     );
   }
 
-  String get _homeCountry => home?.country.toLowerCase() ?? '';
+  /// bash.ws saw the device's own address.
+  bool get bypassed => verdict == LeakVerdict.bypass;
 
-  /// bash.ws saw the device's own address, or one next to it: providers
-  /// often hand out neighbouring addresses from one pool.
-  bool get bypassed {
-    final e = exit, h = home;
-    if (e == null || h == null || h.ip.isEmpty) return false;
-    if (e.ip == h.ip) return true;
-    final a = e.ip.split('.'), b = h.ip.split('.');
-    return a.length == 4 && b.length == 4 && a.take(3).join('.') == b.take(3).join('.');
-  }
-
-  /// bash.ws saw the VPN: the server's own address, or at least not the
-  /// device's.
-  bool get exitIsVpn {
-    final e = exit;
-    if (e == null || bypassed) return false;
-    return e.ip == serverIp || home != null;
-  }
-
-  /// DNS servers on the ISP's side rather than the VPN's: those in the
-  /// device's own country when the VPN server is elsewhere, and, of the
-  /// ones that answered apps, those outside the VPN server's country.
-  /// Public resolvers answer from near wherever the query left, and those
-  /// the VPN server itself asked are on its side.
+  /// DNS servers on the ISP's or the network's side rather than the tunnel's.
   List<LeakServer> get suspicious => [
     for (final d in dns)
-      if (_suspicious(d)) d,
+      if (d.role == 'isp') d,
   ];
 
-  bool _suspicious(LeakServer d) {
-    if (d.country.isEmpty || _public(d)) return false;
-    final exitCountry = exit?.country ?? '';
-    if (_homeCountry.isNotEmpty && d.country == _homeCountry && exitCountry != _homeCountry) return true;
-    if (d.path == 'proxy') return false;
-    return exitCountry.isNotEmpty && d.country != exitCountry;
-  }
-
-  static bool _public(LeakServer d) {
-    final org = d.org.toLowerCase();
-    return _publicResolvers.any(org.contains);
-  }
-
-  /// The DNS servers look like the ISP's own: in the device's country.
-  bool get ispResolvers => _homeCountry.isNotEmpty && suspicious.any((d) => d.country == _homeCountry);
-
-  LeakVerdict get verdict {
-    if (exit == null) return LeakVerdict.unknown;
-    if (bypassed) return LeakVerdict.bypass;
-    if (suspicious.isNotEmpty) return LeakVerdict.leak;
-    if (!exitIsVpn) return LeakVerdict.unknown;
-    return LeakVerdict.ok;
-  }
+  /// The servers of the DNS the user set for the tunnel that answered.
+  List<LeakServer> get ownDns => [
+    for (final d in dns)
+      if (d.role == 'own') d,
+  ];
 
   bool get leaks => verdict == LeakVerdict.leak;
 }
