@@ -101,6 +101,15 @@ var ru = map[string]string{
 	"net.appeared":    "сеть появилась",
 	"net.reconnect":   "сеть вернулась, но связь через сервер не восстановилась: переподключаюсь",
 
+	// The proxy without the TUN layer (proxymode.go).
+	"proxy.up.system":    "прокси SOCKS5 и HTTP на {addr} открыт; системный прокси настроит приложение",
+	"proxy.up.manual":    "прокси SOCKS5 и HTTP на {addr} открыт для программ, настроенных на него",
+	"proxy.up.no_auth":   "прокси без VPN на {addr}: нет логина и пароля, приложения не смогут им пользоваться",
+	"proxy.up.open_http": "прокси без VPN на {addr}: SOCKS5 по логину и паролю, HTTP без пароля — им может пользоваться любое приложение на телефоне",
+	"proxy.up.auth":      "прокси без VPN на {addr}: SOCKS5 и HTTP по логину и паролю из настроек",
+	"proxy.down":         "прокси закрыт",
+	"proxy.down.android": "прокси без VPN выключен",
+
 	// Why a connection changes without the app's buttons: "action" events
 	// (lifecycle.go, appupdate.go, mobile/engine.go).
 	"action.autostart":          "подключить (автозапуск)",

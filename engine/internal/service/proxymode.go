@@ -1,8 +1,7 @@
 package service
 
 import (
-	"fmt"
-
+	"coreshift/engine/internal/msg"
 	"coreshift/engine/internal/store"
 	"coreshift/engine/internal/supervisor"
 )
@@ -38,20 +37,18 @@ func (s *Service) inbound(o Options) supervisor.Inbound {
 func (s *Service) proxyUp(o Options) {
 	s.proxyOpen.Store(true)
 	addr := s.cfg.Listen
-	var line string
+	code := "proxy.up.auth"
 	switch {
 	case !s.cfg.AppOutsideVPN && o.SystemProxy:
-		line = fmt.Sprintf("прокси SOCKS5 и HTTP на %s открыт; системный прокси настроит приложение", addr)
+		code = "proxy.up.system"
 	case !s.cfg.AppOutsideVPN:
-		line = fmt.Sprintf("прокси SOCKS5 и HTTP на %s открыт для программ, настроенных на него", addr)
+		code = "proxy.up.manual"
 	case !o.ProxyAuth.Set():
-		line = fmt.Sprintf("прокси без VPN на %s: нет логина и пароля, приложения не смогут им пользоваться", addr)
+		code = "proxy.up.no_auth"
 	case o.ProxyOpenHTTP:
-		line = fmt.Sprintf("прокси без VPN на %s: SOCKS5 по логину и паролю, HTTP без пароля — им может пользоваться любое приложение на телефоне", addr)
-	default:
-		line = fmt.Sprintf("прокси без VPN на %s: SOCKS5 и HTTP по логину и паролю из настроек", addr)
+		code = "proxy.up.open_http"
 	}
-	s.hub.publish(Event{Kind: "proxy", Reason: "up", Line: line})
+	s.hub.publish(Event{Kind: "proxy", Reason: "up"}.withLine(msg.New(code, "addr", addr)))
 }
 
 // proxyDown tells the journal that the port is closed, once per proxyUp.
@@ -59,11 +56,11 @@ func (s *Service) proxyDown() {
 	if !s.proxyOpen.Swap(false) {
 		return
 	}
-	line := "прокси закрыт"
+	line := msg.New("proxy.down")
 	if s.cfg.AppOutsideVPN {
-		line = "прокси без VPN выключен"
+		line = msg.New("proxy.down.android")
 	}
-	s.hub.publish(Event{Kind: "proxy", Reason: "down", Line: line})
+	s.hub.publish(Event{Kind: "proxy", Reason: "down"}.withLine(line))
 }
 
 // ensureProxyAuth gives the store the credentials of Android's proxy

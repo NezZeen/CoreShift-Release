@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net"
+	"net/netip"
 	"strings"
 	"testing"
 
@@ -50,6 +51,23 @@ func TestFailedConnectionCarriesTheCode(t *testing.T) {
 	b, _ := json.Marshal(Status{State: Failed, Error: "x", ErrorCode: "server.resolve.timeout", ErrorArgs: map[string]any{"host": "h"}})
 	if !strings.Contains(string(b), `"error_code":"server.resolve.timeout","error_args":{"host":"h"}`) {
 		t.Errorf("json %s", b)
+	}
+}
+
+// The proxy's journal lines go as codes, with the address.
+func TestProxyLinesCarryCodes(t *testing.T) {
+	addr := netip.MustParseAddrPort("127.0.0.1:17890")
+	s := &Service{hub: newHub(), cfg: Config{Listen: addr}}
+	events, stop := s.hub.subscribe(false)
+	defer stop()
+	s.proxyUp(Options{SystemProxy: true})
+	s.proxyDown()
+	up, down := <-events, <-events
+	if up.Code != "proxy.up.system" || up.Args["addr"] != addr.String() || !strings.Contains(up.Line, "127.0.0.1:17890 открыт") {
+		t.Errorf("up %+v", up)
+	}
+	if down.Code != "proxy.down" || down.Line != "прокси закрыт" {
+		t.Errorf("down %+v", down)
 	}
 }
 
