@@ -68,6 +68,21 @@ class _DesktopFrameState extends State<DesktopFrame> with WindowListener {
   /// notification has it), and tells it again once the app is back.
   AppLifecycleListener? _lifecycle;
 
+  /// While the window is believed hidden, Windows is asked every few
+  /// seconds whether it is: an event that never came (a restore from the
+  /// tray, Win+D) would otherwise keep the animations of a window on screen
+  /// frozen until the pointer passes over it.
+  Timer? _recheck;
+
+  void _onShown() {
+    if (widget.state.shown.value) {
+      _recheck?.cancel();
+      _recheck = null;
+    } else {
+      _recheck ??= Timer.periodic(const Duration(seconds: 3), (_) => _syncShown());
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -88,11 +103,17 @@ class _DesktopFrameState extends State<DesktopFrame> with WindowListener {
     Timer(const Duration(seconds: 1), _syncShown);
     _tray = _Tray.create(widget.state, onOpen: _show, onExit: _exit);
     _alerts = widget.state.alerts.listen(_notify);
+    widget.state.shown.addListener(_onShown);
+    _onShown();
   }
 
   @override
   void dispose() {
-    if (_enabled) windowManager.removeListener(this);
+    if (_enabled) {
+      windowManager.removeListener(this);
+      widget.state.shown.removeListener(_onShown);
+    }
+    _recheck?.cancel();
     _lifecycle?.dispose();
     _alerts?.cancel();
     _tray?.dispose();
