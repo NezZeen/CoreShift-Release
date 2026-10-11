@@ -26,7 +26,13 @@ void main() {
     final state = custom ?? AppState(DemoBackend());
     await tester.runAsync(() async {
       state.start();
-      for (var i = 0; i < 50 && !state.loaded; i++) {
+      // The demo service replays an earlier session once the app has
+      // loaded and opened the event stream: wait for its last line (the
+      // error), not only for the load, or a slow machine opens the pages
+      // with an empty journal. The wait is for real time and ends at once
+      // when the condition holds; the cap is only for a broken demo.
+      bool ready() => state.loaded && (state.backend is! DemoBackend || state.logs.any((l) => l.message.contains('502')));
+      for (var i = 0; i < 750 && !ready(); i++) {
         await Future.delayed(const Duration(milliseconds: 20));
       }
     });
