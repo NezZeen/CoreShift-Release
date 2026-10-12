@@ -74,50 +74,42 @@ void main() {
     }
   }
 
-  /// The switch «Номера»: the chip on a computer, the sort menu's item on a phone.
-  Future<void> toggleNumbers(WidgetTester tester, bool isPhone) async {
-    if (isPhone) await openSortMenu(tester);
-    await tap(tester, find.text('Номера'));
-  }
-
   for (final (name, size) in [('phone', phone), ('desktop', desktop)]) {
     final isPhone = size == phone;
     group(name, () {
-      appTest('the numbers are on a computer and off on a phone by default', (tester) async {
+      appTest('every server has its number, with no switch to hide them', (tester) async {
         final state = await pumpApp(tester, size: size);
         await openServers(tester, isPhone);
-        expect(state.prefs['server_numbers'], isNull, reason: 'nothing is chosen yet');
+        final total = state.subscriptions.fold(0, (sum, sub) => sum + sub.nodes.length);
+        expect(allNumbers(), findsNWidgets(total), reason: 'every server has its number');
+        final sub = state.subscriptions.first;
+        expect(tester.widget<Text>(numberOf(sub, sub.nodes.first)).data, '1');
+        expect(find.text('Номера'), findsNothing, reason: 'no chip on a computer');
         if (isPhone) {
-          expect(allNumbers(), findsNothing, reason: 'a phone shows no numbers');
-        } else {
-          final total = state.subscriptions.fold(0, (sum, sub) => sum + sub.nodes.length);
-          expect(allNumbers(), findsNWidgets(total), reason: 'every server has its number');
-          final sub = state.subscriptions.first;
-          expect(tester.widget<Text>(numberOf(sub, sub.nodes.first)).data, '1');
+          await openSortMenu(tester);
+          expect(find.text('Номера'), findsNothing, reason: 'no item in the sort menu');
+          await tester.tapAt(const Offset(10, 10));
+          await tester.pumpAndSettle();
         }
         expect(tester.takeException(), isNull);
       });
 
-      appTest('the switch shows and hides the numbers', (tester) async {
-        final state = await pumpApp(tester, size: size);
+      appTest('the rows have no radio circle: the selected server shows by its frame', (tester) async {
+        await pumpApp(tester, size: size);
         await openServers(tester, isPhone);
-        // The default is on for a computer; the first press turns it off.
-        final on = !isPhone;
-        await toggleNumbers(tester, isPhone);
-        expect(state.prefs['server_numbers'], !on, reason: 'the switch flips the default');
-        expect(allNumbers(), on ? findsNothing : findsWidgets);
-        expect(tester.takeException(), isNull);
-
-        await toggleNumbers(tester, isPhone);
-        expect(state.prefs['server_numbers'], on, reason: 'and back to the default');
-        expect(allNumbers(), on ? findsWidgets : findsNothing);
+        // The radio was a circle 18 points wide with a border; none is left.
+        final circles = find.byWidgetPredicate((w) {
+          if (w is! Container || w.decoration is! BoxDecoration) return false;
+          final d = w.decoration as BoxDecoration;
+          return d.shape == BoxShape.circle && d.border != null && w.constraints?.maxWidth == 18;
+        });
+        expect(circles, findsNothing);
         expect(tester.takeException(), isNull);
       });
 
       appTest('a number stays with its server when the list is sorted by ping', (tester) async {
         final state = await pumpApp(tester, size: size);
         await tester.runAsync(() => state.testLatency());
-        state.setPref('server_numbers', true);
         await openServers(tester, isPhone);
         await chooseSort(tester, isPhone, 'По пингу');
         expect(state.serverSort, 'ping');

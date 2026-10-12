@@ -39,8 +39,9 @@ class _NodeTable extends StatelessWidget {
             _row(
               narrow: narrow,
               header: true,
-              number: numbers ? const SizedBox() : null,
-              radio: const SizedBox(),
+              number: const SizedBox(),
+              // A slot for the checkboxes only while servers are picked.
+              radio: picking.active ? const SizedBox() : null,
               badge: const SizedBox(),
               name: Text('Сервер', style: headStyle),
               proto: Text('Протокол', style: headStyle),
@@ -79,7 +80,7 @@ class _NodeTable extends StatelessWidget {
   static Widget _row({
     required bool narrow,
     Widget? number,
-    required Widget radio,
+    Widget? radio,
     required Widget badge,
     required Widget name,
     required Widget proto,
@@ -89,7 +90,7 @@ class _NodeTable extends StatelessWidget {
     bool header = false,
   }) {
     // The place in the subscription, right-aligned in a slot of its own so
-    // that the names stay in line; no slot when the numbers are off.
+    // that the names stay in line.
     final numberSlot = number == null
         ? null
         : SizedBox(
@@ -108,12 +109,13 @@ class _NodeTable extends StatelessWidget {
         child: Row(
           children: [
             ?numberSlot,
-            // The radio, or the checkbox while picking: both at their own
-            // size at the slot's left, clear of the flag.
-            SizedBox(
-              width: 22,
-              child: Align(alignment: Alignment.centerLeft, child: radio),
-            ),
+            // The checkbox while picking, at the slot's left, clear of the
+            // flag. The selected server shows by its row's frame instead.
+            if (radio != null)
+              SizedBox(
+                width: 22,
+                child: Align(alignment: Alignment.centerLeft, child: radio),
+              ),
             SizedBox(
               width: 38,
               child: Align(alignment: Alignment.centerLeft, child: badge),
@@ -142,10 +144,11 @@ class _NodeTable extends StatelessWidget {
       child: Row(
         children: [
           ?numberSlot,
-          SizedBox(
-            width: 28,
-            child: Align(alignment: Alignment.centerLeft, child: radio),
-          ),
+          if (radio != null)
+            SizedBox(
+              width: 28,
+              child: Align(alignment: Alignment.centerLeft, child: radio),
+            ),
           SizedBox(
             width: 42,
             child: Align(alignment: Alignment.centerLeft, child: badge),
@@ -350,14 +353,12 @@ class _NodeRowState extends State<_NodeRow> {
       narrow: narrow,
       // The place in the subscription's own order, so it stays with the
       // server whatever the sort or the filter.
-      number: widget.numbers
-          ? Text(
-              '${widget.sub.nodes.indexOf(n) + 1}',
-              key: ValueKey('server-number/${widget.sub.id}/${n.fingerprint}'),
-              style: TextStyle(fontSize: 11, color: p.muted, fontFeatures: const [FontFeature.tabularFigures()]),
-            )
-          : null,
-      radio: picking ? _PickBox(on: picked, enabled: pick.canPick(widget.sub, n)) : _Radio(on: sel, color: connected ? okColor : accent),
+      number: Text(
+        '${widget.sub.nodes.indexOf(n) + 1}',
+        key: ValueKey('server-number/${widget.sub.id}/${n.fingerprint}'),
+        style: TextStyle(fontSize: 11, color: p.muted, fontFeatures: const [FontFeature.tabularFigures()]),
+      ),
+      radio: picking ? _PickBox(on: picked, enabled: pick.canPick(widget.sub, n)) : null,
       badge: CountryBadge(countryOf(n.name, n.server), width: narrow ? 32 : 30),
       name: Tooltip(
         // A phone's long press picks the row.
@@ -582,34 +583,5 @@ class _LatencyCell extends StatelessWidget {
       _ => '',
     };
     return how.isEmpty ? text : Tooltip(message: how, child: text);
-  }
-}
-
-class _Radio extends StatelessWidget {
-  final bool on;
-
-  /// Amber while chosen, green once connected; the light theme's darker
-  /// ink of it, as the pale lamp would not show on white.
-  final Color color;
-  const _Radio({required this.on, this.color = accent});
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.pal;
-    final ink = p.ink(color);
-    return Container(
-      width: 18,
-      height: 18,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(color: on ? ink : p.border2, width: 2),
-      ),
-      padding: const EdgeInsets.all(2.5),
-      child: on
-          ? Container(
-              decoration: BoxDecoration(color: ink, shape: BoxShape.circle),
-            )
-          : null,
-    );
   }
 }

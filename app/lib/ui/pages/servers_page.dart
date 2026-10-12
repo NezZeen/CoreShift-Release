@@ -224,8 +224,6 @@ class _ServersPageState extends State<ServersPage> {
     final chips = [
       if (compact) _SortChip(state: s),
       _Chip(label: 'По странам', on: s.serverGroup, onTap: () => s.setPref('server_group', !s.serverGroup)),
-      // A computer's way to show the numbers; a phone has it in the sort menu.
-      if (!compact) _Chip(label: 'Номера', on: serverNumbersOn(s, compact), onTap: () => s.setPref('server_numbers', !serverNumbersOn(s, compact))),
       if (subFilter != null) _Chip(label: '× ${s.subscriptionById(subFilter!)?.displayName ?? ''}', on: true, onTap: () => setState(() => subFilter = null)),
     ];
     // How to ping is the service's choice: a ping, or a request through the
@@ -377,14 +375,25 @@ class _ServersPageState extends State<ServersPage> {
     required int hidden,
   }) {
     final current = _current();
-    final sort = Seg<String>(
-      options: [('sub', 'Как в подписке'), ('ping', 'По пингу'), if (s.speedSupported) ('speed', 'По скорости'), ('name', 'По имени')],
-      value: s.serverSort,
-      onChanged: (v) => s.setPref('server_sort', v),
-      tooltips: const {
-        'ping': 'Сначала самые быстрые; без ответа — в конце',
-        'speed': 'Сначала самые быстрые по скорости скачивания; не проверенные — в конце',
-      },
+    // The orders as chips like «По странам» beside them, not a segmented
+    // box of their own.
+    const sortTips = {'ping': 'Сначала самые быстрые; без ответа — в конце', 'speed': 'Сначала самые быстрые по скорости скачивания; не проверенные — в конце'};
+    final sort = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final (i, (v, label)) in [
+          ('sub', 'Как в подписке'),
+          ('ping', 'По пингу'),
+          if (s.speedSupported) ('speed', 'По скорости'),
+          ('name', 'По имени'),
+        ].indexed) ...[
+          if (i > 0) const SizedBox(width: 6),
+          Tooltip(
+            message: sortTips[v] ?? '',
+            child: _Chip(label: label, on: s.serverSort == v, onTap: () => s.setPref('server_sort', v)),
+          ),
+        ],
+      ],
     );
     // The download speed of the servers shown: a button that becomes the
     // way to stop the test while it runs.
@@ -500,7 +509,7 @@ class _ServersPageState extends State<ServersPage> {
             collapsed: query.isEmpty ? collapsed : const {},
             onToggle: _toggle,
             picking: _picking,
-            numbers: serverNumbersOn(s, compact),
+            numbers: true,
           ),
         ),
         if (hidden > 0)
@@ -531,4 +540,3 @@ String serversCount(int n) => '$n ${ruPlural(n, 'сервер', 'сервера'
 
 /// Whether the rows show their place in the subscription: on a computer by
 /// default, off on a phone, unless the user chose otherwise.
-bool serverNumbersOn(AppState s, bool compact) => s.prefs['server_numbers'] is bool ? s.prefs['server_numbers'] as bool : !compact;
