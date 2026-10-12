@@ -39,8 +39,9 @@
 # chat named in telegram-chat (or telegram-chat.txt) there, such as
 # @CoreShift_app. The token is never printed. Without the token, the chat or
 # the text, the post is skipped with a hint: the release is out already.
-# -NoTelegram skips it, -TelegramOnly posts it alone (a retry). A test build
-# is not posted.
+# -NoTelegram skips it, -TelegramOnly posts it alone (a retry), -TelegramEdit
+# puts the text as it is now into the post already sent. A test build is not
+# posted.
 param(
     [Parameter(Mandatory = $true)][string]$Version,
     [string]$Repo = 'NezZeen/CoreShift-Release',
@@ -58,7 +59,10 @@ param(
     [switch]$NoTelegram,
     [switch]$TelegramOnly,
     # Takes the post of this version back, while the bot may (48 hours).
-    [switch]$TelegramDelete
+    [switch]$TelegramDelete,
+    # Replaces the text of this version's post with the text file as it is
+    # now; a bot may edit its posts at any time.
+    [switch]$TelegramEdit
 )
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path "$PSScriptRoot\..").Path
@@ -67,6 +71,7 @@ if ($NoGitLab -and $GitLabOnly) { throw '-NoGitLab and -GitLabOnly exclude each 
 if ($NoTelegram -and $TelegramOnly) { throw '-NoTelegram and -TelegramOnly exclude each other' }
 if ($GitLabOnly -and $TelegramOnly) { throw '-GitLabOnly and -TelegramOnly exclude each other' }
 if ($Prerelease -and $GitLabOnly) { throw 'GitLab has no pre-releases: publish a test build to GitHub only' }
+if ($TelegramEdit -and $TelegramDelete) { throw '-TelegramEdit and -TelegramDelete exclude each other' }
 if ($Prerelease -and $TelegramOnly) { throw 'A test build is not posted to Telegram' }
 $toGitLab = -not $NoGitLab -and -not $Prerelease -and -not $TelegramOnly
 $toTelegram = -not $NoTelegram -and -not $Prerelease
@@ -126,6 +131,34 @@ function Send-TelegramPost {
         Write-Host "Telegram: not posted, $text is $($message.Length) characters, Telegram takes 4096" -ForegroundColor Yellow
         return
     }
+    if ($TelegramEdit) {
+        if (-not (Test-Path $posted)) {
+            Write-Host "Telegram: nothing to edit, no $posted" -ForegroundColor Yellow
+            return
+        }
+        $p = Get-Content $posted -Raw | ConvertFrom-Json
+        $edit = @{ chat_id = $p.chat_id; message_id = $p.message_id; text = $message; disable_web_page_preview = $true } | ConvertTo-Json -Compress
+        try {
+            Invoke-RestMethod -Method POST -Uri "https://api.telegram.org/bot$token/editMessageText" -UseBasicParsing -TimeoutSec 60 `
+                -Body ([Text.Encoding]::UTF8.GetBytes($edit)) -ContentType 'application/json; charset=utf-8' | Out-Null
+            Write-Host "Edited the v$Version post in Telegram (message $($p.message_id))" -ForegroundColor Green
+        } catch {
+            $why = 'no answer'
+            if ($_.Exception.Response) {
+                $why = "$([int]$_.Exception.Response.StatusCode)"
+                try {
+                    $stream = $_.Exception.Response.GetResponseStream()
+                    if ($stream.CanSeek) { $stream.Position = 0 }
+                    $answer = (New-Object IO.StreamReader($stream)).ReadToEnd() | ConvertFrom-Json
+                    if ($answer.description) { $why += ", $($answer.description)" }
+                } catch { }
+            }
+            Write-Host "Telegram: v$Version not edited ($why)" -ForegroundColor Yellow
+        } finally {
+            $token = $null
+        }
+        return
+    }
     $send = @{ chat_id = $chat; text = $message; disable_web_page_preview = $true }
     if ($thread) { $send.message_thread_id = [int]$thread }
     $body = $send | ConvertTo-Json -Compress
@@ -157,7 +190,7 @@ function Send-TelegramPost {
     }
 }
 
-if ($TelegramOnly -or $TelegramDelete) {
+if ($TelegramOnly -or $TelegramDelete -or $TelegramEdit) {
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
     Send-TelegramPost
     return
