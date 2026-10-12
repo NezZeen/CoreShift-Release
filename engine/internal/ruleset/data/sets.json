@@ -1,9 +1,9 @@
 {
-  "fetched": "2026-10-10T15:27:23Z",
+  "fetched": "2026-10-12T18:46:32Z",
   "sets": {
     "geoip-ru": {
-      "sha256": "6e23f5580dd443e2f9c4895adafee8d199c1a3487182ad5f0a2256cf59c7e53a",
-      "size": 50107
+      "sha256": "bdca5cdb44cdcf0940001e5952386822a6f4ffa8b2c8eea00340aa6f585c7f9d",
+      "size": 50096
     },
     "geosite-category-ads-all": {
       "sha256": "367e65c2ac7d27971cef6bcc8de751909a709443d5f086e87e7a10e05acc684e",
