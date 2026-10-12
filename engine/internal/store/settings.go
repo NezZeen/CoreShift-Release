@@ -93,6 +93,20 @@ func defaultLatencyTest(goos string) string {
 	return LatencyProxy
 }
 
+// adsVersion is the version of Routing.BlockAds' rule: from 1 the ad block
+// has no switch in the app for now and is on for everyone, also where it
+// was turned off before.
+const adsVersion = 1
+
+// upgradeAds turns the ad block on in settings saved before adsVersion.
+func (r *Routing) upgradeAds() {
+	if r.AdsVersion >= adsVersion {
+		return
+	}
+	r.BlockAds = true
+	r.AdsVersion = adsVersion
+}
+
 // upgradeLatency moves settings saved before latencyVersion on to its
 // defaults. Nobody could choose the way before the switch in the settings,
 // so a "ping" on the desktop was only the old default: it becomes "proxy".
@@ -174,6 +188,9 @@ type Routing struct {
 	// modes, ahead of every list but the user's Rules. On by default, also
 	// for settings saved before it existed.
 	BlockAds bool `json:"block_ads"`
+	// AdsVersion is adsVersion once BlockAds was set by that version's rule
+	// (upgradeAds); 0 in a file saved before it.
+	AdsVersion int `json:"ads_version,omitempty"`
 	// DirectDomains are domain suffixes that bypass the tunnel, e.g. "ru"
 	// or "bank.example". Internationalized names must be in punycode.
 	DirectDomains []string `json:"direct_domains"`
@@ -303,6 +320,7 @@ func Defaults() Settings {
 		Routing: Routing{
 			Mode:          RouteAll,
 			BlockAds:      true,
+			AdsVersion:    adsVersion,
 			DirectDomains: []string{}, DirectApps: []string{}, DirectIPs: []string{},
 			ProxyDomains: []string{}, ProxyIPs: []string{}, ProxyApps: []string{},
 			AppFilter: AppsAll, FilterApps: []string{},

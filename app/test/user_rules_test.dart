@@ -111,7 +111,7 @@ void main() {
       final state = await pumpRules(tester, size);
       List<String> rules() => [for (final r in state.setting<List>('routing.rules', const [])) '${r['match']} ${r['action']}'];
       expect(find.text('Свои правила'), findsOneWidget);
-      expect(find.text('Блокировать рекламу'), findsOneWidget);
+      expect(find.text('Блокировать рекламу'), findsNothing, reason: 'no switch for now: always on');
       final field = find.widgetWithText(TextField, 'geosite:youtube, geoip:ru, example.com');
 
       Future<void> add(String text, String action) async {

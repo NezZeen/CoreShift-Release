@@ -195,6 +195,7 @@ func Open(path string, opts Options) (*Store, error) {
 	// file's own, or none.
 	loaded.Settings.Log = LogSettings{}
 	loaded.Settings.Cores.LatencyVersion = 0 // likewise
+	loaded.Settings.Routing.AdsVersion = 0   // likewise
 	var problem error
 	if err := json.Unmarshal(b, &loaded); err != nil {
 		problem = fmt.Errorf("unreadable: %w", err)
@@ -211,6 +212,7 @@ func Open(path string, opts Options) (*Store, error) {
 
 	loaded.Settings.Log.upgrade()
 	loaded.Settings.Cores.upgradeLatency()
+	loaded.Settings.Routing.upgradeAds()
 	var warn error
 	if set, err := loaded.Settings.normalize(); err != nil {
 		// Hand-edited into something invalid, or a value of a later

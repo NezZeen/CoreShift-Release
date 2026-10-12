@@ -26,7 +26,6 @@ class RoutingPage extends StatelessWidget {
     if (selected) {
       left = [
         ServicePresetsPanel(state: s),
-        if (s.hasSetting('routing.block_ads')) _presetsPanel(context, selected: true),
         RuleListPanel(
           key: const ValueKey('selected-proxy'),
           state: s,
@@ -52,7 +51,7 @@ class RoutingPage extends StatelessWidget {
       ];
     } else {
       left = [
-        _presetsPanel(context, selected: false),
+        if (s.hasSetting('routing.russia_direct')) _presetsPanel(context, selected: false),
         RuleListPanel(
           key: const ValueKey('all-direct'),
           state: s,
@@ -262,7 +261,7 @@ class RoutingPage extends StatelessWidget {
   }
 
   /// The ready-made sets: Russian sites direct (not in the "only selected"
-  /// mode, where they go direct anyway) and the ad block.
+  /// mode, where they go direct anyway).
   Widget _presetsPanel(BuildContext context, {required bool selected}) {
     final russia = !selected && s.hasSetting('routing.russia_direct');
     final russiaOn = s.setting('routing.russia_direct', false);
@@ -290,21 +289,8 @@ class RoutingPage extends StatelessWidget {
                   'Если сервис не пускает из-за границы, добавьте его в «Сайты и адреса без VPN».',
               trailing: Switch(value: s.setting('routing.russia_abroad', false), onChanged: (v) => set('russia_abroad', v)),
             ),
-          if (s.hasSetting('routing.block_ads'))
-            SettingRow(
-              first: !russia,
-              title: 'Блокировать рекламу',
-              description:
-                  'Рекламные и следящие серверы не открываются, в том числе рекламные серверы Google. '
-                  'Если из-за этого сломался сайт, добавьте его в «Сайты и адреса без VPN» или «Всегда через VPN».',
-              descriptionWidget: Text(
-                'Блокирует рекламные адреса по списку. Рекламу внутри YouTube, VK, Instagram и похожих приложений так не убрать: '
-                'она идёт с тех же адресов, что и видео. Больше рекламы уберёт DNS с блокировкой (например, AdGuard) — '
-                'укажите его в поле «DNS через VPN».',
-                style: TextStyle(fontSize: 12, color: context.pal.muted, height: 1.4),
-              ),
-              trailing: Switch(value: s.setting('routing.block_ads', true), onChanged: (v) => set('block_ads', v)),
-            ),
+          // The ad block has no switch for now (being reworked): it is on,
+          // as the service keeps it (store: Routing.AdsVersion).
         ],
       ),
     );

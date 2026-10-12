@@ -34,3 +34,31 @@ func TestVerboseJournalByDefault(t *testing.T) {
 		}
 	}
 }
+
+// The ad block has no switch in the app for now: on for everyone, also where
+// it was turned off before; a choice saved after that (a switch back) stays.
+func TestAdBlockOnForEveryone(t *testing.T) {
+	if d := Defaults().Routing; !d.BlockAds || d.AdsVersion != adsVersion {
+		t.Fatalf("defaults = block %v, version %d", d.BlockAds, d.AdsVersion)
+	}
+	path := filepath.Join(t.TempDir(), "store.json")
+	for _, c := range []struct {
+		name, file string
+		want       bool
+	}{
+		{"turned off before", `{"version":1,"settings":{"tun":true,"routing":{"block_ads":false}}}`, true},
+		{"never set", `{"version":1,"settings":{"tun":true}}`, true},
+		{"off after the change", `{"version":1,"settings":{"tun":true,"routing":{"block_ads":false,"ads_version":1}}}`, false},
+	} {
+		if err := os.WriteFile(path, []byte(c.file), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		s, err := Open(path, Options{})
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if got := s.Settings().Routing; got.BlockAds != c.want || got.AdsVersion != adsVersion {
+			t.Errorf("%s: block %v at version %d, want %v at %d", c.name, got.BlockAds, got.AdsVersion, c.want, adsVersion)
+		}
+	}
+}

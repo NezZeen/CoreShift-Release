@@ -6,7 +6,7 @@ import 'package:coreshift/main.dart';
 import 'package:coreshift/state/app_state.dart';
 
 void main() {
-  Future<void> pumpRules(WidgetTester tester, Size size) async {
+  Future<AppState> pumpRules(WidgetTester tester, Size size) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -22,21 +22,22 @@ void main() {
     final phone = find.byType(NavigationBar).evaluate().isNotEmpty;
     await tester.tap(phone ? find.descendant(of: find.byType(NavigationBar), matching: find.text('Правила')) : find.text('Правила').first);
     await tester.pump();
+    return state;
   }
 
-  // The hint says what ad blocking cannot reach, so it must be readable
-  // under the switch on a phone too, where the other explanations hide
-  // behind an «i».
+  // The ad block has no switch for now: it is on, and the rules page shows
+  // no row for it in either mode, nor an empty panel of ready-made sets.
   for (final (name, size) in [('phone', Size(390, 844)), ('desktop', Size(1400, 900))]) {
-    testWidgets('the ad blocking hint sits under the switch ($name)', (tester) async {
-      await pumpRules(tester, size);
-      final title = find.text('Блокировать рекламу');
-      expect(title, findsOneWidget);
-      final hint = find.textContaining('Рекламу внутри YouTube, VK, Instagram');
-      await tester.ensureVisible(hint);
-      await tester.pump();
-      expect(hint, findsOneWidget, reason: 'shown at $size');
-      expect(tester.getTopLeft(hint).dy, greaterThan(tester.getTopLeft(title).dy), reason: 'under the title at $size');
+    testWidgets('the ad block has no switch, and it is on ($name)', (tester) async {
+      final state = await pumpRules(tester, size);
+      expect(state.setting('routing.block_ads', false), isTrue);
+      expect(find.text('Блокировать рекламу'), findsNothing);
+      expect(find.textContaining('Рекламу внутри YouTube'), findsNothing);
+      expect(find.text('Российские сайты напрямую'), findsOneWidget);
+      await tester.runAsync(() => state.updateSettings((s) => s['routing']['mode'] = 'selected'));
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text('Блокировать рекламу'), findsNothing);
+      expect(find.text('Готовые наборы'), findsNothing, reason: 'no empty panel in the «only selected» mode');
       expect(tester.takeException(), isNull, reason: 'no overflow at $size');
       await tester.pump(const Duration(seconds: 6));
     });
