@@ -225,9 +225,30 @@ if ($Prerelease) { $latest = '--latest=false' }
 # as an argument by Windows PowerShell.
 $notesFile = Join-Path $env:TEMP "coreshift-notes-$Version.md"
 [IO.File]::WriteAllText($notesFile, $Notes, (New-Object Text.UTF8Encoding $false))
+# An argument for a command line of Start-Process, which joins them as they are.
+function Quote([string]$a) { if ($a -match '[\s"]' -or $a -eq '') { '"' + ($a -replace '"', '\"') + '"' } else { $a } }
+
+# GitHub in a process of its own, alongside the uploads to GitLab below:
+# neither waits for the other. Its output goes to a log, shown once it ends
+# (Wait-GitHub); a failure there fails the publish, after GitLab.
+$ghProc = $null
+$ghLog = Join-Path $env:TEMP "coreshift-gh-$Version.log"
 if (-not $GitLabOnly) {
-    gh release create "v$Version" $files.FullName --repo $Repo --title "CoreShift $Version" --notes-file $notesFile $latest @pre
-    if ($LASTEXITCODE -ne 0) { throw "gh release create failed (exit code $LASTEXITCODE)" }
+    $ghArgs = @('release', 'create', "v$Version") + @($files.FullName) + @('--repo', $Repo, '--title', "CoreShift $Version", '--notes-file', $notesFile, $latest) + $pre
+    $ghProc = Start-Process gh -PassThru -NoNewWindow -RedirectStandardOutput $ghLog -RedirectStandardError "$ghLog.err" `
+        -ArgumentList (($ghArgs | ForEach-Object { Quote $_ }) -join ' ')
+    # Held now: without the handle, ExitCode stays empty after the exit.
+    $null = $ghProc.Handle
+    Write-Host "GitHub: uploading $($files.Count) files to $Repo"
+}
+function Wait-GitHub {
+    if (-not $ghProc) { return }
+    $ghProc.WaitForExit()
+    Get-Content $ghLog, "$ghLog.err" -ErrorAction SilentlyContinue | Where-Object { $_ } | ForEach-Object { Write-Host $_ }
+    Remove-Item $ghLog, "$ghLog.err" -ErrorAction SilentlyContinue
+    if ($ghProc.ExitCode -ne 0) {
+        throw "gh release create failed (exit code $($ghProc.ExitCode)); GitHub alone again: publish.ps1 -Version $Version -NoGitLab"
+    }
     Write-Host "Published v$Version to $Repo" -ForegroundColor Green
 }
 
@@ -277,20 +298,81 @@ function Invoke-GitLab {
     }
 }
 
+# Uploads $files to the generic package registry: through curl.exe, three at
+# a time and streamed from disk, which is several times faster than
+# Invoke-RestMethod; without curl.exe one by one through Invoke-GitLab. The
+# token goes to curl in a header file of this run, never on its command line.
+function Send-GitLabFiles([int]$ProjectId) {
+    $curl = Join-Path $env:SystemRoot 'System32\curl.exe'
+    $pathOf = { param($f) "/projects/$ProjectId/packages/generic/coreshift/$Version/$([uri]::EscapeDataString($f.Name))" }
+    if (-not (Test-Path $curl)) {
+        foreach ($f in $files) {
+            Write-Host "GitLab: uploading $($f.Name) ($([math]::Round($f.Length / 1MB, 1)) MB)"
+            Invoke-GitLab PUT (& $pathOf $f) -InFile $f.FullName -TimeoutSec 3600 | Out-Null
+        }
+        return
+    }
+    $tmp = Join-Path $env:TEMP "coreshift-gitlab-$PID"
+    New-Item -ItemType Directory $tmp -Force | Out-Null
+    $header = Join-Path $tmp 'header'
+    [IO.File]::WriteAllText($header, "PRIVATE-TOKEN: $gitlabToken`r`n")
+    try {
+        $queue = New-Object Collections.Queue
+        $files | ForEach-Object { $queue.Enqueue($_) }
+        $running = @()
+        $n = 0
+        while ($queue.Count -or $running.Count) {
+            while ($queue.Count -and $running.Count -lt 3) {
+                $f = $queue.Dequeue()
+                $n++
+                $code = Join-Path $tmp "$n.code"
+                Write-Host "GitLab: uploading $($f.Name) ($([math]::Round($f.Length / 1MB, 1)) MB)"
+                # --retry: timeouts, 408, 429 and 5xx, as Invoke-GitLab does.
+                $cArgs = @('-sS', '--fail-with-body', '--retry', '4', '--retry-connrefused', '--retry-delay', '5', '--max-time', '3600',
+                    '-H', "@$header", '-H', 'Content-Type: application/octet-stream', '--upload-file', $f.FullName,
+                    '-o', (Join-Path $tmp "$n.body"), '-w', '%{http_code}', "https://gitlab.com/api/v4$(& $pathOf $f)")
+                $p = Start-Process $curl -PassThru -NoNewWindow -RedirectStandardOutput $code -RedirectStandardError "$code.err" `
+                    -ArgumentList (($cArgs | ForEach-Object { Quote $_ }) -join ' ')
+                $null = $p.Handle
+                $running += [pscustomobject]@{ Proc = $p; File = $f; Code = $code }
+            }
+            $done = @($running | Where-Object { $_.Proc.HasExited })
+            if (-not $done.Count) { Start-Sleep -Milliseconds 250; continue }
+            foreach ($d in $done) {
+                $running = @($running | Where-Object { $_ -ne $d })
+                if ($d.Proc.ExitCode -eq 0) { continue }
+                $status = 0
+                [void][int]::TryParse(("$(Get-Content $d.Code -Raw -ErrorAction SilentlyContinue)").Trim(), [ref]$status)
+                $what = switch ($status) {
+                    401 { 'the GitLab token is invalid or expired (401)' }
+                    403 { 'the GitLab token may not do this (403): a fine-grained token needs Release: Create, Release Link: Create, Package: Create and tag creation (or use a legacy token with the api scope)' }
+                    404 { "no project $GitLabProject on GitLab, or the token cannot see it (404)" }
+                    0 { "no answer: $("$(Get-Content "$($d.Code).err" -Raw -ErrorAction SilentlyContinue)".Trim())" }
+                    default { "HTTP $status" }
+                }
+                $running | ForEach-Object { if (-not $_.Proc.HasExited) { $_.Proc.Kill() } }
+                throw "GitLab: PUT $($d.File.Name): $what (curl exit code $($d.Proc.ExitCode))"
+            }
+        }
+    } finally {
+        Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+$gitlabError = $null
 if ($toGitLab) {
+  try {
     # Old Windows PowerShell may not offer TLS 1.2 by itself; this process only.
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
     # The progress bar slows uploads in Windows PowerShell many times over.
     $ProgressPreference = 'SilentlyContinue'
     $project = Invoke-GitLab GET "/projects/$([uri]::EscapeDataString($GitLabProject))"
     $id = $project.id
+    Send-GitLabFiles $id
     $links = @()
     foreach ($f in $files) {
-        $name = $f.Name
-        $pkgPath = "/projects/$id/packages/generic/coreshift/$Version/$([uri]::EscapeDataString($name))"
-        Write-Host "GitLab: uploading $name ($([math]::Round($f.Length / 1MB, 1)) MB)"
-        Invoke-GitLab PUT $pkgPath -InFile $f.FullName -TimeoutSec 3600 | Out-Null
-        $links += @{ name = $name; url = "https://gitlab.com/api/v4$pkgPath"; link_type = 'package'; direct_asset_path = "/$name" }
+        $pkgPath = "/projects/$id/packages/generic/coreshift/$Version/$([uri]::EscapeDataString($f.Name))"
+        $links += @{ name = $f.Name; url = "https://gitlab.com/api/v4$pkgPath"; link_type = 'package'; direct_asset_path = "/$($f.Name)" }
     }
     $description = $Notes.Trim()
     if (-not $description) { $description = "CoreShift $Version" }
@@ -316,11 +398,20 @@ if ($toGitLab) {
         }
     }
     Write-Host "Published v$Version to gitlab.com/$GitLabProject" -ForegroundColor Green
+  } catch {
+    # Told once GitHub, still uploading alongside, has ended.
+    $gitlabError = $_
+  }
 } elseif ($Prerelease -and -not $NoGitLab) {
     Write-Host "A test build is not published to GitLab; once it is a normal release: publish.ps1 -Version $Version -GitLabOnly" -ForegroundColor Yellow
 }
 $gitlabToken = $null
-Remove-Item $fixed -Recurse -Force -ErrorAction SilentlyContinue
+try {
+    Wait-GitHub
+} finally {
+    Remove-Item $fixed -Recurse -Force -ErrorAction SilentlyContinue
+}
+if ($gitlabError) { throw $gitlabError }
 
 if ($toTelegram) {
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
