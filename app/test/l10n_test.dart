@@ -127,6 +127,21 @@ void main() {
   });
 
   group('engine codes', () {
+    test('why TUN is unavailable renders in Russian and in English', () {
+      expect(
+        engineText('tun.unavailable.no_admin', null, 'fallback'),
+        'Для режима TUN нужны права администратора, которых у службы нет; выключите TUN в настройках или запустите службу с повышенными правами',
+      );
+      expect(engineText('tun.unavailable.no_singbox', null, 'fallback'), 'Для режима TUN нужно установленное ядро sing-box');
+      // An engine before the codes sent whole sentences.
+      expect(engineText('', null, 'TUN mode needs something'), 'TUN mode needs something');
+      appLang.value = Lang.en;
+      expect(
+        engineText('tun.unavailable.no_admin', null, 'fallback'),
+        'TUN mode needs administrator rights, which the daemon does not have; turn TUN off in the settings or run the daemon elevated',
+      );
+    });
+
     test('a code renders in Russian and in English', () {
       const args = {'addr': '203.0.113.5:443'};
       expect(engineText('reach.server_up', args, 'fallback'), 'сервер 203.0.113.5:443 отвечает напрямую, но соединение через него не проходит');
