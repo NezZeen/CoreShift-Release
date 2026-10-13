@@ -358,7 +358,14 @@ class DemoBackend implements Backend {
       _emit({'kind': 'tun', 'reason': 'up'});
       _emit({'kind': 'dns', 'reason': 'applied'});
     } else {
-      _emit({'kind': 'proxy', 'reason': 'up', 'line': 'прокси SOCKS5 и HTTP на 127.0.0.1:17890 открыт для программ, настроенных на него'});
+      final system = (_settings['proxy'] as Map?)?['system'] == true;
+      _emit({
+        'kind': 'proxy',
+        'reason': 'up',
+        'line': system
+            ? 'прокси SOCKS5 и HTTP на 127.0.0.1:17890 открыт; системный прокси настроит приложение'
+            : 'прокси SOCKS5 и HTTP на 127.0.0.1:17890 открыт для программ, настроенных на него',
+      });
     }
     _status = {..._status, 'state': 'connected', 'core': chain.first, 'failed': <String, String>{}, 'since': DateTime.now().toUtc().toIso8601String()};
     _emit({'kind': 'core-state', 'core': chain.first, 'reason': 'connected'});

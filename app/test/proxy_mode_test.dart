@@ -24,8 +24,9 @@ Future<void> _setTun(WidgetTester tester, AppState state, bool on) async {
 }
 
 void main() {
-  // The desktop: «Системный прокси» shows once «Все приложения через VPN»
-  // is off, and turns the setting on.
+  // The desktop: «Системный прокси» is always visible (disabled while
+  // TUN is on, so it can be found), and turns the setting on once TUN
+  // is off.
   testWidgets('the system proxy switch on a computer', (tester) async {
     tester.view.physicalSize = const Size(1400, 900);
     tester.view.devicePixelRatio = 1;
@@ -35,7 +36,12 @@ void main() {
     await tester.pump();
     await tester.tap(find.text('Настройки').first);
     await tester.pump();
-    expect(find.text('Системный прокси'), findsNothing, reason: 'with TUN on it means nothing');
+    expect(find.text('Системный прокси'), findsOneWidget, reason: 'always visible, so it can be found');
+    Row rowOn() => tester.widgetList<Row>(find.ancestor(of: find.text('Системный прокси'), matching: find.byType(Row))).first;
+    expect(tester.widget<Switch>(find.descendant(of: find.byWidget(rowOn()), matching: find.byType(Switch))).value, isFalse);
+    expect(find.textContaining('Включите после выключения'), findsOneWidget);
+    // Disabled while TUN is on, the row reads dimmed.
+    expect(tester.widgetList<Opacity>(find.ancestor(of: find.text('Системный прокси'), matching: find.byType(Opacity))).first.opacity, lessThan(1));
 
     await _setTun(tester, state, false);
     final row = find.ancestor(of: find.text('Системный прокси'), matching: find.byType(Row)).first;

@@ -108,13 +108,13 @@ type Service struct {
 	latency latencyState
 	// nodeSpeed is the speed test of the servers in the list (nodespeed.go).
 	nodeSpeed nodeSpeedState
-	cores   coreState
-	upd     appUpdater
-	apps    appWatch
-	views   views
-	stats   *trafficStats
-	fo      failover
-	retry   afterConnect
+	cores     coreState
+	upd       appUpdater
+	apps      appWatch
+	views     views
+	stats     *trafficStats
+	fo        failover
+	retry     afterConnect
 	// announced: the providers' announcements already journaled.
 	announced announceLog
 	// healthFails counts the active core's failed checks in a row.
@@ -514,17 +514,19 @@ func (s *Service) onStoreChange(c store.Change) {
 	s.hub.publish(e)
 }
 
-// tunLayer returns the TUN layer, creating it on first use.
+// tunLayer returns the TUN layer, creating it on first use. The failures
+// are coded messages (engine/internal/msg): the app words them itself,
+// with the Russian text going along for older apps.
 func (s *Service) tunLayer() (TUNLayer, error) {
 	if s.cfg.TUNUnavailable != "" {
-		return nil, errors.New(s.cfg.TUNUnavailable)
+		return nil, msg.Err(s.cfg.TUNUnavailable)
 	}
 	if s.cfg.tun != nil {
 		return s.cfg.tun, nil
 	}
 	bin := s.cfg.Binaries[core.SingBox]
 	if bin == "" {
-		return nil, errors.New("TUN mode needs the sing-box core installed")
+		return nil, msg.Err("tun.unavailable.no_singbox")
 	}
 	group, err := proc.NewGroup()
 	if err != nil {

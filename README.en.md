@@ -48,7 +48,7 @@ If GitHub doesn't open for you, the same files are on the GitLab mirror: [CoreSh
 - Ready-made sets for popular services, your own sites (through the VPN, around it, or blocked), internationalized domain names.
 - Your own rules such as `geosite:category-ads-all` → block, `geosite:youtube` → through the VPN, `geoip:ru` → direct; categories come from SagerNet, runetfreedom or your own link (`.srs` or a v2ray `geosite.dat`/`geoip.dat`).
 - Individual programs on Windows and Linux and apps on Android — through the VPN or around it.
-- Proxy mode without TUN when «All apps through the VPN» is off.
+- Proxy mode without TUN when «All apps through the VPN» is off: a «System proxy» switch (CoreShift sets the system proxy itself) or a manual setup.
 - The local network (router, printers, virtual machines) keeps working with the VPN on.
 
 ### Leak protection

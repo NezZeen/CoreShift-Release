@@ -695,7 +695,13 @@ class DaemonInfo {
   final String commit;
   final List<CoreInfo> cores;
   final bool tunAvailable;
+
+  /// Why TUN is unavailable, in the app's language: the engine's code
+  /// (`tun.unavailable.*`) said by [tunUnavailableCode], [tunUnavailable]
+  /// what the engine sent along (its Russian, or a whole sentence from an
+  /// engine before the codes).
   final String tunUnavailable;
+  final String tunUnavailableCode;
 
   /// The port of the proxy without TUN (SOCKS5 and HTTP on 127.0.0.1).
   final int proxyPort;
@@ -707,6 +713,7 @@ class DaemonInfo {
     this.cores = const [],
     this.tunAvailable = false,
     this.tunUnavailable = '',
+    this.tunUnavailableCode = '',
     this.proxyPort = 17890,
   });
 
@@ -717,6 +724,7 @@ class DaemonInfo {
     cores: ((j['cores'] as List?) ?? []).map((c) => CoreInfo.fromJson((c as Map).cast())).toList(),
     tunAvailable: j['tun_available'] == true,
     tunUnavailable: j['tun_unavailable'] ?? '',
+    tunUnavailableCode: j['tun_unavailable_code'] ?? '',
     proxyPort: (j['proxy_port'] as num?)?.toInt() ?? 17890,
   );
 

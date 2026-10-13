@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../api/models.dart';
+import '../../l10n/engine_strings.dart';
 import '../../state/app_state.dart';
 import 'wizard_strings.dart';
 
@@ -83,7 +84,7 @@ List<WizardMode> wizardModes({required bool android}) {
       icon: Icons.devices_outlined,
       recommended: true,
       available: (s) => s.info.tunAvailable,
-      unavailable: (s) => s.info.tunUnavailable,
+      unavailable: (s) => engineText(s.info.tunUnavailableCode, null, s.info.tunUnavailable),
       isActive: (s) => s.setting('tun', false),
       apply: (j) => j['tun'] = true,
     ),

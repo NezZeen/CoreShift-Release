@@ -133,6 +133,11 @@ var ru = map[string]string{
 	"proxy.down":         "прокси закрыт",
 	"proxy.down.android": "прокси без VPN выключен",
 
+	// Why the TUN layer cannot work here (vpn.go, service.go).
+	"tun.unavailable.no_admin":   "Для режима TUN нужны права администратора, которых у службы нет; выключите TUN в настройках или запустите службу с повышенными правами",
+	"tun.unavailable.no_root":    "Для режима TUN нужны root или CAP_NET_ADMIN, которых у службы нет; запустите её как системную службу coreshift",
+	"tun.unavailable.no_singbox": "Для режима TUN нужно установленное ядро sing-box",
+
 	// Why a connection changes without the app's buttons: "action" events
 	// (lifecycle.go, appupdate.go, mobile/engine.go).
 	"action.autostart":          "подключить (автозапуск)",

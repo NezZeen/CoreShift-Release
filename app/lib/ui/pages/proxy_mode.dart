@@ -12,20 +12,29 @@ import '../widgets.dart';
 // which has CoreShift set the proxy of the system; on a phone «Прокси без
 // VPN» and what apps need to use it (engine/internal/service/proxymode.go).
 
-/// «Системный прокси» (Windows, Linux), shown while TUN is off.
+/// «Системный прокси» (Windows, Linux): CoreShift сам прописывает прокси
+/// в системе, пока идёт подключение без TUN. Показан всегда, чтобы его
+/// можно было найти, но включается только с выключенным «Все приложения
+/// через VPN» (иначе ему нечего делать: весь трафик уже идёт через TUN).
 class SystemProxyRow extends StatelessWidget {
   final AppState state;
 
-  const SystemProxyRow({super.key, required this.state});
+  /// False while TUN is on: the switch is shown disabled, with a hint.
+  final bool enabled;
+
+  const SystemProxyRow({super.key, required this.state, this.enabled = true});
 
   @override
   Widget build(BuildContext context) {
+    final on = state.setting('proxy.system', false) == true;
     return SettingRow(
       title: 'Системный прокси',
       description:
           'Если «Все приложения» не включаются: CoreShift сам пропишет прокси в системе. '
-          'Работает для браузеров и большинства программ, но не для игр и всего, что прокси не понимает',
-      trailing: Switch(value: state.setting('proxy.system', false) == true, onChanged: (v) => state.updateSettings((s) => (s['proxy'] as Map)['system'] = v)),
+          'Работает для браузеров и большинства программ, но не для игр и всего, что прокси не понимает'
+          '${enabled ? '' : '. Включите после выключения «Все приложения через VPN»'}',
+      trailing: Switch(value: enabled && on, onChanged: enabled ? (v) => state.updateSettings((s) => (s['proxy'] as Map)['system'] = v) : null),
+      enabled: enabled,
     );
   }
 }
