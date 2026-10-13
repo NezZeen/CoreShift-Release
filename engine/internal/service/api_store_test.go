@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"coreshift/engine/internal/core"
+	"coreshift/engine/internal/msg"
 	"coreshift/engine/internal/node"
 	"coreshift/engine/internal/ping"
 	"coreshift/engine/internal/store"
@@ -227,8 +228,10 @@ func TestSettingsApplyToNextConnection(t *testing.T) {
 }
 
 func TestTUNUnavailable(t *testing.T) {
-	h, _ := newStoreAPI(t, func(c *Config) { c.TUNUnavailable = "needs administrator rights" })
-	if err := h.connect(t, trojanLink); err == nil || !strings.Contains(err.Error(), "administrator") {
+	h, _ := newStoreAPI(t, func(c *Config) { c.TUNUnavailable = "tun.unavailable.no_admin" })
+	err := h.connect(t, trojanLink)
+	m, ok := msg.Of(err)
+	if err == nil || !ok || m.Code != "tun.unavailable.no_admin" || !strings.Contains(err.Error(), "администратора") {
 		t.Fatalf("err = %v", err)
 	}
 	if calls := h.log.get(); slices.Contains(calls, "dns.apply") {
@@ -246,10 +249,11 @@ func TestTUNUnavailable(t *testing.T) {
 func TestAPIInfo(t *testing.T) {
 	_, srv := newStoreAPI(t, func(c *Config) { delete(c.Binaries, core.SingBox) })
 	var info struct {
-		Version        string     `json:"version"`
-		Cores          []coreInfo `json:"cores"`
-		TUNAvailable   bool       `json:"tun_available"`
-		TUNUnavailable string     `json:"tun_unavailable"`
+		Version            string     `json:"version"`
+		Cores              []coreInfo `json:"cores"`
+		TUNAvailable       bool       `json:"tun_available"`
+		TUNUnavailable     string     `json:"tun_unavailable"`
+		TUNUnavailableCode string     `json:"tun_unavailable_code"`
 	}
 	if code := callJSON(t, srv, "GET", "/v1/info", nil, &info); code != http.StatusOK {
 		t.Fatal(code)
@@ -258,7 +262,8 @@ func TestAPIInfo(t *testing.T) {
 	for _, c := range info.Cores {
 		installed[c.Kind] = c.Installed
 	}
-	if info.Version == "" || !installed[core.Xray] || installed[core.SingBox] || info.TUNAvailable || !strings.Contains(info.TUNUnavailable, "sing-box") {
+	if info.Version == "" || !installed[core.Xray] || installed[core.SingBox] || info.TUNAvailable || info.TUNUnavailableCode != "tun.unavailable.no_singbox" ||
+		!strings.Contains(info.TUNUnavailable, "sing-box") {
 		t.Errorf("info = %+v", info)
 	}
 }

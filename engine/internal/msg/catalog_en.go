@@ -42,4 +42,9 @@ var en = map[string]string{
 	"dnscheck.skip.not_connected": "will be checked through the VPN once it is connected",
 	"dnscheck.skip.unsupported":   "this kind of DNS (QUIC, HTTP/3) is not checked",
 	"dnscheck.skip.no_physical":   "could not reach the network around the VPN to check",
+
+	// Why the TUN layer cannot work here (vpn.go, service.go).
+	"tun.unavailable.no_admin":   "TUN mode needs administrator rights, which the daemon does not have; turn TUN off in the settings or run the daemon elevated",
+	"tun.unavailable.no_root":    "TUN mode needs root or CAP_NET_ADMIN, which the daemon does not have; run it as the coreshift systemd service",
+	"tun.unavailable.no_singbox": "TUN mode needs the sing-box core installed",
 }
