@@ -84,6 +84,10 @@ static void create_window(MyApplication* self) {
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   fl_dart_project_set_dart_entrypoint_arguments(
       project, self->dart_entrypoint_arguments);
+  // Skia, as on Windows: Impeller's OpenGL backend held about twice the
+  // memory for the same window. CORESHIFT_IMPELLER=1 brings it back.
+  fl_dart_project_set_enable_impeller(
+      project, g_strcmp0(g_getenv("CORESHIFT_IMPELLER"), "1") == 0);
 
   FlView* view = fl_view_new(project);
   GdkRGBA background_color;
