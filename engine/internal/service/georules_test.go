@@ -393,7 +393,7 @@ func TestRoutingPresetsFromSource(t *testing.T) {
 	if b, _ := os.ReadFile(out.block[0].Path); !bytes.Equal(b, adsCopy) {
 		t.Error("not the built-in ad set")
 	}
-	time.Sleep(100 * time.Millisecond) // the refresh of the old copy fails
+	rig.background.Wait() // the refresh of the old copy fails
 	// Neither carried by this build nor to be had: left out, said so.
 	rig.baseline = noBaseline
 	os.Remove(filepath.Join(rig.dir, adsSet.Tag+".srs"))

@@ -139,6 +139,8 @@ type ruleSets struct {
 
 	mu         sync.Mutex
 	refreshing map[string]bool
+	// background counts the refreshes running, for tests to wait on.
+	background sync.WaitGroup
 	jobs       map[string]*job      // downloads under way, by the file they make
 	failed     map[string]failure   // recent failed downloads, by file
 	missed     map[string]bool      // files the running connection is without
@@ -265,7 +267,7 @@ func (r *ruleSets) builtin(ctx context.Context, gs geoSet, proxy *url.URL) (stri
 			return "", err
 		}
 	case time.Since(mod) > maxAge(gs.Tag):
-		go r.refresh(gs, path, proxy)
+		r.background.Go(func() { r.refresh(gs, path, proxy) })
 	}
 	return path, nil
 }
