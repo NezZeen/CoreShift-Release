@@ -77,11 +77,6 @@ func buildRoute(o Options) obj {
 		if len(o.DNS.DirectSuffixes) > 0 {
 			rules = append(rules, obj{"domain_suffix": o.DNS.DirectSuffixes, "outbound": tagDirect})
 		}
-		// The network's own servers are reached in the network, not
-		// through the proxy, which knows neither their names nor them.
-		if len(o.DNS.LocalSuffixes) > 0 && o.localResolver().IsValid() {
-			rules = append(rules, obj{"domain_suffix": o.DNS.LocalSuffixes, "outbound": tagDirect})
-		}
 	}
 	// The user's rules by name, in order; then the presets: blocks (ads),
 	// Google, the sets of blocked sites, the direct names.

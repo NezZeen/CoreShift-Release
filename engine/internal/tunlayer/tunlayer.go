@@ -193,9 +193,11 @@ type DNSOptions struct {
 	// "corp.example", as its DHCP or Windows' search list gives them), and
 	// LocalResolver the network's resolver: names under them and names
 	// without a dot ("proxy", which the system completes with them) are
-	// asked of it and go direct, so that the network's own servers stay
-	// reachable with the VPN on. Neither the tunnel's resolver nor a public
-	// one knows such names. Without LocalResolver nothing of it applies.
+	// asked of it, so that the network's own servers stay reachable with
+	// the VPN on. Neither the tunnel's resolver nor a public one knows such
+	// names. Only an answer in the private ranges is taken (and goes direct
+	// with the local network); any other goes the usual way. Without
+	// LocalResolver nothing of it applies.
 	LocalSuffixes []string
 	LocalResolver netip.Addr
 

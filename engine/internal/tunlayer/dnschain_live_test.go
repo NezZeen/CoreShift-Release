@@ -284,3 +284,38 @@ func TestChainOnlyForDirectNames(t *testing.T) {
 		t.Error("a name that goes through the tunnel was asked of the network's resolver: a leak")
 	}
 }
+
+// The network's own names (DNSOptions.LocalSuffixes, names without a dot):
+// its resolver's answer is taken when it is an address in the network; a
+// public one, which a hostile network could give for any domain it calls
+// its own, is not, and the name goes the usual way.
+func TestLocalNamesOnlyInTheNetwork(t *testing.T) {
+	for _, c := range []struct {
+		name, local, want string
+	}{
+		{"intranet.corp.example", "10.1.2.3", "10.1.2.3"},
+		{"proxy", "192.168.5.5", "192.168.5.5"},
+		{"www.corp.example", "203.0.113.9", "198.51.100.1"},
+		{"mail", "203.0.113.9", "198.51.100.1"},
+	} {
+		local := startFakeDNS(t, "127.0.0.3", c.local, mDNS.RcodeSuccess, false)
+		direct := startFakeDNS(t, "127.0.0.1", "198.51.100.1", mDNS.RcodeSuccess, false)
+		o := baseOptions()
+		o.Selective = true // the usual way is the direct resolver: one that answers here
+		o.DNS.FakeIP = false
+		o.DNS.Direct = "127.0.0.1"
+		o.DNS.LocalSuffixes = []string{"corp.example"}
+		o.DNS.LocalResolver = netip.MustParseAddr("127.0.0.3")
+		router, _ := startRouter(t, o, map[string]uint16{tagDNSDirect: direct.port, tagDNSLocal: local.port})
+		rcode, addr, _ := lookup(t, router, c.name)
+		if rcode != mDNS.RcodeSuccess || addr != c.want {
+			t.Errorf("%s (network answers %s): %d %q, want %s", c.name, c.local, rcode, addr, c.want)
+		}
+		if local.queries.Load() == 0 {
+			t.Errorf("%s: the network's resolver was not asked", c.name)
+		}
+		if rcode, _, _ := lookup(t, router, "wpad.corp.example"); rcode != mDNS.RcodeNameError {
+			t.Errorf("wpad: rcode %d, want NXDOMAIN", rcode)
+		}
+	}
+}

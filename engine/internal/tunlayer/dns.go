@@ -59,18 +59,29 @@ func buildDNS(o Options) (obj, error) {
 	// network's domains. Found, it would send them through the network's
 	// proxy, past the VPN, the very thing a company's network does to them.
 	rules = append(rules, obj{"domain_regex": []string{wpadPattern}, "action": "predefined", "rcode": "NXDOMAIN"})
-	// The network's own names, asked of its resolver: the direct one, when
-	// that is the network's already.
+	// The network's own names, asked of its resolver (the direct one, when
+	// that is the network's already). Its answer counts only when it is an
+	// address in the network: the domains are what the network announces,
+	// and a hostile Wi-Fi announcing "google.com" must not get the names
+	// under it out of the VPN. Any other answer, or none, and the name goes
+	// on to the rules below, as if it were nobody's. The addresses in the
+	// network go direct anyway (ExcludeLAN), so no route rule is needed.
 	if local := o.localResolver(); local.IsValid() {
-		tag := tagDNSDirect
+		server := tagDNSDirect
 		if local.String() != directUp.Host {
-			tag = tagDNSLocal
-			servers = append(servers, upstream{Type: "udp", Host: local.String()}.server(tag))
+			server = tagDNSLocal
+			servers = append(servers, upstream{Type: "udp", Host: local.String()}.server(server))
+		}
+		inNetwork := func(key string, value any, tag string) {
+			rules = append(rules,
+				obj{key: value, "action": "evaluate", "server": server, "tag": tag, "timeout": directAttemptTimeout},
+				obj{"action": "respond", "match_response": tag, "ip_is_private": true},
+			)
 		}
 		if len(o.DNS.LocalSuffixes) > 0 {
-			rules = append(rules, obj{"domain_suffix": o.DNS.LocalSuffixes, "server": tag})
+			inNetwork("domain_suffix", o.DNS.LocalSuffixes, "local-domains")
 		}
-		rules = append(rules, obj{"domain_regex": []string{singleLabelPattern}, "server": tag})
+		inNetwork("domain_regex", []string{singleLabelPattern}, "local-single")
 	}
 	if !o.ipv6() {
 		rules = append(rules, obj{"domain": ipv6Probes, "action": "predefined", "rcode": "NOERROR"})

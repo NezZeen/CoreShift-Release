@@ -25,26 +25,30 @@ func TestLocalNames(t *testing.T) {
 	for i, r := range rules {
 		m := r.(map[string]any)
 		switch {
-		case fmt.Sprint(m["domain_suffix"]) == "[corp.example]" && m["server"] == tagDNSLocal:
+		case fmt.Sprint(m["domain_suffix"]) == "[corp.example]" && m["server"] == tagDNSLocal && m["action"] == "evaluate":
 			suffix = i + 1
-		case fmt.Sprint(m["domain_regex"]) == "["+singleLabelPattern+"]" && m["server"] == tagDNSLocal:
+		case fmt.Sprint(m["domain_regex"]) == "["+singleLabelPattern+"]" && m["server"] == tagDNSLocal && m["action"] == "evaluate":
 			single = i + 1
 		case fmt.Sprint(m["domain_regex"]) == "["+wpadPattern+"]" && m["rcode"] == "NXDOMAIN":
 			wpad = i + 1
 		}
 	}
 	if suffix == 0 || single == 0 || wpad == 0 || wpad > suffix || wpad > single {
-		t.Errorf("rules: suffix %d, single label %d, wpad %d (refused first):\n%v", suffix, single, wpad, rules)
+		t.Fatalf("rules: suffix %d, single label %d, wpad %d (refused first):\n%v", suffix, single, wpad, rules)
 	}
-	direct := false
-	for _, r := range list(sub(render(t, o), "route"), "rules") {
-		m := r.(map[string]any)
-		if fmt.Sprint(m["domain_suffix"]) == "[corp.example]" && m["outbound"] == tagDirect {
-			direct = true
+	// Each answered only with an address in the network.
+	for _, i := range []int{suffix, single} {
+		next := rules[i].(map[string]any)
+		if next["action"] != "respond" || next["ip_is_private"] != true || next["match_response"] != rules[i-1].(map[string]any)["tag"] {
+			t.Errorf("rule after %d: %v", i, next)
 		}
 	}
-	if !direct {
-		t.Error("the network's names do not go direct")
+	// No route rule takes their names direct: a domain the network
+	// announced must not lead a public site out of the VPN.
+	for _, r := range list(sub(render(t, o), "route"), "rules") {
+		if m := r.(map[string]any); fmt.Sprint(m["domain_suffix"]) == "[corp.example]" {
+			t.Errorf("a route rule for the network's domains: %v", m)
+		}
 	}
 }
 
@@ -61,7 +65,7 @@ func TestLocalNamesResolver(t *testing.T) {
 			t.Errorf("a second server for the direct resolver: %v", servers)
 		}
 	}
-	if got := shape(rules, map[string]any{"domain_suffix": nil}); fmt.Sprint(got) != "[route:"+tagDNSDirect+"]" {
+	if got := shape(rules, map[string]any{"domain_suffix": nil}); fmt.Sprint(got) != "[evaluate:"+tagDNSDirect+" respond]" {
 		t.Errorf("suffix rules = %v", got)
 	}
 
