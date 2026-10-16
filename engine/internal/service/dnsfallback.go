@@ -145,7 +145,9 @@ func (s *Service) noteDirectDNS(line string) bool {
 	s.mu.Lock()
 	gen, state := s.gen, s.status.State
 	s.mu.Unlock()
-	if state != Connected {
+	// Without a network every lookup fails, the user's resolver no more
+	// than any other: that is told as "no network", not as this.
+	if state != Connected || s.offline() {
 		return named
 	}
 	if w.failure(gen, time.Now(), kind) {
@@ -172,8 +174,9 @@ func (s *Service) lookAtDirectDNS(gen int) {
 		return
 	}
 	switch {
-	case skip == "" && res.OK:
-		// It answers: the failures were of something else.
+	case skip == "" && res.OK, s.offline():
+		// It answers: the failures were of something else. Or the
+		// network went away meanwhile, which fails any resolver.
 		w.quietUntil = time.Now().Add(directDNSQuiet)
 		w.mu.Unlock()
 		return

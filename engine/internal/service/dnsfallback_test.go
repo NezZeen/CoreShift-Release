@@ -114,6 +114,8 @@ type probeStub struct {
 	res   dnsprobe.Result
 	skip  string
 	calls []string // "direct" or "tunnel", with the server
+	// onProbe, if set, runs at each probe: something that happens meanwhile.
+	onProbe func()
 }
 
 func (p *probeStub) probe(_ context.Context, raw string, tunnel bool) (dnsprobe.Result, string) {
@@ -124,6 +126,9 @@ func (p *probeStub) probe(_ context.Context, raw string, tunnel bool) (dnsprobe.
 		how = "tunnel"
 	}
 	p.calls = append(p.calls, how+" "+raw)
+	if p.onProbe != nil {
+		p.onProbe()
+	}
 	return p.res, p.skip
 }
 
@@ -291,6 +296,36 @@ func TestServiceDirectDNSFineIsNotBlamed(t *testing.T) {
 		t.Errorf("a working resolver was blamed: %+v", ev)
 	}
 	// A silence is not named: those lines stay in the journal, grouped.
+}
+
+// Without a network every lookup fails: the user's resolver is not blamed
+// for it, neither by the failures nor by a look that the outage fails.
+func TestServiceDirectDNSNotBlamedOffline(t *testing.T) {
+	stub := &probeStub{res: dnsprobe.Result{Kind: dnsprobe.KindTimeout}}
+	h := connectWithDirectDNS(t, adguardDoH, stub)
+	eventsFor(h, 100*time.Millisecond)
+	h.offline.Store(true)
+	for i := range 10 {
+		h.svc.Log("tun", exchangeFailedLine(i, silentCause))
+	}
+	if ev := dnsDirectEvents(eventsFor(h, 300*time.Millisecond)); len(ev) != 0 || h.svc.Status().DirectDNS != "" {
+		t.Errorf("blamed while offline: %+v", ev)
+	}
+	if n := stub.count(); n != 0 {
+		t.Errorf("the resolver was tried %d times while offline", n)
+	}
+
+	// The network goes away while the resolver is looked at.
+	h.offline.Store(false)
+	stub.mu.Lock()
+	stub.onProbe = func() { h.offline.Store(true) }
+	stub.mu.Unlock()
+	for i := 10; i < 13; i++ {
+		h.svc.Log("tun", exchangeFailedLine(i, silentCause))
+	}
+	if ev := dnsDirectEvents(eventsFor(h, 300*time.Millisecond)); len(ev) != 0 || h.svc.Status().DirectDNS != "" {
+		t.Errorf("blamed for an outage during the look: %+v", ev)
+	}
 }
 
 // A resolver that cannot be tried from here (QUIC) is judged by what the
