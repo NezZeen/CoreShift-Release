@@ -168,13 +168,14 @@ func TestTLS(t *testing.T) {
 	go serveStream(l, dns.RcodeSuccess)
 
 	// Not trusted: what a provider that substitutes its own certificate
-	// looks like.
-	if r := probe(t, "tls://"+l.Addr().String(), time.Second); r.OK || r.Kind != KindTLS {
+	// looks like. The first check loads the system's certificates, which
+	// takes longer than a second under the race detector.
+	if r := probe(t, "tls://"+l.Addr().String(), 5*time.Second); r.OK || r.Kind != KindTLS {
 		t.Errorf("untrusted certificate: %+v", r)
 	}
 	rootCAs = pool
 	defer func() { rootCAs = nil }()
-	if r := probe(t, "tls://"+l.Addr().String(), time.Second); !r.OK {
+	if r := probe(t, "tls://"+l.Addr().String(), 5*time.Second); !r.OK {
 		t.Errorf("trusted: %+v", r)
 	}
 }
