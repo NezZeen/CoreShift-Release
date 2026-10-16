@@ -142,6 +142,9 @@ type Config struct {
 	TUNLayer TUNLayer
 	// SystemResolvers lists the resolvers of the network the device is on.
 	SystemResolvers func(ctx context.Context, exclude string) ([]netip.Addr, error)
+	// SearchDomains lists the network's own domains (its DNS suffix and
+	// search list), whose names its resolver answers.
+	SearchDomains func(ctx context.Context, exclude string) ([]string, error)
 	// PhysicalBind says how pings of servers leave the device, outside the
 	// tunnel.
 	PhysicalBind func() (ping.Bind, error)
@@ -173,6 +176,7 @@ type Config struct {
 	guard     dnsguard.Guard
 	tun       TUNLayer
 	resolvers func(ctx context.Context, exclude string) ([]netip.Addr, error)
+	domains   func(ctx context.Context, exclude string) ([]string, error)
 	// lookup resolves a server name: through server when it is valid,
 	// else through the system resolver.
 	lookup       func(ctx context.Context, host string, server netip.AddrPort) (netip.Addr, error)

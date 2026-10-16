@@ -265,6 +265,14 @@ func (s *Service) recheckDirectDNS(ctx context.Context, gen int) {
 // directFallback returns the network's resolvers that stand behind the
 // user's own direct one (tunlayer.DNSOptions.DirectFallback): none where the
 // settings leave the choice to the system, as it is the network's already.
+// firstOr is the first of addrs, or none.
+func firstOr(addrs []netip.Addr) netip.Addr {
+	if len(addrs) == 0 {
+		return netip.Addr{}
+	}
+	return addrs[0]
+}
+
 func directFallback(direct string, resolvers []netip.Addr) []netip.Addr {
 	if direct == "" {
 		return nil

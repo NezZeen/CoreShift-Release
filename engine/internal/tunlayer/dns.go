@@ -55,6 +55,23 @@ func buildDNS(o Options) (obj, error) {
 	if len(o.DNS.BlockSuffixes) > 0 {
 		rules = append(rules, obj{"domain_suffix": o.DNS.BlockSuffixes, "action": "predefined", "rcode": "NXDOMAIN"})
 	}
+	// Browsers set to find a proxy by themselves look for "wpad" in the
+	// network's domains. Found, it would send them through the network's
+	// proxy, past the VPN, the very thing a company's network does to them.
+	rules = append(rules, obj{"domain_regex": []string{wpadPattern}, "action": "predefined", "rcode": "NXDOMAIN"})
+	// The network's own names, asked of its resolver: the direct one, when
+	// that is the network's already.
+	if local := o.localResolver(); local.IsValid() {
+		tag := tagDNSDirect
+		if local.String() != directUp.Host {
+			tag = tagDNSLocal
+			servers = append(servers, upstream{Type: "udp", Host: local.String()}.server(tag))
+		}
+		if len(o.DNS.LocalSuffixes) > 0 {
+			rules = append(rules, obj{"domain_suffix": o.DNS.LocalSuffixes, "server": tag})
+		}
+		rules = append(rules, obj{"domain_regex": []string{singleLabelPattern}, "server": tag})
+	}
 	if !o.ipv6() {
 		rules = append(rules, obj{"domain": ipv6Probes, "action": "predefined", "rcode": "NOERROR"})
 	}

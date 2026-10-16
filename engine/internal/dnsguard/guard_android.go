@@ -15,3 +15,9 @@ func New(journalPath string) (Guard, error) { return noopGuard{}, nil }
 func SystemResolvers(ctx context.Context, exclude string) ([]netip.Addr, error) {
 	return nil, ErrUnsupported
 }
+
+// SearchDomains is not available from Go on Android either: the app passes
+// LinkProperties.getDomains in (mobile.SetNetwork).
+func SearchDomains(ctx context.Context, exclude string) ([]string, error) {
+	return nil, ErrUnsupported
+}

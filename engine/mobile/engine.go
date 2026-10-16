@@ -243,6 +243,7 @@ func Start(dataDir, libDir, deviceID, osVersion, model string, p Platform) error
 		Store:           st,
 		TUNLayer:        tun,
 		SystemResolvers: currentNetwork.resolvers,
+		SearchDomains:   currentNetwork.searchDomains,
 		// The app is outside the VPN: pings and lookups of servers leave
 		// by the default network.
 		PhysicalBind:  func() (ping.Bind, error) { return ping.Bind{}, nil },

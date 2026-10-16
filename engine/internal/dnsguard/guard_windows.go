@@ -9,6 +9,7 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+	winreg "golang.org/x/sys/windows/registry"
 )
 
 var (
@@ -73,6 +74,65 @@ const (
 // gateway too. Call it before Apply: afterwards the system resolves
 // through the tunnel.
 func SystemResolvers(ctx context.Context, exclude string) ([]netip.Addr, error) {
+	var first, rest []netip.Addr
+	err := eachAdapter(exclude, func(aa *windows.IpAdapterAddresses, best bool) {
+		to := &rest
+		if best {
+			to = &first
+		}
+		for d := aa.FirstDnsServerAddress; d != nil; d = d.Next {
+			if a, ok := netip.AddrFromSlice(d.Address.IP()); ok {
+				*to = append(*to, a.Unmap())
+			}
+		}
+	})
+	if err != nil {
+		return nil, err
+	}
+	return FilterUsable(append(first, rest...)), nil
+}
+
+// SearchDomains returns the network's own domains: the DNS suffix and
+// search list of the adapters SystemResolvers reads, the internet one's
+// first, then Windows' search list (set by hand or by a group policy).
+func SearchDomains(ctx context.Context, exclude string) ([]string, error) {
+	var first, rest []string
+	err := eachAdapter(exclude, func(aa *windows.IpAdapterAddresses, best bool) {
+		to := &rest
+		if best {
+			to = &first
+		}
+		if aa.DnsSuffix != nil {
+			*to = append(*to, windows.UTF16PtrToString(aa.DnsSuffix))
+		}
+		for s := aa.FirstDnsSuffix; s != nil; s = s.Next {
+			*to = append(*to, windows.UTF16ToString(s.String[:]))
+		}
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, at := range []struct{ path, value string }{
+		{`SOFTWARE\Policies\Microsoft\Windows NT\DNSClient`, "SearchList"},
+		{`SYSTEM\CurrentControlSet\Services\Tcpip\Parameters`, "SearchList"},
+	} {
+		k, err := winreg.OpenKey(winreg.LOCAL_MACHINE, at.path, winreg.QUERY_VALUE)
+		if err != nil {
+			continue
+		}
+		v, _, err := k.GetStringValue(at.value)
+		k.Close()
+		if err == nil {
+			rest = append(rest, strings.FieldsFunc(v, func(r rune) bool { return r == ',' || r == ' ' })...)
+		}
+	}
+	return CleanSearchDomains(append(first, rest...)), nil
+}
+
+// eachAdapter calls f for every connected adapter with a default gateway
+// but the one named exclude; best tells the adapter that carries internet
+// traffic.
+func eachAdapter(exclude string, f func(aa *windows.IpAdapterAddresses, best bool)) error {
 	size := uint32(16 << 10)
 	var buf []byte
 	for {
@@ -83,14 +143,13 @@ func SystemResolvers(ctx context.Context, exclude string) ([]netip.Addr, error) 
 			break
 		}
 		if !errors.Is(err, windows.ERROR_BUFFER_OVERFLOW) {
-			return nil, fmt.Errorf("dnsguard: GetAdaptersAddresses: %w", err)
+			return fmt.Errorf("dnsguard: GetAdaptersAddresses: %w", err)
 		}
 	}
 	// With our TUN up, the best interface is the TUN, which is skipped: the
 	// adapters then keep their order.
 	var best uint32
 	_ = windows.GetBestInterfaceEx(&windows.SockaddrInet4{Addr: [4]byte{1, 1, 1, 1}}, &best)
-	var first, rest []netip.Addr
 	for aa := (*windows.IpAdapterAddresses)(unsafe.Pointer(&buf[0])); aa != nil; aa = aa.Next {
 		if aa.OperStatus != ifOperStatusUp || aa.IfType == ifTypeLoopback || aa.FirstGatewayAddress == nil {
 			continue
@@ -98,15 +157,7 @@ func SystemResolvers(ctx context.Context, exclude string) ([]netip.Addr, error) 
 		if exclude != "" && strings.EqualFold(windows.UTF16PtrToString(aa.FriendlyName), exclude) {
 			continue
 		}
-		to := &rest
-		if best != 0 && aa.IfIndex == best {
-			to = &first
-		}
-		for d := aa.FirstDnsServerAddress; d != nil; d = d.Next {
-			if a, ok := netip.AddrFromSlice(d.Address.IP()); ok {
-				*to = append(*to, a.Unmap())
-			}
-		}
+		f(aa, best != 0 && aa.IfIndex == best)
 	}
-	return FilterUsable(append(first, rest...)), nil
+	return nil
 }

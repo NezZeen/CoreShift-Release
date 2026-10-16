@@ -12,3 +12,7 @@ func New(journalPath string) (Guard, error) { return nil, ErrUnsupported }
 func SystemResolvers(ctx context.Context, exclude string) ([]netip.Addr, error) {
 	return nil, ErrUnsupported
 }
+
+func SearchDomains(ctx context.Context, exclude string) ([]string, error) {
+	return nil, ErrUnsupported
+}

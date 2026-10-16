@@ -26,6 +26,7 @@ var en = map[string]string{
 	"unit.mb":                "{n} MB",
 	"unit.kb":                "{n} KB",
 	// The direct resolver (dnsfallback.go, dnscheck.go).
+	"dns.local_names":             "the network's names ({domains}) and names without a dot go to the network's DNS {dns}, outside the VPN",
 	"dns.direct_down":             "direct DNS ({addr}) is unreachable on this network ({why}) — using the network's DNS",
 	"dns.direct_restored":         "direct DNS ({addr}) answers again",
 	"dns.why.refused":             "connection refused",

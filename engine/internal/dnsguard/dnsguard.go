@@ -123,6 +123,21 @@ func resolvConfNameservers(b []byte) []netip.Addr {
 	return out
 }
 
+// resolvConfSearch returns the domains of a resolv.conf's "search" and
+// "domain" lines (glibc takes the last of them; both name the network's
+// domains all the same).
+func resolvConfSearch(b []byte) []string {
+	var out []string
+	sc := bufio.NewScanner(bytes.NewReader(b))
+	for sc.Scan() {
+		f := strings.Fields(sc.Text())
+		if len(f) >= 2 && (f[0] == "search" || f[0] == "domain") {
+			out = append(out, f[1:]...)
+		}
+	}
+	return out
+}
+
 // usesResolvedStub reports whether a resolv.conf points at the local
 // systemd-resolved stub, in which case per-link DNS routing takes effect.
 func usesResolvedStub(b []byte) bool {

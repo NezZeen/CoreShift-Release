@@ -137,6 +137,8 @@ extension AppStateEvents on AppState {
         // The reconnect that follows says why it happens.
         _log(e.time, 'сеть', e.line.isNotEmpty ? e.lineText : AppState._layerText(e.kind, e.reason), LogLevel.swap);
         if (live) toast('Сеть сменилась — CoreShift переподключается');
+      case 'dns' when e.reason == 'local-names':
+        _log(e.time, 'DNS', e.lineText, LogLevel.info);
       case 'tun':
       case 'dns':
         _log(

@@ -259,6 +259,8 @@ func newHarness(t *testing.T, mutate func(*Config)) *harness {
 		resolvers: func(context.Context, string) ([]netip.Addr, error) {
 			return []netip.Addr{netip.MustParseAddr("192.0.2.53")}, nil
 		},
+		// Not the computer's own.
+		domains: func(context.Context, string) ([]string, error) { return nil, nil },
 		lookup: func(_ context.Context, _ string, server netip.AddrPort) (netip.Addr, error) {
 			h.mu.Lock()
 			h.lookups = append(h.lookups, server)

@@ -131,7 +131,7 @@ object Engine {
             override fun onLost(network: Network) {
                 if (network != current) return
                 current = null
-                Mobile.setNetwork("", 0, "", "")
+                Mobile.setNetwork("", 0, "", "", "")
             }
         })
     }
@@ -152,7 +152,8 @@ object Engine {
             "${la.address.hostAddress?.substringBefore('%') ?: ""}/${la.prefixLength}"
         }
         val dns = lp.dnsServers.joinToString(",") { it.hostAddress?.substringBefore('%') ?: "" }
-        Mobile.setNetwork(name, index, addresses, dns)
+        // The network's own domains ("corp.example"), whose names its DNS answers.
+        Mobile.setNetwork(name, index, addresses, dns, lp.domains ?: "")
     }
 
     /** What the engine needs from Android: the VpnService's TUN, the installer. */

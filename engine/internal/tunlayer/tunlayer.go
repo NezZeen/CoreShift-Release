@@ -189,6 +189,16 @@ type DNSOptions struct {
 	// goes through the tunnel, and a lookup that leaves it would leak.
 	DirectFallback []netip.Addr
 
+	// LocalSuffixes are the network's own domains (a company's
+	// "corp.example", as its DHCP or Windows' search list gives them), and
+	// LocalResolver the network's resolver: names under them and names
+	// without a dot ("proxy", which the system completes with them) are
+	// asked of it and go direct, so that the network's own servers stay
+	// reachable with the VPN on. Neither the tunnel's resolver nor a public
+	// one knows such names. Without LocalResolver nothing of it applies.
+	LocalSuffixes []string
+	LocalResolver netip.Addr
+
 	FakeIP       bool
 	FakeIPRange  netip.Prefix
 	FakeIPRange6 netip.Prefix

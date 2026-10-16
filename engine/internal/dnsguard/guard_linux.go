@@ -123,3 +123,17 @@ func SystemResolvers(ctx context.Context, exclude string) ([]netip.Addr, error) 
 	}
 	return FilterUsable(resolvConfNameservers(b)), nil
 }
+
+// SearchDomains returns the network's own domains, from the same file as
+// SystemResolvers. Call it before Apply, which rewrites that file.
+func SearchDomains(ctx context.Context, exclude string) ([]string, error) {
+	path := resolvConf
+	if resolvedInUse() {
+		path = resolvedUpstream
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("dnsguard: %w", err)
+	}
+	return CleanSearchDomains(resolvConfSearch(b)), nil
+}

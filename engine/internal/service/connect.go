@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"coreshift/engine/internal/dnsguard"
@@ -287,8 +288,12 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 	// resolver into the tunnel.
 	var direct string
 	var resolvers []netip.Addr
+	var domains []string
 	if o.TUN {
 		direct = o.DNS.Direct
+		// The network's own names (tunlayer.DNSOptions.LocalSuffixes);
+		// none known is no reason not to connect.
+		domains, _ = s.cfg.domains(ctx, tunlayer.DefaultInterface)
 		// They also stay routed into the TUN (LANResolvers).
 		var err error
 		resolvers, err = s.systemResolvers(ctx)
@@ -338,6 +343,8 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 			Remote:          o.DNS.Remote,
 			Direct:          direct,
 			DirectFallback:  directFallback(o.DNS.Direct, resolvers),
+			LocalSuffixes:   domains,
+			LocalResolver:   firstOr(resolvers),
 			FakeIP:          o.DNS.FakeIP,
 			BlockBrowserDoH: o.DNS.BlockBrowserDoH,
 			BlockDoT:        o.DNS.BlockDoT,
@@ -347,6 +354,10 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 	}
 	// The core is up, so a blocked source can be reached through it.
 	applyRouting(&opts, o, s.rules.routing(ctx, o, s.proxyURL()))
+	if len(domains) > 0 && opts.DNS.LocalResolver.IsValid() {
+		s.hub.publish(Event{Kind: "dns", Reason: "local-names"}.withLine(
+			msg.New("dns.local_names", "domains", strings.Join(domains, ", "), "dns", opts.DNS.LocalResolver.String())))
+	}
 	if self, err := os.Executable(); err == nil {
 		// The daemon resolves proxy servers, e.g. for latency tests.
 		opts.DirectDNSProcesses = []string{self}

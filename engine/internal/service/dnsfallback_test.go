@@ -399,3 +399,29 @@ func TestServiceDirectDNSEndsWithTheConnection(t *testing.T) {
 		t.Error("lines after the connection are looked into")
 	}
 }
+
+// The network's own domains reach the TUN layer with its resolver, and the
+// journal says where those names go.
+func TestServiceLocalNames(t *testing.T) {
+	h := newHarness(t, func(c *Config) {
+		c.domains = func(context.Context, string) ([]string, error) { return []string{"corp.example"}, nil }
+	})
+	if err := h.connect(t, trojanLink); err != nil {
+		t.Fatal(err)
+	}
+	h.tun.mu.Lock()
+	o := h.tun.opts
+	h.tun.mu.Unlock()
+	if fmt.Sprint(o.DNS.LocalSuffixes) != "[corp.example]" || o.DNS.LocalResolver != netip.MustParseAddr("192.0.2.53") {
+		t.Errorf("local names: %v via %v", o.DNS.LocalSuffixes, o.DNS.LocalResolver)
+	}
+	var said bool
+	for _, e := range eventsFor(h, 100*time.Millisecond) {
+		if e.Kind == "dns" && e.Reason == "local-names" && e.Code == "dns.local_names" && strings.Contains(e.Line, "corp.example") {
+			said = true
+		}
+	}
+	if !said {
+		t.Error("the journal did not say where the network's names go")
+	}
+}

@@ -27,6 +27,10 @@ func TestSingBoxAcceptsConfig(t *testing.T) {
 		"no fakeip": func(o *Options) {
 			o.DNS.FakeIP = false
 		},
+		"the network's own names": func(o *Options) {
+			o.DNS.LocalSuffixes = []string{"corp.example", "lan"}
+			o.DNS.LocalResolver = netip.MustParseAddr("10.1.2.3")
+		},
 		"leak protection": func(o *Options) {
 			o.DNS.BlockBrowserDoH = true
 			o.DNS.BlockDoT = true

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 
+	"coreshift/engine/internal/dnsguard"
+
 	tun "github.com/sagernet/sing-tun"
 	"github.com/sagernet/sing/common/control"
 	"github.com/sagernet/sing/common/x/list"
@@ -17,13 +19,15 @@ import (
 
 // SetNetwork reports the network the phone uses, as ConnectivityManager
 // sees it: the interface's name and index, its addresses ("10.0.0.5/24",
-// comma separated) and DNS servers (comma separated). An empty name means
-// offline. The app calls it at start and on every change.
+// comma separated), DNS servers (comma separated) and its own domains
+// (LinkProperties.getDomains: separated by commas or spaces). An empty name
+// means offline. The app calls it at start and on every change.
 //
 // Go cannot read this on Android: since Android 11 apps may not list
 // network interfaces through netlink.
-func SetNetwork(name string, index int32, addresses, dns string) {
-	currentNetwork.set(name, int(index), parseList(addresses, netip.ParsePrefix), parseList(dns, netip.ParseAddr))
+func SetNetwork(name string, index int32, addresses, dns, domains string) {
+	currentNetwork.set(name, int(index), parseList(addresses, netip.ParsePrefix), parseList(dns, netip.ParseAddr),
+		dnsguard.CleanSearchDomains(strings.FieldsFunc(domains, func(r rune) bool { return r == ',' || r == ' ' })))
 }
 
 func parseList[T any](s string, parse func(string) (T, error)) []T {
@@ -43,6 +47,7 @@ type networkState struct {
 	reported  bool // the app has said which network there is, if any
 	iface     *control.Interface
 	dns       []netip.Addr
+	domains   []string
 	callbacks list.List[tun.DefaultInterfaceUpdateCallback]
 	mine      []string
 	// changed tells the service the network came or went
@@ -59,7 +64,7 @@ func (n *networkState) onChange(f func()) {
 
 var currentNetwork = &networkState{}
 
-func (n *networkState) set(name string, index int, addrs []netip.Prefix, dns []netip.Addr) {
+func (n *networkState) set(name string, index int, addrs []netip.Prefix, dns []netip.Addr, domains []string) {
 	n.mu.Lock()
 	if ownVPN(name, addrs, n.mine) {
 		// The phone's network is still the one reported before.
@@ -71,7 +76,7 @@ func (n *networkState) set(name string, index int, addrs []netip.Prefix, dns []n
 		iface = &control.Interface{Index: index, MTU: 1500, Name: name, Addresses: addrs, Flags: net.FlagUp | net.FlagRunning}
 	}
 	changed := !sameInterface(n.iface, iface)
-	n.iface, n.dns, n.reported = iface, dns, true
+	n.iface, n.dns, n.domains, n.reported = iface, dns, domains, true
 	callbacks, notify := n.callbacks.Array(), n.changed
 	n.mu.Unlock()
 	if changed {
@@ -121,6 +126,13 @@ func (n *networkState) resolvers(context.Context, string) ([]netip.Addr, error) 
 		return nil, errors.New("the network reported no DNS servers")
 	}
 	return append([]netip.Addr(nil), n.dns...), nil
+}
+
+// searchDomains are the network's own domains: the service's SearchDomains.
+func (n *networkState) searchDomains(context.Context, string) ([]string, error) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return append([]string(nil), n.domains...), nil
 }
 
 // hasIPv6 reports whether the network gives the phone IPv6 of its own.

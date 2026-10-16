@@ -9,6 +9,14 @@ const (
 	// tagDNSNetwork prefixes the tags of the network's own resolvers
 	// (DNSOptions.DirectFallback): "network1", "network2".
 	tagDNSNetwork = "network"
+	// tagDNSLocal is the network's resolver for its own names
+	// (DNSOptions.LocalResolver), when it is not the direct one.
+	tagDNSLocal = "local"
+	// singleLabelPattern matches a name without a dot, which only a local
+	// network can know ("proxy", "nas"); wpadPattern the name browsers
+	// look for a proxy under ("wpad", "wpad.corp.example").
+	singleLabelPattern = `^[^.]+$`
+	wpadPattern        = `^wpad(\.|$)`
 	// maxDirectFallback is how many of the network's resolvers stand
 	// behind the direct one: a router announces one or two.
 	maxDirectFallback = 2
@@ -75,4 +83,14 @@ func (c *directChain) rules(match obj) []any {
 		)
 	}
 	return append(rules, with(obj{"action": "predefined", "rcode": "SERVFAIL"}))
+}
+
+// localResolver is DNSOptions.LocalResolver when it can be dialled: a
+// link-local one needs an interface (%zone) that a plain address lacks.
+func (o Options) localResolver() netip.Addr {
+	a := o.DNS.LocalResolver
+	if !a.IsValid() || (a.IsLinkLocalUnicast() && a.Zone() == "") {
+		return netip.Addr{}
+	}
+	return a
 }

@@ -108,13 +108,13 @@ type Service struct {
 	latency latencyState
 	// nodeSpeed is the speed test of the servers in the list (nodespeed.go).
 	nodeSpeed nodeSpeedState
-	cores   coreState
-	upd     appUpdater
-	apps    appWatch
-	views   views
-	stats   *trafficStats
-	fo      failover
-	retry   afterConnect
+	cores     coreState
+	upd       appUpdater
+	apps      appWatch
+	views     views
+	stats     *trafficStats
+	fo        failover
+	retry     afterConnect
 	// announced: the providers' announcements already journaled.
 	announced announceLog
 	// healthFails counts the active core's failed checks in a row.
@@ -225,6 +225,9 @@ func New(cfg Config) (*Service, error) {
 	if cfg.SystemResolvers != nil {
 		cfg.resolvers = cfg.SystemResolvers
 	}
+	if cfg.SearchDomains != nil {
+		cfg.domains = cfg.SearchDomains
+	}
 	if cfg.PhysicalBind != nil {
 		cfg.physical = cfg.PhysicalBind
 	}
@@ -233,6 +236,9 @@ func New(cfg Config) (*Service, error) {
 	}
 	if cfg.resolvers == nil {
 		cfg.resolvers = dnsguard.SystemResolvers
+	}
+	if cfg.domains == nil {
+		cfg.domains = dnsguard.SearchDomains
 	}
 	if cfg.lookup == nil {
 		cfg.lookup = lookupHost
