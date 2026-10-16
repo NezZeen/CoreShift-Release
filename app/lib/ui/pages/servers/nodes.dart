@@ -30,6 +30,16 @@ class _NodeTable extends StatelessWidget {
       );
     }
     final headStyle = TextStyle(fontSize: 12, color: p.dim, fontWeight: FontWeight.w600);
+    // The place of each server in its subscription, worked out once for all
+    // the rows (looking for it row by row is a walk of the list per row).
+    final positions = HashMap<NodeView, int>.identity();
+    if (numbers) {
+      for (final sub in state.subscriptions) {
+        for (final (i, n) in sub.nodes.indexed) {
+          positions[n] = i;
+        }
+      }
+    }
     // The columns need about 600 points; narrower, the rows become a list.
     return LayoutBuilder(
       builder: (context, c) {
@@ -69,6 +79,7 @@ class _NodeTable extends StatelessWidget {
                     narrow: narrow,
                     picking: picking,
                     numbers: numbers,
+                    position: positions[n] ?? -1,
                   ),
             ],
           ],
@@ -261,6 +272,9 @@ class _NodeRow extends StatefulWidget {
   final bool narrow;
   final _Picking picking;
   final bool numbers;
+
+  /// The server's place in its subscription, when [numbers] are shown.
+  final int position;
   const _NodeRow({
     super.key,
     required this.state,
@@ -270,6 +284,7 @@ class _NodeRow extends StatefulWidget {
     required this.narrow,
     required this.picking,
     required this.numbers,
+    required this.position,
   });
 
   @override
@@ -293,8 +308,49 @@ class _NodeRowState extends State<_NodeRow> {
     if (v != null && mounted) _runServerAction(s, widget.sub, widget.node, v, context);
   }
 
+  /// A row is drawn again only when something it shows has changed. The
+  /// list redraws on every notification (a latency result, a toast, the
+  /// speed of the traffic), and a row is a hundred elements: hundreds of
+  /// servers redrawn for each of those left the window frozen. The inputs
+  /// are everything the row reads.
   @override
   Widget build(BuildContext context) {
+    final s = widget.state;
+    final n = widget.node;
+    final pick = widget.picking;
+    final picking = pick.active;
+    final speedKey = '${widget.sub.id}/${n.fingerprint}';
+    return _RowMemo(
+      inputs: [
+        widget.sub,
+        n,
+        widget.showSub,
+        widget.narrow,
+        widget.numbers,
+        widget.position,
+        picking,
+        picking && pick.isPicked(widget.sub, n),
+        picking && pick.canPick(widget.sub, n),
+        s.isSelected(widget.sub, n),
+        s.status.state,
+        s.busy,
+        s.online,
+        s.isFavorite(widget.sub, n),
+        s.latencyOf(widget.sub.id, n.fingerprint),
+        s.speedSupported,
+        s.nodeSpeeds[speedKey],
+        s.testingSpeed && s.speedCurrent == speedKey,
+        hover,
+        isCompact(context),
+        appLang.value,
+        // «5 минут назад» in the speed's tooltip.
+        DateTime.now().millisecondsSinceEpoch ~/ 60000,
+      ],
+      builder: _body,
+    );
+  }
+
+  Widget _body(BuildContext context) {
     final p = context.pal;
     final s = widget.state;
     final n = widget.node;
@@ -349,21 +405,23 @@ class _NodeRowState extends State<_NodeRow> {
       ),
     );
 
+    final country = countryOf(n.name, n.server);
     final row = _NodeTable._row(
       narrow: narrow,
       // The place in the subscription's own order, so it stays with the
       // server whatever the sort or the filter.
       number: Text(
-        '${widget.sub.nodes.indexOf(n) + 1}',
+        '${widget.position + 1}',
         key: ValueKey('server-number/${widget.sub.id}/${n.fingerprint}'),
         style: TextStyle(fontSize: 11, color: p.muted, fontFeatures: const [FontFeature.tabularFigures()]),
       ),
       radio: picking ? _PickBox(on: picked, enabled: pick.canPick(widget.sub, n)) : null,
-      badge: CountryBadge(countryOf(n.name, n.server), width: narrow ? 32 : 30),
+      badge: CountryBadge(country, width: narrow ? 32 : 30, tip: false),
       name: Tooltip(
         // A phone's long press picks the row.
         triggerMode: compact ? TooltipTriggerMode.manual : null,
         message:
+            '${country == null ? '' : '${countryName(country)}\n'}'
             '${n.server}:${n.port}\n'
             '${n.cores.isEmpty ? 'Ни одно ядро не поддерживает' : 'Ядра: ${n.cores.map((k) => coreStyle(k).name).join(', ')}'}',
         child: Column(
@@ -457,34 +515,73 @@ class _NodeRowState extends State<_NodeRow> {
       );
     }
 
-    return Tooltip(
-      triggerMode: compact ? TooltipTriggerMode.manual : null,
-      message: unusable && !picking ? 'Ни одно установленное ядро не поддерживает этот сервер' : '',
-      child: MouseRegion(
-        cursor: unusable && !picking ? SystemMouseCursors.basic : SystemMouseCursors.click,
-        onEnter: (_) => setState(() => hover = true),
-        onExit: (_) => setState(() => hover = false),
-        child: GestureDetector(
-          // A press held, then moved on: the rows it passes are picked.
-          onLongPressStart: (d) => pick.start(widget.sub, n, d.globalPosition),
-          onLongPressMoveUpdate: (d) => pick.move(d.globalPosition),
-          onLongPressEnd: (_) => pick.end(),
-          onSecondaryTapUp: picking ? null : (d) => _menu(d.globalPosition),
-          onDoubleTap: picking || unusable || compact || s.busy || !s.online || (sel && s.status.active) ? null : connect,
-          onTap: picking
-              ? () => pick.toggle(widget.sub, n)
-              : unusable
-              // Nothing to select: say why, a phone has no tooltip on hover.
-              ? () => s.toast('Ни одно установленное ядро не поддерживает этот сервер')
-              : sel
-              ? null
-              : compact && s.status.active && s.online && !s.busy
-              ? connect
-              : () => s.selectNode(widget.sub.id, n.fingerprint, n.name),
-          child: body,
-        ),
+    final tile = MouseRegion(
+      cursor: unusable && !picking ? SystemMouseCursors.basic : SystemMouseCursors.click,
+      onEnter: (_) => setState(() => hover = true),
+      onExit: (_) => setState(() => hover = false),
+      child: GestureDetector(
+        // A press held, then moved on: the rows it passes are picked.
+        onLongPressStart: (d) => pick.start(widget.sub, n, d.globalPosition),
+        onLongPressMoveUpdate: (d) => pick.move(d.globalPosition),
+        onLongPressEnd: (_) => pick.end(),
+        onSecondaryTapUp: picking ? null : (d) => _menu(d.globalPosition),
+        onDoubleTap: picking || unusable || compact || s.busy || !s.online || (sel && s.status.active) ? null : connect,
+        onTap: picking
+            ? () => pick.toggle(widget.sub, n)
+            : unusable
+            // Nothing to select: say why, a phone has no tooltip on hover.
+            ? () => s.toast('Ни одно установленное ядро не поддерживает этот сервер')
+            : sel
+            ? null
+            : compact && s.status.active && s.online && !s.busy
+            ? connect
+            : () => s.selectNode(widget.sub.id, n.fingerprint, n.name),
+        child: body,
       ),
     );
+    // A tooltip is a dozen elements: only a server no core can run has one
+    // to show. It stays while picking (empty), so the row keeps its place
+    // in the tree under the finger.
+    if (!unusable) return tile;
+    return Tooltip(
+      triggerMode: compact ? TooltipTriggerMode.manual : null,
+      message: picking ? '' : 'Ни одно установленное ядро не поддерживает этот сервер',
+      child: tile,
+    );
+  }
+}
+
+/// Builds [builder] again only when [inputs] differ from the last build's
+/// (or the theme, the text scale or the window's size changed): otherwise
+/// the widget built last time is handed back, and the element tree skips
+/// everything under it.
+class _RowMemo extends StatefulWidget {
+  final List<Object?> inputs;
+  final WidgetBuilder builder;
+  const _RowMemo({required this.inputs, required this.builder});
+
+  @override
+  State<_RowMemo> createState() => _RowMemoState();
+}
+
+class _RowMemoState extends State<_RowMemo> {
+  List<Object?>? _inputs;
+  Widget? _built;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // What the row read from its context (colours, sizes) has changed.
+    _built = null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_built == null || !listEquals(_inputs, widget.inputs)) {
+      _inputs = widget.inputs;
+      _built = widget.builder(context);
+    }
+    return _built!;
   }
 }
 
@@ -524,8 +621,7 @@ class _SwipeBackground extends StatelessWidget {
 
 class _LatencyCell extends StatelessWidget {
   final Latency? latency;
-  final bool testing;
-  const _LatencyCell({required this.latency, required this.testing});
+  const _LatencyCell({required this.latency});
 
   @override
   Widget build(BuildContext context) {
@@ -533,12 +629,10 @@ class _LatencyCell extends StatelessWidget {
     final l = latency;
     final mono = figures(13.5);
     if (l == null) {
-      return testing
-          ? Align(
-              alignment: Alignment.centerLeft,
-              child: SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5, color: p.dim)),
-            )
-          : Text('—', style: mono.copyWith(color: p.dim));
+      // Not tested yet. While a test runs the ping button turns; a mark on
+      // every server (a spinner per row, a hundred tickers) redrew the whole
+      // list every frame of a test and changed every row as it began.
+      return Text('—', style: mono.copyWith(color: p.dim));
     }
     if (!l.ok) {
       return Tooltip(

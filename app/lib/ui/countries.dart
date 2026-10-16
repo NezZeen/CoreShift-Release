@@ -179,35 +179,77 @@ const _words = {
   'sydney': 'AU',
 };
 
+/// The Russian names of [_names] in lower case, the same for every call.
+final _lowNames = [for (final e in _names.entries) (e.value.toLowerCase(), e.key)];
+
+/// The words of [_words] as the patterns that find them whole (not inside
+/// another word), compiled once: a server list asks for every name on every
+/// redraw, and building seventy patterns per name made a redraw of a few
+/// hundred servers last seconds.
+final _wordPatterns = [for (final e in _words.entries) (RegExp('(^|[^a-z])${RegExp.escape(e.key)}(\$|[^a-z])'), e.value)];
+
+final _codeInName = RegExp(r'(?<![A-Za-z])([A-Z]{2})(?![A-Za-z])');
+final _codeInHost = RegExp(r'^([a-z]{2})\d*[.-]', caseSensitive: false);
+final _flagPair = RegExp('[\u{1F1E6}-\u{1F1FF}]{2}', unicode: true);
+final _leadingJunk = RegExp(r'^[\s|:·\-–—]+');
+
+/// A country or a place is named in the first words; a name far longer than
+/// any real one (decorations repeated by the hundred) is read to here only.
+const _readNameTo = 400;
+
+/// What was worked out for a name already: a list gives the same names to
+/// the same page again and again. Emptied when it outgrows [_memoLimit].
+final _countryMemo = <String, String?>{};
+final _cleanMemo = <String, String>{};
+const _memoLimit = 4096;
+
 /// The ISO code of the country a server is in, as far as its name or host
 /// say: a flag emoji, a country in Russian or English, a city, a code such
 /// as "DE" or a host like "nl1.example". Null when nothing does.
 String? countryOf(String name, [String host = '']) {
+  final key = '$host\u0000$name';
+  if (_countryMemo.containsKey(key)) return _countryMemo[key];
+  final code = _countryOf(name.length > _readNameTo ? name.substring(0, _readNameTo) : name, host.length > 255 ? host.substring(0, 255) : host);
+  // A name this long is no real one: not kept, so a hostile list cannot fill the memory.
+  if (key.length > 2 * _readNameTo) return code;
+  if (_countryMemo.length >= _memoLimit) _countryMemo.clear();
+  return _countryMemo[key] = code;
+}
+
+String? _countryOf(String name, String host) {
   // A flag is two regional-indicator letters.
-  final runes = name.runes.toList();
-  for (var i = 0; i + 1 < runes.length; i++) {
-    final a = runes[i] - 0x1F1E6, b = runes[i + 1] - 0x1F1E6;
-    if (a >= 0 && a < 26 && b >= 0 && b < 26) {
-      final code = String.fromCharCodes([65 + a, 65 + b]);
+  int? prev;
+  for (final r in name.runes) {
+    final b = r - 0x1F1E6;
+    final isLetter = b >= 0 && b < 26;
+    if (prev != null && isLetter) {
+      final code = String.fromCharCodes([65 + prev, 65 + b]);
       if (_names.containsKey(code)) return code;
     }
+    prev = isLetter ? b : null;
   }
   final low = name.toLowerCase();
-  for (final e in _names.entries) {
-    if (low.contains(e.value.toLowerCase())) return e.key;
+  for (final (word, code) in _lowNames) {
+    if (low.contains(word)) return code;
   }
-  for (final e in _words.entries) {
-    if (RegExp('(^|[^a-z])${RegExp.escape(e.key)}(\$|[^a-z])').hasMatch(low)) return e.value;
+  for (final (pattern, code) in _wordPatterns) {
+    if (pattern.hasMatch(low)) return code;
   }
-  final code = RegExp(r'(?<![A-Za-z])([A-Z]{2})(?![A-Za-z])').allMatches(name).map((m) => m.group(1)!).where(_names.containsKey).firstOrNull;
-  if (code != null) return code;
-  final fromHost = RegExp(r'^([a-z]{2})\d*[.-]', caseSensitive: false).firstMatch(host)?.group(1)?.toUpperCase();
+  for (final m in _codeInName.allMatches(name)) {
+    if (_names.containsKey(m.group(1))) return m.group(1);
+  }
+  final fromHost = _codeInHost.firstMatch(host)?.group(1)?.toUpperCase();
   return fromHost != null && _names.containsKey(fromHost) ? fromHost : null;
 }
 
 /// A node's name without the flag emoji in front of it, which the country
 /// badge shows instead (Windows draws such flags as two letters).
 String cleanNodeName(String name) {
-  final cleaned = name.replaceAll(RegExp('[\u{1F1E6}-\u{1F1FF}]{2}', unicode: true), '').replaceFirst(RegExp(r'^[\s|:·\-–—]+'), '').trim();
-  return cleaned.isEmpty ? name : cleaned;
+  final known = _cleanMemo[name];
+  if (known != null) return known;
+  final cleaned = name.replaceAll(_flagPair, '').replaceFirst(_leadingJunk, '').trim();
+  final result = cleaned.isEmpty ? name : cleaned;
+  if (name.length > 2 * _readNameTo) return result;
+  if (_cleanMemo.length >= _memoLimit) _cleanMemo.clear();
+  return _cleanMemo[name] = result;
 }

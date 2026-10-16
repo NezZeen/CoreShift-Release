@@ -312,6 +312,12 @@ class AppState extends ChangeNotifier {
   int latencyDone = 0;
   int latencyTotal = 0;
 
+  /// The results of a test come a few dozen a second, and every one used to
+  /// redraw the whole server list: they notify at a pace the list can keep
+  /// (see events.dart, [_latencyChanged]).
+  Timer? _latencyTimer;
+  bool _latencyPending = false;
+
   /// Last speed test per node, by subscription + '/' + fingerprint.
   final Map<String, NodeSpeed> nodeSpeeds = {};
 
@@ -564,6 +570,7 @@ class AppState extends ChangeNotifier {
     _subTimer?.cancel();
     _coreTimer?.cancel();
     _logTimer?.cancel();
+    _latencyTimer?.cancel();
     logTick.dispose();
     _geoTimer?.cancel();
     _traffic.dispose();

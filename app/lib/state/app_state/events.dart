@@ -190,14 +190,18 @@ extension AppStateEvents on AppState {
           testingLatency = true;
           latencyDone = 0;
           latencyTotal = subscriptions.where((s) => e.subscription.isEmpty || s.id == e.subscription).fold(0, (n, s) => n + s.nodes.length);
+          _latencyNow();
         } else if (e.reason == 'finished') {
           testingLatency = false;
           latencyDone = latencyTotal;
+          _latencyNow();
         } else if (e.fingerprint.isNotEmpty) {
           latency['${e.subscription}/${e.fingerprint}'] = Latency(ms: e.latencyMs, error: e.error, core: e.core, method: e.method);
           if (latencyDone < latencyTotal) latencyDone++;
+          _latencyChanged();
+        } else {
+          _latencyNow();
         }
-        _notify();
       case 'speedtest':
         _onSpeedEvent(e);
       case 'nodespeed':
@@ -239,6 +243,34 @@ extension AppStateEvents on AppState {
           _log(e.time, 'правила', '${e.reason}: $what', LogLevel.info);
         }
     }
+  }
+
+  /// A result of the latency test came in. The list redraws every row for
+  /// it, and a test brings a result per server in a few seconds: the first
+  /// result notifies at once, the rest within one pause, whose length grows
+  /// with the list (a redraw of a thousand servers costs more than of ten).
+  void _latencyChanged() {
+    if (_disposed) return;
+    if (_latencyTimer != null) {
+      _latencyPending = true;
+      return;
+    }
+    _notify();
+    final pause = Duration(milliseconds: (150 + nodeCount).clamp(150, 1500));
+    _latencyTimer = Timer(pause, () {
+      _latencyTimer = null;
+      if (_latencyPending && !_disposed) {
+        _latencyPending = false;
+        _latencyChanged();
+      }
+    });
+  }
+
+  /// The test starts or ends: the screen says so at once, with the results
+  /// held back so far.
+  void _latencyNow() {
+    _latencyPending = false;
+    _notify();
   }
 
   /// The device lost its network or got it back (engine/internal/service/

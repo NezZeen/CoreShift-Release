@@ -72,7 +72,11 @@ class CoreLogo extends StatelessWidget {
 class CountryBadge extends StatelessWidget {
   final String? code;
   final double width;
-  const CountryBadge(this.code, {super.key, this.width = 30});
+
+  /// Whether the badge names the country in a tooltip of its own; a list
+  /// puts it into the row's tooltip instead (a tooltip is a dozen elements).
+  final bool tip;
+  const CountryBadge(this.code, {super.key, this.width = 30, this.tip = true});
 
   @override
   Widget build(BuildContext context) {
@@ -90,19 +94,17 @@ class CountryBadge extends StatelessWidget {
     }
     final hue = (c.codeUnitAt(0) * 37 + c.codeUnitAt(c.length > 1 ? 1 : 0) * 91) % 360;
     final dark = Theme.of(context).brightness == Brightness.dark;
-    return Tooltip(
-      message: countryName(c),
-      child: Container(
-        width: width,
-        height: h,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(color: HSLColor.fromAHSL(1, hue.toDouble(), .5, dark ? .34 : .42).toColor(), borderRadius: BorderRadius.circular(5)),
-        child: Text(
-          c,
-          style: TextStyle(color: Colors.white, fontSize: width * .36, fontWeight: FontWeight.w700, letterSpacing: .4, height: 1),
-        ),
+    final badge = Container(
+      width: width,
+      height: h,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(color: HSLColor.fromAHSL(1, hue.toDouble(), .5, dark ? .34 : .42).toColor(), borderRadius: BorderRadius.circular(5)),
+      child: Text(
+        c,
+        style: TextStyle(color: Colors.white, fontSize: width * .36, fontWeight: FontWeight.w700, letterSpacing: .4, height: 1),
       ),
     );
+    return tip ? Tooltip(message: countryName(c), child: badge) : badge;
   }
 }
 

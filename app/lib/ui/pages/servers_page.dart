@@ -1,10 +1,13 @@
 import 'dart:async';
+import 'dart:collection' show HashMap;
 import 'dart:math';
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../api/models.dart';
+import '../../l10n/strings.dart' show appLang;
 import '../../platform/platform.dart' as platform;
 import '../../state/app_state.dart';
 import '../../state/errors.dart';
@@ -500,16 +503,20 @@ class _ServersPageState extends State<ServersPage> {
           ),
         ],
         const SizedBox(height: 12),
-        Panel(
-          padding: const EdgeInsets.all(6),
-          child: _NodeTable(
-            state: s,
-            sections: sections,
-            // A search shows what it found, folded or not.
-            collapsed: query.isEmpty ? collapsed : const {},
-            onToggle: _toggle,
-            picking: _picking,
-            numbers: true,
+        // Its own layer: the spinner of the ping button, the toasts or a hover
+        // elsewhere redraw the toolbar, not the hundreds of rows.
+        RepaintBoundary(
+          child: Panel(
+            padding: const EdgeInsets.all(6),
+            child: _NodeTable(
+              state: s,
+              sections: sections,
+              // A search shows what it found, folded or not.
+              collapsed: query.isEmpty ? collapsed : const {},
+              onToggle: _toggle,
+              picking: _picking,
+              numbers: true,
+            ),
           ),
         ),
         if (hidden > 0)

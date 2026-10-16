@@ -55,7 +55,7 @@ class _PingSpeedCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ping = _LatencyCell(latency: state.latencyOf(sub.id, node.fingerprint), testing: state.testingLatency);
+    final ping = _LatencyCell(latency: state.latencyOf(sub.id, node.fingerprint));
     if (!state.speedSupported) return ping;
     final speed = _SpeedCell(state: state, sub: sub, node: node, narrow: narrow);
     if (narrow) {

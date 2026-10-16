@@ -377,7 +377,7 @@ class _CurrentBar extends StatelessWidget {
               ),
               SizedBox(
                 width: compact ? 74 : 84,
-                child: _LatencyCell(latency: state.latencyOf(sub.id, node.fingerprint), testing: false),
+                child: _LatencyCell(latency: state.latencyOf(sub.id, node.fingerprint)),
               ),
               Btn(label: compact ? null : 'Показать', icon: Icons.my_location, small: true, tooltip: 'Показать в списке', onPressed: onShow),
             ],
