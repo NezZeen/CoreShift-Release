@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"time"
 
 	"coreshift/engine/internal/dnsguard"
@@ -355,8 +354,10 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 	// The core is up, so a blocked source can be reached through it.
 	applyRouting(&opts, o, s.rules.routing(ctx, o, s.proxyURL()))
 	if len(domains) > 0 && opts.DNS.LocalResolver.IsValid() {
+		// How many, not which: a journal sent to support would name the
+		// company the user works at.
 		s.hub.publish(Event{Kind: "dns", Reason: "local-names"}.withLine(
-			msg.New("dns.local_names", "domains", strings.Join(domains, ", "), "dns", opts.DNS.LocalResolver.String())))
+			msg.New("dns.local_names", "count", len(domains), "dns", opts.DNS.LocalResolver.String())))
 	}
 	if self, err := os.Executable(); err == nil {
 		// The daemon resolves proxy servers, e.g. for latency tests.

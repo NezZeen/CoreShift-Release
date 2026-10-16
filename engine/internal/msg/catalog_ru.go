@@ -107,7 +107,7 @@ var ru = map[string]string{
 	"net.reconnect":   "сеть вернулась, но связь через сервер не восстановилась: переподключаюсь",
 
 	// The direct resolver and the check of the DNS settings (dnsfallback.go, dnscheck.go).
-	"dns.local_names":             "имена сети ({domains}) и имена без точки спрашиваю у DNS сети {dns}; адреса внутри сети — мимо VPN",
+	"dns.local_names":             "имена в доменах сети (доменов: {count}) и имена без точки спрашиваю у DNS сети {dns}; адреса внутри сети — мимо VPN",
 	"dns.direct_down":             "DNS напрямую ({addr}) недоступен в этой сети ({why}) — использую DNS сети",
 	"dns.direct_restored":         "DNS напрямую ({addr}) снова отвечает",
 	"dns.why.refused":             "соединение отклонено",

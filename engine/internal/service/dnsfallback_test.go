@@ -417,7 +417,7 @@ func TestServiceLocalNames(t *testing.T) {
 	}
 	var said bool
 	for _, e := range eventsFor(h, 100*time.Millisecond) {
-		if e.Kind == "dns" && e.Reason == "local-names" && e.Code == "dns.local_names" && strings.Contains(e.Line, "corp.example") {
+		if e.Kind == "dns" && e.Reason == "local-names" && e.Code == "dns.local_names" && strings.Contains(e.Line, "1") && !strings.Contains(e.Line, "corp.example") {
 			said = true
 		}
 	}

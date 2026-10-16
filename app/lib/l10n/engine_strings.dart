@@ -158,7 +158,7 @@ const engineRu = <String, String>{
   'net.back': 'сеть вернулась',
   'net.appeared': 'сеть появилась',
   'net.reconnect': 'сеть вернулась, но связь через сервер не восстановилась: переподключаюсь',
-  'dns.local_names': 'имена сети ({domains}) и имена без точки спрашиваю у DNS сети {dns}; адреса внутри сети — мимо VPN',
+  'dns.local_names': 'имена в доменах сети (доменов: {count}) и имена без точки спрашиваю у DNS сети {dns}; адреса внутри сети — мимо VPN',
   'dns.direct_down': 'DNS напрямую ({addr}) недоступен в этой сети ({why}) — использую DNS сети',
   'dns.direct_restored': 'DNS напрямую ({addr}) снова отвечает',
   'dns.why.refused': 'соединение отклонено',
@@ -405,8 +405,7 @@ const engineEn = <String, String>{
   'net.back': 'network is back',
   'net.appeared': 'network appeared',
   'net.reconnect': 'network is back, but traffic through the server did not recover: reconnecting',
-  'dns.local_names':
-      "the network's names ({domains}) and names without a dot are asked of the network's DNS {dns}; addresses inside the network go outside the VPN",
+  'dns.local_names': "names in the network's domains ({count} of them) and names without a dot are asked of the network's DNS {dns}; addresses inside the network go outside the VPN",
   'dns.direct_down': 'direct DNS ({addr}) is unreachable on this network ({why}) — using the network\'s DNS',
   'dns.direct_restored': 'direct DNS ({addr}) answers again',
   'dns.why.refused': 'connection refused',
