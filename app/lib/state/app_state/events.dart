@@ -1,5 +1,8 @@
 part of '../app_state.dart';
 
+/// The ping cell's tooltip for the connected server the engine found silent.
+const _serverDownLatency = 'Сервер перестал отвечать во время подключения';
+
 /// Что служба присылает событиями (Event.kind) и что из этого идёт в журнал, в тосты и уведомления.
 extension AppStateEvents on AppState {
   void _onEvent(Event e) {
@@ -291,11 +294,30 @@ extension AppStateEvents on AppState {
   /// What the engine found when nothing got through: who is at fault
   /// (reason, see [Status.problem]), or that the server answers again.
   void _onServerEvent(Event e, bool live) {
+    final sel = selection;
+    final key = '${sel.subscription}/${sel.fingerprint}';
+    final ours = sel.fingerprint.isNotEmpty && sel.name == e.from;
     if (e.reason == 'ok') {
       _serverProblem = null;
+      // The mark below is taken back: the ping from before shows again.
+      final l = latency[key];
+      if (ours && l != null && l.error == _serverDownLatency) {
+        if (l.ms > 0) {
+          latency[key] = Latency(ms: l.ms, core: l.core, method: l.method);
+        } else {
+          latency.remove(key);
+        }
+      }
       _log(e.time, 'сервер', 'сервер «${e.from}» снова отвечает', LogLevel.ok);
       _notify();
       return;
+    }
+    // The list showed the server's ping from before it went silent: it says
+    // what is known now instead.
+    // The number is kept in it for the server's return.
+    if (ours && e.reason == 'server-down') {
+      final l = latency[key];
+      latency[key] = Latency(ms: l?.ms ?? 0, error: _serverDownLatency, core: l?.core ?? '', method: l?.method ?? '');
     }
     _serverProblem = e.reason;
     final (title, body) = AppState.serverProblemText(e.reason, e.from);

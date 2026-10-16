@@ -32,9 +32,15 @@ void main() {
     final other = state.fastestNode();
     expect(other, isNotNull);
     expect(other!.$2.fingerprint, isNot(fastest.$2.fingerprint));
+    // The list no longer shows its ping from before.
+    final key = '${fastest.$1.id}/${fastest.$2.fingerprint}';
+    final before = state.latency[key];
+    expect(state.latencyOf(fastest.$1.id, fastest.$2.fingerprint)?.ok, isFalse);
 
     state.injectEvent(Event(time: DateTime.now(), kind: 'server', reason: 'ok', from: state.status.node));
     expect(state.fastestNode()?.$2.fingerprint, fastest.$2.fingerprint);
+    expect(state.latency[key]?.ok, isTrue, reason: 'back: its ping shows again');
+    expect(state.latency[key]?.ms, before?.ms);
     await state.disconnect();
   });
 }
