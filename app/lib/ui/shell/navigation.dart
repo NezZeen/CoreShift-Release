@@ -11,12 +11,19 @@ class _BottomNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final index = mainPages.indexWhere((m) => m.$1 == stationOf(page));
-    return NavigationBar(
-      height: 68,
-      labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-      selectedIndex: index,
-      onDestinationSelected: (i) => onPage(mainPages[i].$1),
-      destinations: [for (final (_, icon, label) in mainPages) NavigationDestination(icon: Icon(icon), label: tr(label))],
+    // Five labels share the width of a phone at a fixed height: with the
+    // system's large text «Настройки» broke into two lines and was cut off.
+    // The labels grow a little only, as the system's own bars do; the
+    // pages above take the whole text size.
+    return MediaQuery.withClampedTextScaling(
+      maxScaleFactor: 1.1,
+      child: NavigationBar(
+        height: 68,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        selectedIndex: index,
+        onDestinationSelected: (i) => onPage(mainPages[i].$1),
+        destinations: [for (final (_, icon, label) in mainPages) NavigationDestination(icon: Icon(icon), label: tr(label))],
+      ),
     );
   }
 }

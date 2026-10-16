@@ -111,31 +111,46 @@ class _SubCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(sub.displayName, style: display(16), overflow: TextOverflow.ellipsis),
-              ),
-              // The panel's support-url header: its support chat.
-              if (i.supportUrl.isNotEmpty) ...[
-                const SizedBox(width: 8),
-                SupportButton(state: state, url: i.supportUrl, urgent: expired || sub.lastError.isNotEmpty),
-                const SizedBox(width: 4),
-              ],
-              // The profile-web-page-url header: the subscription's page.
-              if (i.webPageUrl.isNotEmpty) ...[
-                SizedBox(width: i.supportUrl.isEmpty ? 8 : 4),
-                SiteButton(state: state, url: i.webPageUrl, iconOnly: true),
-                const SizedBox(width: 4),
-              ],
-              if (refreshing) const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
-              if (sub.lastError.isNotEmpty && !refreshing)
-                Tooltip(
-                  message: 'Последнее обновление не удалось:\n${humanError(sub.lastError)}',
-                  child: const Icon(Icons.error_outline, size: 16, color: warnColor),
-                ),
-              _SubMenu(state: state, sub: sub),
-            ],
+          LayoutBuilder(
+            builder: (context, c) {
+              // The name comes first: the support chip keeps its word only
+              // while the whole name fits beside it, the logo alone otherwise.
+              final name = TextPainter(
+                text: TextSpan(text: sub.displayName, style: display(16)),
+                textScaler: MediaQuery.textScalerOf(context),
+                maxLines: 1,
+                textDirection: TextDirection.ltr,
+              )..layout();
+              final besides = 48 + (i.supportUrl.isEmpty ? 0 : 116) + (i.webPageUrl.isEmpty ? 0 : 40) + (sub.lastError.isEmpty ? 0 : 20);
+              final iconOnly = name.width + besides > c.maxWidth;
+              name.dispose();
+              return Row(
+                children: [
+                  Expanded(
+                    child: Text(sub.displayName, style: display(16), overflow: TextOverflow.ellipsis),
+                  ),
+                  // The panel's support-url header: its support chat.
+                  if (i.supportUrl.isNotEmpty) ...[
+                    const SizedBox(width: 8),
+                    SupportButton(state: state, url: i.supportUrl, urgent: expired || sub.lastError.isNotEmpty, iconOnly: iconOnly),
+                    const SizedBox(width: 4),
+                  ],
+                  // The profile-web-page-url header: the subscription's page.
+                  if (i.webPageUrl.isNotEmpty) ...[
+                    SizedBox(width: i.supportUrl.isEmpty ? 8 : 4),
+                    SiteButton(state: state, url: i.webPageUrl, iconOnly: true),
+                    const SizedBox(width: 4),
+                  ],
+                  if (refreshing) const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+                  if (sub.lastError.isNotEmpty && !refreshing)
+                    Tooltip(
+                      message: 'Последнее обновление не удалось:\n${humanError(sub.lastError)}',
+                      child: const Icon(Icons.error_outline, size: 16, color: warnColor),
+                    ),
+                  _SubMenu(state: state, sub: sub),
+                ],
+              );
+            },
           ),
           if (!compact)
             Padding(

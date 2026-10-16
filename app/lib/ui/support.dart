@@ -104,7 +104,11 @@ class SupportButton extends StatelessWidget {
 
   /// Draws attention: the subscription expired or stopped updating.
   final bool urgent;
-  const SupportButton({super.key, required this.state, required this.url, this.urgent = false});
+
+  /// The logo alone, the word in the tooltip: where the word would push
+  /// out what stands beside it (the subscription's name on a narrow card).
+  final bool iconOnly;
+  const SupportButton({super.key, required this.state, required this.url, this.urgent = false, this.iconOnly = false});
 
   @override
   Widget build(BuildContext context) {
@@ -129,16 +133,18 @@ class SupportButton extends StatelessWidget {
           onTap: () => state.openLink(url),
           hoverColor: c.withValues(alpha: .1),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(5, 4, 10, 4),
+            padding: iconOnly ? const EdgeInsets.all(4) : const EdgeInsets.fromLTRB(5, 4, 10, 4),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 SupportMark(kind, size: 18),
-                const SizedBox(width: 6),
-                Text(
-                  'Поддержка',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: p.text),
-                ),
+                if (!iconOnly) ...[
+                  const SizedBox(width: 6),
+                  Text(
+                    'Поддержка',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: p.text),
+                  ),
+                ],
               ],
             ),
           ),
