@@ -473,6 +473,17 @@ func (s *Service) Options() Options {
 	return s.opts
 }
 
+// effectiveAppFilter is what Android's per-app VPN does with filter and
+// apps: all apps use it when none is left out, and the list of an "all"
+// is not read. Choosing "all but these" before any app, or picking apps
+// for a filter that is off, changes nothing to reconnect for.
+func effectiveAppFilter(filter string, apps []string) (string, []string) {
+	if filter == store.AppsAll || filter == "" || (filter == store.AppsExclude && len(apps) == 0) {
+		return store.AppsAll, nil
+	}
+	return filter, apps
+}
+
 // SetOptions replaces the options. A running connection keeps the old ones
 // and is marked pending until it is reconnected, unless they are the same:
 // settings outside the options (auto-connect, updates) and a change undone
@@ -493,7 +504,10 @@ func (s *Service) SetOptions(o Options) {
 	cmp.NoBatterySaving = s.connOpts.NoBatterySaving // applies at once, power.go
 	// The app sets the system proxy itself, at once (proxymode.go).
 	cmp.SystemProxy = s.connOpts.SystemProxy
-	s.optsPending = active && !reflect.DeepEqual(cmp, s.connOpts)
+	conn := s.connOpts
+	cmp.AppFilter, cmp.FilterApps = effectiveAppFilter(cmp.AppFilter, cmp.FilterApps)
+	conn.AppFilter, conn.FilterApps = effectiveAppFilter(conn.AppFilter, conn.FilterApps)
+	s.optsPending = active && !reflect.DeepEqual(cmp, conn)
 	if !active {
 		s.status.TUN = o.TUN
 	}

@@ -1227,6 +1227,31 @@ func TestVerboseJournalKeepsNoise(t *testing.T) {
 	}
 }
 
+// Android's "all apps but these" with no app chosen yet is all apps: the
+// connection is not marked for a reconnect; once an app is left out, it is.
+func TestAppFilterWithoutAppsIsNoChange(t *testing.T) {
+	h := newHarness(t, nil)
+	if err := h.connect(t, trojanLink); err != nil {
+		t.Fatal(err)
+	}
+	o := h.svc.Options()
+	o.AppFilter, o.FilterApps = store.AppsExclude, nil
+	h.svc.SetOptions(o)
+	if h.svc.Status().Pending {
+		t.Error("«Кроме выбранных» with nothing chosen asked for a reconnect")
+	}
+	o.AppFilter, o.FilterApps = store.AppsAll, []string{"org.example.app"}
+	h.svc.SetOptions(o)
+	if h.svc.Status().Pending {
+		t.Error("apps picked for a filter that is off asked for a reconnect")
+	}
+	o.AppFilter = store.AppsExclude
+	h.svc.SetOptions(o)
+	if !h.svc.Status().Pending {
+		t.Error("an app left out of the VPN did not ask for a reconnect")
+	}
+}
+
 // sing-box's "missing fakeip record" after a restart reads as what it is,
 // grouped like any repeating line.
 func TestStaleFakeIPInWords(t *testing.T) {
