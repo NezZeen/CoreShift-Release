@@ -299,8 +299,8 @@ class DemoBackend implements Backend {
     at(0, {'kind': 'core-state', 'core': 'xray', 'reason': 'connected'});
     at(0, {'kind': 'state', 'state': 'connected', 'core': 'xray'});
     at(0, _netinfo());
-    at(1500, {'kind': 'health', 'core': 'xray', 'error': 'context deadline exceeded'});
-    at(15, {'kind': 'health', 'core': 'xray', 'error': 'context deadline exceeded'});
+    at(1500, {'kind': 'health', 'core': 'xray', 'error': 'нет ответа', 'code': 'net.timeout'});
+    at(15, {'kind': 'health', 'core': 'xray', 'error': 'нет ответа', 'code': 'net.timeout'});
     at(2, {'kind': 'core-failed', 'core': 'xray', 'reason': 'health-check', 'error': 'проверка связи не прошла 3 раза подряд'});
     at(1, {'kind': 'swap', 'core': 'sing-box', 'from': 'xray', 'reason': 'health-check'});
     at(0, {'kind': 'core-state', 'core': 'sing-box', 'reason': 'connected'});

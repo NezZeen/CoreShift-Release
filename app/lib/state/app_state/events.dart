@@ -111,7 +111,7 @@ extension AppStateEvents on AppState {
         // While it fails the check repeats every few seconds: the log says
         // when it starts failing and when it works again.
         if (e.error.isNotEmpty) {
-          if (_healthFailing.add(e.core)) _log(e.time, e.core, 'проверка связи не прошла: ${e.error}', LogLevel.warn);
+          if (_healthFailing.add(e.core)) _log(e.time, e.core, 'проверка связи не прошла: ${e.errorText}', LogLevel.warn);
           final streak = _healthStreak[e.core] = (_healthStreak[e.core] ?? 0) + 1;
           if (streak == 2) _notify();
         } else {

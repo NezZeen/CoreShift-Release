@@ -114,6 +114,11 @@ func fromSupervisor(e supervisor.Event) Event {
 	}
 	if e.Err != nil {
 		out.Error = e.Err.Error()
+		// A failed check reads "нет ответа", not Go's "context deadline
+		// exceeded" (netErrText); an error of another kind keeps its text.
+		if e.Kind == supervisor.EventHealth {
+			out = out.withError(netErrText(e.Err))
+		}
 	}
 	if e.Kind == supervisor.EventLog {
 		out.Source = string(e.Core)
