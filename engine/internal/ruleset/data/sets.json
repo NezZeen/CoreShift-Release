@@ -1,5 +1,5 @@
 {
-  "fetched": "2026-10-12T18:46:32Z",
+  "fetched": "2026-10-17T00:56:24Z",
   "sets": {
     "geoip-ru": {
       "sha256": "bdca5cdb44cdcf0940001e5952386822a6f4ffa8b2c8eea00340aa6f585c7f9d",
@@ -14,8 +14,8 @@
       "size": 1248
     },
     "geosite-category-ru": {
-      "sha256": "546c841723df674071987a90e321ad8c5f0e9ce0fc0ee460c258f547d3086857",
-      "size": 8367
+      "sha256": "90e5f14da0534abaa0fd1f0fa0be8902cf515ad5bf3cea61ee8b4424eec99a84",
+      "size": 8698
     },
     "geosite-google": {
       "sha256": "952d89c656fdb147d4f5d04541dd942b33dcce0dae906a8416e24cbc1161402a",
