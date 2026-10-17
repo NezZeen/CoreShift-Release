@@ -130,9 +130,18 @@ if (-not $NoBuild) {
         $installers += (Join-Path $out 'CoreShift-Setup.exe')
     }
     if ($Platform -eq 'all' -or $Platform -eq 'android') {
-        & "$root\packaging\android\build.ps1"
-        Copy-Item "$root\dist\coreshift-$Version.apk" (Join-Path $out 'CoreShift.apk') -Force
-        $installers += (Join-Path $out 'CoreShift.apk')
+        # Three APKs: the universal one people download (CoreShift.apk, both
+        # ARM kinds, which Android picks from), and one per kind that the
+        # phones update with, half the size (latest-android.json names
+        # CoreShift-arm64.apk, latest-android-armv7.json CoreShift-armv7.apk).
+        foreach ($abi in 'arm64-v8a', 'armeabi-v7a', 'universal') {
+            & "$root\packaging\android\build.ps1" -Abi $abi
+            Check "the Android build ($abi)"
+        }
+        Copy-Item "$root\dist\coreshift-$Version.apk" (Join-Path $out 'CoreShift-arm64.apk') -Force
+        Copy-Item "$root\dist\coreshift-$Version-armeabi-v7a.apk" (Join-Path $out 'CoreShift-armv7.apk') -Force
+        Copy-Item "$root\dist\coreshift-$Version-universal.apk" (Join-Path $out 'CoreShift.apk') -Force
+        $installers += (Join-Path $out 'CoreShift-arm64.apk'), (Join-Path $out 'CoreShift-armv7.apk')
     }
     if ($linux) {
         # Its output comes now, all at once; a failure there fails the release.

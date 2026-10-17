@@ -321,7 +321,7 @@ func New(cfg Config) (*Service, error) {
 	}
 	if cfg.checkRelease == nil {
 		cfg.checkRelease = func(ctx context.Context, c *http.Client, src selfupdate.Source) (selfupdate.Release, error) {
-			return selfupdate.Check(ctx, c, src, selfupdate.ManifestFor(runtime.GOOS), selfupdate.PublicKeys)
+			return selfupdate.Check(ctx, c, src, selfupdate.ManifestForArch(runtime.GOOS, runtime.GOARCH), selfupdate.PublicKeys)
 		}
 	}
 	if cfg.downloadRelease == nil {

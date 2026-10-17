@@ -4,6 +4,12 @@
 #
 #   powershell -ExecutionPolicy Bypass -File packaging\android\build.ps1
 #
+# -Abi armeabi-v7a builds coreshift-<version>-armeabi-v7a.apk for 32-bit ARM
+# phones, -Abi universal coreshift-<version>-universal.apk with both ARM
+# kinds, the one people download: Android takes what fits the phone. A
+# release has all three; the phones update with the APK of their own kind
+# (latest-android.json, latest-android-armv7.json), half the size.
+#
 # With -Abi x86_64 it builds coreshift-<version>-b<build>-x86_64.apk for the
 # Android emulator on a PC instead: its ARM translation cannot run the Go
 # engine. Such an APK is for testing, not for phones, and does not update
@@ -17,22 +23,30 @@
 #
 # Version, build number and commit come from VERSION and git, as for the
 # Windows installer. The cores come from engine\testdata\bin\android-arm64
-# (libxray.so, libsingbox.so, libmihomo.so), for x86_64 from
-# engine\testdata\bin\android-x86_64, or from -Cores. The APK is
+# (libxray.so, libsingbox.so, libmihomo.so), for 32-bit ARM from
+# engine\testdata\bin\android-arm, for x86_64 from
+# engine\testdata\bin\android-x86_64, or from -Cores (one ABI only). The APK is
 # signed with the key from %USERPROFILE%\.coreshift\android-signing.properties;
 # without it, with the debug key (such an APK cannot be updated by one
 # signed with the release key).
 param(
     [string]$Cores,
     [string]$OutDir,
-    [ValidateSet('arm64-v8a', 'x86_64')]
+    [ValidateSet('arm64-v8a', 'armeabi-v7a', 'universal', 'x86_64')]
     [string]$Abi = 'arm64-v8a'
 )
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path "$PSScriptRoot\..\..").Path
-# The names each tool gives the ABI.
-$goArch, $flutterArch, $coresDir = if ($Abi -eq 'x86_64') { 'amd64', 'android-x64', 'android-x86_64' } else { 'arm64', 'android-arm64', 'android-arm64' }
-if (-not $Cores) { $Cores = Join-Path $root "engine\testdata\bin\$coresDir" }
+# The names each tool gives an ABI: Go's, Flutter's, the cores' folder.
+$names = @{
+    'arm64-v8a'   = @{ go = 'arm64'; flutter = 'android-arm64'; cores = 'android-arm64' }
+    'armeabi-v7a' = @{ go = 'arm'; flutter = 'android-arm'; cores = 'android-arm' }
+    'x86_64'      = @{ go = 'amd64'; flutter = 'android-x64'; cores = 'android-x86_64' }
+}
+$abis = if ($Abi -eq 'universal') { @('arm64-v8a', 'armeabi-v7a') } else { @($Abi) }
+if ($Cores -and $abis.Count -gt 1) { throw '-Cores names the cores of one ABI; the universal APK takes them from engine\testdata\bin' }
+$coresOf = @{}
+foreach ($a in $abis) { $coresOf[$a] = if ($Cores) { $Cores } else { Join-Path $root "engine\testdata\bin\$($names[$a].cores)" } }
 if (-not $OutDir) { $OutDir = Join-Path $root 'dist' }
 
 function Step($text) { Write-Host "==> $text" -ForegroundColor Cyan }
@@ -71,8 +85,10 @@ $env:Path = "$env:USERPROFILE\go\bin;$env:Path"
 foreach ($c in 'go', 'gomobile', 'flutter') {
     if (-not (Get-Command $c -ErrorAction SilentlyContinue)) { throw "$c not found" }
 }
-foreach ($f in 'libxray.so', 'libsingbox.so', 'libmihomo.so') {
-    if (-not (Test-Path "$Cores\$f")) { throw "$Cores\$f is missing (see packaging\README.md)" }
+foreach ($a in $abis) {
+    foreach ($f in 'libxray.so', 'libsingbox.so', 'libmihomo.so') {
+        if (-not (Test-Path "$($coresOf[$a])\$f")) { throw "$($coresOf[$a])\$f is missing (see packaging\README.md)" }
+    }
 }
 
 Step "engine $version build $build ($commit)"
@@ -85,21 +101,25 @@ $aar = "$root\app\android\app\libs\coreshift-engine.aar"
 New-Item -ItemType Directory (Split-Path $aar) -Force | Out-Null
 Push-Location "$root\engine"
 try {
-    gomobile bind "-target=android/$goArch" -androidapi 24 -tags with_gvisor -javapkg dev.coreshift -trimpath `
+    $targets = ($abis | ForEach-Object { "android/$($names[$_].go)" }) -join ','
+    gomobile bind "-target=$targets" -androidapi 24 -tags with_gvisor -javapkg dev.coreshift -trimpath `
         -ldflags "-s -w -X $pkg.Version=$version -X $pkg.Build=$build -X $pkg.Commit=$commit" -o $aar ./mobile
     Check 'gomobile bind'
 } finally { Pop-Location }
 
-Step "cores from $Cores"
-$jni = "$root\app\android\app\src\main\jniLibs\$Abi"
-New-Item -ItemType Directory $jni -Force | Out-Null
-Copy-Item "$Cores\lib*.so" $jni -Force
-$env:CORESHIFT_ABI = $Abi # build.gradle.kts packs this ABI alone
+foreach ($a in $abis) {
+    Step "cores for $a from $($coresOf[$a])"
+    $jni = "$root\app\android\app\src\main\jniLibs\$a"
+    New-Item -ItemType Directory $jni -Force | Out-Null
+    Copy-Item "$($coresOf[$a])\lib*.so" $jni -Force
+}
+$env:CORESHIFT_ABI = $abis -join ',' # build.gradle.kts packs these ABIs alone
 
 Step 'app'
 Push-Location "$root\app"
 try {
-    flutter build apk --release --target-platform $flutterArch --build-name $version --build-number $build `
+    $platforms = ($abis | ForEach-Object { $names[$_].flutter }) -join ','
+    flutter build apk --release --target-platform $platforms --build-name $version --build-number $build `
         "--dart-define=CORESHIFT_VERSION=$version" "--dart-define=CORESHIFT_BUILD=$build" "--dart-define=CORESHIFT_COMMIT=$commit"
     Check 'flutter build apk'
 } finally { Pop-Location }

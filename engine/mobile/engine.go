@@ -24,6 +24,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"time"
 
@@ -251,8 +252,10 @@ func Start(dataDir, libDir, deviceID, osVersion, model string, p Platform) error
 		HostIPv6:      currentNetwork.hasIPv6,
 		NetworkUp:     currentNetwork.up,
 		NetworkName:   currentNetwork.name,
-		// Release builds look for new APKs; the user installs them.
-		SelfUpdate:    service.Version != "dev",
+		// Release builds for phones look for new APKs; the user installs
+		// them. The emulator's (x86_64) has none to take.
+		SelfUpdate:    service.Version != "dev" && (runtime.GOARCH == "arm64" || runtime.GOARCH == "arm"),
+		SelfUpdateOff: "only the phones' APKs (ARM) update themselves",
 		InstallUpdate: p.InstallUpdate,
 		// The app is often open for a moment only.
 		FirstUpdateCheck: 20 * time.Second,
@@ -394,4 +397,30 @@ func SetPowerSave(on bool) {
 // started another VPN app or turned CoreShift off in the system settings.
 func Revoked() {
 	currentTUN.revoke()
+}
+
+// langCache keeps AppLanguage's answer a few seconds: the notification with
+// the speed asks it every second.
+var langCache struct {
+	sync.Mutex
+	lang string
+	at   time.Time
+}
+
+// AppLanguage is the language the app last showed, "ru" or "en": the VPN's
+// notification and the quick settings tile speak it too. "ru" before the
+// engine starts.
+func AppLanguage() string {
+	mu.Lock()
+	e := running
+	mu.Unlock()
+	if e == nil {
+		return "ru"
+	}
+	langCache.Lock()
+	defer langCache.Unlock()
+	if langCache.lang == "" || time.Since(langCache.at) > 5*time.Second {
+		langCache.lang, langCache.at = uiLang(filepath.Dir(e.apiFile)), time.Now()
+	}
+	return langCache.lang
 }

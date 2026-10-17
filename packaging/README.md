@@ -193,17 +193,40 @@ dist\stage\coreshiftd.exe update check -download %TEMP%\coreshift-check
 powershell -ExecutionPolicy Bypass -File packaging\android\build.ps1
 ```
 
-Скрипт собирает `dist\coreshift-<версия>.apk` только для 64-битных ARM-телефонов (arm64-v8a), то есть практически для всех телефонов последних лет.
+Скрипт собирает `dist\coreshift-<версия>.apk` для 64-битных ARM-телефонов (arm64-v8a), то есть практически для всех телефонов последних лет. С `-Abi armeabi-v7a` получается APK для 32-битных ARM-телефонов (старые и дешёвые), с `-Abi universal` — один APK с обоими видами, из которых Android сам берёт подходящий.
+
+С 0.11.0 выпуск (`release.ps1`) собирает все три:
+
+| Файл | Что внутри | Для чего |
+| --- | --- | --- |
+| `CoreShift.apk` | универсальный, около 160 МБ | для скачивания людьми; ставится на любой ARM-телефон |
+| `CoreShift-arm64.apk` | только 64-битный ARM | обновление 64-битных телефонов (`latest-android.json`) |
+| `CoreShift-armv7.apk` | только 32-битный ARM | обновление 32-битных телефонов (`latest-android-armv7.json`) |
+
+Телефон обновляется APK своего процессора, он вдвое меньше универсального. Android разрешает ставить узкий APK поверх универсального: пакет и подпись те же.
+
+Минимальная версия — Android 7 (API 24), так требует Flutter. Проверено на эмуляторах Android 7, 10 и 14.
 
 Что нужно на компьютере:
 
 - Android SDK с NDK 28.2 в `%LOCALAPPDATA%\Android\Sdk`;
 - `gomobile`: `go install golang.org/x/mobile/cmd/gomobile@latest`;
-- ядра для Android в `engine\testdata\bin\android-arm64`: `libxray.so`, `libsingbox.so`, `libmihomo.so`. Это обычные Android-сборки xray, sing-box и mihomo из их релизов, переименованные так, чтобы Android разрешил их запуск.
+- ядра для Android, `libxray.so`, `libsingbox.so`, `libmihomo.so`. Это обычные Android-сборки xray, sing-box и mihomo, переименованные так, чтобы Android разрешил их запуск:
+  - `engine\testdata\bin\android-arm64` — из релизов (`Xray-android-arm64-v8a.zip`, `sing-box-<версия>-android-arm64.tar.gz`, `mihomo-android-arm64-v8-<версия>.gz`);
+  - `engine\testdata\bin\android-arm` — 32-битные. sing-box (`sing-box-<версия>-android-arm.tar.gz`) и mihomo (`mihomo-android-armv7-<версия>.gz`) — из релизов. У Xray готовой 32-битной Android-сборки нет, поэтому его собирают из исходников того же выпуска через NDK, с целью Android 7:
+
+    ```
+    go get github.com/xtls/xray-core/main@<коммит тега>
+    CGO_ENABLED=1 CC=<NDK>\toolchains\llvm\prebuilt\windows-x86_64\bin\armv7a-linux-androideabi24-clang.cmd GOOS=android GOARCH=arm GOARM=7 go build -trimpath -buildvcs=false -ldflags "-s -w -buildid=" -o libxray.so github.com/xtls/xray-core/main
+    ```
+
+    Тег vX.Y.Z не совпадает с путём модуля Xray, поэтому `go get` берёт коммит этого тега.
+
+**Android 8–11 и seccomp.** На этих версиях фильтр системных вызовов не возвращает ошибку на неразрешённый вызов, а убивает приложение сигналом SIGSYS. Go при запуске процессов спрашивает `pidfd_open`, которого в списке Android 10 нет, и до 0.11.0 CoreShift на Android 10 закрывался сразу при запуске. Сам Go это обходит, но не в библиотеке (gomobile). Поэтому `engine/mobile/sigsys_android.go` ставит свой обработчик SIGSYS: запрещённый вызов возвращает ENOSYS, и Go переходит на старый способ.
 
 **Подпись.** APK подписывается ключом `%USERPROFILE%\.coreshift\android-release.jks`, пароль лежит в `android-signing.properties` рядом. Храните копию ключа вместе с ключом обновлений. Android ставит новую версию поверх старой, только если обе подписаны одним ключом. Без ключа придётся удалять приложение, а вместе с ним и подписки.
 
-**Обновления.** APK для телефона сам ищет новую версию: через 20 секунд после запуска и дальше раз в день. Он читает тот же приватный репозиторий тем же токеном (`releases-token` зашивается в APK при сборке). Найденный APK скачивается и сверяется с подписанным `latest-android.json`, после чего приложение показывает окно «Доступно обновление». Поставить новую версию без спроса Android не даёт: после «Обновить» система сама спросит подтверждение, а в первый раз попросит разрешить CoreShift устанавливать приложения. VPN остаётся включённым до замены приложения; если он был включён, то после обновления, при следующем открытии CoreShift, подключится снова. Сборка для эмулятора (x86_64) сама не обновляется.
+**Обновления.** APK для телефона сам ищет новую версию: через 20 секунд после запуска и дальше раз в день, в публичном NezZeen/CoreShift-Release, а если GitHub недоступен — на зеркале в GitLab. Найденный APK своего процессора скачивается и сверяется с подписанным `latest-android.json` (32-битный — с `latest-android-armv7.json`), после чего приложение показывает окно «Доступно обновление». Поставить новую версию без спроса Android не даёт: после «Обновить» система сама спросит подтверждение, а в первый раз попросит разрешить CoreShift устанавливать приложения. VPN остаётся включённым до замены приложения; если он был включён, то после обновления, при следующем открытии CoreShift, подключится снова. Сборка для эмулятора (x86_64) сама не обновляется.
 
 **Проверка в эмуляторе.** ARM-трансляция эмулятора Android на ПК не справляется с Go-движком: приложение падает. Для эмулятора есть отдельная сборка под x86_64:
 

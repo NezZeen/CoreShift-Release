@@ -57,7 +57,10 @@ const MirrorSource = "gitlab-public:NezZeen/coreshift"
 func MirrorSourceFor(goos string) string { return MirrorSource }
 
 // ManifestName and SignatureName are the published file names of the
-// Windows release; AndroidManifestName is the Android one's manifest.
+// Windows release; AndroidManifestName is the Android one's manifest, for
+// 64-bit ARM phones, and AndroidArmManifestName the one for 32-bit ARM
+// phones: each updates with an APK of its own processor only (the
+// download for people is a universal APK with both, twice the size).
 // LinuxManifestName describes the Linux release by its .deb: Linux only
 // announces new versions (its package manager installs them), and the
 // name of its own keeps a Linux daemon from ever taking the Windows
@@ -66,13 +69,23 @@ const (
 	ManifestName        = "latest.json"
 	SignatureName       = ManifestName + ".sig"
 	AndroidManifestName = "latest-android.json"
-	LinuxManifestName   = "latest-linux.json"
+	// AndroidArmManifestName came with 0.11.0.
+	AndroidArmManifestName = "latest-android-armv7.json"
+	LinuxManifestName      = "latest-linux.json"
 )
 
-// ManifestFor is the manifest of the release for goos.
-func ManifestFor(goos string) string {
+// ManifestFor is the manifest of the release for goos, on 64-bit
+// processors.
+func ManifestFor(goos string) string { return ManifestForArch(goos, "") }
+
+// ManifestForArch is the manifest of the release for goos on goarch: the
+// 32-bit ARM phones have one of their own.
+func ManifestForArch(goos, goarch string) string {
 	switch goos {
 	case "android":
+		if goarch == "arm" {
+			return AndroidArmManifestName
+		}
 		return AndroidManifestName
 	case "linux":
 		return LinuxManifestName
@@ -84,7 +97,7 @@ func ManifestFor(goos string) string {
 // signed for one platform cannot hand another platform's file to it.
 func installerExt(manifest string) string {
 	switch manifest {
-	case AndroidManifestName:
+	case AndroidManifestName, AndroidArmManifestName:
 		return ".apk"
 	case LinuxManifestName:
 		return ".deb"

@@ -146,7 +146,13 @@ func manifest(args []string) error {
 	name := selfupdate.ManifestFor("windows")
 	switch filepath.Ext(*installer) {
 	case ".apk":
-		name = selfupdate.ManifestFor("android")
+		// CoreShift-armv7.apk is the 32-bit phones' update; the others'
+		// (CoreShift-arm64.apk) has the usual manifest.
+		arch := "arm64"
+		if strings.Contains(strings.ToLower(filepath.Base(*installer)), "armv7") {
+			arch = "arm"
+		}
+		name = selfupdate.ManifestForArch("android", arch)
 	case ".deb":
 		// Linux: announced, not installed; the .deb is the package the
 		// other formats are built with.

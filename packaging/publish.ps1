@@ -215,7 +215,7 @@ if ($toGitLab) {
 
 $files = @()
 $manifest = $null
-foreach ($name in 'latest.json', 'latest-android.json', 'latest-linux.json') {
+foreach ($name in 'latest.json', 'latest-android.json', 'latest-android-armv7.json', 'latest-linux.json') {
     $path = Join-Path $dir $name
     if (-not (Test-Path $path)) { continue }
     $m = Get-Content $path -Raw | ConvertFrom-Json
@@ -235,13 +235,19 @@ foreach ($name in 'latest.json', 'latest-android.json', 'latest-linux.json') {
     }
 }
 if (-not $manifest) { throw "no latest.json, latest-android.json or latest-linux.json in $dir (run release.ps1 first)" }
+# Since 0.11.0 the phones update with an APK of their own processor
+# (CoreShift-arm64.apk, CoreShift-armv7.apk), and people download
+# CoreShift.apk, the universal one with both, which no manifest names.
+$universal = Join-Path $dir 'CoreShift.apk'
+$hasUniversal = (Test-Path $universal) -and (Test-Path (Join-Path $dir 'latest-android-armv7.json'))
+if ($hasUniversal -and -not ($files | Where-Object { $_.Name -eq 'CoreShift.apk' })) { $files += (Get-Item $universal) }
 
 # The fixed names the README links to, through releases/latest/download/.
 $fixed = Join-Path $env:TEMP "coreshift-fixed-$Version"
 if (Test-Path $fixed) { Remove-Item $fixed -Recurse -Force }
 New-Item -ItemType Directory $fixed | Out-Null
 foreach ($f in @($files)) {
-    $name = switch ($f.Extension) { '.exe' { 'CoreShift-Setup.exe' } '.apk' { 'CoreShift.apk' } default { $null } }
+    $name = switch ($f.Extension) { '.exe' { 'CoreShift-Setup.exe' } '.apk' { if ($hasUniversal) { $null } else { 'CoreShift.apk' } } default { $null } }
     if ($name -and $f.Name -ne $name) { $files += (Copy-Item $f.FullName (Join-Path $fixed $name) -PassThru) }
 }
 
