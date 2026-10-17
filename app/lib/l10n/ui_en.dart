@@ -1,5 +1,16 @@
 /// The UI's texts in English (see strings.dart). A key missing here is
 /// shown in Russian.
+library;
+
+import 'parts/errors.dart';
+import 'parts/settings.dart';
+import 'parts/routing.dart';
+import 'parts/servers.dart';
+import 'parts/home.dart';
+import 'parts/events.dart';
+import 'parts/state.dart';
+import 'parts/shell.dart';
+
 const uiEn = <String, String>{
   // The navigation (ui/shell.dart).
   'nav.home': 'Home',
@@ -24,4 +35,14 @@ const uiEn = <String, String>{
   'settings.language.system': 'System',
   'settings.language.ru': 'Русский',
   'settings.language.en': 'English',
+
+  // The areas (parts/).
+  ...errorsEn,
+  ...settingsEn,
+  ...routingEn,
+  ...serversEn,
+  ...homeEn,
+  ...eventsEn,
+  ...stateEn,
+  ...shellEn,
 };

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/strings.dart';
 import '../state/app_state.dart';
 import 'theme.dart';
 
@@ -116,9 +117,9 @@ class SupportButton extends StatelessWidget {
     final kind = SupportKind.of(url);
     final c = kind.color;
     final where = switch (kind) {
-      SupportKind.email => 'Написать в поддержку на почту',
-      SupportKind.other => 'Написать в поддержку',
-      _ => 'Написать в поддержку в ${kind.name}',
+      SupportKind.email => tr('support.tooltip.email'),
+      SupportKind.other => tr('support.tooltip.other'),
+      _ => tr('support.tooltip.messenger', {'name': kind.name}),
     };
     return Tooltip(
       message: where,
@@ -141,7 +142,7 @@ class SupportButton extends StatelessWidget {
                 if (!iconOnly) ...[
                   const SizedBox(width: 6),
                   Text(
-                    'Поддержка',
+                    tr('support.title'),
                     style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: p.text),
                   ),
                 ],

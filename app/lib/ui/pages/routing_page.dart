@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../l10n/strings.dart';
 import '../../platform/platform.dart' as platform;
 import '../../state/app_state.dart';
 import '../theme.dart';
@@ -29,40 +30,32 @@ class RoutingPage extends StatelessWidget {
         RuleListPanel(
           key: const ValueKey('selected-proxy'),
           state: s,
-          title: 'Сайты и адреса через VPN',
-          sub: 'сайт и все его поддомены',
-          description: 'Только они идут через VPN. Всё остальное открывается напрямую, как без VPN.',
+          title: tr('rules.proxy.title'),
+          sub: tr('rules.sub.domains'),
+          description: tr('rules.proxy.desc'),
           domainsKey: 'routing.proxy_domains',
           ipsKey: 'routing.proxy_ips',
           hint: 'youtube.com, 91.108.4.0/22',
-          empty: 'Пока пусто — всё идёт напрямую',
-          removeTip: 'Больше не через VPN',
+          empty: tr('rules.proxy.empty'),
+          removeTip: tr('rules.proxy.remove'),
           chipColor: accent,
         ),
       ];
-      right = [
-        if (!platform.isAndroid)
-          AppsPanel.proxy(
-            state: s,
-            description: 'Весь трафик этих программ идёт через VPN, куда бы они ни подключались. Удобно для мессенджеров и игр, заблокированных целиком.',
-          ),
-        _blockPanel(),
-        ..._ownRules(),
-      ];
+      right = [if (!platform.isAndroid) AppsPanel.proxy(state: s, description: tr('rules.proxy.apps.desc')), _blockPanel(), ..._ownRules()];
     } else {
       left = [
         if (s.hasSetting('routing.russia_direct')) _presetsPanel(context, selected: false),
         RuleListPanel(
           key: const ValueKey('all-direct'),
           state: s,
-          title: 'Сайты и адреса без VPN',
-          sub: 'сайт и все его поддомены',
-          description: full ? 'Можно указать IP-адрес или подсеть, например 10.8.0.0/16 для рабочей сети.' : null,
+          title: tr('rules.direct.title'),
+          sub: tr('rules.sub.domains'),
+          description: full ? tr('rules.direct.desc') : null,
           domainsKey: 'routing.direct_domains',
           ipsKey: 'routing.direct_ips',
           hint: full ? 'gosuslugi.ru, 10.8.0.0/16' : 'gosuslugi.ru, bank.example',
-          empty: 'Пока пусто — всё идёт через VPN',
-          removeTip: 'Снова через VPN',
+          empty: tr('rules.direct.empty'),
+          removeTip: tr('rules.direct.remove'),
         ),
       ];
       // Programs are matched by their .exe; Android has no such thing.
@@ -71,19 +64,19 @@ class RoutingPage extends StatelessWidget {
         if (s.hasSetting('routing.direct_apps') && !platform.isAndroid) AppsPanel.direct(state: s),
         if (full)
           Fold(
-            title: 'Всегда через VPN',
-            sub: 'важнее исключений',
+            title: tr('rules.always.title'),
+            sub: tr('rules.always.sub'),
             child: RuleListPanel(
               key: const ValueKey('all-proxy'),
               bare: true,
               state: s,
-              title: 'Всегда через VPN',
-              description: 'Для сайтов, которые попали под исключения, но без VPN не открываются: например, заблокированный сайт в зоне .ru.',
+              title: tr('rules.always.title'),
+              description: tr('rules.always.desc'),
               domainsKey: 'routing.proxy_domains',
               ipsKey: 'routing.proxy_ips',
               hint: 'blocked.ru',
-              empty: 'Пока пусто',
-              removeTip: 'Убрать из списка',
+              empty: tr('rules.list.empty'),
+              removeTip: tr('rules.list.remove'),
               chipColor: accent,
             ),
           ),
@@ -98,20 +91,13 @@ class RoutingPage extends StatelessWidget {
     return PageFrame(
       children: [
         PageHeader(
-          'Правила',
-          subtitle: selected
-              ? 'Через VPN идут только выбранные сайты и программы, остальное — напрямую.'
-              : 'Сайты и программы, которые работают напрямую, без VPN. Всё остальное идёт через VPN.',
+          tr('rules.page.title'),
+          subtitle: selected ? tr('rules.page.sub.selected') : tr('rules.page.sub.all'),
           // What always goes direct, for the curious: behind an icon.
           actions: [
             Tooltip(
-              message: 'Что всегда работает напрямую',
-              child: InfoIcon(
-                title: 'Всегда напрямую',
-                text: selected
-                    ? 'Локальная сеть и российские сайты в этом режиме и так работают напрямую.'
-                    : 'Локальная сеть (10.0.0.0/8, 192.168.0.0/16, .local, .lan) и адрес VPN-сервера всегда работают напрямую.',
-              ),
+              message: tr('rules.always_direct.tip'),
+              child: InfoIcon(title: tr('rules.always_direct.title'), text: selected ? tr('rules.always_direct.selected') : tr('rules.always_direct.all')),
             ),
           ],
         ),
@@ -160,17 +146,17 @@ class RoutingPage extends StatelessWidget {
                 style: TextStyle(fontSize: 13, color: p.muted),
                 children: [
                   TextSpan(
-                    text: 'Сейчас включён режим «Только прокси». ',
+                    text: '${tr('rules.notice.title')} ',
                     style: TextStyle(color: p.text, fontWeight: FontWeight.w600),
                   ),
-                  const TextSpan(text: 'В нём через VPN идут только программы, настроенные на прокси, и правила ниже не действуют.'),
+                  TextSpan(text: tr('rules.notice.text')),
                 ],
               ),
             ),
           ),
           if (s.info.tunAvailable) ...[
             const SizedBox(width: 10),
-            Btn(label: 'Все приложения', small: true, onPressed: () => s.updateSettings((x) => x['tun'] = true)),
+            Btn(label: tr('rules.notice.btn'), small: true, onPressed: () => s.updateSettings((x) => x['tun'] = true)),
           ],
         ],
       ),
@@ -223,8 +209,8 @@ class RoutingPage extends StatelessWidget {
       );
     }
 
-    const allText = 'Кроме исключений. Скрывает весь трафик, российские сайты можно пустить напрямую.';
-    const onlyText = 'Через VPN идут только выбранные сервисы, остальное напрямую. Банки и российские сайты работают как без VPN.';
+    final allText = tr('rules.mode.all.text');
+    final onlyText = tr('rules.mode.selected.text');
     if (isCompact(context)) {
       // A phone: a switch of two words and what the chosen mode does.
       return Builder(
@@ -233,7 +219,7 @@ class RoutingPage extends StatelessWidget {
           children: [
             Seg<bool>(
               value: selected,
-              options: const [(false, 'Всё через VPN'), (true, 'Только выбранное')],
+              options: [(false, tr('rules.mode.all.title')), (true, tr('rules.mode.selected.title'))],
               onChanged: (v) => s.updateSettings((x) => x['routing']['mode'] = v ? 'selected' : 'all'),
             ),
             const SizedBox(height: 8),
@@ -242,8 +228,8 @@ class RoutingPage extends StatelessWidget {
         ),
       );
     }
-    final all = option('all', Icons.shield_outlined, 'Всё через VPN', allText);
-    final only = option('selected', Icons.filter_alt_outlined, 'Только выбранное', onlyText);
+    final all = option('all', Icons.shield_outlined, tr('rules.mode.all.title'), allText);
+    final only = option('selected', Icons.filter_alt_outlined, tr('rules.mode.selected.title'), onlyText);
     return LayoutBuilder(
       builder: (context, c) => c.maxWidth < 640
           ? Column(children: [all, const SizedBox(height: 10), only])
@@ -270,23 +256,18 @@ class RoutingPage extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const PanelTitle('Готовые наборы'),
+          PanelTitle(tr('rules.presets.title')),
           if (russia)
             SettingRow(
               first: true,
-              title: 'Российские сайты напрямую',
-              description:
-                  'Госуслуги, банки, Яндекс, VK и другие российские сервисы откроются без VPN — '
-                  'быстрее и без блокировок «из-за границы». Google и YouTube всегда идут через VPN, как и сайты, заблокированные в России, даже на .ru. '
-                  'Списки обновляются сами.',
+              title: tr('rules.presets.russia.title'),
+              description: tr('rules.presets.russia.desc'),
               trailing: Switch(value: russiaOn, onChanged: (v) => set('russia_direct', v)),
             ),
           if (russia && russiaOn && s.hasSetting('routing.russia_abroad'))
             SettingRow(
-              title: 'Российские сайты на зарубежных серверах — через VPN',
-              description:
-                  'Сайт на .ru за Cloudflare или у зарубежного хостинга пойдёт через VPN: напрямую такие часто тормозят. '
-                  'Если сервис не пускает из-за границы, добавьте его в «Сайты и адреса без VPN».',
+              title: tr('rules.presets.abroad.title'),
+              description: tr('rules.presets.abroad.desc'),
               trailing: Switch(value: s.setting('routing.russia_abroad', false), onChanged: (v) => set('russia_abroad', v)),
             ),
           // The ad block has no switch for now (being reworked): it is on,
@@ -302,25 +283,25 @@ class RoutingPage extends StatelessWidget {
     if (s.hasSetting('routing.rules')) UserRulesPanel(state: s),
     if (s.hasSetting('routing.geo'))
       Fold(
-        title: 'Источник баз',
+        title: tr('rules.geo.fold'),
         sub: geoFoldSub(s),
         child: GeoSourcePanel(state: s),
       ),
   ];
 
   Widget _blockPanel() => Fold(
-    title: 'Блокировать',
-    sub: 'не открывать совсем',
+    title: tr('rules.block.title'),
+    sub: tr('rules.block.sub'),
     child: RuleListPanel(
       key: const ValueKey('block'),
       bare: true,
       state: s,
-      title: 'Блокировать',
-      description: 'Сайты из этого списка не откроются ни через VPN, ни напрямую: реклама, трекеры, отвлекающие сайты.',
+      title: tr('rules.block.title'),
+      description: tr('rules.block.desc'),
       domainsKey: 'routing.block_domains',
       hint: 'ads.example',
-      empty: 'Пока пусто',
-      removeTip: 'Разблокировать',
+      empty: tr('rules.list.empty'),
+      removeTip: tr('rules.block.remove'),
       chipColor: errColor,
     ),
   );

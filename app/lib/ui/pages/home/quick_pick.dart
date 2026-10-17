@@ -89,12 +89,12 @@ class _QuickPickState extends State<_QuickPick> {
                     padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
                     child: Row(
                       children: [
-                        Expanded(child: Text('Выбор сервера', style: dialogTitle)),
+                        Expanded(child: Text(tr('servers.quick.title'), style: dialogTitle)),
                         if (!compact)
                           IconButton(
                             onPressed: () => Navigator.pop(context),
                             icon: Icon(Icons.close, size: 18, color: p.muted),
-                            tooltip: 'Закрыть',
+                            tooltip: tr('servers.close'),
                           ),
                       ],
                     ),
@@ -102,24 +102,21 @@ class _QuickPickState extends State<_QuickPick> {
                   _FastestTile(state: state, fastest: fastest, onPick: pick),
                   const SizedBox(height: 14),
                   if (starred.isNotEmpty) ...[
-                    const Padding(padding: EdgeInsets.only(left: 4), child: SectionLabel('Избранное')),
+                    Padding(padding: const EdgeInsets.only(left: 4), child: SectionLabel(tr('servers.section.favorites'))),
                     for (final (sub, n) in starred) _QuickRow(state: state, sub: sub, node: n, onTap: () => pick(sub, n)),
                     if (recent.isNotEmpty) const SizedBox(height: 10),
                   ],
-                  if (recent.isNotEmpty || starred.isEmpty) const Padding(padding: EdgeInsets.only(left: 4), child: SectionLabel('Недавние')),
+                  if (recent.isNotEmpty || starred.isEmpty) Padding(padding: const EdgeInsets.only(left: 4), child: SectionLabel(tr('servers.quick.recent'))),
                   if (nodes.isEmpty)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
-                      child: Text(
-                        'Здесь появятся серверы, к которым вы подключались, и те, что со звёздочкой.',
-                        style: TextStyle(color: p.muted, fontSize: 13, height: 1.4),
-                      ),
+                      child: Text(tr('servers.quick.empty'), style: TextStyle(color: p.muted, fontSize: 13, height: 1.4)),
                     )
                   else
                     for (final (sub, n) in recent) _QuickRow(state: state, sub: sub, node: n, onTap: () => pick(sub, n)),
                   const SizedBox(height: 10),
                   Btn(
-                    label: 'Все серверы · ${state.nodeCount}',
+                    label: tr('servers.quick.all', {'n': state.nodeCount}),
                     icon: Icons.public,
                     onPressed: () {
                       Navigator.pop(context);
@@ -146,7 +143,7 @@ void _connectTo(AppState state, Subscription sub, NodeView n) {
     return;
   }
   if (!state.status.active) state.selectNode(sub.id, n.fingerprint, n.name);
-  state.toast(state.busy ? 'Подключение ещё меняется: подождите немного и выберите сервер снова' : 'Нет сети: сервер выбран, подключитесь, когда она появится');
+  state.toast(state.busy ? tr('servers.quick.busy') : tr('servers.quick.offline'));
 }
 
 class _FastestTile extends StatelessWidget {
@@ -180,7 +177,7 @@ class _FastestTile extends StatelessWidget {
                     ? Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Самый быстрый', style: TextStyle(fontWeight: FontWeight.w600)),
+                          Text(tr('servers.quick.fastest'), style: const TextStyle(fontWeight: FontWeight.w600)),
                           const SizedBox(height: 2),
                           Text(
                             cleanNodeName(f.$2.name),
@@ -192,17 +189,19 @@ class _FastestTile extends StatelessWidget {
                     : Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Найти самый быстрый', style: TextStyle(fontWeight: FontWeight.w600)),
+                          Text(tr('servers.quick.find'), style: const TextStyle(fontWeight: FontWeight.w600)),
                           const SizedBox(height: 2),
                           Text(
-                            state.testingLatency ? 'Проверено ${state.latencyDone} из ${state.latencyTotal}' : 'Проверим пинг всех серверов',
+                            state.testingLatency
+                                ? tr('servers.quick.progress', {'done': state.latencyDone, 'total': state.latencyTotal})
+                                : tr('servers.quick.will_check'),
                             style: TextStyle(fontSize: 12.5, color: p.muted),
                           ),
                         ],
                       ),
               ),
               if (f != null)
-                Text('$ms мс', style: figures(15, color: p.ink(ms < 200 ? okColor : (ms < 500 ? warnColor : errColor))))
+                Text(tr('servers.ms', {'ms': ms}), style: figures(15, color: p.ink(ms < 200 ? okColor : (ms < 500 ? warnColor : errColor))))
               else if (state.testingLatency)
                 const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
               else
@@ -273,7 +272,8 @@ class _QuickRow extends StatelessWidget {
                   ],
                 ),
               ),
-              if (l != null && l.ok) Text('${l.ms} мс', style: figures(13, color: p.ink(l.ms < 200 ? okColor : (l.ms < 500 ? warnColor : errColor)))),
+              if (l != null && l.ok)
+                Text(tr('servers.ms', {'ms': l.ms}), style: figures(13, color: p.ink(l.ms < 200 ? okColor : (l.ms < 500 ? warnColor : errColor)))),
               const SizedBox(width: 8),
               Icon(sel ? Icons.radio_button_checked : Icons.radio_button_off, size: 18, color: sel ? accent : p.dim),
             ],

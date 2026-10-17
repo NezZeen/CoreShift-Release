@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../l10n/strings.dart';
 import '../platform/platform.dart' as platform;
 import '../state/app_state.dart';
 import 'pages/home_page.dart' show showQuickPick;
@@ -102,11 +103,11 @@ class _CheckupViewState extends State<CheckupView> {
   }
 
   String _actionLabel(String a) => switch (a) {
-    'servers' => 'Другой сервер',
-    'reconnect' => 'Переподключить',
-    'connect' => 'Подключить',
-    'routing' => state.directFixable ? 'Всё через VPN' : 'Правила',
-    'leak' => 'Проверка утечки DNS',
+    'servers' => tr('checkup.action.servers'),
+    'reconnect' => tr('checkup.action.reconnect'),
+    'connect' => tr('home.connect'),
+    'routing' => state.directFixable ? tr('checkup.action.all_vpn') : tr('checkup.action.rules'),
+    'leak' => tr('checkup.action.leak'),
     _ => a,
   };
 
@@ -119,10 +120,10 @@ class _CheckupViewState extends State<CheckupView> {
     final c = state.checkup;
     final v = c.verdict;
     final note = c.running
-        ? 'Проверяем сеть, сервер и VPN — до полуминуты'
+        ? tr('checkup.running')
         : c.at == null
         ? ''
-        : 'Проверено ${formatAgo(c.at)}${c.server.isEmpty ? '' : ' · сервер «${c.server}»'}';
+        : '${tr('checkup.checked', {'ago': formatAgo(c.at)})}${c.server.isEmpty ? '' : ' · ${tr('checkup.server', {'server': c.server})}'}';
     final actions = v == null ? const <String>[] : v.actions.where((a) => !(a == 'connect' && state.status.active)).toList();
     return SingleChildScrollView(
       padding: EdgeInsets.fromLTRB(compact ? 16 : 22, compact ? 0 : 20, compact ? 16 : 22, 18),
@@ -130,7 +131,7 @@ class _CheckupViewState extends State<CheckupView> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('Проверить всё', style: dialogTitle),
+          Text(tr('checkup.title'), style: dialogTitle),
           if (note.isNotEmpty) ...[const SizedBox(height: 2), Text(note, style: TextStyle(fontSize: 12.5, color: p.muted))],
           const SizedBox(height: 14),
           if (v != null) ...[
@@ -145,7 +146,7 @@ class _CheckupViewState extends State<CheckupView> {
           ],
           if (c.error.isNotEmpty) ...[
             _VerdictBox(
-              verdict: CheckVerdict(status: 'fail', title: 'Проверка не удалась', advice: c.error),
+              verdict: CheckVerdict(status: 'fail', title: tr('checkup.failed'), advice: c.error),
               actions: const [],
             ),
             const SizedBox(height: 12),
@@ -162,14 +163,14 @@ class _CheckupViewState extends State<CheckupView> {
                   Expanded(
                     child: Text(
                       _saved!.isEmpty
-                          ? 'Отчёт с журналом скопирован: вставьте его в чат поддержки'
+                          ? tr('checkup.saved.clipboard')
                           : platform.isAndroid
-                          ? 'Отчёт с журналом скопирован и сохранён в $_saved'
-                          : 'Отчёт с журналом скопирован и сохранён в «Загрузки»',
+                          ? tr('checkup.saved.file', {'path': _saved})
+                          : tr('checkup.saved.downloads'),
                       style: TextStyle(fontSize: 12, color: p.muted),
                     ),
                   ),
-                  if (_saved!.isNotEmpty && !platform.isAndroid) Btn(label: 'Показать', small: true, onPressed: () => platform.revealFile(_saved!)),
+                  if (_saved!.isNotEmpty && !platform.isAndroid) Btn(label: tr('checkup.show'), small: true, onPressed: () => platform.revealFile(_saved!)),
                 ],
               ),
             ),
@@ -179,14 +180,14 @@ class _CheckupViewState extends State<CheckupView> {
             runSpacing: 8,
             children: [
               Btn(
-                label: 'Отправить в поддержку',
+                label: tr('checkup.send'),
                 icon: Icons.support_agent,
                 loading: _sending,
-                tooltip: 'Отчёт и журнал — в буфер обмена и в файл. Ссылок подписок и ключей в нём нет',
+                tooltip: tr('checkup.send.tooltip'),
                 onPressed: c.running ? null : _send,
               ),
-              Btn(label: 'Ещё раз', icon: Icons.refresh, loading: c.running, onPressed: c.running || !state.online ? null : state.runCheckup),
-              if (!compact) Btn(label: 'Закрыть', onPressed: () => Navigator.pop(context)),
+              Btn(label: tr('checkup.again'), icon: Icons.refresh, loading: c.running, onPressed: c.running || !state.online ? null : state.runCheckup),
+              if (!compact) Btn(label: tr('checkup.close'), onPressed: () => Navigator.pop(context)),
             ],
           ),
         ],
@@ -207,14 +208,14 @@ class _StepRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.pal;
     final Widget mark = switch (step.status) {
-      'ok' => const Icon(Icons.check_circle, size: 17, color: okColor, semanticLabel: 'в порядке'),
-      'warn' => const Icon(Icons.error, size: 17, color: warnColor, semanticLabel: 'внимание'),
-      'fail' => const Icon(Icons.cancel, size: 17, color: errColor, semanticLabel: 'не работает'),
-      'skipped' => Icon(Icons.remove_circle_outline, size: 17, color: p.dim, semanticLabel: 'пропущено'),
+      'ok' => Icon(Icons.check_circle, size: 17, color: okColor, semanticLabel: tr('checkup.step.ok')),
+      'warn' => Icon(Icons.error, size: 17, color: warnColor, semanticLabel: tr('checkup.step.warn')),
+      'fail' => Icon(Icons.cancel, size: 17, color: errColor, semanticLabel: tr('checkup.step.fail')),
+      'skipped' => Icon(Icons.remove_circle_outline, size: 17, color: p.dim, semanticLabel: tr('checkup.step.skipped')),
       _ when pending => const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
       _ => Icon(Icons.help_outline, size: 17, color: p.dim),
     };
-    final detail = step.running ? (pending ? 'проверяем…' : 'не закончено') : step.detail;
+    final detail = step.running ? (pending ? tr('checkup.step.running') : tr('checkup.step.unfinished')) : step.detail;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
@@ -289,8 +290,13 @@ class CheckupSettingRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => SettingRow(
-    title: 'Проверить всё',
-    description: 'Сеть, DNS, сервер, связь через VPN, утечку DNS и скорость — за полминуты, с советом, что делать. Итог можно отправить в поддержку',
-    trailing: Btn(label: 'Проверить всё', icon: Icons.fact_check_outlined, loading: state.checkup.running, onPressed: () => showCheckup(context, state)),
+    title: tr('checkup.setting.title'),
+    description: tr('checkup.setting.description'),
+    trailing: Btn(
+      label: tr('checkup.setting.button'),
+      icon: Icons.fact_check_outlined,
+      loading: state.checkup.running,
+      onPressed: () => showCheckup(context, state),
+    ),
   );
 }

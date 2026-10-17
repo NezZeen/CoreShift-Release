@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import '../api/backend.dart';
 import '../api/demo_backend.dart';
+import '../l10n/strings.dart';
 import 'vpn_consent.dart';
 
 // The web build exists only to preview the UI; browsers cannot reach the
@@ -20,10 +21,10 @@ bool Function()? get daemonStarter => null;
 
 bool Function(bool on)? get autostartSetter => null;
 
-Future<String?> startService() async => 'Недоступно в браузере';
+Future<String?> startService() async => tr('platform.web.unavailable');
 
 /// The system, for the journal's header.
-String get osDescription => 'браузер (демо)';
+String get osDescription => tr('platform.web.os');
 
 bool get isAndroid => false;
 
@@ -57,7 +58,7 @@ bool get canScanQr => false;
 
 Future<String?> scanQr() async => null;
 
-String scanQrError(Object e) => 'Сканер QR-кодов недоступен';
+String scanQrError(Object e) => tr('platform.qr.unavailableShort');
 
 Future<void> notify(String title, String body) async {}
 

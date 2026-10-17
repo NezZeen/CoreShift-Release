@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../api/models.dart';
+import '../../l10n/strings.dart';
 import '../../platform/platform.dart' as platform;
 import '../../state/app_state.dart';
 import '../../state/leak.dart';
@@ -25,17 +26,15 @@ class LeakCheck extends StatelessWidget {
       children: [
         SettingRow(
           first: first,
-          title: 'Проверка утечки DNS',
-          description: ready
-              ? 'Узнать, видит ли провайдер ваши DNS-запросы. Проверка идёт через туннель, как у приложений. Использует сервис bash.ws; страну адреса VPN-сервера (не вашего) сверяет ещё с несколькими сервисами: ipwho.is, ipinfo.io и другими'
-              : 'Подключитесь в режиме «Все приложения», чтобы проверить',
-          trailing: Btn(label: 'Проверить DNS', icon: Icons.policy_outlined, loading: state.leakTesting, onPressed: ready ? state.runLeakTest : null),
+          title: tr('leak.title'),
+          description: ready ? tr('leak.desc.ready') : tr('leak.desc.not_ready'),
+          trailing: Btn(label: tr('leak.btn'), icon: Icons.policy_outlined, loading: state.leakTesting, onPressed: ready ? state.runLeakTest : null),
         ),
         if (state.leakError.isNotEmpty)
           _Box(
             color: errColor,
             icon: Icons.error_outline,
-            title: 'Проверка не удалась',
+            title: tr('leak.failed'),
             children: [Text(state.leakError, style: TextStyle(fontSize: 12, color: p.muted))],
           )
         else if (report != null)
@@ -51,11 +50,7 @@ class LeakResultCard extends StatelessWidget {
   final LeakReport report;
   const LeakResultCard({super.key, required this.report});
 
-  static String get _advice => platform.isAndroid
-      ? 'Что сделать: уберите «Частный DNS», заданный вручную в настройках Android, включите «Защиту от утечек DNS» выше, '
-            'переподключитесь и проверьте снова.'
-      : 'Что сделать: включите «Защиту от утечек DNS» выше, переподключитесь и проверьте снова. '
-            'Если не поможет, проверьте, не идёт ли bash.ws напрямую по вашим правилам.';
+  static String get _advice => tr(platform.isAndroid ? 'leak.advice.android' : 'leak.advice.other');
 
   @override
   Widget build(BuildContext context) {
@@ -93,7 +88,7 @@ class LeakResultCard extends StatelessWidget {
           : good
           ? okColor
           : p.dim,
-      [mono(s.ip), if (s.place.isNotEmpty) TextSpan(text: '  ${s.place}'), if (s.role == 'own') const TextSpan(text: '  · ваш DNS')],
+      [mono(s.ip), if (s.place.isNotEmpty) TextSpan(text: '  ${s.place}'), if (s.role == 'own') TextSpan(text: '  · ${tr('leak.own')}')],
     );
     List<Widget> servers(String title, List<LeakServer> list) => [
       const SizedBox(height: 8),
@@ -108,39 +103,26 @@ class LeakResultCard extends StatelessWidget {
           if (d.country.isNotEmpty) countryName(d.country),
       },
     ].join(', ');
-    final appsTitle = 'DNS, которым пользуются приложения (через VPN)${report.provider.isEmpty ? '' : ' — ${report.provider}'}';
+    final appsTitle = tr('leak.dns.apps', {'provider': report.provider.isEmpty ? '' : ' — ${report.provider}'});
 
     final (color, icon, title, text) = switch (verdict) {
       LeakVerdict.ok => (
         okColor,
         Icons.verified_user_outlined,
-        'Утечки нет',
+        tr('leak.ok.title'),
         report.ownDns.isNotEmpty
-            ? 'DNS идёт через VPN к выбранному вами DNS${ownPlace.isEmpty ? '' : ' ($ownPlace)'}. Провайдер этих запросов не видит.'
+            ? tr('leak.ok.own', {'place': ownPlace.isEmpty ? '' : ' ($ownPlace)'})
             : report.fakeIp
-            ? 'Адреса сайтов приложениям выдаёт сам туннель, а имена разрешает VPN-сервер. Провайдер ваших DNS-запросов не видит.'
-            : 'DNS-запросы приложений уходят через VPN к серверам на его стороне. Провайдер их не видит.',
+            ? tr('leak.ok.fakeip')
+            : tr('leak.ok.vpn'),
       ),
-      LeakVerdict.leak => (
-        errColor,
-        Icons.warning_amber_rounded,
-        'Есть утечка DNS',
-        'Часть DNS-запросов обрабатывает DNS вашего провайдера или сети: он видит, какие сайты вы открываете.',
-      ),
-      LeakVerdict.bypass => (
-        warnColor,
-        Icons.alt_route,
-        'Проверка прошла мимо VPN',
-        'bash.ws увидел ваш настоящий адрес, поэтому результат недостоверен. Похоже, сервер пускает этот сайт напрямую. '
-            'Выберите другой сервер или переподключитесь и проверьте снова.',
-      ),
+      LeakVerdict.leak => (errColor, Icons.warning_amber_rounded, tr('leak.leak.title'), tr('leak.leak.text')),
+      LeakVerdict.bypass => (warnColor, Icons.alt_route, tr('leak.bypass.title'), tr('leak.bypass.text')),
       LeakVerdict.unknown => (
         warnColor,
         Icons.help_outline,
-        'Результат неточный',
-        report.exit == null
-            ? 'bash.ws не сообщил, откуда пришла проверка. Попробуйте ещё раз.'
-            : 'Не удалось узнать ваш адрес без VPN, поэтому нельзя сказать, шла ли проверка через VPN. Попробуйте ещё раз.',
+        tr('leak.unknown.title'),
+        report.exit == null ? tr('leak.unknown.no_exit') : tr('leak.unknown.no_home'),
       ),
     };
 
@@ -164,7 +146,7 @@ class LeakResultCard extends StatelessWidget {
         if (verdict == LeakVerdict.leak) ...[const SizedBox(height: 6), Text(_advice, style: small.copyWith(color: p.text))],
         if (report.exit != null) ...[
           const SizedBox(height: 8),
-          Text(report.bypassed ? 'Сайты видят вас из' : 'Адрес VPN-сервера для сайтов', style: heading),
+          Text(tr(report.bypassed ? 'leak.exit.seen' : 'leak.exit.vpn'), style: heading),
           if (differ) ...[
             // The services disagree: the country most name, and how they voted.
             row(Icons.dns_outlined, p.dim, [mono(report.exit!.ip), TextSpan(text: '  ${_voteText(report.exitGeo!)}')]),
@@ -179,32 +161,28 @@ class LeakResultCard extends StatelessWidget {
         ],
         if (verdict == LeakVerdict.bypass && home != null) ...[
           const SizedBox(height: 8),
-          Text('Ваш адрес без VPN', style: heading),
+          Text(tr('leak.home'), style: heading),
           row(Icons.home_outlined, p.dim, [mono(home.ip), if (home.country.isNotEmpty) TextSpan(text: '  ${countryName(home.country)}')]),
         ],
         // Around the VPN the two paths mean nothing apart.
         if (verdict == LeakVerdict.bypass) ...[
-          if (report.dns.isNotEmpty) ...servers('DNS-серверы', report.dns),
+          if (report.dns.isNotEmpty) ...servers(tr('leak.dns.servers'), report.dns),
         ] else ...[
           if (system.isNotEmpty)
             ...servers(appsTitle, system)
           else if (report.systemChecked && report.fakeIp) ...[
             const SizedBox(height: 8),
             Text(appsTitle, style: heading),
-            row(Icons.shield_outlined, p.dim, [const TextSpan(text: 'Отвечает сам туннель, наружу запросы не уходят')]),
+            row(Icons.shield_outlined, p.dim, [TextSpan(text: tr('leak.tunnel_answers'))]),
           ],
-          if (proxy.isNotEmpty) ...servers('DNS на стороне VPN-сервера', proxy),
+          if (proxy.isNotEmpty) ...servers(tr('leak.dns.vpn_side'), proxy),
         ],
         if (report.dns.isNotEmpty || differ)
           Padding(
             padding: const EdgeInsets.only(top: 8),
-            child: Text(
-              'Страна — по базе сервиса проверки, у разных баз может отличаться; '
-              'у DNS вроде AdGuard и Cloudflare серверы по всему миру, отвечает ближайший к VPN-серверу',
-              style: small,
-            ),
+            child: Text(tr('leak.country_note'), style: small),
           ),
-        if (!report.systemChecked) ...[const SizedBox(height: 8), Text('Запросы приложений через туннель проверить не удалось.', style: small)],
+        if (!report.systemChecked) ...[const SizedBox(height: 8), Text(tr('leak.apps_failed'), style: small)],
       ],
     );
   }
@@ -213,7 +191,7 @@ class LeakResultCard extends StatelessWidget {
 /// «Россия, Москва — 4 из 5 баз» (and «поровну» when the votes are even).
 String _voteText(LeakGeo g) {
   final place = [countryName(g.country), cityName(g.city)].where((s) => s.isNotEmpty).join(', ');
-  return '$place — ${g.votes} из ${g.total} баз${g.tie ? ' (поровну)' : ''}';
+  return tr(g.tie ? 'leak.vote.tie' : 'leak.vote', {'place': place, 'votes': g.votes, 'total': g.total});
 }
 
 /// «Россия (ipwho.is, ipinfo.io) · Украина (bash.ws)»: who said what.
@@ -250,7 +228,7 @@ class _GeoDetailsState extends State<_GeoDetails> {
               children: [
                 Icon(_open ? Icons.expand_less : Icons.expand_more, size: 16, color: p.dim),
                 const SizedBox(width: 4),
-                Text('Подробнее по базам', style: small.copyWith(color: p.text)),
+                Text(tr('leak.geo.more'), style: small.copyWith(color: p.text)),
               ],
             ),
           ),
@@ -266,7 +244,11 @@ class _GeoDetailsState extends State<_GeoDetails> {
                       text: s.name,
                       style: TextStyle(color: p.text, fontWeight: FontWeight.w600),
                     ),
-                    TextSpan(text: s.ok ? ' — ${[countryName(s.country), cityName(s.city), s.org].where((x) => x.isNotEmpty).join(', ')}' : ' — не ответил'),
+                    TextSpan(
+                      text: s.ok
+                          ? ' — ${[countryName(s.country), cityName(s.city), s.org].where((x) => x.isNotEmpty).join(', ')}'
+                          : ' — ${tr('leak.geo.no_answer')}',
+                    ),
                   ],
                 ),
                 style: small,

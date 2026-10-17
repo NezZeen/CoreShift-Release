@@ -12,14 +12,14 @@ extension AppStateConnection on AppState {
       // Builds between releases keep the version number: only a rebuild.
       final cmp = old.version == version.version ? 0 : version.compareTo(old);
       updateNotice = switch (cmp) {
-        > 0 => 'CoreShift обновлён: ${old.label} → ${version.label}',
-        < 0 => 'Установлена более ранняя версия CoreShift: ${old.label} → ${version.label}',
-        _ => 'CoreShift пересобран: ${version.label}',
+        > 0 => tr('state.version.updated', {'old': old.label, 'version': version.label}),
+        < 0 => tr('state.version.older', {'old': old.label, 'version': version.label}),
+        _ => tr('state.version.rebuilt', {'version': version.label}),
       };
       toast(updateNotice, ToastKind.ok);
       // After a self-update the app starts hidden in the tray.
-      if (cmp > 0) _alerts.add(Alert('CoreShift обновлён', '${old.label} → ${version.label}'));
-      _log(DateTime.now(), 'версия', updateNotice, LogLevel.info);
+      if (cmp > 0) _alerts.add(Alert(tr('state.version.updatedTitle'), '${old.label} → ${version.label}'));
+      _log(DateTime.now(), tr('state.src.version'), updateNotice, LogLevel.info);
     }
     if (prev != version.key) setPref('last_version', version.key);
   }
@@ -32,7 +32,7 @@ extension AppStateConnection on AppState {
       // The daemon replays its recent events, the graph among them.
       speed.clear();
       _liveSince = DateTime.now().subtract(const Duration(seconds: 2));
-      _events = backend.events().listen(_onEvent, onError: (Object e) => _lost(e), onDone: () => _lost('поток событий закрыт'));
+      _events = backend.events().listen(_onEvent, onError: (Object e) => _lost(e), onDone: () => _lost(tr('state.daemon.streamClosed')));
       // A new stream opens shown: a hidden window says so again, once the
       // service has the stream.
       if (!_shown.value) Timer(const Duration(seconds: 2), _sendView);
@@ -65,17 +65,17 @@ extension AppStateConnection on AppState {
     _events?.cancel();
     _events = null;
     if (online && status.active) {
-      _alerts.add(const Alert('Служба CoreShift не отвечает', 'VPN может не работать. Откройте CoreShift, чтобы узнать подробности.'));
+      _alerts.add(Alert(tr('state.daemon.silentTitle'), tr('state.daemon.silentBody')));
     }
     online = false;
     // A started service comes up within seconds; after that it is stuck.
     final sinceStart = _daemonStarted == null ? null : DateTime.now().difference(_daemonStarted!);
     if (daemonStarting && sinceStart != null && sinceStart > const Duration(seconds: 20)) daemonStarting = false;
     offlineReason = daemonStarting
-        ? 'Запускаем службу CoreShift'
+        ? tr('state.daemon.starting')
         : reason is DaemonOffline || reason is ApiError
         ? '$reason'
-        : 'Служба CoreShift не отвечает';
+        : tr('state.daemon.silentTitle');
     _notify();
     _retry?.cancel();
     // While it starts, look often, so the window is ready the moment it is.

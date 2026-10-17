@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import '../l10n/strings.dart';
+
 /// What a link from outside asks CoreShift to add: a panel's «add to
 /// CoreShift» button (coreshift://, the only scheme the system opens
 /// CoreShift for), or a scanned QR code or the clipboard, where other
@@ -90,7 +92,7 @@ ImportLink? _appLink(String link, String scheme) {
   rest = cut < 0 ? '' : rest.substring(cut);
 
   if (scheme == 'happ' && action.startsWith('crypt')) {
-    return const ImportLink(error: 'Это зашифрованная ссылка Happ: её открывает только Happ. Скопируйте из панели обычную ссылку на подписку.');
+    return ImportLink(error: tr('state.import.happCrypt'));
   }
 
   var name = '';

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../api/models.dart';
+import '../../l10n/strings.dart';
 import '../../platform/platform.dart' as platform;
 import '../../state/app_state.dart';
 import '../../state/errors.dart';
@@ -37,25 +38,23 @@ class AppsPanel extends StatefulWidget {
   });
 
   /// Programs that bypass the tunnel.
-  const AppsPanel.direct({super.key, required this.state})
+  AppsPanel.direct({super.key, required this.state})
     : setting = 'direct_apps',
-      title = 'Программы без VPN',
-      sub = 'игры, торренты, банки',
-      description =
-          'Эти программы работают напрямую, как без VPN, где бы они ни были установлены. Удобно для игр (меньше пинг), '
-          'торрентов и банковских приложений, которые не пускают из-за границы.',
-      empty = 'Пока пусто — все программы идут через VPN',
-      badge = 'без VPN',
-      removeTip = 'Снова через VPN';
+      title = tr('apps.direct.title'),
+      sub = tr('apps.direct.sub'),
+      description = tr('apps.direct.desc'),
+      empty = tr('apps.direct.empty'),
+      badge = tr('apps.direct.badge'),
+      removeTip = tr('apps.direct.remove');
 
   /// Programs that always go through the tunnel.
-  const AppsPanel.proxy({super.key, required this.state, required this.description})
+  AppsPanel.proxy({super.key, required this.state, required this.description})
     : setting = 'proxy_apps',
-      title = 'Программы через VPN',
-      sub = 'весь их трафик',
-      empty = 'Пока пусто',
-      badge = 'через VPN',
-      removeTip = 'Убрать из списка';
+      title = tr('apps.proxy.title'),
+      sub = tr('apps.proxy.sub'),
+      empty = tr('apps.proxy.empty'),
+      badge = tr('apps.proxy.badge'),
+      removeTip = tr('apps.proxy.remove');
 
   @override
   State<AppsPanel> createState() => _AppsPanelState();
@@ -113,13 +112,13 @@ class _AppsPanelState extends State<AppsPanel> {
                 ),
               ),
               const SizedBox(width: 8),
-              Btn(label: 'Добавить', icon: Icons.add, onPressed: () => _addNames([_add.text])),
+              Btn(label: tr('apps.add'), icon: Icons.add, onPressed: () => _addNames([_add.text])),
             ],
           ),
           const SizedBox(height: 8),
           Align(
             alignment: Alignment.centerLeft,
-            child: Btn(label: 'Выбрать из запущенных', icon: Icons.apps, kind: BtnKind.ghost, small: true, onPressed: s.online ? () => _pick(context) : null),
+            child: Btn(label: tr('apps.pick'), icon: Icons.apps, kind: BtnKind.ghost, small: true, onPressed: s.online ? () => _pick(context) : null),
           ),
           if (_error != null)
             Padding(
@@ -240,19 +239,16 @@ class _AppPickerState extends State<_AppPicker> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('Запущенные программы', style: dialogTitle),
+              Text(tr('apps.picker.title'), style: dialogTitle),
               const SizedBox(height: 4),
-              Text(
-                'Запустите нужную программу, если её нет в списке. Системные программы ${platform.isLinux ? '' : 'Windows '}не показываются.',
-                style: TextStyle(fontSize: 12, color: p.muted),
-              ),
+              Text(tr(platform.isLinux ? 'apps.picker.hint.linux' : 'apps.picker.hint.windows'), style: TextStyle(fontSize: 12, color: p.muted)),
               const SizedBox(height: 12),
               TextField(
                 autofocus: true,
                 onChanged: (v) => setState(() => _query = v),
                 style: const TextStyle(fontSize: 13),
                 decoration: InputDecoration(
-                  hintText: 'Поиск',
+                  hintText: tr('apps.picker.search'),
                   prefixIcon: Icon(Icons.search, size: 17, color: p.dim),
                 ),
               ),
@@ -266,7 +262,7 @@ class _AppPickerState extends State<_AppPicker> {
                     ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
                     : list.isEmpty
                     ? Center(
-                        child: Text('Ничего не нашлось', style: TextStyle(color: p.dim, fontSize: 12)),
+                        child: Text(tr('apps.picker.empty'), style: TextStyle(color: p.dim, fontSize: 12)),
                       )
                     : ListView.builder(
                         itemCount: list.length,
@@ -298,7 +294,7 @@ class _AppPickerState extends State<_AppPicker> {
                                         padding: const EdgeInsets.symmetric(horizontal: 8),
                                         child: Text(widget.badge, style: TextStyle(fontSize: 12, color: context.pal.okInk)),
                                       )
-                                    : Btn(label: 'Добавить', small: true, onPressed: () => widget.onAdd(a.name)),
+                                    : Btn(label: tr('apps.add'), small: true, onPressed: () => widget.onAdd(a.name)),
                               ],
                             ),
                           );
@@ -309,7 +305,7 @@ class _AppPickerState extends State<_AppPicker> {
               Row(
                 children: [
                   Btn(
-                    label: 'Обновить список',
+                    label: tr('apps.picker.refresh'),
                     icon: Icons.refresh,
                     kind: BtnKind.ghost,
                     onPressed: () {
@@ -318,7 +314,7 @@ class _AppPickerState extends State<_AppPicker> {
                     },
                   ),
                   const Spacer(),
-                  Btn(label: 'Готово', kind: BtnKind.primary, onPressed: () => Navigator.pop(context)),
+                  Btn(label: tr('apps.done'), kind: BtnKind.primary, onPressed: () => Navigator.pop(context)),
                 ],
               ),
             ],

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../api/geo.dart';
 import '../../api/rules.dart';
+import '../../l10n/strings.dart';
 import '../../state/app_state.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -113,7 +114,7 @@ class _UserRulesPanelState extends State<UserRulesPanel> {
     if (await _save(rules)) {
       _input.clear();
       _typed('');
-      s.toast(same >= 0 ? 'Правило изменено' : 'Правило добавлено', ToastKind.ok);
+      s.toast(tr(same >= 0 ? 'rules.own.toast.changed' : 'rules.own.toast.added'), ToastKind.ok);
     }
   }
 
@@ -146,24 +147,13 @@ class _UserRulesPanelState extends State<UserRulesPanel> {
       decoration: const InputDecoration(hintText: 'geosite:youtube, geoip:ru, example.com'),
     );
     final pick = Seg<String>(options: ruleActions, value: _action, onChanged: (v) => setState(() => _action = v));
-    final add = Btn(label: 'Добавить', icon: Icons.add, onPressed: _add);
+    final add = Btn(label: tr('rules.add'), icon: Icons.add, onPressed: _add);
     return Panel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const PanelTitle(
-            'Свои правила',
-            sub: 'сверху вниз',
-            info:
-                'Правила проверяются по порядку: первое подходящее решает. Они важнее готовых наборов, '
-                'но ваши списки сайтов «без VPN», «через VPN» и «Блокировать» важнее правил. '
-                'Правила geoip срабатывают для сайтов, которых нет ни в одном правиле по имени.',
-          ),
-          Text(
-            'Категория сайтов, адресов, сайт или подсеть. Например: geosite:category-ads-all — блокировать, '
-            'geosite:youtube — через VPN, geoip:ru — напрямую.',
-            style: TextStyle(fontSize: 12, color: p.muted, height: 1.45),
-          ),
+          PanelTitle(tr('rules.own.title'), sub: tr('rules.own.sub'), info: tr('rules.own.info')),
+          Text(tr('rules.own.desc'), style: TextStyle(fontSize: 12, color: p.muted, height: 1.45)),
           const SizedBox(height: 12),
           LayoutBuilder(
             builder: (context, c) => c.maxWidth < 760
@@ -205,7 +195,7 @@ class _UserRulesPanelState extends State<UserRulesPanel> {
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 14),
               child: Center(
-                child: Text('Пока нет своих правил', style: TextStyle(color: p.dim, fontSize: 12)),
+                child: Text(tr('rules.own.empty'), style: TextStyle(color: p.dim, fontSize: 12)),
               ),
             )
           else
@@ -250,35 +240,40 @@ class _UserRulesPanelState extends State<UserRulesPanel> {
     if (!c.listed) return const [];
     if (!c.loaded) {
       final text = switch (c.state) {
-        baseError => 'База не загрузилась: категорию проверить нельзя.',
-        baseIdle => 'База ещё не загружена.',
-        _ => base != null && base.percent >= 0 ? 'База ещё загружается… ${base.percent}%' : 'База ещё загружается…',
+        baseError => tr('rules.geo.err'),
+        baseIdle => tr('rules.geo.idle'),
+        _ => base != null && base.percent >= 0 ? tr('rules.geo.loading_pct', {'pct': base.percent}) : tr('rules.geo.loading'),
       };
       return [
         line(const ValueKey('geo-note-loading'), [TextSpan(text: text)]),
       ];
     }
     if (c.resolved.isNotEmpty && c.exact) {
-      out.add(line(const ValueKey('geo-note-ok'), [TextSpan(text: 'Есть ${inBase(c.origin)}.')], color: okColor));
+      out.add(
+        line(const ValueKey('geo-note-ok'), [
+          TextSpan(text: tr('rules.geo.found', {'where': inBase(c.origin)})),
+        ], color: okColor),
+      );
     } else if (c.resolved.isNotEmpty) {
-      out.add(line(const ValueKey('geo-note-resolved'), [const TextSpan(text: 'Будет использована '), chip(c.resolved)], color: okColor));
+      out.add(line(const ValueKey('geo-note-resolved'), [TextSpan(text: '${tr('rules.geo.resolved')} '), chip(c.resolved)], color: okColor));
     } else if (c.ambiguous.isNotEmpty) {
       out.add(
-        line(const ValueKey('geo-note-ambiguous'), [
-          const TextSpan(text: 'Подходит несколько категорий, выберите: '),
-          for (final n in c.ambiguous) chip(n),
-        ], color: warnColor),
+        line(const ValueKey('geo-note-ambiguous'), [TextSpan(text: '${tr('rules.geo.ambiguous')} '), for (final n in c.ambiguous) chip(n)], color: warnColor),
       );
     } else if (c.suggestions.isNotEmpty) {
       out.add(
         line(const ValueKey('geo-note-typo'), [
-          const TextSpan(text: 'Нет в базе. Может быть, '),
+          TextSpan(text: '${tr('rules.geo.typo')} '),
           for (final n in c.suggestions) chip(n),
           const TextSpan(text: '?'),
         ], color: warnColor),
       );
     } else {
-      out.add(line(const ValueKey('geo-note-missing'), [TextSpan(text: 'Нет такой категории ${inBase(c.origin)}.')], color: errColor));
+      out.add(
+        line(const ValueKey('geo-note-missing'), [
+          TextSpan(text: tr('rules.geo.missing', {'where': inBase(c.origin)})),
+        ], color: errColor),
+      );
     }
     // Names to pick while typing, unless the one typed is all there is.
     final more = c.matches.where((m) => m != c.resolved || c.matches.length > 1).toList();
@@ -306,9 +301,9 @@ class _UserRulesPanelState extends State<UserRulesPanel> {
     final small = TextStyle(fontSize: 11, color: p.dim, height: 1.3);
     switch (st.state) {
       case ruleWaiting:
-        return const Padding(
-          padding: EdgeInsets.only(top: 3),
-          child: Pill('ждёт базу', color: warnColor),
+        return Padding(
+          padding: const EdgeInsets.only(top: 3),
+          child: Pill(tr('rules.note.waiting'), color: warnColor),
         );
       case ruleResolved:
         return Padding(
@@ -323,8 +318,8 @@ class _UserRulesPanelState extends State<UserRulesPanel> {
             runSpacing: 4,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              const Pill('нет в базе', color: errColor),
-              if (st.suggestions.isNotEmpty) Text('Может быть:', style: small),
+              Pill(tr('rules.note.missing'), color: errColor),
+              if (st.suggestions.isNotEmpty) Text(tr('rules.note.maybe'), style: small),
               for (final n in st.suggestions) fix(n),
             ],
           ),
@@ -337,16 +332,16 @@ class _UserRulesPanelState extends State<UserRulesPanel> {
             runSpacing: 4,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              const Pill('неоднозначно', color: warnColor),
-              Text('Выберите:', style: small),
+              Pill(tr('rules.note.ambiguous'), color: warnColor),
+              Text(tr('rules.note.choose'), style: small),
               for (final n in st.candidates) fix(n),
             ],
           ),
         );
       case ruleError:
-        return const Padding(
-          padding: EdgeInsets.only(top: 3),
-          child: Pill('база не загрузилась', color: errColor),
+        return Padding(
+          padding: const EdgeInsets.only(top: 3),
+          child: Pill(tr('rules.note.error'), color: errColor),
         );
     }
     return null;
@@ -398,9 +393,9 @@ class _UserRulesPanelState extends State<UserRulesPanel> {
           const SizedBox(width: 8),
           Pill(ruleActionName(r['action']!), color: color),
           const SizedBox(width: 4),
-          icon(Icons.arrow_upward, 'Выше', i > 0 ? () => _move(i, -1) : null),
-          icon(Icons.arrow_downward, 'Ниже', i < rules.length - 1 ? () => _move(i, 1) : null),
-          icon(Icons.close, 'Удалить правило', () => _save([...rules]..removeAt(i))),
+          icon(Icons.arrow_upward, tr('rules.own.up'), i > 0 ? () => _move(i, -1) : null),
+          icon(Icons.arrow_downward, tr('rules.own.down'), i < rules.length - 1 ? () => _move(i, 1) : null),
+          icon(Icons.close, tr('rules.own.delete'), () => _save([...rules]..removeAt(i))),
         ],
       ),
     );
@@ -454,8 +449,8 @@ class GeoBaseRow extends StatelessWidget {
       _ => p.muted,
     };
     final action = switch (b.state) {
-      baseError => 'Повторить',
-      baseIdle => 'Загрузить',
+      baseError => tr('rules.geo.retry'),
+      baseIdle => tr('rules.geo.load'),
       _ => null,
     };
     return Padding(
@@ -480,7 +475,7 @@ class GeoBaseRow extends StatelessWidget {
                         text: baseStateText(b, DateTime.now()),
                         style: TextStyle(color: p.ink(color)),
                       ),
-                      if (b.state == baseLoaded && b.count > 0) TextSpan(text: ' · ${b.count} ${ruPlural(b.count, 'категория', 'категории', 'категорий')}'),
+                      if (b.state == baseLoaded && b.count > 0) TextSpan(text: ' · ${tr('rules.geo.categories', {'n': b.count})}'),
                     ],
                   ),
                   key: ValueKey('geo-state-${b.kind}'),
@@ -538,8 +533,8 @@ class GeoBasesNote extends StatelessWidget {
 /// base is downloading or did not download.
 String geoFoldSub(AppState s) {
   final name = geoSources.firstWhere((g) => g.$1 == s.setting('routing.geo.source', 'sagernet'), orElse: () => geoSources.first).$2;
-  if (s.geo.bases.any((b) => b.loading)) return '$name · загружается…';
-  if (s.geo.bases.any((b) => b.state == baseError)) return '$name · ошибка загрузки';
+  if (s.geo.bases.any((b) => b.loading)) return tr('rules.geo.sub.loading', {'name': name});
+  if (s.geo.bases.any((b) => b.state == baseError)) return tr('rules.geo.sub.error', {'name': name});
   return name;
 }
 
@@ -563,13 +558,10 @@ class GeoSourcePanel extends StatelessWidget {
     final p = context.pal;
     final source = s.setting('routing.geo.source', 'sagernet');
     final about = switch (source) {
-      'runetfreedom' =>
-        'Списки runetfreedom (russia-blocked-geosite): ru-blocked — сайты, заблокированные в России, category-ads-all — реклама, '
-            'и категории v2fly. Это один файл geosite.dat на десятки мегабайт; категории geoip берутся у SagerNet.',
-      'custom' =>
-        'Ссылка https с {name} на файлы .srs, например https://example.org/geosite-{name}.srs, '
-            'или ссылка на geosite.dat / geoip.dat в формате v2ray. Пустое поле — эти категории у SagerNet.',
-      _ => 'Категории SagerNet (sing-geosite, sing-geoip): geosite:youtube, geosite:category-ads-all, geoip:ru и другие.',
+      'runetfreedom' => tr('rules.geo.src.runetfreedom'),
+      // {name} is meant literally in the text: the file name template.
+      'custom' => tr('rules.geo.src.custom', {'name': '{name}'}),
+      _ => tr('rules.geo.src.sagernet'),
     };
     Widget link(String key, String label, String hint) => Padding(
       padding: const EdgeInsets.only(top: 10),
@@ -599,7 +591,7 @@ class GeoSourcePanel extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('Откуда берутся категории geosite: и geoip: для своих правил.', style: TextStyle(fontSize: 12, color: p.muted, height: 1.45)),
+        Text(tr('rules.geo.src.intro'), style: TextStyle(fontSize: 12, color: p.muted, height: 1.45)),
         const SizedBox(height: 10),
         Align(
           alignment: Alignment.centerLeft,
@@ -610,15 +602,13 @@ class GeoSourcePanel extends StatelessWidget {
         for (final b in s.geo.bases)
           if (b.state != baseNone) GeoBaseRow(state: s, base: b),
         if (source == 'custom') ...[
-          link('geosite_url', 'Категории сайтов (geosite)', 'https://example.org/geosite.dat'),
-          link('geoip_url', 'Категории адресов (geoip)', 'https://example.org/geoip-{name}.srs'),
+          link('geosite_url', tr('rules.geo.src.geosite_url'), 'https://example.org/geosite.dat'),
+          link('geoip_url', tr('rules.geo.src.geoip_url'), 'https://example.org/geoip-{name}.srs'),
         ],
         if (source != 'sagernet') ...[
           SettingRow(
-            title: 'Готовые наборы — тоже отсюда',
-            description:
-                'Списки «Российские сайты напрямую» и блокировки рекламы возьмутся из этого источника. '
-                'Если нужной категории там нет, работает встроенная копия.',
+            title: tr('rules.geo.src.presets.title'),
+            description: tr('rules.geo.src.presets.desc'),
             trailing: Switch(value: s.setting('routing.geo.presets', false), onChanged: (v) => _set('presets', v)),
           ),
           Padding(
@@ -628,10 +618,7 @@ class GeoSourcePanel extends StatelessWidget {
                 const Icon(Icons.info_outline, size: 14, color: warnColor),
                 const SizedBox(width: 6),
                 Expanded(
-                  child: Text(
-                    'Списки ведёт сторонний источник: CoreShift проверяет только их формат и размер.',
-                    style: TextStyle(fontSize: 12, color: p.muted),
-                  ),
+                  child: Text(tr('rules.geo.src.third_party'), style: TextStyle(fontSize: 12, color: p.muted)),
                 ),
               ],
             ),

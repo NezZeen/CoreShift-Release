@@ -16,13 +16,11 @@ class _DnsFallbackBanner extends StatelessWidget {
     return _Notice(
       color: warnColor,
       icon: Icons.dns_outlined,
-      title: 'DNS напрямую недоступен',
-      text:
-          'DNS напрямую (${state.dnsFallbackAddress}) недоступен в этой сети${why.isEmpty ? '' : ' ($why)'} — использую DNS сети. '
-          'VPN работает, сайты напрямую открываются. Свой DNS с блокировкой рекламы лучше указать в поле «DNS через VPN».',
+      title: tr('home.dns.title'),
+      text: tr('home.dns.text', {'address': state.dnsFallbackAddress, 'why': why.isEmpty ? '' : ' ($why)'}),
       actions: [
         Btn(
-          label: 'Настройки DNS',
+          label: tr('home.dns.settings'),
           small: true,
           kind: BtnKind.primary,
           onPressed: () {
@@ -30,7 +28,7 @@ class _DnsFallbackBanner extends StatelessWidget {
             Nav.to(context, PageId.settings);
           },
         ),
-        Btn(label: 'Не сейчас', small: true, onPressed: state.dismissDnsFallbackHint),
+        Btn(label: tr('home.btn.not_now'), small: true, onPressed: state.dismissDnsFallbackHint),
       ],
     );
   }

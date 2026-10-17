@@ -22,11 +22,11 @@ class _IpCard extends StatelessWidget {
     final current = info != null && info.vpn == (st == ConnState.connected);
     final vpn = current && info.vpn;
     final (icon, color, note) = switch (st) {
-      _ when !current && state.ipLoading => (Icons.public, p.muted, 'Узнаём адрес…'),
+      _ when !current && state.ipLoading => (Icons.public, p.muted, tr('home.ip.looking')),
       _ when !current && state.ipError.isNotEmpty => (Icons.public_off, warnColor, state.ipError),
-      _ when !current => (Icons.public, p.muted, st == ConnState.connecting ? 'Подключение…' : ''),
-      _ when vpn => (Icons.verified_user_outlined, okColor, 'Сайты видят адрес VPN-сервера'),
-      _ => (Icons.public, p.muted, 'VPN выключен: сайты видят ваш настоящий адрес'),
+      _ when !current => (Icons.public, p.muted, st == ConnState.connecting ? tr('home.state.connecting') : ''),
+      _ when vpn => (Icons.verified_user_outlined, okColor, tr('home.ip.vpn_address')),
+      _ => (Icons.public, p.muted, tr('home.ip.vpn_off')),
     };
     final ip = current ? (state.hideIp ? _masked(info.ip) : info.ip) : '—';
 
@@ -46,22 +46,22 @@ class _IpCard extends StatelessWidget {
     );
 
     return _Station(
-      caption: 'Ваш IP-адрес',
+      caption: tr('home.ip.caption'),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           action(
             state.hideIp ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-            state.hideIp ? 'Показать адрес' : 'Скрыть адрес, например для скриншота',
+            state.hideIp ? tr('home.ip.show') : tr('home.ip.hide'),
             () => state.setPref('hide_ip', !state.hideIp),
           ),
           action(
             Icons.copy,
-            'Скопировать адрес',
+            tr('home.ip.copy'),
             current
                 ? () {
                     Clipboard.setData(ClipboardData(text: info.ip));
-                    state.toast('Адрес скопирован');
+                    state.toast(tr('home.ip.copied'));
                   }
                 : null,
           ),
@@ -70,7 +70,7 @@ class _IpCard extends StatelessWidget {
                   padding: EdgeInsets.all(12),
                   child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
                 )
-              : action(Icons.refresh, 'Проверить ещё раз', state.online ? state.refreshIp : null),
+              : action(Icons.refresh, tr('home.ip.recheck'), state.online ? state.refreshIp : null),
         ],
       ),
       child: Column(
@@ -162,10 +162,10 @@ class _SpeedCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           PanelTitle(
-            'Скорость',
+            tr('home.speed.title'),
             trailing: active && (state.sessionDown > 0 || state.sessionUp > 0)
                 ? Tooltip(
-                    message: 'Скачано и отправлено за это подключение',
+                    message: tr('home.speed.session'),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -179,7 +179,11 @@ class _SpeedCard extends StatelessWidget {
                 : null,
           ),
           // The figures only: a chart of the last minutes says little more.
-          Wrap(spacing: 28, runSpacing: 8, children: [metric(Icons.south, okColor, 'Загрузка', down), metric(Icons.north, accent, 'Отдача', up)]),
+          Wrap(
+            spacing: 28,
+            runSpacing: 8,
+            children: [metric(Icons.south, okColor, tr('home.speed.down'), down), metric(Icons.north, accent, tr('home.speed.up'), up)],
+          ),
         ],
       ),
     );

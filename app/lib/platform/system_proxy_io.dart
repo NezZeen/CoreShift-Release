@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import '../l10n/strings.dart';
 import 'linux_desktop.dart' as linux;
 
 /// Whether this system can have its proxy set by CoreShift: Windows and
@@ -31,7 +32,7 @@ Future<Map<String, dynamic>> runSystemProxy(List<String> args) async {
   if (exe == null) {
     return {
       'action': args.first,
-      'errors': ['не найден coreshiftd'],
+      'errors': [tr('proxy.err.no_daemon')],
     };
   }
   try {
@@ -48,7 +49,7 @@ Future<Map<String, dynamic>> runSystemProxy(List<String> args) async {
     if (line.isEmpty) {
       return {
         'action': args.first,
-        'errors': ['coreshiftd ничего не ответил'],
+        'errors': [tr('proxy.err.no_answer')],
       };
     }
     return (jsonDecode(line) as Map).cast<String, dynamic>();

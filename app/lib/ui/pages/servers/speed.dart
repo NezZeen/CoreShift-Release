@@ -5,7 +5,7 @@ part of '../servers_page.dart';
 Color speedColor(double mbps) => mbps >= speedGoodMbps ? okColor : (mbps >= speedFairMbps ? warnColor : errColor);
 
 /// «48 Мбит/с», one decimal place below ten.
-String formatMbps(double mbps) => '${mbps >= 10 ? mbps.round() : mbps.toStringAsFixed(1)} Мбит/с';
+String formatMbps(double mbps) => tr('servers.mbps', {'value': mbps >= 10 ? mbps.round() : mbps.toStringAsFixed(1)});
 
 /// A server's download speed as the list shows it, beside its latency.
 class _SpeedCell extends StatelessWidget {
@@ -33,12 +33,12 @@ class _SpeedCell extends StatelessWidget {
     if (!sp.ok) {
       return Tooltip(
         message: sp.errorText,
-        child: Text('сбой', style: mono.copyWith(color: p.errInk, fontSize: 11)),
+        child: Text(tr('servers.speed.failed'), style: mono.copyWith(color: p.errInk, fontSize: 11)),
       );
     }
     final ago = sp.at == null ? '' : ', ${formatAgo(sp.at)}';
     return Tooltip(
-      message: 'Скачивание через сервер, ${formatBytes(sp.bytes)} за пробу$ago',
+      message: tr('servers.speed.sample', {'bytes': formatBytes(sp.bytes), 'ago': ago}),
       child: Text(formatMbps(sp.mbps), style: mono.copyWith(color: p.ink(speedColor(sp.mbps)))),
     );
   }
@@ -79,8 +79,8 @@ class _PingSpeedHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ping = Tooltip(
-      message: 'Зелёный — до 200 мс, жёлтый — до 500 мс',
-      child: Text('Пинг', style: style),
+      message: tr('servers.speed.ping_legend'),
+      child: Text(tr('servers.speed.column_ping'), style: style),
     );
     if (!state.speedSupported) return ping;
     return Row(
@@ -88,8 +88,8 @@ class _PingSpeedHeader extends StatelessWidget {
         SizedBox(width: 104, child: ping),
         Expanded(
           child: Tooltip(
-            message: 'Скорость скачивания через сервер: зелёный — от ${speedGoodMbps.round()} Мбит/с, жёлтый — от ${speedFairMbps.round()}',
-            child: Text('Скорость', style: style),
+            message: tr('servers.speed.legend', {'good': speedGoodMbps.round(), 'fair': speedFairMbps.round()}),
+            child: Text(tr('servers.speed.button'), style: style),
           ),
         ),
       ],
@@ -123,7 +123,7 @@ class _SpeedBar extends StatelessWidget {
               children: [
                 Text.rich(
                   TextSpan(
-                    text: 'Скорость: $done из $total',
+                    text: tr('servers.speed.progress', {'done': done, 'total': total}),
                     style: const TextStyle(fontWeight: FontWeight.w600),
                     children: [
                       if (state.speedBytes > 0)
@@ -143,7 +143,7 @@ class _SpeedBar extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          Btn(label: 'Остановить', icon: Icons.stop_rounded, small: true, onPressed: state.stopNodeSpeed),
+          Btn(label: tr('servers.speed.stop'), icon: Icons.stop_rounded, small: true, onPressed: state.stopNodeSpeed),
         ],
       ),
     );
@@ -160,7 +160,7 @@ Future<void> _startSpeedTest(BuildContext context, AppState s, List<(Subscriptio
       if (r.$2.cores.isNotEmpty) r,
   ];
   if (usable.isEmpty) {
-    s.toast('Нет серверов, которые можно проверить');
+    s.toast(tr('servers.speed.none'));
     return;
   }
   if (platform.isAndroid || isCompact(context)) {
@@ -189,9 +189,9 @@ Future<bool> _confirmSpeedTest(BuildContext context, SpeedPlan plan) async {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Проверить скорость?', style: dialogTitle),
+                Text(tr('servers.speed.ask_title'), style: dialogTitle),
                 const SizedBox(height: 10),
-                Text('${plan.estimate}. Продолжить?', style: TextStyle(color: p.muted, height: 1.4)),
+                Text(tr('servers.speed.ask', {'estimate': plan.estimate}), style: TextStyle(color: p.muted, height: 1.4)),
                 if (plan.mobile) ...[
                   const SizedBox(height: 10),
                   Row(
@@ -201,7 +201,7 @@ Future<bool> _confirmSpeedTest(BuildContext context, SpeedPlan plan) async {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'Вы на мобильной сети',
+                          tr('servers.speed.mobile'),
                           style: TextStyle(color: p.ink(warnColor), fontWeight: FontWeight.w600),
                         ),
                       ),
@@ -212,9 +212,9 @@ Future<bool> _confirmSpeedTest(BuildContext context, SpeedPlan plan) async {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    Btn(label: 'Отмена', onPressed: () => Navigator.pop(context, false)),
+                    Btn(label: tr('servers.cancel'), onPressed: () => Navigator.pop(context, false)),
                     const SizedBox(width: 8),
-                    Btn(label: 'Продолжить', kind: BtnKind.primary, onPressed: () => Navigator.pop(context, true)),
+                    Btn(label: tr('servers.speed.continue'), kind: BtnKind.primary, onPressed: () => Navigator.pop(context, true)),
                   ],
                 ),
               ],

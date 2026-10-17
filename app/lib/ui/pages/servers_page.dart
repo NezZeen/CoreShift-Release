@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../api/models.dart';
-import '../../l10n/strings.dart' show appLang;
+import '../../l10n/strings.dart' show appLang, tr;
 import '../../platform/platform.dart' as platform;
 import '../../state/app_state.dart';
 import '../../state/errors.dart';
@@ -148,7 +148,7 @@ class _ServersPageState extends State<ServersPage> {
       out.add(
         _Section(
           id: 'fav',
-          title: 'Избранное',
+          title: tr('servers.section.favorites'),
           leading: const SizedBox(width: 26, child: Icon(Icons.star_rounded, size: 19, color: warnColor)),
           rows: order(fav),
           collapsible: true,
@@ -170,7 +170,7 @@ class _ServersPageState extends State<ServersPage> {
         out.add(
           _Section(
             id: 'c:$code',
-            title: code.isEmpty ? 'Другие' : countryName(code),
+            title: code.isEmpty ? tr('servers.section.other') : countryName(code),
             leading: CountryBadge(code, width: 26),
             rows: order(by[code]!),
             collapsible: true,
@@ -185,7 +185,7 @@ class _ServersPageState extends State<ServersPage> {
       }
     } else if (rest.isNotEmpty) {
       // Under the favourites the rest needs a heading of its own.
-      out.add(_Section(id: 'all', title: fav.isEmpty ? null : 'Остальные', rows: order(rest), showSub: multi));
+      out.add(_Section(id: 'all', title: fav.isEmpty ? null : tr('servers.section.rest'), rows: order(rest), showSub: multi));
     }
     return out;
   }
@@ -216,7 +216,7 @@ class _ServersPageState extends State<ServersPage> {
         onChanged: (v) => setState(() => query = v.trim().toLowerCase()),
         style: const TextStyle(fontSize: 13),
         decoration: InputDecoration(
-          hintText: compact ? 'Поиск' : 'Поиск по названию, стране, протоколу (Ctrl+F)',
+          hintText: compact ? tr('servers.search.short') : tr('servers.search.long'),
           prefixIcon: Icon(Icons.search, size: 17, color: context.pal.dim),
           prefixIconConstraints: const BoxConstraints(minWidth: 34),
         ),
@@ -226,17 +226,17 @@ class _ServersPageState extends State<ServersPage> {
     // fastest server is picked in the home page's quick pick.
     final chips = [
       if (compact) _SortChip(state: s),
-      _Chip(label: 'По странам', on: s.serverGroup, onTap: () => s.setPref('server_group', !s.serverGroup)),
+      _Chip(label: tr('servers.chip.by_country'), on: s.serverGroup, onTap: () => s.setPref('server_group', !s.serverGroup)),
       if (subFilter != null) _Chip(label: '× ${s.subscriptionById(subFilter!)?.displayName ?? ''}', on: true, onTap: () => setState(() => subFilter = null)),
     ];
     // How to ping is the service's choice: a ping, or a request through the
     // core for a server a ping cannot time.
     final ping = Btn(
-      label: 'Проверить пинг',
+      label: tr('servers.ping.check'),
       icon: Icons.speed,
       small: true,
       loading: s.testingLatency,
-      tooltip: subFilter == null ? 'Проверить все серверы' : 'Проверить серверы этой подписки',
+      tooltip: subFilter == null ? tr('servers.ping.tip_all') : tr('servers.ping.tip_sub'),
       // Not while the speed test downloads: the two would spoil each other.
       onPressed: s.testingSpeed ? null : () => s.testLatency(subFilter),
     );
@@ -269,18 +269,23 @@ class _ServersPageState extends State<ServersPage> {
       child: PageFrame(
         children: [
           PageHeader(
-            'Серверы',
-            subtitle: 'Двойной щелчок подключает. Зажмите и ведите, чтобы выбрать несколько.',
+            tr('servers.title'),
+            subtitle: tr('servers.subtitle'),
             actions: [
               if (subs.any((x) => !x.isLocal))
                 Btn(
-                  label: compact ? null : 'Обновить все',
+                  label: compact ? null : tr('servers.refresh_all'),
                   icon: Icons.refresh,
-                  tooltip: compact ? 'Обновить подписки' : null,
+                  tooltip: compact ? tr('servers.refresh_subs') : null,
                   loading: s.refreshing.isNotEmpty,
                   onPressed: s.refreshAll,
                 ),
-              Btn(label: compact ? 'Добавить' : 'Добавить подписку', icon: Icons.add, kind: BtnKind.primary, onPressed: () => showAddSubscription(context, s)),
+              Btn(
+                label: compact ? tr('servers.add.short') : tr('servers.add'),
+                icon: Icons.add,
+                kind: BtnKind.primary,
+                onPressed: () => showAddSubscription(context, s),
+              ),
             ],
           ),
           if (subs.isEmpty)
@@ -306,7 +311,7 @@ class _ServersPageState extends State<ServersPage> {
                             if (subs.length > 1) ...[
                               const SizedBox(height: 10),
                               Text(
-                                subFilter == null ? 'Нажмите на подписку, чтобы показать только её серверы' : 'Нажмите ещё раз, чтобы показать все',
+                                subFilter == null ? tr('servers.hint.filter') : tr('servers.hint.filter_off'),
                                 style: TextStyle(fontSize: 11.5, color: context.pal.dim),
                               ),
                             ],
@@ -380,20 +385,20 @@ class _ServersPageState extends State<ServersPage> {
     final current = _current();
     // The orders as chips like «По странам» beside them, not a segmented
     // box of their own.
-    const sortTips = {'ping': 'Сначала самые быстрые; без ответа — в конце', 'speed': 'Сначала самые быстрые по скорости скачивания; не проверенные — в конце'};
+    const sortTips = {'ping': 'servers.sort.tip.ping', 'speed': 'servers.sort.tip.speed'};
     final sort = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         for (final (i, (v, label)) in [
-          ('sub', 'Как в подписке'),
-          ('ping', 'По пингу'),
-          if (s.speedSupported) ('speed', 'По скорости'),
-          ('name', 'По имени'),
+          ('sub', 'servers.sort.sub'),
+          ('ping', 'servers.sort.ping'),
+          if (s.speedSupported) ('speed', 'servers.sort.speed'),
+          ('name', 'servers.sort.name'),
         ].indexed) ...[
           if (i > 0) const SizedBox(width: 6),
           Tooltip(
-            message: sortTips[v] ?? '',
-            child: _Chip(label: label, on: s.serverSort == v, onTap: () => s.setPref('server_sort', v)),
+            message: sortTips[v] == null ? '' : tr(sortTips[v]!),
+            child: _Chip(label: tr(label), on: s.serverSort == v, onTap: () => s.setPref('server_sort', v)),
           ),
         ],
       ],
@@ -404,10 +409,10 @@ class _ServersPageState extends State<ServersPage> {
     final speed = !s.speedSupported
         ? null
         : Btn(
-            label: compact ? null : (testing ? 'Остановить' : 'Скорость'),
+            label: compact ? null : (testing ? tr('servers.speed.stop') : tr('servers.speed.button')),
             icon: testing ? Icons.stop_rounded : Icons.download_rounded,
             small: !compact,
-            tooltip: testing ? 'Остановить проверку скорости' : 'Проверить скорость скачивания показанных серверов (${rows.length})',
+            tooltip: testing ? tr('servers.speed.stop_tip') : tr('servers.speed.start_tip', {'n': rows.length}),
             onPressed: testing ? s.stopNodeSpeed : (s.testingLatency ? null : () => _startSpeedTest(context, s, rows)),
           );
     final Widget toolbar;
@@ -542,8 +547,8 @@ class _ServersPageState extends State<ServersPage> {
   }
 }
 
-/// "5 серверов", with the Russian plural.
-String serversCount(int n) => '$n ${ruPlural(n, 'сервер', 'сервера', 'серверов')}';
+/// "5 серверов" / "5 servers", with the plural of the language.
+String serversCount(int n) => tr('servers.count', {'n': n});
 
 /// Whether the rows show their place in the subscription: on a computer by
 /// default, off on a phone, unless the user chose otherwise.

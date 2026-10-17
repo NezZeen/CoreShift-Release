@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../l10n/strings.dart';
 import '../../platform/platform.dart' as platform;
 import '../../state/app_state.dart';
 import '../theme.dart';
@@ -21,10 +22,8 @@ class SystemProxyRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SettingRow(
-      title: 'Системный прокси',
-      description:
-          'Если «Все приложения» не включаются: CoreShift сам пропишет прокси в системе. '
-          'Работает для браузеров и большинства программ, но не для игр и всего, что прокси не понимает',
+      title: tr('proxy.system.title'),
+      description: tr('proxy.system.desc'),
       trailing: Switch(value: state.setting('proxy.system', false) == true, onChanged: (v) => state.updateSettings((s) => (s['proxy'] as Map)['system'] = v)),
     );
   }
@@ -43,10 +42,8 @@ class ProxyOnlyRow extends StatelessWidget {
     final proxyOnly = state.setting('tun', true) != true;
     return SettingRow(
       first: first,
-      title: 'Прокси без VPN',
-      description:
-          'VPN не включается: через CoreShift идут только приложения, настроенные на прокси. '
-          'Для случаев, когда место VPN занято другим VPN или рабочим профилем, или нужен только Telegram или браузер',
+      title: tr('proxy.only.title'),
+      description: tr('proxy.only.desc'),
       trailing: Switch(
         value: proxyOnly,
         // Back to the VPN only where TUN works.
@@ -85,12 +82,12 @@ class _ProxyAccessCardState extends State<ProxyAccessCard> {
 
   void _copy(String what, String value) {
     Clipboard.setData(ClipboardData(text: value));
-    state.toast('$what скопирован', ToastKind.ok);
+    state.toast(tr('proxy.copied', {'what': what}), ToastKind.ok);
   }
 
   Future<void> _telegram(String user, String pass) async {
     final ok = await platform.openUrl(telegramProxyLink(port: state.info.proxyPort, user: user, pass: pass));
-    if (!ok) state.toast('Telegram не открылся: установлен ли он?', ToastKind.err);
+    if (!ok) state.toast(tr('proxy.telegram.failed'), ToastKind.err);
   }
 
   @override
@@ -113,7 +110,7 @@ class _ProxyAccessCardState extends State<ProxyAccessCard> {
             child: SelectableText(shown ?? value, style: const TextStyle(fontFamily: 'monospace', fontSize: 13)),
           ),
           ?extra,
-          Btn(icon: Icons.copy, small: true, kind: BtnKind.ghost, tooltip: 'Скопировать', onPressed: value.isEmpty ? null : () => _copy(copied, value)),
+          Btn(icon: Icons.copy, small: true, kind: BtnKind.ghost, tooltip: tr('proxy.copy'), onPressed: value.isEmpty ? null : () => _copy(copied, value)),
         ],
       ),
     );
@@ -130,27 +127,27 @@ class _ProxyAccessCardState extends State<ProxyAccessCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text('Прокси для приложений', style: TextStyle(fontWeight: FontWeight.w600)),
+          Text(tr('proxy.access.title'), style: const TextStyle(fontWeight: FontWeight.w600)),
           const SizedBox(height: 6),
-          field('Адрес', '127.0.0.1', copied: 'Адрес'),
-          field('Порт', '$port', copied: 'Порт'),
+          field(tr('proxy.access.address'), '127.0.0.1', copied: tr('proxy.access.address')),
+          field(tr('proxy.access.port'), '$port', copied: tr('proxy.access.port')),
           if (user.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Text('Логина и пароля ещё нет: они появятся после перезапуска CoreShift', style: TextStyle(fontSize: 12, color: p.warnInk)),
+              child: Text(tr('proxy.access.no_credentials'), style: TextStyle(fontSize: 12, color: p.warnInk)),
             )
           else ...[
-            field('Логин', user, copied: 'Логин'),
+            field(tr('proxy.access.login'), user, copied: tr('proxy.access.login')),
             field(
-              'Пароль',
+              tr('proxy.access.password'),
               pass,
               shown: _showPass ? pass : '•' * pass.length.clamp(8, 20),
-              copied: 'Пароль',
+              copied: tr('proxy.access.password'),
               extra: Btn(
                 icon: _showPass ? Icons.visibility_off : Icons.visibility,
                 small: true,
                 kind: BtnKind.ghost,
-                tooltip: _showPass ? 'Скрыть' : 'Показать',
+                tooltip: tr(_showPass ? 'proxy.access.hide' : 'proxy.access.show'),
                 onPressed: () => setState(() => _showPass = !_showPass),
               ),
             ),
@@ -161,14 +158,14 @@ class _ProxyAccessCardState extends State<ProxyAccessCard> {
             runSpacing: 8,
             children: [
               Btn(
-                label: 'Открыть в Telegram',
+                label: tr('proxy.access.telegram'),
                 icon: Icons.send,
                 kind: BtnKind.primary,
                 small: true,
                 onPressed: user.isEmpty ? null : () => _telegram(user, pass),
               ),
               Btn(
-                label: 'Новый пароль',
+                label: tr('proxy.access.new_password'),
                 icon: Icons.refresh,
                 small: true,
                 kind: BtnKind.ghost,
@@ -184,22 +181,13 @@ class _ProxyAccessCardState extends State<ProxyAccessCard> {
             ],
           ),
           const SizedBox(height: 10),
-          Text(
-            'В браузере или приложении с настройкой прокси выберите SOCKS5 (или HTTP), адрес 127.0.0.1, порт $port, этот логин и пароль. '
-            'Остальные приложения идут мимо CoreShift.',
-            style: TextStyle(fontSize: 12, color: p.muted),
-          ),
+          Text(tr('proxy.access.howto', {'port': port}), style: TextStyle(fontSize: 12, color: p.muted)),
           const SizedBox(height: 4),
-          Text(
-            'Прокси в настройках Wi-Fi Android принимает только HTTP без пароля: для него включите «HTTP без пароля».',
-            style: TextStyle(fontSize: 12, color: p.muted),
-          ),
+          Text(tr('proxy.access.wifi'), style: TextStyle(fontSize: 12, color: p.muted)),
           SettingRow(
-            title: 'HTTP без пароля',
-            description: 'Любое приложение на телефоне сможет пользоваться прокси. Нужно только для прокси в настройках Wi-Fi',
-            descriptionWidget: openHTTP
-                ? Text('Включено: любое приложение на телефоне может пользоваться прокси', style: TextStyle(fontSize: 12, color: p.warnInk))
-                : null,
+            title: tr('proxy.open_http.title'),
+            description: tr('proxy.open_http.desc'),
+            descriptionWidget: openHTTP ? Text(tr('proxy.open_http.on'), style: TextStyle(fontSize: 12, color: p.warnInk)) : null,
             trailing: Switch(value: openHTTP, onChanged: (v) => state.updateSettings((s) => (s['proxy'] as Map)['open_http'] = v)),
           ),
         ],

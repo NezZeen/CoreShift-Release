@@ -60,12 +60,12 @@ object VpnStatus {
     fun formatRate(bytesPerSecond: Long): String {
         val bits = bytesPerSecond * 8.0
         return when {
-            bits >= 1e9 -> String.format(Locale.ROOT, "%.1f Гбит/с", bits / 1e9)
-            bits >= 1e8 -> String.format(Locale.ROOT, "%.0f Мбит/с", bits / 1e6)
-            bits >= 1e6 -> String.format(Locale.ROOT, "%.1f Мбит/с", bits / 1e6)
-            bits >= 1e3 -> "${Math.round(bits / 1e3)} Кбит/с"
+            bits >= 1e9 -> String.format(Locale.ROOT, "%.1f %s", bits / 1e9, Tr.t("Гбит/с", "Gbit/s"))
+            bits >= 1e8 -> String.format(Locale.ROOT, "%.0f %s", bits / 1e6, Tr.t("Мбит/с", "Mbit/s"))
+            bits >= 1e6 -> String.format(Locale.ROOT, "%.1f %s", bits / 1e6, Tr.t("Мбит/с", "Mbit/s"))
+            bits >= 1e3 -> "${Math.round(bits / 1e3)} " + Tr.t("Кбит/с", "kbit/s")
             bits == 0.0 -> "0"
-            else -> "${Math.round(bits)} бит/с"
+            else -> "${Math.round(bits)} " + Tr.t("бит/с", "bit/s")
         }
     }
 }

@@ -44,7 +44,7 @@ extension AppStateCoreUpdates on AppState {
     if (failed.isEmpty) {
       _coreCheckFailures = 0;
     } else if (++_coreCheckFailures == AppState._coreCheckFailuresToLog) {
-      _log(DateTime.now(), 'ядра', coreCheckFailedText(failed, _coreCheckFailures, retryInHour: temporary), LogLevel.warn);
+      _log(DateTime.now(), tr('state.src.cores'), coreCheckFailedText(failed, _coreCheckFailures, retryInHour: temporary), LogLevel.warn);
     }
     await installCoreUpdates();
     _scheduleCoreCheck(temporary ? AppState._coreCheckRetry : AppState._coreCheckEvery);

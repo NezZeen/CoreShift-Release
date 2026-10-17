@@ -586,7 +586,7 @@ class _FirstRunWizardState extends State<FirstRunWizard> with WidgetsBindingObse
             textInputAction: TextInputAction.done,
             onSubmitted: (_) => _primary?.call(),
             style: const TextStyle(fontFamily: monoFont, fontFamilyFallback: monoFallback, fontSize: 12.5),
-            decoration: const InputDecoration(hintText: WizardStrings.addFieldHint),
+            decoration: InputDecoration(hintText: WizardStrings.addFieldHint),
           ),
         if (_prefilled && link != null) ...[const SizedBox(height: 8), Text(WizardStrings.addFromClipboard, style: TextStyle(fontSize: 12, color: p.muted))],
         if (_busy) ...[
@@ -748,7 +748,7 @@ class _FirstRunWizardState extends State<FirstRunWizard> with WidgetsBindingObse
                       ),
                     ),
                     if (_choice == 'auto' || (_choice == null && _sub != null && _effectiveChoice(_sub!) == 'auto'))
-                      const Pill(WizardStrings.checkAuto, color: accent),
+                      Pill(WizardStrings.checkAuto, color: accent),
                   ],
                 ),
               ),

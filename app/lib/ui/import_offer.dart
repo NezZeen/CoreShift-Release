@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/strings.dart';
 import '../state/app_state.dart';
 import 'theme.dart';
 import 'widgets.dart';
@@ -49,11 +50,11 @@ class _ImportOfferState extends State<_ImportOffer> {
     final link = s.pendingImport;
     if (link == null) return const SizedBox();
     final servers = link.content.isEmpty ? 0 : link.content.split('\n').length;
-    final what = link.url.isNotEmpty ? Uri.tryParse(link.url)?.host ?? '' : (servers == 1 ? 'Один сервер' : 'Серверов: $servers');
+    final what = link.url.isNotEmpty ? Uri.tryParse(link.url)?.host ?? '' : (servers == 1 ? tr('import.one_server') : tr('import.servers', {'n': servers}));
     final from = switch (s.importFrom) {
-      ImportFrom.clipboard => 'В буфере обмена ссылка на подписку.',
-      ImportFrom.qr => 'В QR-коде ссылка на подписку.',
-      ImportFrom.link => 'Панель провайдера передала подписку в CoreShift.',
+      ImportFrom.clipboard => tr('import.from.clipboard'),
+      ImportFrom.qr => tr('import.from.qr'),
+      ImportFrom.link => tr('import.from.link'),
     };
     final compact = isCompact(context);
     return Dialog(
@@ -70,7 +71,7 @@ class _ImportOfferState extends State<_ImportOffer> {
                 children: [
                   Icon(s.importFrom == ImportFrom.clipboard ? Icons.content_paste : Icons.add_link, color: context.pal.accentInk),
                   const SizedBox(width: 10),
-                  Expanded(child: Text(link.url.isNotEmpty ? 'Добавить подписку?' : 'Добавить серверы?', style: dialogTitle)),
+                  Expanded(child: Text(link.url.isNotEmpty ? tr('import.title.subscription') : tr('import.title.servers'), style: dialogTitle)),
                 ],
               ),
               const SizedBox(height: 10),
@@ -118,7 +119,7 @@ class _ImportOfferState extends State<_ImportOffer> {
                 runSpacing: 8,
                 children: [
                   Btn(
-                    label: 'Не добавлять',
+                    label: tr('import.decline'),
                     onPressed: busy
                         ? null
                         : () {
@@ -126,7 +127,7 @@ class _ImportOfferState extends State<_ImportOffer> {
                             Navigator.pop(context);
                           },
                   ),
-                  Btn(label: 'Добавить', icon: compact ? null : Icons.add, kind: BtnKind.primary, loading: busy, onPressed: _add),
+                  Btn(label: tr('import.add'), icon: compact ? null : Icons.add, kind: BtnKind.primary, loading: busy, onPressed: _add),
                 ],
               ),
             ],

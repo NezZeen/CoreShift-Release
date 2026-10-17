@@ -97,7 +97,9 @@ class _ConnectedTimeState extends State<ConnectedTime> {
   Widget build(BuildContext context) {
     final p = context.pal;
     final d = widget.now().difference(widget.since);
-    final mode = widget.short ? (widget.tun ? '' : ' · только прокси') : ' · ${widget.tun ? 'все приложения через VPN' : 'прокси SOCKS5 127.0.0.1:17890'}';
+    final mode = widget.short
+        ? (widget.tun ? '' : ' · ${tr('home.connected.proxy_only')}')
+        : ' · ${widget.tun ? tr('home.connected.all_apps') : tr('home.connected.proxy')}';
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 250),
       child: Text.rich(
@@ -110,7 +112,7 @@ class _ConnectedTimeState extends State<ConnectedTime> {
             ),
             _reconnected
                 ? TextSpan(
-                    text: ' · переподключено',
+                    text: ' · ${tr('home.connected.reconnected')}',
                     style: TextStyle(color: p.okInk),
                   )
                 : TextSpan(text: mode),

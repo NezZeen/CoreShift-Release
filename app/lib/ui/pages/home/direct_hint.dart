@@ -15,17 +15,14 @@ class _DirectHintBanner extends StatelessWidget {
     return _Notice(
       color: warnColor,
       icon: Icons.alt_route,
-      title: 'Сайты напрямую не открываются',
-      text:
-          'В этой сети прямые соединения не проходят, а через VPN всё работает: похоже, оператор пропускает только белый список '
-          'или российские сайты отсюда недоступны. '
-          '${fixable ? 'Пустите весь трафик через VPN — CoreShift переподключится.' : 'Уберите из своих списков «напрямую» то, что здесь не открывается.'}',
+      title: tr('home.direct.title'),
+      text: tr('home.direct.text', {'fix': tr(fixable ? 'home.direct.fix_all' : 'home.direct.fix_lists')}),
       actions: [
         if (fixable)
-          Btn(label: 'Всё через VPN', small: true, kind: BtnKind.primary, onPressed: state.busy ? null : state.fixDirect)
+          Btn(label: tr('home.btn.all_vpn'), small: true, kind: BtnKind.primary, onPressed: state.busy ? null : state.fixDirect)
         else
-          Btn(label: 'Правила', small: true, kind: BtnKind.primary, onPressed: () => Nav.to(context, PageId.routing)),
-        Btn(label: 'Не сейчас', small: true, onPressed: state.dismissDirectHint),
+          Btn(label: tr('home.btn.rules'), small: true, kind: BtnKind.primary, onPressed: () => Nav.to(context, PageId.routing)),
+        Btn(label: tr('home.btn.not_now'), small: true, onPressed: state.dismissDirectHint),
       ],
     );
   }

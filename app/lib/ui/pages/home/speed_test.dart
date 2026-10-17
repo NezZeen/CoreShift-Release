@@ -3,14 +3,16 @@ part of '../home_page.dart';
 /// What the speed test is doing, or what it measured and when.
 String _speedNote(AppState state) {
   final t = state.speedTest;
-  final via = t.vpn ? (t.server.isEmpty ? 'через VPN' : 'через «${cleanNodeName(t.server)}»') : 'без VPN';
+  final via = t.vpn
+      ? (t.server.isEmpty ? tr('home.speedtest.via_vpn') : tr('home.speedtest.via_server', {'server': cleanNodeName(t.server)}))
+      : tr('home.speedtest.no_vpn');
   return switch (t.phase) {
-    SpeedPhase.latency => 'Замеряем задержку $via…',
-    SpeedPhase.download => 'Проверяем загрузку $via…',
-    SpeedPhase.upload => 'Проверяем отдачу $via…',
+    SpeedPhase.latency => tr('home.speedtest.latency', {'via': via}),
+    SpeedPhase.download => tr('home.speedtest.download', {'via': via}),
+    SpeedPhase.upload => tr('home.speedtest.upload', {'via': via}),
     SpeedPhase.done => '$via, ${formatAgo(t.at)}',
     SpeedPhase.failed => t.error,
-    SpeedPhase.idle => state.status.state == ConnState.connected ? 'Скорость через подключённый сервер' : 'Скорость вашего интернета без VPN',
+    SpeedPhase.idle => state.status.state == ConnState.connected ? tr('home.speedtest.idle_vpn') : tr('home.speedtest.idle_direct'),
   };
 }
 
@@ -106,19 +108,23 @@ class _CheckupRow extends StatelessWidget {
     final c = state.checkup;
     final v = c.verdict;
     final (note, color) = c.running
-        ? ('Проверяем сеть, сервер и VPN…', null)
+        ? (tr('home.checkup.running'), null)
         : v != null
         ? ('${v.title}, ${formatAgo(c.at)}', v.status == 'ok' ? p.okInk : (v.status == 'warn' ? p.warnInk : p.errInk))
         : c.error.isNotEmpty
         ? (c.error, p.errInk)
-        : ('Если что-то не работает: сеть, сервер и VPN разом, с советом, что делать', null);
+        : (tr('home.checkup.idle'), null);
     return _ToolRow(
       icon: Icons.fact_check_outlined,
       iconColor: c.running ? p.accentInk : null,
-      title: const Text('Проверить всё', style: TextStyle(fontWeight: FontWeight.w600)),
+      title: Text(tr('home.checkup.title'), style: const TextStyle(fontWeight: FontWeight.w600)),
       note: note,
       noteColor: color,
-      action: Btn(label: c.running ? 'Открыть' : (c.done ? 'Ещё раз' : 'Запустить'), small: true, onPressed: () => showCheckup(context, state)),
+      action: Btn(
+        label: c.running ? tr('home.checkup.open') : (c.done ? tr('home.btn.again') : tr('home.checkup.run')),
+        small: true,
+        onPressed: () => showCheckup(context, state),
+      ),
     );
   }
 }
@@ -134,7 +140,7 @@ class _SpeedTestRow extends StatelessWidget {
     final p = context.pal;
     final t = state.speedTest;
     final bits = max(t.downBps, t.upBps) * 8.0;
-    final (unit, scale) = bits >= 1e9 ? ('Гбит/с', 1e9) : (bits >= 1e6 ? ('Мбит/с', 1e6) : ('Кбит/с', 1e3));
+    final (unit, scale) = bits >= 1e9 ? (tr('home.speedtest.gbit'), 1e9) : (bits >= 1e6 ? (tr('home.speedtest.mbit'), 1e6) : (tr('home.speedtest.kbit'), 1e3));
     String figure(int bps) {
       if (bps <= 0) return '—';
       final v = bps * 8 / scale;
@@ -155,20 +161,20 @@ class _SpeedTestRow extends StatelessWidget {
                 Text(' ${figure(t.downBps)}  ', style: figures(17)),
                 const Icon(Icons.north, size: 14, color: accent),
                 Text(' ${figure(t.upBps)} ', style: figures(17)),
-                Text('$unit${t.latencyMs > 0 ? ' · ${t.latencyMs} мс' : ''}', style: TextStyle(fontSize: 12, color: p.muted)),
+                Text('$unit${t.latencyMs > 0 ? ' · ${tr('home.ms', {'ms': t.latencyMs})}' : ''}', style: TextStyle(fontSize: 12, color: p.muted)),
               ],
             ),
           )
-        : const Text('Тест скорости', style: TextStyle(fontWeight: FontWeight.w600));
+        : Text(tr('home.speedtest.title'), style: const TextStyle(fontWeight: FontWeight.w600));
     return _ToolRow(
       icon: Icons.speed,
       iconColor: t.running ? p.accentInk : null,
       title: title,
       note: _speedNote(state),
       noteColor: t.phase == SpeedPhase.failed ? p.errInk : null,
-      detail: t.phase == SpeedPhase.done && t.testServerName.isNotEmpty ? 'Сервер теста: ${t.testServerName}' : '',
+      detail: t.phase == SpeedPhase.done && t.testServerName.isNotEmpty ? tr('home.speedtest.server', {'name': t.testServerName}) : '',
       action: Btn(
-        label: t.phase == SpeedPhase.done ? 'Ещё раз' : 'Проверить',
+        label: t.phase == SpeedPhase.done ? tr('home.btn.again') : tr('home.speedtest.run'),
         small: true,
         loading: t.running,
         onPressed: state.online && !state.busy && !t.running ? state.runSpeedTest : null,
@@ -192,7 +198,7 @@ class _SubWarningBanner extends StatelessWidget {
       icon: w.traffic ? Icons.data_usage : Icons.event_busy,
       title: w.title,
       text: w.body,
-      action: w.renewUrl.isEmpty ? null : Btn(label: 'Продлить', small: true, kind: BtnKind.primary, onPressed: () => state.openLink(w.renewUrl)),
+      action: w.renewUrl.isEmpty ? null : Btn(label: tr('home.sub.renew'), small: true, kind: BtnKind.primary, onPressed: () => state.openLink(w.renewUrl)),
     );
   }
 }

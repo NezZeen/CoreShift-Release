@@ -1,0 +1,383 @@
+/// The UI's texts of the shell, the wizard, the journal page, the tray, platform texts, keys "shell.…" (see strings.dart):
+/// Russian, the source of truth, and English, key for key.
+library;
+
+const shellRu = <String, String>{
+  // ---- shell: the sidebar, the status pill
+  'shell.nav.version': 'Версия {label}',
+  'shell.nav.versionCommit': 'Версия {label}, коммит {commit}',
+  'shell.pill.noService': 'Нет связи со службой',
+  'shell.pill.connected': 'Подключено',
+  'shell.pill.connecting': 'Подключение…',
+  'shell.pill.disconnecting': 'Отключение…',
+  'shell.pill.failed': 'Ошибка',
+  'shell.pill.waitingNetwork': 'Ждём сеть…',
+  'shell.pill.noNetwork': 'Нет сети',
+  'shell.pill.disconnected': 'Отключено',
+  'shell.pill.disconnectTip': 'Отключить (Ctrl+Enter)',
+  'shell.pill.connectTip': 'Подключить (Ctrl+Enter)',
+
+  // ---- shell: the strip over the pages
+  'shell.pending.text': 'Изменения применятся после переподключения',
+  'shell.pending.apply': 'Применить',
+
+  // ---- shell: the screen without the service
+  'shell.offline.denied': 'Нет доступа к службе',
+  'shell.offline.startingApp': 'Запуск CoreShift…',
+  'shell.offline.startingService': 'Запуск службы…',
+  'shell.offline.connecting': 'Подключение к службе…',
+  'shell.offline.startingEngine': 'Запускаем движок',
+  'shell.offline.lookingForService': 'Ищем службу CoreShift',
+  'shell.offline.deniedBody':
+      'Служба CoreShift управляет VPN всего компьютера, поэтому ею пользуются только администраторы и участники группы '
+      '«{group}». Установщик добавляет в неё того, кто установил CoreShift.',
+  'shell.offline.androidBody':
+      'Движок VPN работает внутри приложения и обычно запускается за секунду. '
+      'Если этот экран не пропадает, закройте CoreShift в списке недавних приложений и откройте снова.',
+  'shell.offline.linuxBody':
+      'VPN работает через системную службу CoreShift. Она запускается вместе с компьютером и держит VPN, '
+      'пока его не выключат кнопкой, даже если окно закрыто.',
+  'shell.offline.refusedBody':
+      'VPN работает через фоновую службу CoreShift. Windows не дал запустить её без прав администратора: '
+      'так бывает со службой, установленной версией до 0.4. Запустите её кнопкой ниже или переустановите CoreShift.',
+  'shell.offline.windowsBody':
+      'VPN работает через фоновую службу CoreShift. Она запускается вместе с приложением '
+      'и останавливается, когда его закрывают. Обычно это занимает пару секунд.',
+  'shell.offline.start': 'Запустить службу',
+  'shell.offline.startHintLinux': 'Система спросит пароль администратора',
+  'shell.offline.startHintWindows': 'Windows попросит права администратора',
+  'shell.offline.address': 'Адрес службы берётся из {source}',
+  'shell.offline.reconnecting': '{reason}. Переподключаемся…',
+
+  // ---- wizard
+  'wizard.skip': 'Пропустить',
+  'wizard.back': 'Назад',
+  'wizard.next': 'Дальше',
+  'wizard.stepOf': 'Шаг {step} из {total}',
+  'wizard.welcome.title': 'Добро пожаловать в CoreShift',
+  'wizard.welcome.line1': 'CoreShift подключает ваш интернет к серверам из подписки провайдера и сам следит, чтобы связь не пропадала.',
+  'wizard.welcome.line2': 'Добавьте подписку, проверьте серверы и выберите режим: это займёт около минуты.',
+  'wizard.welcome.start': 'Начать',
+  'wizard.add.title': 'Добавьте подписку',
+  'wizard.add.hint': 'Вставьте ссылку на подписку, которую дал провайдер. Обычно она начинается с https://',
+  'wizard.add.fieldHint': 'https://… или vless://…',
+  'wizard.add.paste': 'Вставить',
+  'wizard.add.clear': 'Изменить',
+  'wizard.add.submit': 'Добавить',
+  'wizard.add.manual': 'Добавить сервер вручную',
+  'wizard.add.fromClipboard': 'Ссылка взята из буфера обмена. Проверьте и нажмите «Добавить».',
+  'wizard.add.progress': 'Скачиваем подписку и читаем серверы…',
+  'wizard.add.empty': 'Вставьте ссылку или список серверов',
+  'wizard.add.clipboardEmpty': 'В буфере обмена нет ссылки на подписку или сервер',
+  'wizard.add.subscriptionLabel': 'Подписка',
+  'wizard.add.serversLabel': 'Серверы',
+  'wizard.add.serversInText': '{n} {n|сервер|сервера|серверов} в тексте',
+  'wizard.check.title': 'Проверяем серверы',
+  'wizard.check.hintDone': 'Выберите сервер, через который подключаться. Лучшим мы считаем тот, что отвечает быстрее всех.',
+  'wizard.check.hintBusy': 'Измеряем, как быстро отвечает каждый сервер.',
+  'wizard.check.auto': 'Автовыбор',
+  'wizard.check.autoText': 'Лучший из серверов, которые выбрал провайдер. Если он перестанет отвечать, подключится следующий.',
+  'wizard.check.best': 'Лучший',
+  'wizard.check.again': 'Проверить ещё раз',
+  'wizard.check.noneAnswered':
+      'Ни один сервер не ответил. Возможно, нет интернета или серверы заблокированы. Можно продолжить и проверить позже на странице «Серверы».',
+  'wizard.check.noServers': 'В подписке нет серверов, которые CoreShift умеет запускать.',
+  'wizard.check.progress': 'Проверено серверов: {done} из {total}',
+  'wizard.check.progressNone': 'Проверяем серверы…',
+  'wizard.check.ms': '{ms} мс',
+  'wizard.check.more': 'Ещё {n|сервер|сервера|серверов}: {n}. Все они на странице «Серверы».',
+  'wizard.mode.title': 'Как подключаться',
+  'wizard.mode.hint': 'Это можно изменить потом в настройках.',
+  'wizard.mode.recommended': 'Рекомендуем',
+  'wizard.mode.all.title': 'Все приложения',
+  'wizard.mode.all.text': 'Через VPN идёт весь интернет-трафик компьютера, программам ничего настраивать не нужно. Режим TUN.',
+  'wizard.mode.proxy.title': 'Только прокси',
+  'wizard.mode.proxy.text': 'Через VPN пойдут только программы, в которых указан прокси SOCKS5 или HTTP 127.0.0.1:17890. Остальные работают как раньше.',
+  'wizard.mode.systemProxy.title': 'Системный прокси',
+  'wizard.mode.systemProxy.text':
+      'Если «Все приложения» не включаются: CoreShift сам пропишет прокси в системе. '
+      'Работает для браузеров и большинства программ, но не для игр и всего, что прокси не понимает.',
+  'wizard.mode.proxyOnly.title': 'Прокси без VPN',
+  'wizard.mode.proxyOnly.text':
+      'VPN не включается: через CoreShift идут только приложения, в которых указан прокси (Telegram, браузер). '
+      'Подходит, если место VPN занято другим приложением или рабочим профилем. Логин и пароль — в настройках.',
+  'wizard.mode.needsUpdate': 'Нужна более новая служба CoreShift',
+  'wizard.mode.vpn.title': 'VPN',
+  'wizard.mode.vpn.text': 'Через VPN идёт весь трафик телефона. Android один раз спросит разрешение на VPN.',
+  'wizard.mode.unavailable': 'Недоступно на этом компьютере',
+  'wizard.mode.failed': 'Не удалось сохранить режим',
+  'wizard.done.title': 'Всё готово',
+  'wizard.done.hint': 'Осталось подключиться. Статус, скорость и смену сервера вы найдёте на главной странице.',
+  'wizard.done.server': 'Сервер',
+  'wizard.done.mode': 'Режим',
+  'wizard.done.connect': 'Подключить',
+  'wizard.done.later': 'Позже',
+
+  // ---- the journal page
+  'logs.title': 'Журнал',
+  'logs.subtitle': 'Подключения, смены ядер и ошибки. Скопируйте журнал, чтобы отправить его в поддержку.',
+  'logs.search': 'Поиск',
+  'logs.filter.all': 'Все',
+  'logs.filter.errors': 'Ошибки',
+  'logs.copy': 'Копировать',
+  'logs.copy.tipAndroid': 'Скопировать журнал с версиями и режимом и отправить файлом — для поддержки',
+  'logs.copy.tipDesktop': 'Скопировать журнал с версиями и режимом и сохранить файлом в «Загрузки» — для поддержки',
+  'logs.copy.done': 'Журнал скопирован',
+  'logs.copy.savedTo': 'Журнал скопирован и сохранён в {path}',
+  'logs.copy.savedDownloads': 'Журнал скопирован и сохранён в «Загрузки»',
+  'logs.copy.show': 'Показать',
+  'logs.verbose': 'Подробно',
+  'logs.verbose.tipOn': 'Подробный журнал включён: видны служебные строки ядер и адреса сайтов. Нажмите, чтобы выключить',
+  'logs.verbose.tipOff': 'Подробный журнал: служебные строки ядер и TUN — для разбора проблем. В нём видны адреса сайтов',
+  'logs.verbose.toastOff': 'Подробный журнал выключен',
+  'logs.verbose.toastOnActive': 'Подробный журнал включён. Ядра расскажут больше после переподключения',
+  'logs.verbose.toastOn': 'Подробный журнал включён. В нём видны адреса сайтов — не публикуйте его',
+  'logs.empty.title': 'Пусто',
+  'logs.empty.text': 'Здесь появятся подключения, смены ядер и ошибки',
+
+  // ---- the tray (the desktop)
+  'tray.open': 'Открыть CoreShift',
+  'tray.connect': 'Подключить',
+  'tray.disconnect': 'Отключить',
+  'tray.server': 'Сервер',
+  'tray.exit': 'Выход',
+  'tray.noServers': 'Нет серверов',
+  'tray.ms': '{ms} мс',
+  'tray.from.tray': 'трей',
+  'tray.from.exit': 'выход из приложения',
+  'tray.hint.title': 'CoreShift работает в трее',
+  'tray.hint.linux': 'Окно свёрнуто, VPN работает как прежде. Чтобы выйти совсем, откройте меню значка CoreShift в трее → «Выход».',
+  'tray.hint.windows': 'Окно свёрнуто, VPN работает как прежде. Чтобы выйти совсем, нажмите на значок правой кнопкой → «Выход».',
+  'tray.tip.noService': 'CoreShift — служба не запущена',
+  'tray.tip.connected': 'CoreShift — подключено',
+  'tray.tip.connectedTo': 'CoreShift — подключено: {node}',
+  'tray.tip.connecting': 'CoreShift — подключение…',
+  'tray.tip.disconnecting': 'CoreShift — отключение…',
+  'tray.tip.failed': 'CoreShift — ошибка подключения',
+  'tray.tip.noNetwork': 'CoreShift — нет сети, ждём её',
+  'tray.tip.noNetworkTo': 'CoreShift — нет сети, ждём её: {node}',
+  'tray.tip.idle': 'CoreShift — отключено',
+
+  // ---- platform: access, the service, the engine
+  'platform.accessDenied': 'Нет доступа к службе CoreShift:',
+  'platform.access.accountName': 'ИМЯ',
+  'platform.access.windows':
+      '{prefix} учётная запись {account} не входит в группу «{group}». '
+      'Администратор компьютера может добавить её командой net localgroup "{group}" "{account}" /add '
+      '(в командной строке от имени администратора). После этого CoreShift подключится сам, выходить из системы не нужно.',
+  'platform.access.linux':
+      '{prefix} ваш пользователь не в группе {group}. '
+      'Выполните в терминале «sudo usermod -aG {group} \$USER», затем выйдите из системы и войдите снова.',
+  'platform.service.notRunning': 'Служба CoreShift не запущена',
+  'platform.service.notResponding': 'Служба CoreShift не отвечает',
+  'platform.service.connectionLost': 'Соединение со службой прервалось',
+  'platform.service.impostor': 'По адресу из файла службы отвечает другая программа, а не служба CoreShift. Перезапустите CoreShift или компьютер',
+  'platform.engine.notRunning': 'Движок CoreShift не запущен',
+  'platform.engine.notResponding': 'Движок CoreShift не отвечает',
+  'platform.engine.connectionLost': 'Соединение с движком прервалось',
+  'platform.engine.impostor': 'По адресу из файла движка отвечает другая программа, а не движок CoreShift. Перезапустите CoreShift',
+  'platform.file.denied': 'Нет доступа к {path}: {err}',
+  'platform.file.broken': 'Файл {path} повреждён',
+  'platform.start.notInstalled': 'CoreShift не установлен: нет {paths}',
+  'platform.start.cancelled': 'Запуск отменён',
+  'platform.start.failed': 'Не удалось запустить службу',
+  'platform.start.failedWith': 'Не удалось запустить службу: {err}',
+  'platform.start.noPkexec': 'Не найден pkexec. Запустите службу в терминале: sudo coreshiftd service start',
+  'platform.start.manual': 'Запустите службу coreshift вручную',
+  'platform.start.cancelledOrFailed': 'Запуск отменён или не удался',
+  'platform.qr.loading': 'Сканер QR-кодов ещё загружается сервисами Google Play. Проверьте интернет и попробуйте через минуту',
+  'platform.qr.unavailable': 'Сканер QR-кодов недоступен: на телефоне нет сервисов Google Play',
+  'platform.qr.unavailableShort': 'Сканер QR-кодов недоступен',
+  'platform.web.unavailable': 'Недоступно в браузере',
+  'platform.web.os': 'браузер (демо)',
+};
+
+const shellEn = <String, String>{
+  // ---- shell: the sidebar, the status pill
+  'shell.nav.version': 'Version {label}',
+  'shell.nav.versionCommit': 'Version {label}, commit {commit}',
+  'shell.pill.noService': 'No link to the service',
+  'shell.pill.connected': 'Connected',
+  'shell.pill.connecting': 'Connecting…',
+  'shell.pill.disconnecting': 'Disconnecting…',
+  'shell.pill.failed': 'Error',
+  'shell.pill.waitingNetwork': 'Waiting for network…',
+  'shell.pill.noNetwork': 'No network',
+  'shell.pill.disconnected': 'Disconnected',
+  'shell.pill.disconnectTip': 'Disconnect (Ctrl+Enter)',
+  'shell.pill.connectTip': 'Connect (Ctrl+Enter)',
+
+  // ---- shell: the strip over the pages
+  'shell.pending.text': 'Changes apply after reconnecting',
+  'shell.pending.apply': 'Apply',
+
+  // ---- shell: the screen without the service
+  'shell.offline.denied': 'No access to the service',
+  'shell.offline.startingApp': 'Starting CoreShift…',
+  'shell.offline.startingService': 'Starting the service…',
+  'shell.offline.connecting': 'Connecting to the service…',
+  'shell.offline.startingEngine': 'Starting the engine',
+  'shell.offline.lookingForService': 'Looking for the CoreShift service',
+  'shell.offline.deniedBody':
+      'The CoreShift service runs the VPN for the whole computer, so only administrators and members of the group '
+      '“{group}” can use it. The installer adds whoever installed CoreShift.',
+  'shell.offline.androidBody':
+      'The VPN engine runs inside the app and usually starts within a second. '
+      'If this screen does not go away, close CoreShift in the recent apps list and open it again.',
+  'shell.offline.linuxBody':
+      'The VPN runs through the CoreShift system service. It starts with the computer and keeps the VPN '
+      'up until you turn it off with the button, even when the window is closed.',
+  'shell.offline.refusedBody':
+      'The VPN runs through the CoreShift background service. Windows would not start it without administrator rights: '
+      'this happens with a service installed by a version before 0.4. Start it with the button below or reinstall CoreShift.',
+  'shell.offline.windowsBody':
+      'The VPN runs through the CoreShift background service. It starts with the app '
+      'and stops when the app is closed. This usually takes a couple of seconds.',
+  'shell.offline.start': 'Start the service',
+  'shell.offline.startHintLinux': 'The system will ask for the administrator password',
+  'shell.offline.startHintWindows': 'Windows will ask for administrator rights',
+  'shell.offline.address': 'The service address is read from {source}',
+  'shell.offline.reconnecting': '{reason}. Reconnecting…',
+
+  // ---- wizard
+  'wizard.skip': 'Skip',
+  'wizard.back': 'Back',
+  'wizard.next': 'Next',
+  'wizard.stepOf': 'Step {step} of {total}',
+  'wizard.welcome.title': 'Welcome to CoreShift',
+  'wizard.welcome.line1': 'CoreShift connects your internet to the servers of your provider’s subscription and makes sure the connection does not drop.',
+  'wizard.welcome.line2': 'Add a subscription, check the servers and pick a mode: it takes about a minute.',
+  'wizard.welcome.start': 'Start',
+  'wizard.add.title': 'Add a subscription',
+  'wizard.add.hint': 'Paste the subscription link your provider gave you. It usually starts with https://',
+  'wizard.add.fieldHint': 'https://… or vless://…',
+  'wizard.add.paste': 'Paste',
+  'wizard.add.clear': 'Change',
+  'wizard.add.submit': 'Add',
+  'wizard.add.manual': 'Add a server manually',
+  'wizard.add.fromClipboard': 'The link was taken from the clipboard. Check it and press “Add”.',
+  'wizard.add.progress': 'Downloading the subscription and reading the servers…',
+  'wizard.add.empty': 'Paste a link or a list of servers',
+  'wizard.add.clipboardEmpty': 'The clipboard has no subscription or server link',
+  'wizard.add.subscriptionLabel': 'Subscription',
+  'wizard.add.serversLabel': 'Servers',
+  'wizard.add.serversInText': '{n} {n|server|servers} in the text',
+  'wizard.check.title': 'Checking the servers',
+  'wizard.check.hintDone': 'Pick the server to connect through. We count the one that answers fastest as the best.',
+  'wizard.check.hintBusy': 'Measuring how fast each server answers.',
+  'wizard.check.auto': 'Auto-select',
+  'wizard.check.autoText': 'The best of the servers your provider chose. If it stops answering, the next one connects.',
+  'wizard.check.best': 'Best',
+  'wizard.check.again': 'Check again',
+  'wizard.check.noneAnswered':
+      'No server answered. There may be no internet, or the servers are blocked. You can continue and check later on the “Servers” page.',
+  'wizard.check.noServers': 'The subscription has no servers that CoreShift can run.',
+  'wizard.check.progress': 'Servers checked: {done} of {total}',
+  'wizard.check.progressNone': 'Checking the servers…',
+  'wizard.check.ms': '{ms} ms',
+  'wizard.check.more': '{n} more {n|server|servers}. All of them are on the “Servers” page.',
+  'wizard.mode.title': 'How to connect',
+  'wizard.mode.hint': 'You can change this later in the settings.',
+  'wizard.mode.recommended': 'Recommended',
+  'wizard.mode.all.title': 'All apps',
+  'wizard.mode.all.text': 'All of the computer’s internet traffic goes through the VPN; no app needs setting up. TUN mode.',
+  'wizard.mode.proxy.title': 'Proxy only',
+  'wizard.mode.proxy.text': 'Only programs set to use the SOCKS5 or HTTP proxy 127.0.0.1:17890 go through the VPN. The rest work as before.',
+  'wizard.mode.systemProxy.title': 'System proxy',
+  'wizard.mode.systemProxy.text':
+      'If “All apps” will not turn on: CoreShift sets the proxy in the system itself. '
+      'Works for browsers and most programs, but not for games or anything that does not understand a proxy.',
+  'wizard.mode.proxyOnly.title': 'Proxy without VPN',
+  'wizard.mode.proxyOnly.text':
+      'The VPN is not turned on: only apps set to use the proxy (Telegram, a browser) go through CoreShift. '
+      'Fits when another app or a work profile holds the VPN slot. The login and password are in the settings.',
+  'wizard.mode.needsUpdate': 'A newer CoreShift service is needed',
+  'wizard.mode.vpn.title': 'VPN',
+  'wizard.mode.vpn.text': 'All of the phone’s traffic goes through the VPN. Android will ask for VPN permission once.',
+  'wizard.mode.unavailable': 'Not available on this computer',
+  'wizard.mode.failed': 'Could not save the mode',
+  'wizard.done.title': 'All set',
+  'wizard.done.hint': 'All that is left is to connect. You will find the status, speed and server switching on the home page.',
+  'wizard.done.server': 'Server',
+  'wizard.done.mode': 'Mode',
+  'wizard.done.connect': 'Connect',
+  'wizard.done.later': 'Later',
+
+  // ---- the journal page
+  'logs.title': 'Journal',
+  'logs.subtitle': 'Connections, core changes and errors. Copy the journal to send it to support.',
+  'logs.search': 'Search',
+  'logs.filter.all': 'All',
+  'logs.filter.errors': 'Errors',
+  'logs.copy': 'Copy',
+  'logs.copy.tipAndroid': 'Copy the journal with versions and mode and send it as a file, for support',
+  'logs.copy.tipDesktop': 'Copy the journal with versions and mode and save it as a file in Downloads, for support',
+  'logs.copy.done': 'Journal copied',
+  'logs.copy.savedTo': 'Journal copied and saved to {path}',
+  'logs.copy.savedDownloads': 'Journal copied and saved to Downloads',
+  'logs.copy.show': 'Show',
+  'logs.verbose': 'Verbose',
+  'logs.verbose.tipOn': 'Verbose journal is on: the cores’ service lines and site addresses are visible. Press to turn it off',
+  'logs.verbose.tipOff': 'Verbose journal: service lines of the cores and TUN, for troubleshooting. It shows site addresses',
+  'logs.verbose.toastOff': 'Verbose journal is off',
+  'logs.verbose.toastOnActive': 'Verbose journal is on. The cores will say more after reconnecting',
+  'logs.verbose.toastOn': 'Verbose journal is on. It shows site addresses: do not publish it',
+  'logs.empty.title': 'Empty',
+  'logs.empty.text': 'Connections, core changes and errors will appear here',
+
+  // ---- the tray (the desktop)
+  'tray.open': 'Open CoreShift',
+  'tray.connect': 'Connect',
+  'tray.disconnect': 'Disconnect',
+  'tray.server': 'Server',
+  'tray.exit': 'Quit',
+  'tray.noServers': 'No servers',
+  'tray.ms': '{ms} ms',
+  'tray.from.tray': 'tray',
+  'tray.from.exit': 'app exit',
+  'tray.hint.title': 'CoreShift is running in the tray',
+  'tray.hint.linux': 'The window is hidden, the VPN works as before. To quit completely, open the menu of the CoreShift icon in the tray → “Quit”.',
+  'tray.hint.windows': 'The window is hidden, the VPN works as before. To quit completely, right-click the icon → “Quit”.',
+  'tray.tip.noService': 'CoreShift — service is not running',
+  'tray.tip.connected': 'CoreShift — connected',
+  'tray.tip.connectedTo': 'CoreShift — connected: {node}',
+  'tray.tip.connecting': 'CoreShift — connecting…',
+  'tray.tip.disconnecting': 'CoreShift — disconnecting…',
+  'tray.tip.failed': 'CoreShift — connection error',
+  'tray.tip.noNetwork': 'CoreShift — no network, waiting for it',
+  'tray.tip.noNetworkTo': 'CoreShift — no network, waiting for it: {node}',
+  'tray.tip.idle': 'CoreShift — disconnected',
+
+  // ---- platform: access, the service, the engine
+  'platform.accessDenied': 'No access to the CoreShift service:',
+  'platform.access.accountName': 'NAME',
+  'platform.access.windows':
+      '{prefix} the account {account} is not in the “{group}” group. '
+      'The computer’s administrator can add it with the command net localgroup "{group}" "{account}" /add '
+      '(in a command prompt run as administrator). After that CoreShift will connect by itself; there is no need to sign out.',
+  'platform.access.linux':
+      '{prefix} your user is not in the {group} group. '
+      'Run “sudo usermod -aG {group} \$USER” in a terminal, then sign out and sign in again.',
+  'platform.service.notRunning': 'The CoreShift service is not running',
+  'platform.service.notResponding': 'The CoreShift service is not responding',
+  'platform.service.connectionLost': 'The connection to the service was lost',
+  'platform.service.impostor': 'Another program answers at the address from the service file, not the CoreShift service. Restart CoreShift or the computer',
+  'platform.engine.notRunning': 'The CoreShift engine is not running',
+  'platform.engine.notResponding': 'The CoreShift engine is not responding',
+  'platform.engine.connectionLost': 'The connection to the engine was lost',
+  'platform.engine.impostor': 'Another program answers at the address from the engine file, not the CoreShift engine. Restart CoreShift',
+  'platform.file.denied': 'No access to {path}: {err}',
+  'platform.file.broken': 'The file {path} is damaged',
+  'platform.start.notInstalled': 'CoreShift is not installed: no {paths}',
+  'platform.start.cancelled': 'Start cancelled',
+  'platform.start.failed': 'Could not start the service',
+  'platform.start.failedWith': 'Could not start the service: {err}',
+  'platform.start.noPkexec': 'pkexec not found. Start the service in a terminal: sudo coreshiftd service start',
+  'platform.start.manual': 'Start the coreshift service manually',
+  'platform.start.cancelledOrFailed': 'Start cancelled or failed',
+  'platform.qr.loading': 'The QR code scanner is still being loaded by Google Play services. Check the internet and try again in a minute',
+  'platform.qr.unavailable': 'The QR code scanner is unavailable: this phone has no Google Play services',
+  'platform.qr.unavailableShort': 'The QR code scanner is unavailable',
+  'platform.web.unavailable': 'Not available in the browser',
+  'platform.web.os': 'browser (demo)',
+};

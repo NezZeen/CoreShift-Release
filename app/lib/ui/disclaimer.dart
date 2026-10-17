@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/strings.dart';
 import '../platform/platform.dart' as platform;
 import '../state/app_state.dart';
 import 'theme.dart';
@@ -9,24 +10,13 @@ import 'widgets.dart';
 const disclaimerPref = 'disclaimer_accepted';
 
 /// What CoreShift is and is not answerable for: shown once, before the app
-/// is used, and again from the settings.
+/// is used, and again from the settings. Each point is an icon and the key of
+/// its text, said with [tr] where shown.
 const disclaimerPoints = [
-  (
-    Icons.code,
-    'CoreShift — бесплатная программа с открытым исходным кодом. Она не продаётся, '
-        'и использовать её можно только в некоммерческих целях: для себя, для учёбы и исследований.',
-  ),
-  (
-    Icons.dns_outlined,
-    'CoreShift не предоставляет серверы, подписки и VPN-услуги и не связан с теми, кто их продаёт. '
-        'За работу серверов, их содержимое и условия отвечает ваш провайдер.',
-  ),
-  (Icons.gavel_outlined, 'Вы сами решаете, как пользоваться программой, и сами отвечаете за соблюдение законов своей страны.'),
-  (
-    Icons.shield_outlined,
-    'Программа распространяется «как есть», без каких-либо гарантий. '
-        'Автор не отвечает за ущерб, потерю данных или иные последствия её использования.',
-  ),
+  (Icons.code, 'disclaimer.point.free'),
+  (Icons.dns_outlined, 'disclaimer.point.no_service'),
+  (Icons.gavel_outlined, 'disclaimer.point.law'),
+  (Icons.shield_outlined, 'disclaimer.point.as_is'),
 ];
 
 /// Shows the disclaimer once, until it is accepted. Declined, CoreShift
@@ -38,7 +28,7 @@ Future<void> offerDisclaimer(BuildContext context, AppState state) async {
     state.setPref(disclaimerPref, true);
     return;
   }
-  if (state.status.active) await state.disconnect(from: 'отказ от условий');
+  if (state.status.active) await state.disconnect(from: tr('disclaimer.from.decline'));
   await platform.quitApp();
 }
 
@@ -65,11 +55,11 @@ Future<bool?> showDisclaimer(BuildContext context, {bool ask = false}) {
                     children: [
                       Icon(Icons.info_outline, color: p.accentInk),
                       const SizedBox(width: 10),
-                      Expanded(child: Text('Отказ от ответственности', style: dialogTitle)),
+                      Expanded(child: Text(tr('disclaimer.title'), style: dialogTitle)),
                     ],
                   ),
                   const SizedBox(height: 14),
-                  for (final (icon, text) in disclaimerPoints)
+                  for (final (icon, key) in disclaimerPoints)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: Row(
@@ -80,25 +70,21 @@ Future<bool?> showDisclaimer(BuildContext context, {bool ask = false}) {
                             child: Icon(icon, size: 18, color: p.muted),
                           ),
                           const SizedBox(width: 12),
-                          Expanded(child: Text(text, style: const TextStyle(height: 1.45))),
+                          Expanded(child: Text(tr(key), style: const TextStyle(height: 1.45))),
                         ],
                       ),
                     ),
-                  if (ask)
-                    Text(
-                      'Нажимая «Принимаю», вы соглашаетесь с этими условиями. Прочитать их снова можно в настройках.',
-                      style: TextStyle(fontSize: 12.5, color: p.muted, height: 1.4),
-                    ),
+                  if (ask) Text(tr('disclaimer.accept_note'), style: TextStyle(fontSize: 12.5, color: p.muted, height: 1.4)),
                   const SizedBox(height: 18),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: ask
                         ? [
-                            Btn(label: 'Выйти', onPressed: () => Navigator.pop(context, false)),
+                            Btn(label: tr('disclaimer.quit'), onPressed: () => Navigator.pop(context, false)),
                             const SizedBox(width: 8),
-                            Btn(label: 'Принимаю', icon: Icons.check, kind: BtnKind.primary, onPressed: () => Navigator.pop(context, true)),
+                            Btn(label: tr('disclaimer.accept'), icon: Icons.check, kind: BtnKind.primary, onPressed: () => Navigator.pop(context, true)),
                           ]
-                        : [Btn(label: 'Закрыть', onPressed: () => Navigator.pop(context))],
+                        : [Btn(label: tr('disclaimer.close'), onPressed: () => Navigator.pop(context))],
                   ),
                 ],
               ),

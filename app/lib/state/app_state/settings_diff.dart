@@ -8,11 +8,11 @@ const _secretSettings = {'proxy.user', 'proxy.pass'};
 
 List<String> settingsChanges(Map before, Map after, [String prefix = '']) {
   String show(Object? v) => switch (v) {
-    true => 'да',
-    false => 'нет',
+    true => tr('state.settingsDiff.yes'),
+    false => tr('state.settingsDiff.no'),
     null => '—',
-    List l => entriesCount(l.length),
-    String s when s.isEmpty => '«»',
+    List l => tr('state.settingsDiff.entries', {'n': l.length}),
+    String s when s.isEmpty => tr('state.settingsDiff.emptyText'),
     _ => '$v',
   };
   final out = <String>[];
@@ -23,11 +23,18 @@ List<String> settingsChanges(Map before, Map after, [String prefix = '']) {
       out.addAll(settingsChanges(a, b, '$path.'));
     } else if (a is List && b is List) {
       if (jsonEncode(a) != jsonEncode(b)) {
-        out.add(a.length == b.length ? '$path: изменён список (${entriesCount(b.length)})' : '$path: ${show(a)} → ${show(b)}');
+        out.add(
+          a.length == b.length
+              ? tr('state.settingsDiff.listChanged', {
+                  'path': path,
+                  'count': tr('state.settingsDiff.entries', {'n': b.length}),
+                })
+              : '$path: ${show(a)} → ${show(b)}',
+        );
       }
     } else if (a != b && _secretSettings.contains(path)) {
       // The proxy's credentials: the journal is copied for support.
-      out.add('$path: изменён');
+      out.add(tr('state.settingsDiff.changed', {'path': path}));
     } else if (a != b) {
       out.add('$path: ${show(a)} → ${show(b)}');
     }

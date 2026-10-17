@@ -1,3 +1,5 @@
+import '../l10n/strings.dart';
+
 /// Russian names of the countries VPN servers and their users are usually
 /// in, by ISO code; others show the code.
 const _names = {
@@ -61,7 +63,73 @@ const _names = {
   'VN': 'Вьетнам',
 };
 
-String countryName(String code) => _names[code.toUpperCase()] ?? code.toUpperCase();
+/// English names of the same countries, by ISO code.
+const _namesEn = {
+  'AE': 'UAE',
+  'AM': 'Armenia',
+  'AR': 'Argentina',
+  'AT': 'Austria',
+  'AU': 'Australia',
+  'AZ': 'Azerbaijan',
+  'BE': 'Belgium',
+  'BG': 'Bulgaria',
+  'BR': 'Brazil',
+  'BY': 'Belarus',
+  'CA': 'Canada',
+  'CH': 'Switzerland',
+  'CN': 'China',
+  'CY': 'Cyprus',
+  'CZ': 'Czechia',
+  'DE': 'Germany',
+  'DK': 'Denmark',
+  'EE': 'Estonia',
+  'ES': 'Spain',
+  'FI': 'Finland',
+  'FR': 'France',
+  'GB': 'United Kingdom',
+  'GE': 'Georgia',
+  'GR': 'Greece',
+  'HK': 'Hong Kong',
+  'HU': 'Hungary',
+  'IE': 'Ireland',
+  'IL': 'Israel',
+  'IN': 'India',
+  'IS': 'Iceland',
+  'IT': 'Italy',
+  'JP': 'Japan',
+  'KG': 'Kyrgyzstan',
+  'KR': 'South Korea',
+  'KZ': 'Kazakhstan',
+  'LT': 'Lithuania',
+  'LU': 'Luxembourg',
+  'LV': 'Latvia',
+  'MD': 'Moldova',
+  'MX': 'Mexico',
+  'NL': 'Netherlands',
+  'NO': 'Norway',
+  'PL': 'Poland',
+  'PT': 'Portugal',
+  'RO': 'Romania',
+  'RS': 'Serbia',
+  'RU': 'Russia',
+  'SE': 'Sweden',
+  'SG': 'Singapore',
+  'SK': 'Slovakia',
+  'TH': 'Thailand',
+  'TJ': 'Tajikistan',
+  'TR': 'Turkey',
+  'TW': 'Taiwan',
+  'UA': 'Ukraine',
+  'US': 'United States',
+  'UZ': 'Uzbekistan',
+  'VN': 'Vietnam',
+};
+
+/// The name of a country in the app's language; the code itself when unknown.
+String countryName(String code) {
+  final up = code.toUpperCase();
+  return (lang == Lang.en ? _namesEn[up] : _names[up]) ?? up;
+}
 
 /// Russian names of the big cities, for a geolocation service that gives
 /// them in English; others stay as the service wrote them.
@@ -109,7 +177,8 @@ const _cities = {
   'hong kong': 'Гонконг',
 };
 
-String cityName(String city) => _cities[city.trim().toLowerCase()] ?? city;
+/// A city as the service wrote it (English) stays so in English.
+String cityName(String city) => lang == Lang.en ? city : _cities[city.trim().toLowerCase()] ?? city;
 
 /// English names, and the cities servers are usually named after, for the
 /// subscriptions that name nodes in words rather than with a flag.
@@ -186,7 +255,14 @@ final _lowNames = [for (final e in _names.entries) (e.value.toLowerCase(), e.key
 /// another word), compiled once: a server list asks for every name on every
 /// redraw, and building seventy patterns per name made a redraw of a few
 /// hundred servers last seconds.
-final _wordPatterns = [for (final e in _words.entries) (RegExp('(^|[^a-z])${RegExp.escape(e.key)}(\$|[^a-z])'), e.value)];
+final _wordPatterns = [for (final e in _allWords.entries) (e.key, RegExp('(^|[^a-z])${RegExp.escape(e.key)}(\$|[^a-z])'), e.value)];
+
+/// Other spellings of the countries, which are no name in [_namesEn].
+const _extraWords = {'czech republic': 'CZ', 'united arab emirates': 'AE', 'uae': 'AE', 'great britain': 'GB', 'britain': 'GB', 'england': 'GB', 'uk': 'GB'};
+
+/// [_words], then the English country names of [_namesEn] and [_extraWords]
+/// that [_words] lacks, all lower case.
+final _allWords = <String, String>{..._words, for (final e in _namesEn.entries) e.value.toLowerCase(): e.key, ..._extraWords};
 
 final _codeInName = RegExp(r'(?<![A-Za-z])([A-Z]{2})(?![A-Za-z])');
 final _codeInHost = RegExp(r'^([a-z]{2})\d*[.-]', caseSensitive: false);
@@ -232,8 +308,8 @@ String? _countryOf(String name, String host) {
   for (final (word, code) in _lowNames) {
     if (low.contains(word)) return code;
   }
-  for (final (pattern, code) in _wordPatterns) {
-    if (pattern.hasMatch(low)) return code;
+  for (final (word, pattern, code) in _wordPatterns) {
+    if (low.contains(word) && pattern.hasMatch(low)) return code;
   }
   for (final m in _codeInName.allMatches(name)) {
     if (_names.containsKey(m.group(1))) return m.group(1);

@@ -23,7 +23,7 @@ extension AppStateAppUpdate on AppState {
     if (!await platform.canInstallUpdates()) {
       _installWhenAllowed = true;
       await platform.allowInstallUpdates();
-      toast('Разрешите CoreShift устанавливать приложения и вернитесь: обновление продолжится.');
+      toast(tr('state.appUpdate.allowInstall'));
       return false;
     }
     return _act(() async {
@@ -59,22 +59,23 @@ extension AppStateAppUpdate on AppState {
   void updateOffered() => _updateOffered = appUpdate.label;
 
   Future<void> _onAppUpdate(Event e, bool live) async {
-    if (e.error.isNotEmpty) _log(e.time, 'обновление', journalCodedError(e.code, e.args, e.error), LogLevel.warn);
+    if (e.error.isNotEmpty) _log(e.time, tr('state.src.update'), journalCodedError(e.code, e.args, e.error), LogLevel.warn);
     // A check that found nothing says so too: the journal shows it ran.
     final checked = _appUpdateWas == 'checking' && e.reason == 'idle' && e.error.isEmpty;
     _appUpdateWas = e.reason;
-    if (checked && version.known) _log(e.time, 'обновление', 'проверено: CoreShift ${version.label} — последняя версия', LogLevel.info);
+    if (checked && version.known) _log(e.time, tr('state.src.update'), tr('state.appUpdate.log.latest', {'version': version.label}), LogLevel.info);
     if (e.reason == 'installed') return; // the new app says so itself
     await _loadAppUpdate();
     if (live && e.reason == 'ready') {
       final label = appUpdate.label;
       // The window offering it says the rest (see Shell).
+      final src = tr('state.src.update');
       if (appUpdate.waiting) {
-        _log(e.time, 'обновление', 'скачана версия $label, установится после отключения VPN', LogLevel.info);
+        _log(e.time, src, tr('state.appUpdate.log.downloadedWaiting', {'version': label}), LogLevel.info);
       } else if (platform.isAndroid) {
-        _log(e.time, 'обновление', 'скачана версия $label', LogLevel.info);
+        _log(e.time, src, tr('state.appUpdate.log.downloaded', {'version': label}), LogLevel.info);
       } else {
-        _log(e.time, 'обновление', 'скачана версия $label, устанавливается', LogLevel.info);
+        _log(e.time, src, tr('state.appUpdate.log.downloadedInstalling', {'version': label}), LogLevel.info);
       }
     }
     _notify();

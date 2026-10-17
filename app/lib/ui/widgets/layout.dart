@@ -259,7 +259,7 @@ class _FoldState extends State<Fold> {
                   ),
                   const SizedBox(width: 10),
                   Text(
-                    open ? 'Скрыть' : 'Показать',
+                    open ? tr('fmt.layout.hide') : tr('fmt.layout.show'),
                     style: TextStyle(fontSize: 12, color: p.accentInk, fontWeight: FontWeight.w600),
                   ),
                   Icon(open ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, size: 18, color: p.accentInk),

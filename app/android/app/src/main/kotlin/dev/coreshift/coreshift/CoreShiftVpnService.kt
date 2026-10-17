@@ -173,7 +173,7 @@ class CoreShiftVpnService : VpnService() {
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL, "VPN", NotificationManager.IMPORTANCE_LOW).apply {
-                description = "CoreShift подключён"
+                description = Tr.t("CoreShift подключён", "CoreShift is connected")
                 setShowBadge(false)
             },
         )
@@ -219,28 +219,28 @@ class CoreShiftVpnService : VpnService() {
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setCategory(Notification.CATEGORY_SERVICE)
-            .addAction(Notification.Action.Builder(null, "Отключить", disconnect).build())
+            .addAction(Notification.Action.Builder(null, Tr.t("Отключить", "Disconnect"), disconnect).build())
         if (tun == null && s.proxyOnly && s.state == "connected") {
             // No VPN: apps set to the proxy go through it, the others do not.
             b.setContentTitle(s.node.ifEmpty { "CoreShift" })
-                .setContentText("Прокси 127.0.0.1:$PROXY_PORT    ↓ ${VpnStatus.formatRate(s.down)}    ↑ ${VpnStatus.formatRate(s.up)}")
-                .setSubText("Прокси без VPN")
+                .setContentText(Tr.t("Прокси", "Proxy") + " 127.0.0.1:$PROXY_PORT    ↓ ${VpnStatus.formatRate(s.down)}    ↑ ${VpnStatus.formatRate(s.up)}")
+                .setSubText(Tr.t("Прокси без VPN", "Proxy without VPN"))
             if (s.since > 0) b.setWhen(s.since).setUsesChronometer(true).setShowWhen(true)
         } else if (tun != null && s.state == "connected") {
             b.setContentTitle(s.node.ifEmpty { "CoreShift" })
                 .setContentText("↓ ${VpnStatus.formatRate(s.down)}    ↑ ${VpnStatus.formatRate(s.up)}")
-                .setSubText("Подключено")
+                .setSubText(Tr.t("Подключено", "Connected"))
             if (s.since > 0) b.setWhen(s.since).setUsesChronometer(true).setShowWhen(true)
         } else if (s.state == "no-network") {
-            b.setContentTitle("Нет сети")
+            b.setContentTitle(Tr.t("Нет сети", "No network"))
                 .setContentText(
-                    if (tun != null) "VPN продолжит работу, когда сеть вернётся" else "Подключусь, когда появится сеть",
+                    if (tun != null) Tr.t("VPN продолжит работу, когда сеть вернётся", "The VPN goes on once the network is back") else Tr.t("Подключусь, когда появится сеть", "Connecting once there is a network"),
                 )
                 .setSubText(s.node.ifEmpty { "CoreShift" })
                 .setShowWhen(false)
         } else {
-            b.setContentTitle(if (s.state == "disconnecting") "Отключение…" else "Подключение…")
-                .setContentText(if (s.proxyOnly) "Прокси без VPN · ${s.node.ifEmpty { "CoreShift" }}" else s.node.ifEmpty { "CoreShift" })
+            b.setContentTitle(if (s.state == "disconnecting") Tr.t("Отключение…", "Disconnecting…") else Tr.t("Подключение…", "Connecting…"))
+                .setContentText(if (s.proxyOnly) Tr.t("Прокси без VPN", "Proxy without VPN") + " · ${s.node.ifEmpty { "CoreShift" }}" else s.node.ifEmpty { "CoreShift" })
                 .setShowWhen(false)
         }
         return b.build()

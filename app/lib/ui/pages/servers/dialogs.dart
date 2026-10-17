@@ -50,10 +50,10 @@ class _AddDialogState extends State<_AddDialog> {
   String get _detected {
     final t = source.text.trim();
     if (t.isEmpty) return '';
-    if (RegExp(r'^https?://\S+$').hasMatch(t)) return 'Ссылка на подписку — серверы скачаются и будут обновляться сами';
+    if (RegExp(r'^https?://\S+$').hasMatch(t)) return tr('servers.add.detected_link');
     final links = RegExp(r'^[a-z0-9]+://', multiLine: true).allMatches(t).length;
-    if (links > 0) return 'Серверов в тексте: $links — сохранятся как есть, без обновления';
-    return 'Похоже на содержимое подписки (base64, Clash или sing-box)';
+    if (links > 0) return tr('servers.add.detected_servers', {'n': links});
+    return tr('servers.add.detected_content');
   }
 
   /// Fills the form from a QR code: a subscription link, a panel's button
@@ -69,7 +69,7 @@ class _AddDialogState extends State<_AddDialog> {
     if (!mounted || text == null) return;
     final link = parseImportLink(text);
     if (link == null || link.error.isNotEmpty) {
-      setState(() => error = link?.error ?? 'В QR-коде нет ссылки на подписку или сервер');
+      setState(() => error = link?.error ?? tr('servers.add.qr_empty'));
       return;
     }
     source.text = link.url.isNotEmpty ? link.url : link.content;
@@ -107,16 +107,11 @@ class _AddDialogState extends State<_AddDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Добавить подписку', style: dialogTitle),
+              Text(tr('servers.add'), style: dialogTitle),
               const SizedBox(height: 4),
-              Text(
-                platform.canScanQr
-                    ? 'Вставьте ссылку на подписку от провайдера (обычно https://…), ссылки на серверы (vless://, hy2://…) или отсканируйте QR-код'
-                    : 'Вставьте ссылку на подписку от провайдера (обычно https://…) или ссылки на серверы: vless://, trojan://, ss://, hy2://…',
-                style: TextStyle(fontSize: 12, color: p.muted),
-              ),
+              Text(platform.canScanQr ? tr('servers.add.info_scan') : tr('servers.add.info'), style: TextStyle(fontSize: 12, color: p.muted)),
               const SizedBox(height: 14),
-              Text('Ссылка', style: label),
+              Text(tr('servers.add.link'), style: label),
               const SizedBox(height: 6),
               TextField(
                 controller: source,
@@ -124,7 +119,7 @@ class _AddDialogState extends State<_AddDialog> {
                 minLines: 3,
                 maxLines: 6,
                 style: const TextStyle(fontFamily: monoFont, fontFamilyFallback: monoFallback, fontSize: 12.5),
-                decoration: const InputDecoration(hintText: 'https://… или vless://…'),
+                decoration: InputDecoration(hintText: tr('servers.add.link_hint')),
               ),
               const SizedBox(height: 8),
               ConstrainedBox(
@@ -140,20 +135,20 @@ class _AddDialogState extends State<_AddDialog> {
                 ),
               ),
               const SizedBox(height: 8),
-              Text('Название', style: label),
+              Text(tr('servers.add.name'), style: label),
               const SizedBox(height: 6),
               TextField(
                 controller: name,
                 style: const TextStyle(fontSize: 13),
-                decoration: const InputDecoration(hintText: 'Необязательно — возьмём у провайдера'),
+                decoration: InputDecoration(hintText: tr('servers.add.name_hint')),
                 onSubmitted: (_) => _submit(),
               ),
               const SizedBox(height: 20),
               Row(
                 children: [
                   Btn(
-                    label: compact ? null : 'Из буфера',
-                    tooltip: compact ? 'Вставить из буфера' : null,
+                    label: compact ? null : tr('servers.add.clipboard'),
+                    tooltip: compact ? tr('servers.add.clipboard_tip') : null,
                     icon: Icons.content_paste,
                     kind: BtnKind.ghost,
                     onPressed: () async {
@@ -161,11 +156,12 @@ class _AddDialogState extends State<_AddDialog> {
                       if (d?.text != null) source.text = d!.text!.trim();
                     },
                   ),
-                  if (platform.canScanQr) Btn(tooltip: 'Сканировать QR-код', icon: Icons.qr_code_scanner, kind: BtnKind.ghost, onPressed: busy ? null : _scan),
+                  if (platform.canScanQr)
+                    Btn(tooltip: tr('servers.add.scan_tip'), icon: Icons.qr_code_scanner, kind: BtnKind.ghost, onPressed: busy ? null : _scan),
                   const Spacer(),
-                  Btn(label: 'Отмена', onPressed: busy ? null : () => Navigator.pop(context)),
+                  Btn(label: tr('servers.cancel'), onPressed: busy ? null : () => Navigator.pop(context)),
                   const SizedBox(width: 8),
-                  Btn(label: 'Добавить', kind: BtnKind.primary, loading: busy, onPressed: source.text.trim().isEmpty ? null : _submit),
+                  Btn(label: tr('servers.add.short'), kind: BtnKind.primary, loading: busy, onPressed: source.text.trim().isEmpty ? null : _submit),
                 ],
               ),
             ],
@@ -203,9 +199,7 @@ Future<void> showSubscriptionQr(BuildContext context, Subscription sub, String u
                 Text(sub.displayName, style: dialogTitle, textAlign: TextAlign.center),
                 const SizedBox(height: 4),
                 Text(
-                  platform.isAndroid
-                      ? 'Отсканируйте в CoreShift на другом телефоне'
-                      : 'Отсканируйте в CoreShift на телефоне: «Добавить подписку» → «Сканировать QR»',
+                  platform.isAndroid ? tr('servers.qr.android') : tr('servers.qr.desktop'),
                   style: TextStyle(fontSize: 12, color: p.muted),
                   textAlign: TextAlign.center,
                 ),
@@ -218,17 +212,14 @@ Future<void> showSubscriptionQr(BuildContext context, Subscription sub, String u
                     const Icon(Icons.lock_outline, size: 15, color: warnColor),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: Text(
-                        'В коде ссылка с ключом доступа к подписке. Не показывайте его посторонним и не публикуйте скриншот.',
-                        style: TextStyle(fontSize: 12, color: p.muted),
-                      ),
+                      child: Text(tr('servers.qr.warning'), style: TextStyle(fontSize: 12, color: p.muted)),
                     ),
                   ],
                 ),
                 const SizedBox(height: 18),
                 Align(
                   alignment: Alignment.centerRight,
-                  child: Btn(label: 'Готово', kind: BtnKind.primary, onPressed: () => Navigator.pop(context)),
+                  child: Btn(label: tr('servers.qr.done'), kind: BtnKind.primary, onPressed: () => Navigator.pop(context)),
                 ),
               ],
             ),
@@ -256,14 +247,14 @@ Future<String?> _askText(BuildContext context, String title, String initial) {
               const SizedBox(height: 14),
               TextField(controller: c, autofocus: true, onSubmitted: (v) => Navigator.pop(context, v.trim())),
               const SizedBox(height: 8),
-              Text('Пустое название — взять у провайдера', style: TextStyle(fontSize: 12, color: context.pal.dim)),
+              Text(tr('servers.rename.hint'), style: TextStyle(fontSize: 12, color: context.pal.dim)),
               const SizedBox(height: 18),
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  Btn(label: 'Отмена', onPressed: () => Navigator.pop(context)),
+                  Btn(label: tr('servers.cancel'), onPressed: () => Navigator.pop(context)),
                   const SizedBox(width: 8),
-                  Btn(label: 'Сохранить', kind: BtnKind.primary, onPressed: () => Navigator.pop(context, c.text.trim())),
+                  Btn(label: tr('servers.save'), kind: BtnKind.primary, onPressed: () => Navigator.pop(context, c.text.trim())),
                 ],
               ),
             ],
@@ -293,9 +284,9 @@ Future<bool> _confirm(BuildContext context, String title, String text) async {
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  Btn(label: 'Отмена', onPressed: () => Navigator.pop(context, false)),
+                  Btn(label: tr('servers.cancel'), onPressed: () => Navigator.pop(context, false)),
                   const SizedBox(width: 8),
-                  Btn(label: 'Удалить', kind: BtnKind.danger, onPressed: () => Navigator.pop(context, true)),
+                  Btn(label: tr('servers.sub.delete'), kind: BtnKind.danger, onPressed: () => Navigator.pop(context, true)),
                 ],
               ),
             ],

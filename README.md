@@ -18,7 +18,7 @@ VPN-клиент для подписок на Windows, Linux и Android. Он с
 
 Внутри три прокси-ядра — **Xray, sing-box и mihomo**. Если текущее ядро упало, не приняло конфиг или перестало пропускать трафик, CoreShift переключается на следующее, а туннель и DNS при этом не пересоздаются, и соединения у программ не рвутся.
 
-Готовые сборки для Windows, Linux и Android — на странице [Releases](https://github.com/NezZeen/CoreShift-Release/releases). Чат: [t.me/CoreShift_app](https://t.me/CoreShift_app).
+Готовые сборки для Windows, Linux и Android — на странице [Releases](https://github.com/NezZeen/CoreShift-Release/releases). APK для Android один на все телефоны: 64- и 32-битные, Android 7 и новее. Чат: [t.me/CoreShift_app](https://t.me/CoreShift_app).
 
 Если GitHub не открывается, те же файлы есть на зеркале в GitLab: [CoreShift-Setup.exe](https://gitlab.com/NezZeen/coreshift/-/releases/permalink/latest/downloads/CoreShift-Setup.exe) для Windows, [CoreShift.apk](https://gitlab.com/NezZeen/coreshift/-/releases/permalink/latest/downloads/CoreShift.apk) для Android, все выпуски — на [gitlab.com/NezZeen/coreshift](https://gitlab.com/NezZeen/coreshift/-/releases).
 
@@ -62,6 +62,7 @@ VPN-клиент для подписок на Windows, Linux и Android. Он с
 - Пять вкладок, одинаковых на ПК и телефоне: Главная, Серверы, Правила, Журнал, Настройки. Тонкие настройки — в «Дополнительно».
 - На главной: IP и страна, скорость, трафик за неделю, тест скорости через speedtest.net через VPN или без него.
 - Журнал: одинаковые строки ядер сворачиваются («— ещё N раз за 30 с»), ошибки красные, предупреждения жёлтые, поиск и фильтр. Копия для поддержки скрывает ссылки подписок и UUID.
+- Русский и английский языки: как в системе или по выбору в настройках.
 - Тёмная и светлая темы, автоподключение при запуске, трей на ПК, уведомление со скоростью на Android. С выключенным экраном Android реже опрашивает трафик и связь и тратит меньше батареи.
 - Кнопка «Поддержка» ведёт в чат провайдера, если панель его указала.
 
@@ -149,7 +150,7 @@ flutter run -d windows --dart-define=DEMO=true   # с демо-бэкендом,
 
 ```
 powershell -ExecutionPolicy Bypass -File packaging\windows\build.ps1               # установщик Windows
-powershell -ExecutionPolicy Bypass -File packaging\android\build.ps1               # APK для телефона (arm64)
+powershell -ExecutionPolicy Bypass -File packaging\android\build.ps1               # APK для телефона (arm64; -Abi armeabi-v7a, -Abi universal)
 powershell -ExecutionPolicy Bypass -File packaging\android\build.ps1 -Abi x86_64   # APK для эмулятора
 powershell -ExecutionPolicy Bypass -File packaging\linux\build-wsl.ps1 -Ref main   # .deb, .rpm, Arch, .tar.gz (в WSL)
 ```

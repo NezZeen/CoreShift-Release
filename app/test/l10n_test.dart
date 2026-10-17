@@ -13,7 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 /// On once the whole UI is in the dictionary: then every Russian key must
 /// have its English. Until then the missing ones are only listed.
-const strictEnglish = false;
+const strictEnglish = true;
 
 /// `"code": "template",` lines of a Go catalog (engine/internal/msg).
 Map<String, String> goCatalog(String file) {

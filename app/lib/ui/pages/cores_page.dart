@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../api/models.dart';
+import '../../l10n/strings.dart';
 import '../../platform/platform.dart' as platform;
 import '../../state/app_state.dart';
 import '../../state/errors.dart';
@@ -17,11 +18,7 @@ class CoresPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // New versions are looked for by the app itself; the list shows them.
-    final header = PageHeader(
-      'Ядра',
-      subtitle: 'Установленные ядра и порядок, в котором CoreShift их пробует.',
-      back: ('Настройки', () => Nav.to(context, PageId.settings)),
-    );
+    final header = PageHeader(tr('cores.title'), subtitle: tr('cores.subtitle'), back: (tr('settings.title'), () => Nav.to(context, PageId.settings)));
     return PageFrame(
       children: [
         Center(
@@ -76,7 +73,7 @@ class _UpdateRow extends StatelessWidget {
     }
     // Installed by the app itself, the VPN on or off: said only while it
     // waits (a connection coming up or going down) or works.
-    final text = updating ? 'Устанавливается ${update.latest}…' : 'Версия ${update.latest} скоро установится сама';
+    final text = tr(updating ? 'cores.update.installing' : 'cores.update.soon', {'latest': update.latest});
     return Row(
       children: [
         if (updating)
@@ -127,9 +124,9 @@ class _CoreList extends StatelessWidget {
       final version = state.info.versionOf(k);
       final update = state.updateOf(k);
       final (pill, pillColor) = st.active && st.core == k
-          ? ('работает', okColor)
+          ? (tr('cores.pill.running'), okColor)
           : st.active && st.failed.containsKey(k)
-          ? ('сбой', errColor)
+          ? (tr('cores.pill.failed'), errColor)
           : ('', p.dim);
       final row = Row(
         children: [
@@ -156,7 +153,9 @@ class _CoreList extends StatelessWidget {
                   ],
                 ),
                 Text(
-                  !installed ? (platform.isAndroid ? 'нет в этой сборке' : 'нет в папке ядер') : (version.isEmpty ? 'установлено' : 'версия $version'),
+                  !installed
+                      ? tr(platform.isAndroid ? 'cores.item.absent.android' : 'cores.item.absent')
+                      : (version.isEmpty ? tr('cores.item.installed') : tr('cores.item.version', {'version': version})),
                   style: TextStyle(fontSize: 11.5, color: p.dim, fontFamily: version.isEmpty || !installed ? null : monoFont),
                 ),
               ],
@@ -187,7 +186,7 @@ class _CoreList extends StatelessWidget {
             const SizedBox(width: 8),
           ],
           Tooltip(
-            message: on ? (prio.length == 1 ? 'Нужно хотя бы одно ядро' : 'Не использовать это ядро') : 'Использовать',
+            message: on ? tr(prio.length == 1 ? 'cores.switch.last' : 'cores.switch.off') : tr('cores.switch.on'),
             child: Transform.scale(
               scale: .8,
               child: Switch(
@@ -221,22 +220,17 @@ class _CoreList extends StatelessWidget {
     }
 
     final single = prio.length == 1;
-    final updates = platform.isAndroid
-        ? 'Ядра обновляются вместе с приложением.'
-        : 'CoreShift обновляет ядра сам: ищет новые версии раз в день и ставит их, когда VPN выключен.';
+    final updates = tr(platform.isAndroid ? 'cores.updates.android' : 'cores.updates');
     return Panel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          PanelTitle('Ядра', sub: single ? 'работает только одно' : 'сверху — предпочтительное'),
+          PanelTitle(tr('cores.title'), sub: tr(single ? 'cores.list.sub.single' : 'cores.list.sub')),
           for (final (i, k) in prio.indexed) item(k, i),
           for (final k in off) item(k, null),
           const SizedBox(height: 4),
           Text(
-            single
-                ? 'Включено одно ядро: ${coreStyle(prio.first).name}. Если оно перестанет работать, переключения не будет.'
-                : 'При подключении берётся первое ядро из списка, которое поддерживает протокол сервера. '
-                      'Несовместимые пропускаются, остальные становятся резервом.',
+            single ? tr('cores.list.note.single', {'name': coreStyle(prio.first).name}) : tr('cores.list.note'),
             style: TextStyle(fontSize: 12, color: p.dim, height: 1.5),
           ),
           const SizedBox(height: 6),
@@ -282,17 +276,23 @@ class _Backup extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Работает резервное ядро: ${coreStyle(st.core).name}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                  Text(tr('cores.backup.title', {'name': coreStyle(st.core).name}), style: const TextStyle(fontWeight: FontWeight.w600)),
                   const SizedBox(height: 2),
                   Text(
-                    '$primary перестало работать${why.isEmpty ? '' : ': ${humanError(why)}'}. Вернуть его можно сразу: сначала оно проверяется в фоне.',
+                    tr('cores.backup.text', {'primary': primary, 'why': why.isEmpty ? '' : ': ${humanError(why)}'}),
                     style: TextStyle(fontSize: 12, color: context.pal.muted),
                   ),
                 ],
               ),
             ),
             const SizedBox(width: 12),
-            Btn(label: 'Вернуть $primary', icon: Icons.undo, small: true, loading: state.returning, onPressed: state.busy ? null : state.returnToPrimary),
+            Btn(
+              label: tr('cores.backup.return', {'primary': primary}),
+              icon: Icons.undo,
+              small: true,
+              loading: state.returning,
+              onPressed: state.busy ? null : state.returnToPrimary,
+            ),
           ],
         ),
       ),
@@ -361,20 +361,20 @@ class _RulesCardState extends State<_RulesCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const PanelTitle('Переключение при сбое'),
+          PanelTitle(tr('cores.rules.title')),
           SettingRow(
             first: true,
-            title: 'Возвращаться к основному ядру',
+            title: tr('cores.rules.return.title'),
             descriptionWidget: returnAfter > 0
                 ? Wrap(
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      Text('пробовать основное ядро через', style: small),
+                      Text(tr('cores.rules.return.before'), style: small),
                       inline('return_after_min', returnAfter),
-                      Text('мин работы на резерве', style: small),
+                      Text(tr('cores.rules.return.after'), style: small),
                     ],
                   )
-                : Text('Оставаться на резервном ядре до переподключения', style: small),
+                : Text(tr('cores.rules.return.stay'), style: small),
             trailing: Switch(value: returnAfter > 0, onChanged: (v) => state.updateSettings((s) => s['cores']['return_after_min'] = v ? 10 : 0)),
           ),
           InkWell(
@@ -385,14 +385,14 @@ class _RulesCardState extends State<_RulesCard> {
               child: Row(
                 children: [
                   Text(
-                    'Дополнительно',
+                    tr('cores.rules.more'),
                     style: TextStyle(fontSize: 13, color: p.accentInk, fontWeight: FontWeight.w600),
                   ),
                   Icon(more ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, size: 18, color: p.accentInk),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'когда ядро считается неработающим',
+                      tr('cores.rules.more.sub'),
                       style: TextStyle(fontSize: 12, color: p.dim),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -403,36 +403,36 @@ class _RulesCardState extends State<_RulesCard> {
           ),
           if (more) ...[
             SettingRow(
-              title: 'Проверка связи',
+              title: tr('cores.rules.health.title'),
               descriptionWidget: Wrap(
                 crossAxisAlignment: WrapCrossAlignment.center,
                 runSpacing: 6,
                 children: [
-                  Text('сбой после', style: small),
+                  Text(tr('cores.rules.health.before'), style: small),
                   inline('health_failures', failures),
-                  Text('неудач подряд, интервал', style: small),
+                  Text(tr('cores.rules.health.middle'), style: small),
                   inline('health_interval_s', interval),
-                  Text('с', style: small),
+                  Text(tr('cores.rules.health.after'), style: small),
                 ],
               ),
             ),
             SettingRow(
-              title: 'Высокая задержка',
+              title: tr('cores.rules.latency.title'),
               descriptionWidget: maxLatency > 0
                   ? Wrap(
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        Text('считать сбоем ответ дольше', style: small),
+                        Text(tr('cores.rules.latency.before'), style: small),
                         inline('max_latency_ms', maxLatency),
-                        Text('мс', style: small),
+                        Text(tr('cores.rules.latency.after'), style: small),
                       ],
                     )
-                  : Text('Медленные ответы не считаются сбоем', style: small),
+                  : Text(tr('cores.rules.latency.off'), style: small),
               trailing: Switch(value: maxLatency > 0, onChanged: (v) => state.updateSettings((s) => s['cores']['max_latency_ms'] = v ? 800 : 0)),
             ),
             SettingRow(
-              title: 'Адрес проверки связи',
-              description: 'Отвечает 204 или 200. Запасные: Google, Apple',
+              title: tr('cores.rules.url.title'),
+              description: tr('cores.rules.url.desc'),
               trailing: SavingField(
                 value: state.setting('cores.health_url', ''),
                 width: 330,
@@ -442,10 +442,7 @@ class _RulesCardState extends State<_RulesCard> {
             ),
             Padding(
               padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                'Сбой процесса ядра, отвергнутый конфиг и неподдерживаемый протокол переключают ядро всегда.',
-                style: TextStyle(fontSize: 12, color: p.dim),
-              ),
+              child: Text(tr('cores.rules.note'), style: TextStyle(fontSize: 12, color: p.dim)),
             ),
           ],
         ],

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../l10n/strings.dart';
+import '../../l10n/ui_en.dart';
+import '../../l10n/ui_ru.dart';
 import '../../platform/platform.dart' as platform;
 import '../../state/app_state.dart';
 import '../theme.dart';
@@ -51,7 +54,12 @@ class _LogsPageState extends State<LogsPage> {
   }
 
   // Core output lines are noisy; lifecycle messages are kept regardless.
-  static bool _isEvent(LogLine l) => const {'запуск', 'работает', 'проверка связи'}.contains(l.message);
+  // In both languages: a line keeps the words it was written in.
+  static bool _isEvent(LogLine l) => _eventWords.contains(l.message);
+
+  static final _eventWords = {
+    for (final k in ['app.coreState.starting', 'app.coreState.connected', 'app.coreState.connecting']) ...[uiRu[k], uiEn[k]],
+  };
 
   // The lines shown, filtered again only when the journal, the filter or
   // the search changed: the page is rebuilt every second while connected
@@ -95,31 +103,33 @@ class _LogsPageState extends State<LogsPage> {
       style: const TextStyle(fontSize: 13),
       decoration: InputDecoration(
         isDense: true,
-        hintText: 'Поиск',
+        hintText: tr('logs.search'),
         prefixIcon: Icon(Icons.search, size: 16, color: p.dim),
         prefixIconConstraints: const BoxConstraints(minWidth: 32),
       ),
     );
-    final seg = Seg<_Filter>(value: filter, options: const [(_Filter.all, 'Все'), (_Filter.errors, 'Ошибки')], onChanged: (v) => setState(() => filter = v));
+    final seg = Seg<_Filter>(
+      value: filter,
+      options: [(_Filter.all, tr('logs.filter.all')), (_Filter.errors, tr('logs.filter.errors'))],
+      onChanged: (v) => setState(() => filter = v),
+    );
     // The whole journal with the cores' warnings and errors: what support needs.
     final copy = Btn(
-      label: 'Копировать',
+      label: tr('logs.copy'),
       icon: Icons.copy,
       small: true,
-      tooltip: platform.isAndroid
-          ? 'Скопировать журнал с версиями и режимом и отправить файлом — для поддержки'
-          : 'Скопировать журнал с версиями и режимом и сохранить файлом в «Загрузки» — для поддержки',
+      tooltip: platform.isAndroid ? tr('logs.copy.tipAndroid') : tr('logs.copy.tipDesktop'),
       onPressed: widget.state.logs.isEmpty
           ? null
           : () async {
               final s = widget.state;
               final path = await s.copyJournal();
               if (path == null) {
-                s.toast('Журнал скопирован');
+                s.toast(tr('logs.copy.done'));
               } else if (platform.isAndroid) {
-                s.toast('Журнал скопирован и сохранён в $path', ToastKind.ok);
+                s.toast(tr('logs.copy.savedTo', {'path': path}), ToastKind.ok);
               } else {
-                s.toast('Журнал скопирован и сохранён в «Загрузки»', ToastKind.ok, ('Показать', () => platform.revealFile(path)));
+                s.toast(tr('logs.copy.savedDownloads'), ToastKind.ok, (tr('logs.copy.show'), () => platform.revealFile(path)));
               }
             },
     );
@@ -130,26 +140,18 @@ class _LogsPageState extends State<LogsPage> {
     final verbose = s.setting('log.verbose', false) == true;
     final detail = s.hasSetting('log.verbose')
         ? Btn(
-            label: compact ? null : 'Подробно',
+            label: compact ? null : tr('logs.verbose'),
             icon: verbose ? Icons.toggle_on : Icons.toggle_off_outlined,
             small: true,
             kind: verbose ? BtnKind.primary : BtnKind.normal,
-            tooltip: verbose
-                ? 'Подробный журнал включён: видны служебные строки ядер и адреса сайтов. Нажмите, чтобы выключить'
-                : 'Подробный журнал: служебные строки ядер и TUN — для разбора проблем. В нём видны адреса сайтов',
+            tooltip: verbose ? tr('logs.verbose.tipOn') : tr('logs.verbose.tipOff'),
             onPressed: s.online
                 ? () async {
                     final err = await s.updateSettings((x) {
                       x['log'] = {...?(x['log'] as Map?)?.cast<String, dynamic>(), 'verbose': !verbose};
                     });
                     if (err == null) {
-                      s.toast(
-                        verbose
-                            ? 'Подробный журнал выключен'
-                            : (s.status.active
-                                  ? 'Подробный журнал включён. Ядра расскажут больше после переподключения'
-                                  : 'Подробный журнал включён. В нём видны адреса сайтов — не публикуйте его'),
-                      );
+                      s.toast(verbose ? tr('logs.verbose.toastOff') : (s.status.active ? tr('logs.verbose.toastOnActive') : tr('logs.verbose.toastOn')));
                     }
                   }
                 : null,
@@ -163,8 +165,8 @@ class _LogsPageState extends State<LogsPage> {
           // On a phone the search and the filter take a row of their own
           // under the title: beside it they wrapped above it.
           PageHeader(
-            'Журнал',
-            subtitle: 'Подключения, смены ядер и ошибки. Скопируйте журнал, чтобы отправить его в поддержку.',
+            tr('logs.title'),
+            subtitle: tr('logs.subtitle'),
             actions: [
               if (!compact) ...[SizedBox(width: 220, child: search), seg],
               ?detail,
@@ -197,12 +199,12 @@ class _LogsPageState extends State<LogsPage> {
                           Icon(Icons.receipt_long_outlined, size: 32, color: p.dim),
                           const SizedBox(height: 10),
                           Text(
-                            'Пусто',
+                            tr('logs.empty.title'),
                             style: TextStyle(color: p.muted, fontWeight: FontWeight.w600),
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            'Здесь появятся подключения, смены ядер и ошибки',
+                            tr('logs.empty.text'),
                             style: TextStyle(color: p.dim, fontSize: 12),
                             textAlign: TextAlign.center,
                           ),

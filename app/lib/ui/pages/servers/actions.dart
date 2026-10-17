@@ -95,33 +95,26 @@ List<PopupMenuEntry<_NodeAction>> _serverMenuItems(AppState s, Subscription sub,
     item(
       _NodeAction.connect,
       Icons.power_settings_new,
-      inUse ? 'Подключён' : 'Подключиться',
+      inUse ? tr('servers.connected') : tr('servers.menu.connect'),
       enabled: _canConnect(s, sub, n),
-      note: n.cores.isEmpty ? 'Ни одно ядро его не поддерживает' : null,
+      note: n.cores.isEmpty ? tr('servers.menu.no_core') : null,
     ),
     item(
       _NodeAction.favorite,
       fav ? Icons.star_rounded : Icons.star_outline_rounded,
-      fav ? 'Убрать из избранного' : 'В избранное',
+      fav ? tr('servers.fav.remove') : tr('servers.fav.add'),
       color: fav ? warnColor : null,
     ),
     if (s.speedSupported)
       item(
         _NodeAction.speed,
         Icons.download_rounded,
-        'Проверить скорость',
+        tr('servers.menu.speed'),
         enabled: n.cores.isNotEmpty && !s.testingSpeed && !s.testingLatency,
-        note: s.testingSpeed ? 'Уже идёт проверка скорости' : null,
+        note: s.testingSpeed ? tr('servers.menu.speed_running') : null,
       ),
     const PopupMenuDivider(height: 9),
-    item(
-      _NodeAction.hide,
-      Icons.delete_outline,
-      'Удалить из подписки',
-      color: errColor,
-      enabled: !inUse,
-      note: inUse ? 'Сначала подключитесь к другому' : null,
-    ),
+    item(_NodeAction.hide, Icons.delete_outline, tr('servers.remove'), color: errColor, enabled: !inUse, note: inUse ? tr('servers.menu.remove_in_use') : null),
   ];
 }
 
@@ -155,7 +148,7 @@ class _HiddenFooter extends StatelessWidget {
         spacing: 6,
         children: [
           Icon(Icons.visibility_off_outlined, size: 15, color: p.dim),
-          Text('Удалено из подписок: $count', style: TextStyle(fontSize: 12.5, color: p.muted)),
+          Text(tr('servers.hidden.footer', {'n': count}), style: TextStyle(fontSize: 12.5, color: p.muted)),
           TextButton(
             onPressed: onShow,
             style: TextButton.styleFrom(
@@ -166,7 +159,7 @@ class _HiddenFooter extends StatelessWidget {
             ),
             // The style on the text, not the button's: a button's text style
             // replaces the theme's, font and all.
-            child: const Text('Показать и вернуть', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+            child: Text(tr('servers.hidden.show'), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
           ),
         ],
       ),
@@ -233,19 +226,15 @@ class _HiddenDialogState extends State<_HiddenDialog> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text('Удалённые серверы', style: dialogTitle),
+                  Text(tr('servers.hidden.title'), style: dialogTitle),
                   const SizedBox(height: 4),
-                  Text(
-                    'Их нет в списке, в проверке пинга и среди серверов, на которые CoreShift переключается сам. '
-                    'Обновление подписки их не вернёт.',
-                    style: TextStyle(fontSize: 12, color: p.muted, height: 1.35),
-                  ),
+                  Text(tr('servers.hidden.info'), style: TextStyle(fontSize: 12, color: p.muted, height: 1.35)),
                   const SizedBox(height: 14),
                   if (rows.isEmpty)
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 24),
                       child: Text(
-                        'Все серверы снова в списке',
+                        tr('servers.hidden.empty'),
                         textAlign: TextAlign.center,
                         style: TextStyle(color: p.dim),
                       ),
@@ -301,8 +290,8 @@ class _HiddenDialogState extends State<_HiddenDialog> {
                                   ),
                                   const SizedBox(width: 8),
                                   Btn(
-                                    label: compact ? null : 'Вернуть',
-                                    tooltip: compact ? 'Вернуть в список' : null,
+                                    label: compact ? null : tr('servers.hidden.restore'),
+                                    tooltip: compact ? tr('servers.hidden.restore_tip') : null,
                                     icon: Icons.undo,
                                     small: true,
                                     loading: busy.contains(k),
@@ -319,10 +308,16 @@ class _HiddenDialogState extends State<_HiddenDialog> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      Btn(label: 'Закрыть', onPressed: () => Navigator.pop(context)),
+                      Btn(label: tr('servers.close'), onPressed: () => Navigator.pop(context)),
                       if (rows.length > 1) ...[
                         const SizedBox(width: 8),
-                        Btn(label: 'Вернуть все', icon: Icons.undo, kind: BtnKind.primary, loading: busy.isNotEmpty, onPressed: () => _restore(rows)),
+                        Btn(
+                          label: tr('servers.hidden.restore_all'),
+                          icon: Icons.undo,
+                          kind: BtnKind.primary,
+                          loading: busy.isNotEmpty,
+                          onPressed: () => _restore(rows),
+                        ),
                       ],
                     ],
                   ),

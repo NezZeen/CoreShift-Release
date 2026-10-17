@@ -61,7 +61,9 @@ class _Sidebar extends StatelessWidget {
                 Tooltip(
                   message: state.versionMismatch
                       ? state.versionMismatchAdvice
-                      : 'Версия ${state.version.label}${state.version.commit.isEmpty ? '' : ', коммит ${state.version.commit}'}',
+                      : state.version.commit.isEmpty
+                      ? tr('shell.nav.version', {'label': state.version.label})
+                      : tr('shell.nav.versionCommit', {'label': state.version.label, 'commit': state.version.commit}),
                   child: Text(
                     state.version.known ? state.version.version : state.info.version,
                     style: TextStyle(color: state.versionMismatch ? p.warnInk : p.dim, fontSize: 11, fontWeight: FontWeight.w500),
@@ -91,14 +93,14 @@ class _StatusPill extends StatelessWidget {
     final p = context.pal;
     final st = state.status.state;
     final (color, text) = !state.online
-        ? (errColor, 'Нет связи со службой')
+        ? (errColor, tr('shell.pill.noService'))
         : switch (st) {
-            ConnState.connected => (okColor, 'Подключено'),
-            ConnState.connecting => (warnColor, 'Подключение…'),
-            ConnState.disconnecting => (warnColor, 'Отключение…'),
-            ConnState.failed => (errColor, 'Ошибка'),
-            ConnState.noNetwork => (warnColor, state.status.waiting ? 'Ждём сеть…' : 'Нет сети'),
-            ConnState.idle => (p.dim, 'Отключено'),
+            ConnState.connected => (okColor, tr('shell.pill.connected')),
+            ConnState.connecting => (warnColor, tr('shell.pill.connecting')),
+            ConnState.disconnecting => (warnColor, tr('shell.pill.disconnecting')),
+            ConnState.failed => (errColor, tr('shell.pill.failed')),
+            ConnState.noNetwork => (warnColor, state.status.waiting ? tr('shell.pill.waitingNetwork') : tr('shell.pill.noNetwork')),
+            ConnState.idle => (p.dim, tr('shell.pill.disconnected')),
           };
     final active = state.status.active;
     final canToggle = state.online && (active || (state.selection.available && !state.busy));
@@ -134,7 +136,7 @@ class _StatusPill extends StatelessWidget {
             ),
           ),
           IconButton(
-            tooltip: active ? 'Отключить (Ctrl+Enter)' : 'Подключить (Ctrl+Enter)',
+            tooltip: active ? tr('shell.pill.disconnectTip') : tr('shell.pill.connectTip'),
             onPressed: canToggle ? state.toggleConnect : null,
             icon: Icon(Icons.power_settings_new, size: 18, color: active ? okColor : p.accentInk),
             visualDensity: VisualDensity.compact,

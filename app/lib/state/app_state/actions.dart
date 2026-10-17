@@ -46,19 +46,29 @@ extension AppStateActions on AppState {
   /// The first lines of a copied journal: which versions, which system and
   /// how CoreShift is set up. No servers' addresses or subscription links.
   List<String> diagnosticsHeader() {
-    String on(String path) => setting(path, false) ? 'да' : 'нет';
+    String on(String path) => tr(setting(path, false) ? 'app.diag.yes' : 'app.diag.no');
     final cores = setting('cores.mode', 'auto') == 'manual'
-        ? 'вручную ${setting('cores.manual', '')}'
-        : 'автосвап ${(settings['cores']?['priority'] as List?)?.join(' → ') ?? ''}';
+        ? tr('app.diag.manual', {'core': setting('cores.manual', '')})
+        : tr('app.diag.autoSwap', {'priority': (settings['cores']?['priority'] as List?)?.join(' → ') ?? ''});
     return [
-      'CoreShift: приложение ${version.label} (${version.commit.isEmpty ? '—' : version.commit}), '
-          'служба ${info.buildVersion.label} (${info.commit.isEmpty ? '—' : info.commit})',
-      'Система: ${platform.osDescription}',
-      'Режим: ${setting('tun', false) ? 'все приложения (TUN)' : _proxyModeName}; ядра: $cores; '
-          'маршруты: ${setting('routing.mode', 'all') == 'selected' ? 'только выбранное' : 'всё через VPN'}; '
-          'Россия напрямую: ${on('routing.russia_direct')}; IPv6: ${on('ipv6')}; fake-IP: ${on('dns.fake_ip')}',
-      'Сейчас: ${AppState._stateText(status.state.name)}${status.core.isEmpty ? '' : ' через ${status.core}'}'
-          '${selection.name.isEmpty ? '' : ', сервер «${selection.name}»'}',
+      tr('app.diag.app', {
+        'app': version.label,
+        'appCommit': version.commit.isEmpty ? '—' : version.commit,
+        'service': info.buildVersion.label,
+        'serviceCommit': info.commit.isEmpty ? '—' : info.commit,
+      }),
+      tr('app.diag.system', {'os': platform.osDescription}),
+      tr('app.diag.mode', {
+        'mode': setting('tun', false) ? tr('app.diag.modeAll') : _proxyModeName,
+        'cores': cores,
+        'routes': tr(setting('routing.mode', 'all') == 'selected' ? 'app.diag.routesSelected' : 'app.session.routeAll'),
+        'russia': on('routing.russia_direct'),
+        'ipv6': on('ipv6'),
+        'fakeIp': on('dns.fake_ip'),
+      }),
+      tr('app.diag.now', {'state': AppState._stateText(status.state.name)}) +
+          (status.core.isEmpty ? '' : ' ${tr('app.diag.via', {'core': status.core})}') +
+          (selection.name.isEmpty ? '' : ', ${tr('app.diag.server', {'name': selection.name})}'),
       '',
     ];
   }
@@ -79,7 +89,7 @@ extension AppStateActions on AppState {
     try {
       return await save(name, '$text\n');
     } catch (e) {
-      toast('Журнал скопирован, но файл не сохранился: ${humanError('$e')}', ToastKind.err);
+      toast(tr('app.journal.fileFailed', {'error': humanError('$e')}), ToastKind.err);
       return null;
     }
   }
@@ -117,7 +127,7 @@ extension AppStateActions on AppState {
 
   /// Notes what the user did, so a journal copied from another computer
   /// says why the connection changed.
-  void _logAction(String text) => _log(DateTime.now(), 'действие', text, LogLevel.info);
+  void _logAction(String text) => _log(DateTime.now(), tr('app.src.action'), text, LogLevel.info);
 
   /// Android asks the user once before the app may run a VPN. A refusal goes
   /// into the journal with what to do, and the home page offers Android's VPN
@@ -144,7 +154,7 @@ extension AppStateActions on AppState {
   /// turned off.
   Future<void> openVpnSettings() async {
     if (await (vpnSettingsOpener ?? platform.openVpnSettings)()) return;
-    toast('Не удалось открыть настройки VPN. Откройте их сами: «Настройки» → «Сеть и интернет» или «Подключение и общий доступ» → «VPN»', ToastKind.err);
+    toast(tr('app.vpnSettings.failed'), ToastKind.err);
   }
 
   /// Puts away the home page's notice of a refused VPN.
@@ -158,7 +168,8 @@ extension AppStateActions on AppState {
     noteRecent(subscription ?? selection.subscription, fingerprint ?? selection.fingerprint);
     busy = true;
     final where = from.isEmpty ? '' : ' ($from)';
-    _logAction(name != null && name.isNotEmpty ? 'подключить: $name$where' : 'подключить${selection.name.isEmpty ? '' : ': ${selection.name}'}$where');
+    final target = name != null && name.isNotEmpty ? name : selection.name;
+    _logAction((target.isEmpty ? tr('app.action.connect') : tr('app.action.connectTo', {'name': target})) + where);
     _notify();
     if (!await _vpnAllowed()) {
       busy = false;
@@ -175,7 +186,7 @@ extension AppStateActions on AppState {
 
   Future<void> reconnect() async {
     busy = true;
-    _logAction(status.settingsPending ? 'переподключить, чтобы применить настройки' : 'переподключить');
+    _logAction(tr(status.settingsPending ? 'app.action.reconnectApply' : 'app.action.reconnect'));
     _notify();
     if (!await _vpnAllowed()) {
       busy = false;
@@ -191,7 +202,7 @@ extension AppStateActions on AppState {
   /// "выход из приложения".
   Future<void> disconnect({String from = ''}) async {
     busy = true;
-    _logAction(from.isEmpty ? 'отключить' : 'отключить ($from)');
+    _logAction(from.isEmpty ? tr('app.action.disconnect') : '${tr('app.action.disconnect')} ($from)');
     _notify();
     await _act(() async => status = Status.fromJson(await backend.call('POST', '/v1/disconnect') as Json));
     if (!status.active) speed.clear();
@@ -224,7 +235,7 @@ extension AppStateActions on AppState {
       // Servers pasted without a name join the list pasted before.
       final old = subscriptions.where((s) => s.id == sub.id).firstOrNull;
       subscriptions = old == null ? [...subscriptions, sub] : [for (final s in subscriptions) s.id == sub.id ? sub : s];
-      toast('Добавлено в «${sub.displayName}»: серверов: ${sub.nodes.length - (old?.nodes.length ?? 0)}', ToastKind.ok);
+      toast(tr('app.sub.added', {'name': sub.displayName, 'n': sub.nodes.length - (old?.nodes.length ?? 0)}), ToastKind.ok);
       if (sub.insecure) toast(insecureLinkWarning, ToastKind.err);
       _notify();
       // Nothing chosen yet: the first server that some core can run, so
@@ -306,7 +317,7 @@ extension AppStateActions on AppState {
       // A source of categories chosen or a rule added starts a download: show it.
       if (_geoWatchers > 0) _geoPoll();
       final changes = settingsChanges(before, settings);
-      if (changes.isNotEmpty) _log(DateTime.now(), 'настройки', changes.join('; '), LogLevel.info);
+      if (changes.isNotEmpty) _log(DateTime.now(), tr('app.src.settings'), changes.join('; '), LogLevel.info);
       _notify();
       return null;
     } catch (e) {
@@ -333,7 +344,7 @@ extension AppStateActions on AppState {
     } catch (e) {
       final msg = '$e';
       final known = msg.contains('already on the primary') || msg.contains('not connected') || msg.contains('switching');
-      toast(known ? humanError(msg) : 'Основное ядро пока не работает, остаёмся на резервном. ${humanError(msg)}', ToastKind.err);
+      toast(known ? humanError(msg) : tr('app.cores.returnFailed', {'error': humanError(msg)}), ToastKind.err);
       if (e is DaemonOffline) _lost(e);
     }
     returning = false;
@@ -353,7 +364,7 @@ extension AppStateActions on AppState {
       // A core updated meanwhile keeps what its update said.
       if (updatingCore.isEmpty) coreUpdates = found;
       final line = coreCheckText(found);
-      if (line != null) _log(DateTime.now(), 'ядра', line, LogLevel.info);
+      if (line != null) _log(DateTime.now(), tr('app.src.cores'), line, LogLevel.info);
       return {for (final u in found.where((u) => u.error.isNotEmpty)) u.kind: u.error};
     } catch (e) {
       if (e is DaemonOffline) _lost(e);
@@ -373,9 +384,11 @@ extension AppStateActions on AppState {
     String v(CoreUpdate u, String version) => '${AppState.coreName(u.kind)} $version';
     final newer = checked.where((u) => u.available).toList();
     if (newer.isNotEmpty) {
-      return 'найдены новые версии: ${newer.map((u) => '${v(u, u.latest)} (сейчас ${u.current})').join(', ')}';
+      return tr('app.cores.foundNew', {
+        'list': newer.map((u) => tr('app.cores.newItem', {'what': v(u, u.latest), 'current': u.current})).join(', '),
+      });
     }
-    return 'проверено: новых версий нет (${checked.map((u) => v(u, u.current)).join(', ')})';
+    return tr('app.cores.noNew', {'list': checked.map((u) => v(u, u.current)).join(', ')});
   }
 
   CoreUpdate? updateOf(String kind) => coreUpdates.where((u) => u.kind == kind).firstOrNull;
@@ -413,7 +426,7 @@ extension AppStateActions on AppState {
       coreUpdates = [for (final u in coreUpdates) u.kind == kind ? CoreUpdate(kind: kind, current: v, latest: v) : u];
       await _reloadInfo();
     } catch (e) {
-      final msg = 'Не удалось обновить ${AppState.coreName(kind)}: ${humanError('$e')}';
+      final msg = tr('app.cores.updateFailed', {'core': AppState.coreName(kind), 'error': humanError('$e')});
       _log(DateTime.now(), kind, msg, LogLevel.err);
       toast(msg, ToastKind.err);
       // Not tried again until the next check.
@@ -443,10 +456,10 @@ extension AppStateActions on AppState {
     } catch (e) {
       leakReport = null;
       leakError = e is ApiError && e.status == 409
-          ? 'Сначала подключитесь к VPN.'
+          ? tr('app.leak.connectFirst')
           : e is DaemonOffline
           ? e.message
-          : 'Не удалось связаться с сервисом проверки bash.ws через VPN. Проверьте, что сайты открываются, и попробуйте ещё раз.';
+          : tr('app.leak.unreachable');
     }
     leakTesting = false;
     _notify();

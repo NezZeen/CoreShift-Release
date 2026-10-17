@@ -14,8 +14,8 @@ class _PendingStrip extends StatelessWidget {
         children: [
           const Icon(Icons.info_outline, size: 16, color: warnColor),
           const SizedBox(width: 10),
-          const Expanded(child: Text('Изменения применятся после переподключения', style: TextStyle(fontSize: 13))),
-          Btn(label: 'Применить', small: true, onPressed: state.busy ? null : state.reconnect),
+          Expanded(child: Text(tr('shell.pending.text'), style: const TextStyle(fontSize: 13))),
+          Btn(label: tr('shell.pending.apply'), small: true, onPressed: state.busy ? null : state.reconnect),
         ],
       ),
     );

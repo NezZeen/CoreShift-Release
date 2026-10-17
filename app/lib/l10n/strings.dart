@@ -49,7 +49,7 @@ const langUsedPref = 'lang_used';
 /// Whether the English dictionary is complete. Until it is, the app speaks
 /// Russian whatever the system's language, and the settings offer no
 /// choice: a half-translated UI is worse than none.
-const englishReady = false;
+const englishReady = true;
 
 /// The language for a choice in the settings: "ru", "en", or the system's
 /// for anything else; the system's is Russian unless it speaks English.

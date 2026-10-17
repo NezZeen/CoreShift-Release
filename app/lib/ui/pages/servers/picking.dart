@@ -43,7 +43,7 @@ class _Picking extends ChangeNotifier {
   /// The connection runs on it: it stays.
   bool canPick(Subscription sub, NodeView n) => !(s.isSelected(sub, n) && s.status.active);
 
-  static const _inUse = 'К этому серверу вы подключены — его не удалить';
+  static String get _inUse => tr('servers.pick.in_use');
 
   /// The rows the list shows now; called as the page is built. Servers that
   /// left the subscriptions, or that the connection now runs on, are no
@@ -282,14 +282,14 @@ class _PickBar extends StatelessWidget {
     final p = context.pal;
     final n = picking.picked.length;
     final cancel = Tooltip(
-      message: compact ? 'Отмена' : 'Отмена (Esc)',
+      message: compact ? tr('servers.cancel') : tr('servers.pick.cancel_esc'),
       child: InkResponse(
         onTap: picking.cancel,
         radius: 20,
         child: SizedBox(width: 32, height: 30, child: Icon(Icons.close, size: 20, color: p.muted)),
       ),
     );
-    final count = Text('Выбрано: $n', style: display(compact ? 16 : 15));
+    final count = Text(tr('servers.pick.count', {'n': n}), style: display(compact ? 16 : 15));
     final all = TextButton(
       onPressed: picking.allPicked ? null : picking.pickAll,
       style: TextButton.styleFrom(
@@ -299,17 +299,17 @@ class _PickBar extends StatelessWidget {
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
       // The style on the text: a button's own would drop the theme's font.
-      child: const Text('Выбрать все', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+      child: Text(tr('servers.pick.all'), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
     );
-    final delete = Btn(label: 'Удалить из подписки', icon: Icons.delete_outline, kind: BtnKind.danger, small: true, onPressed: n == 0 ? null : picking.delete);
+    final delete = Btn(label: tr('servers.remove'), icon: Icons.delete_outline, kind: BtnKind.danger, small: true, onPressed: n == 0 ? null : picking.delete);
     // The phone's way to test one server: hold a row, then «Скорость».
     final speed = !picking.s.speedSupported
         ? null
         : Btn(
-            label: 'Скорость',
+            label: tr('servers.speed.button'),
             icon: Icons.download_rounded,
             small: true,
-            tooltip: 'Проверить скорость скачивания выбранных серверов',
+            tooltip: tr('servers.pick.speed_tip'),
             onPressed: n == 0 || picking.s.testingSpeed || picking.s.testingLatency ? null : picking.testSpeed,
           );
     final box = BoxDecoration(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../api/punycode.dart';
+import '../../l10n/strings.dart';
 import '../../platform/platform.dart' as platform;
 import '../../state/app_state.dart';
 import '../theme.dart';
@@ -80,7 +81,7 @@ class _RuleListPanelState extends State<RuleListPanel> {
     if (await _save({...domains, ...names}.toList(), {...addrs, ...ips}.toList())) {
       _add.clear();
       final added = _list(widget.domainsKey).length + _list(_ipsKey).length - before;
-      if (added > 0) s.toast('Добавлено: $added', ToastKind.ok);
+      if (added > 0) s.toast(tr('rules.list.toast.added', {'n': added}), ToastKind.ok);
     }
   }
 
@@ -114,7 +115,7 @@ class _RuleListPanelState extends State<RuleListPanel> {
               ),
             ),
             const SizedBox(width: 8),
-            Btn(label: 'Добавить', icon: Icons.add, onPressed: _addEntries),
+            Btn(label: tr('rules.add'), icon: Icons.add, onPressed: _addEntries),
           ],
         ),
         if (_error != null)
@@ -189,7 +190,14 @@ class ServicePreset {
   final List<String> domains;
   final List<String> ips;
   final List<String> apps;
-  const ServicePreset(this.name, this.icon, {required this.domains, this.ips = const [], this.apps = const []});
+
+  /// The dictionary key of the name shown, for a name that is not a brand
+  /// alone; [name] stays the id.
+  final String? nameKey;
+  const ServicePreset(this.name, this.icon, {required this.domains, this.ips = const [], this.apps = const [], this.nameKey});
+
+  /// The name as shown to the user.
+  String get label => nameKey == null ? name : tr(nameKey!);
 
   /// [apps] as this system names its programs: on Linux without ".exe"
   /// (Discord runs as …/Discord, and is matched by its path); Android picks
@@ -224,6 +232,7 @@ const servicePresets = [
     'Instagram и Facebook',
     Icons.photo_camera_outlined,
     domains: ['instagram.com', 'cdninstagram.com', 'facebook.com', 'fbcdn.net', 'fb.com', 'fbsbx.com', 'facebook.net'],
+    nameKey: 'rules.svc.instagram_facebook',
   ),
   // Telegram connects to its servers by address, so the addresses matter
   // more than the names. From core.telegram.org/resources/cidr.txt.
@@ -292,7 +301,7 @@ class ServicePresetsPanel extends StatelessWidget {
       r['proxy_ips'] = edit('proxy_ips', sp.ips);
       r['proxy_apps'] = edit('proxy_apps', sp.localApps, fold: true);
     });
-    if (err == null) state.toast(on ? '${sp.name} больше не идёт через VPN' : '${sp.name} теперь идёт через VPN', ToastKind.ok);
+    if (err == null) state.toast(tr(on ? 'rules.svc.toast.off' : 'rules.svc.toast.on', {'name': sp.label}), ToastKind.ok);
   }
 
   @override
@@ -302,7 +311,7 @@ class ServicePresetsPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const PanelTitle('Популярные сервисы', sub: 'в один клик'),
+          PanelTitle(tr('rules.svc.title'), sub: tr('rules.svc.sub')),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -312,7 +321,7 @@ class ServicePresetsPanel extends StatelessWidget {
                   builder: (context) {
                     final on = _on(sp);
                     return Tooltip(
-                      message: [...sp.domains, if (sp.ips.isNotEmpty) '+ адреса серверов', ...sp.localApps].join(', '),
+                      message: [...sp.domains, if (sp.ips.isNotEmpty) tr('rules.svc.addresses'), ...sp.localApps].join(', '),
                       waitDuration: const Duration(milliseconds: 600),
                       child: InkWell(
                         borderRadius: BorderRadius.circular(10),
@@ -331,7 +340,7 @@ class ServicePresetsPanel extends StatelessWidget {
                               Icon(on ? Icons.check_circle : sp.icon, size: 16, color: on ? p.accentInk : p.muted),
                               const SizedBox(width: 7),
                               Text(
-                                sp.name,
+                                sp.label,
                                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: on ? p.text : p.muted),
                               ),
                             ],

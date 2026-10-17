@@ -15,10 +15,10 @@ bool Function()? systemProxyJournal;
 extension SystemProxyState on AppState {
   /// The mode without TUN in words, for the journal.
   String get _proxyModeName => platform.isAndroid
-      ? 'прокси без VPN'
+      ? tr('proxy.mode.android')
       : setting('proxy.system', false) == true
-      ? 'системный прокси'
-      : 'только прокси';
+      ? tr('proxy.mode.system')
+      : tr('proxy.mode.only');
 
   /// The address the system proxy points at: the service's proxy port.
   String get systemProxyAddress => '127.0.0.1:${info.proxyPort}';
@@ -30,7 +30,7 @@ extension SystemProxyState on AppState {
     return _proxySyncs[this] ??= SystemProxySync(
       run: runner,
       journalExists: systemProxyJournal ?? platform.systemProxyJournalExists,
-      log: (text, warn) => _log(DateTime.now(), 'прокси', text, warn ? LogLevel.warn : LogLevel.ok),
+      log: (text, warn) => _log(DateTime.now(), tr('app.src.proxy'), text, warn ? LogLevel.warn : LogLevel.ok),
     );
   }
 

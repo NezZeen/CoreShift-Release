@@ -1,3 +1,4 @@
+import '../l10n/strings.dart';
 import 'models.dart';
 
 /// Базы категорий geosite и geoip, откуда берутся категории для своих правил
@@ -149,18 +150,18 @@ class GeoCategories {
 String originName(String origin) => switch (origin) {
   'sagernet' => 'SagerNet',
   'runetfreedom' => 'runetfreedom',
-  _ => 'своей ссылки',
+  _ => tr('fmt.geo.origin.custom'),
 };
 
 /// Откуда база, названием: SagerNet, runetfreedom, своя ссылка.
 String originTitle(String origin) => switch (origin) {
   'sagernet' => 'SagerNet',
   'runetfreedom' => 'runetfreedom',
-  _ => 'своя ссылка',
+  _ => tr('fmt.geo.originTitle.custom'),
 };
 
 /// «В базе …»: SagerNet, runetfreedom, своей ссылки.
-String inBase(String origin) => 'в базе ${originName(origin)}';
+String inBase(String origin) => tr('fmt.geo.inBase', {'origin': originName(origin)});
 
 String _two(int n) => n.toString().padLeft(2, '0');
 
@@ -170,17 +171,17 @@ String loadedAtText(DateTime at, DateTime now) {
   final hm = '${_two(t.hour)}:${_two(t.minute)}';
   final n = now.toLocal();
   if (t.year == n.year && t.month == n.month && t.day == n.day) return hm;
-  return '${_two(t.day)}.${_two(t.month)} в $hm';
+  return tr('fmt.geo.loadedAtOtherDay', {'d': _two(t.day), 'mon': tr('fmt.month.${t.month}'), 'hm': hm});
 }
 
 /// Состояние базы одной строкой: «загружается… 42%», «загружена в 14:05».
 String baseStateText(GeoBase b, DateTime now) => switch (b.state) {
-  baseLoading => b.percent >= 0 ? 'загружается… ${b.percent}%' : 'загружается…',
-  baseLoaded => 'загружена в ${loadedAtText(b.loadedAt ?? now, now)}',
-  baseError => 'ошибка: ${b.error.isEmpty ? 'не загрузилась' : b.error}',
-  baseNone => 'категории не перечисляются',
-  _ => 'ещё не загружена',
+  baseLoading => b.percent >= 0 ? tr('fmt.geo.state.loadingPercent', {'percent': b.percent}) : tr('fmt.geo.state.loading'),
+  baseLoaded => tr('fmt.geo.state.loaded', {'at': loadedAtText(b.loadedAt ?? now, now)}),
+  baseError => tr('fmt.geo.state.error', {'error': b.error.isEmpty ? tr('fmt.geo.state.errorDefault') : b.error}),
+  baseNone => tr('fmt.geo.state.none'),
+  _ => tr('fmt.geo.state.idle'),
 };
 
 /// Название базы в списке: «Сайты (geosite)».
-String baseTitle(String kind) => kind == 'geoip' ? 'Адреса (geoip)' : 'Сайты (geosite)';
+String baseTitle(String kind) => kind == 'geoip' ? tr('fmt.geo.title.geoip') : tr('fmt.geo.title.geosite');

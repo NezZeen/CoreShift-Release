@@ -1,79 +1,75 @@
-import '../../state/app_state.dart' show ruPlural;
+import '../../l10n/strings.dart';
 
-/// Every text of the first-run wizard in one place, to move into the
-/// dictionary (lib/l10n/) as they are. Texts with a number or a name in them
+/// Every text of the first-run wizard in one place; the words are in the
+/// dictionary (lib/l10n/parts/shell.dart, keys "wizard.…"). They are getters,
+/// said in the language of the moment. Texts with a number or a name in them
 /// are functions.
 abstract final class WizardStrings {
   // Common.
-  static const skip = 'Пропустить';
-  static const back = 'Назад';
-  static const next = 'Дальше';
-  static String stepOf(int step, int total) => 'Шаг $step из $total';
+  static String get skip => tr('wizard.skip');
+  static String get back => tr('wizard.back');
+  static String get next => tr('wizard.next');
+  static String stepOf(int step, int total) => tr('wizard.stepOf', {'step': step, 'total': total});
 
   // 1. Welcome.
-  static const welcomeTitle = 'Добро пожаловать в CoreShift';
-  static const welcomeLine1 = 'CoreShift подключает ваш интернет к серверам из подписки провайдера и сам следит, чтобы связь не пропадала.';
-  static const welcomeLine2 = 'Добавьте подписку, проверьте серверы и выберите режим: это займёт около минуты.';
-  static const welcomeStart = 'Начать';
+  static String get welcomeTitle => tr('wizard.welcome.title');
+  static String get welcomeLine1 => tr('wizard.welcome.line1');
+  static String get welcomeLine2 => tr('wizard.welcome.line2');
+  static String get welcomeStart => tr('wizard.welcome.start');
 
   // 2. Subscription.
-  static const addTitle = 'Добавьте подписку';
-  static const addHint = 'Вставьте ссылку на подписку, которую дал провайдер. Обычно она начинается с https://';
-  static const addFieldHint = 'https://… или vless://…';
-  static const addPaste = 'Вставить';
-  static const addClear = 'Изменить';
-  static const addSubmit = 'Добавить';
-  static const addManual = 'Добавить сервер вручную';
-  static const addFromClipboard = 'Ссылка взята из буфера обмена. Проверьте и нажмите «Добавить».';
-  static const addProgress = 'Скачиваем подписку и читаем серверы…';
-  static const addEmpty = 'Вставьте ссылку или список серверов';
-  static const addClipboardEmpty = 'В буфере обмена нет ссылки на подписку или сервер';
-  static const addSubscriptionLabel = 'Подписка';
-  static const addServersLabel = 'Серверы';
-  static String addServersInText(int n) => '$n ${ruPlural(n, 'сервер', 'сервера', 'серверов')} в тексте';
+  static String get addTitle => tr('wizard.add.title');
+  static String get addHint => tr('wizard.add.hint');
+  static String get addFieldHint => tr('wizard.add.fieldHint');
+  static String get addPaste => tr('wizard.add.paste');
+  static String get addClear => tr('wizard.add.clear');
+  static String get addSubmit => tr('wizard.add.submit');
+  static String get addManual => tr('wizard.add.manual');
+  static String get addFromClipboard => tr('wizard.add.fromClipboard');
+  static String get addProgress => tr('wizard.add.progress');
+  static String get addEmpty => tr('wizard.add.empty');
+  static String get addClipboardEmpty => tr('wizard.add.clipboardEmpty');
+  static String get addSubscriptionLabel => tr('wizard.add.subscriptionLabel');
+  static String get addServersLabel => tr('wizard.add.serversLabel');
+  static String addServersInText(int n) => tr('wizard.add.serversInText', {'n': n});
 
   // 3. Servers.
-  static const checkTitle = 'Проверяем серверы';
-  static const checkHintDone = 'Выберите сервер, через который подключаться. Лучшим мы считаем тот, что отвечает быстрее всех.';
-  static const checkHintBusy = 'Измеряем, как быстро отвечает каждый сервер.';
-  static const checkAuto = 'Автовыбор';
-  static const checkAutoText = 'Лучший из серверов, которые выбрал провайдер. Если он перестанет отвечать, подключится следующий.';
-  static const checkBest = 'Лучший';
-  static const checkAgain = 'Проверить ещё раз';
-  static const checkNoneAnswered =
-      'Ни один сервер не ответил. Возможно, нет интернета или серверы заблокированы. Можно продолжить и проверить позже на странице «Серверы».';
-  static const checkNoServers = 'В подписке нет серверов, которые CoreShift умеет запускать.';
-  static String checkProgress(int done, int total) => total > 0 ? 'Проверено серверов: $done из $total' : 'Проверяем серверы…';
-  static String checkMs(int ms) => '$ms мс';
-  static String checkMore(int n) => 'Ещё ${ruPlural(n, 'сервер', 'сервера', 'серверов')}: $n. Все они на странице «Серверы».';
+  static String get checkTitle => tr('wizard.check.title');
+  static String get checkHintDone => tr('wizard.check.hintDone');
+  static String get checkHintBusy => tr('wizard.check.hintBusy');
+  static String get checkAuto => tr('wizard.check.auto');
+  static String get checkAutoText => tr('wizard.check.autoText');
+  static String get checkBest => tr('wizard.check.best');
+  static String get checkAgain => tr('wizard.check.again');
+  static String get checkNoneAnswered => tr('wizard.check.noneAnswered');
+  static String get checkNoServers => tr('wizard.check.noServers');
+  static String checkProgress(int done, int total) => total > 0 ? tr('wizard.check.progress', {'done': done, 'total': total}) : tr('wizard.check.progressNone');
+  static String checkMs(int ms) => tr('wizard.check.ms', {'ms': ms});
+  static String checkMore(int n) => tr('wizard.check.more', {'n': n});
 
   // 4. Mode.
-  static const modeTitle = 'Как подключаться';
-  static const modeHint = 'Это можно изменить потом в настройках.';
-  static const modeRecommended = 'Рекомендуем';
-  static const modeAllTitle = 'Все приложения';
-  static const modeAllText = 'Через VPN идёт весь интернет-трафик компьютера, программам ничего настраивать не нужно. Режим TUN.';
-  static const modeProxyTitle = 'Только прокси';
-  static const modeProxyText = 'Через VPN пойдут только программы, в которых указан прокси SOCKS5 или HTTP 127.0.0.1:17890. Остальные работают как раньше.';
-  static const modeSystemProxyTitle = 'Системный прокси';
-  static const modeSystemProxyText =
-      'Если «Все приложения» не включаются: CoreShift сам пропишет прокси в системе. '
-      'Работает для браузеров и большинства программ, но не для игр и всего, что прокси не понимает.';
-  static const modeProxyOnlyTitle = 'Прокси без VPN';
-  static const modeProxyOnlyText =
-      'VPN не включается: через CoreShift идут только приложения, в которых указан прокси (Telegram, браузер). '
-      'Подходит, если место VPN занято другим приложением или рабочим профилем. Логин и пароль — в настройках.';
-  static const modeNeedsUpdate = 'Нужна более новая служба CoreShift';
-  static const modeVpnTitle = 'VPN';
-  static const modeVpnText = 'Через VPN идёт весь трафик телефона. Android один раз спросит разрешение на VPN.';
-  static const modeUnavailable = 'Недоступно на этом компьютере';
-  static const modeFailed = 'Не удалось сохранить режим';
+  static String get modeTitle => tr('wizard.mode.title');
+  static String get modeHint => tr('wizard.mode.hint');
+  static String get modeRecommended => tr('wizard.mode.recommended');
+  static String get modeAllTitle => tr('wizard.mode.all.title');
+  static String get modeAllText => tr('wizard.mode.all.text');
+  static String get modeProxyTitle => tr('wizard.mode.proxy.title');
+  static String get modeProxyText => tr('wizard.mode.proxy.text');
+  static String get modeSystemProxyTitle => tr('wizard.mode.systemProxy.title');
+  static String get modeSystemProxyText => tr('wizard.mode.systemProxy.text');
+  static String get modeProxyOnlyTitle => tr('wizard.mode.proxyOnly.title');
+  static String get modeProxyOnlyText => tr('wizard.mode.proxyOnly.text');
+  static String get modeNeedsUpdate => tr('wizard.mode.needsUpdate');
+  static String get modeVpnTitle => tr('wizard.mode.vpn.title');
+  static String get modeVpnText => tr('wizard.mode.vpn.text');
+  static String get modeUnavailable => tr('wizard.mode.unavailable');
+  static String get modeFailed => tr('wizard.mode.failed');
 
   // 5. Done.
-  static const doneTitle = 'Всё готово';
-  static const doneHint = 'Осталось подключиться. Статус, скорость и смену сервера вы найдёте на главной странице.';
-  static const doneServer = 'Сервер';
-  static const doneMode = 'Режим';
-  static const doneConnect = 'Подключить';
-  static const doneLater = 'Позже';
+  static String get doneTitle => tr('wizard.done.title');
+  static String get doneHint => tr('wizard.done.hint');
+  static String get doneServer => tr('wizard.done.server');
+  static String get doneMode => tr('wizard.done.mode');
+  static String get doneConnect => tr('wizard.done.connect');
+  static String get doneLater => tr('wizard.done.later');
 }

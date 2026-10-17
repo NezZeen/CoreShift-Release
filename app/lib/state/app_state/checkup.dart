@@ -101,10 +101,10 @@ extension AppStateCheckup on AppState {
     if (checkup.running) return;
     if (!online) {
       checkup = CheckupState(
-        error: 'Служба CoreShift не отвечает${offlineReason.isEmpty ? '' : ': $offlineReason'}. Перезапустите CoreShift; если не поможет — переустановите его.',
+        error: offlineReason.isEmpty ? tr('app.checkup.offline') : tr('app.checkup.offlineWhy', {'reason': offlineReason}),
         at: DateTime.now(),
       );
-      _log(DateTime.now(), 'диагностика', 'проверка не запустилась: служба CoreShift не отвечает', LogLevel.err);
+      _log(DateTime.now(), tr('app.src.checkup'), tr('app.checkup.notStarted'), LogLevel.err);
       _notify();
       return;
     }
@@ -125,13 +125,13 @@ extension AppStateCheckup on AppState {
       _logCheckup();
     } catch (e) {
       final text = switch (e) {
-        ApiError(status: 404 || 405) => 'Служба CoreShift старой версии и не умеет так проверять. Обновите CoreShift.',
-        ApiError(status: 409) => 'Проверка уже идёт',
+        ApiError(status: 404 || 405) => tr('app.checkup.oldService'),
+        ApiError(status: 409) => tr('app.checkup.alreadyRunning'),
         DaemonOffline(:final message) => message,
-        _ => 'Проверка не удалась: ${humanError('$e')}',
+        _ => tr('app.checkup.failed', {'error': humanError('$e')}),
       };
       checkup = CheckupState(error: text, at: DateTime.now());
-      _log(DateTime.now(), 'диагностика', 'проверка не удалась: $e', LogLevel.err);
+      _log(DateTime.now(), tr('app.src.checkup'), tr('app.checkup.failedLog', {'error': '$e'}), LogLevel.err);
       if (e is DaemonOffline) _lost(e);
     }
     _notify();
@@ -164,10 +164,11 @@ extension AppStateCheckup on AppState {
       'warn' => LogLevel.warn,
       _ => LogLevel.err,
     };
-    _log(t, 'диагностика', 'итог: ${v.title}', level);
-    _log(t, 'диагностика', c.steps.map((s) => '${s.title} ${s.mark}').join(' · '), LogLevel.info);
+    final source = tr('app.src.checkup');
+    _log(t, source, tr('app.checkup.verdictLog', {'title': v.title}), level);
+    _log(t, source, c.steps.map((s) => '${s.title} ${s.mark}').join(' · '), LogLevel.info);
     for (final s in c.steps.where((s) => s.status == 'warn' || s.status == 'fail')) {
-      _log(t, 'диагностика', '${s.title}: ${s.detail}', s.status == 'fail' ? LogLevel.err : LogLevel.warn);
+      _log(t, source, '${s.title}: ${s.detail}', s.status == 'fail' ? LogLevel.err : LogLevel.warn);
     }
   }
 
@@ -179,9 +180,13 @@ extension AppStateCheckup on AppState {
     String two(int n) => n.toString().padLeft(2, '0');
     final v = c.verdict;
     return [
-      'Проверка CoreShift: ${t.year}-${two(t.month)}-${two(t.day)} ${two(t.hour)}:${two(t.minute)}:${two(t.second)}',
-      if (v != null) ...['Итог: ${v.title}', v.advice] else if (c.error.isNotEmpty) 'Итог: ${c.error}',
-      for (final s in c.steps) '  ${s.mark} ${s.title} — ${s.running ? 'не закончено' : s.detail}',
+      tr('app.checkup.reportTitle', {'time': '${t.year}-${two(t.month)}-${two(t.day)} ${two(t.hour)}:${two(t.minute)}:${two(t.second)}'}),
+      if (v != null) ...[
+        tr('app.checkup.reportResult', {'text': v.title}),
+        v.advice,
+      ] else if (c.error.isNotEmpty)
+        tr('app.checkup.reportResult', {'text': c.error}),
+      for (final s in c.steps) '  ${s.mark} ${s.title} — ${s.running ? tr('app.checkup.unfinished') : s.detail}',
       '',
     ].map(redactForSupport).toList();
   }

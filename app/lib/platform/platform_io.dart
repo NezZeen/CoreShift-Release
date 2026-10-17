@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../api/backend.dart';
 import '../api/models.dart';
 import '../api/proof.dart';
+import '../l10n/strings.dart';
 import 'api_access.dart';
 import 'linux_desktop.dart' as linux;
 import 'vpn_consent.dart';
@@ -27,8 +28,9 @@ bool get isWindows => Platform.isWindows;
 
 /// What runs the VPN, for messages: a Windows service, or on Android the
 /// engine inside the app.
-String get _engine => Platform.isAndroid ? 'Движок CoreShift' : 'Служба CoreShift';
-String get _ending => Platform.isAndroid ? '' : 'а';
+String get _notRunning => Platform.isAndroid ? tr('platform.engine.notRunning') : tr('platform.service.notRunning');
+String get _notResponding => Platform.isAndroid ? tr('platform.engine.notResponding') : tr('platform.service.notResponding');
+String get _connectionLost => Platform.isAndroid ? tr('platform.engine.connectionLost') : tr('platform.service.connectionLost');
 
 /// Asks the platform what the app needs before it starts.
 Future<void> initPlatform() async {
@@ -122,9 +124,7 @@ bool get canScanQr => Platform.isAndroid;
 Future<String?> scanQr() => _android.invokeMethod<String>('scanQr');
 
 /// What to tell the user when [scanQr] failed with [e].
-String scanQrError(Object e) => e is PlatformException && e.code == 'unavailable'
-    ? 'Сканер QR-кодов ещё загружается сервисами Google Play. Проверьте интернет и попробуйте через минуту'
-    : 'Сканер QR-кодов недоступен: на телефоне нет сервисов Google Play';
+String scanQrError(Object e) => e is PlatformException && e.code == 'unavailable' ? tr('platform.qr.loading') : tr('platform.qr.unavailable');
 
 /// Shows an Android notification; on the desktop the tray does (see
 /// desktop_io.dart), and only while the window is out of sight.
@@ -222,33 +222,29 @@ class _Endpoint {
 /// Whether [reason], why the daemon is offline, is that the user may not
 /// reach it (not in the group of the API file: coreshift on Linux,
 /// «CoreShift Users» on Windows), which starting it again would not change.
-bool daemonAccessDenied(String reason) => (Platform.isLinux || Platform.isWindows) && reason.startsWith(accessDeniedPrefix);
+bool daemonAccessDenied(String reason) => (Platform.isLinux || Platform.isWindows) && startsWithAccessDenied(reason);
 
 /// Why the API file [f] could not be read, for the user.
 DaemonOffline _unreadable(File f, FileSystemException e) {
   final code = e.osError?.errorCode;
   if (Platform.isLinux) {
     // ENOENT: the daemon is not running (it removes the file on exit).
-    if (code == 2) return DaemonOffline('$_engine не запущен$_ending');
+    if (code == 2) return DaemonOffline(_notRunning);
     // EACCES, EPERM: not in the group the file is for.
-    if (code == 13 || code == 1) return const DaemonOffline(linux.groupHint, accessDenied: true);
+    if (code == 13 || code == 1) return DaemonOffline(linux.groupHint, accessDenied: true);
   }
   if (Platform.isWindows) {
     // ERROR_FILE_NOT_FOUND: removed between the check and the read.
-    if (code == 2) return DaemonOffline('$_engine не запущен$_ending');
+    if (code == 2) return DaemonOffline(_notRunning);
     // ERROR_ACCESS_DENIED: not in the group the file is for.
     if (code == 5) return DaemonOffline(windowsGroupHint(windowsAccount(Platform.environment)), accessDenied: true);
   }
-  return DaemonOffline('Нет доступа к ${f.path}: ${e.osError?.message ?? e.message}');
+  return DaemonOffline(tr('platform.file.denied', {'path': f.path, 'err': e.osError?.message ?? e.message}));
 }
 
 /// What to say when whoever answers at the address of api.json does not
 /// prove it knows the token: not the service that wrote the file.
-String get _impostor =>
-    'По адресу из ${Platform.isAndroid ? 'файла движка' : 'файла службы'} отвечает другая программа, а не $_engineLower. '
-    '${Platform.isAndroid ? 'Перезапустите CoreShift' : 'Перезапустите CoreShift или компьютер'}';
-
-String get _engineLower => Platform.isAndroid ? 'движок CoreShift' : 'служба CoreShift';
+String get _impostor => Platform.isAndroid ? tr('platform.engine.impostor') : tr('platform.service.impostor');
 
 class HttpBackend implements Backend {
   final String file;
@@ -283,7 +279,7 @@ class HttpBackend implements Backend {
     // On Linux the file is in a directory only the coreshift group may
     // enter: there a missing file and a refused one look alike to exists().
     if (!Platform.isLinux && !await f.exists()) {
-      throw DaemonOffline('$_engine не запущен$_ending');
+      throw DaemonOffline(_notRunning);
     }
     try {
       final j = jsonDecode(await f.readAsString()) as Map<String, dynamic>;
@@ -291,7 +287,7 @@ class HttpBackend implements Backend {
     } on FileSystemException catch (e) {
       throw _unreadable(f, e);
     } catch (_) {
-      throw DaemonOffline('Файл ${f.path} повреждён');
+      throw DaemonOffline(tr('platform.file.broken', {'path': f.path}));
     }
   }
 
@@ -307,12 +303,12 @@ class HttpBackend implements Backend {
       await resp.drain<void>();
       // A service that started anew has a new token and has replaced the
       // file by now: the next attempt reads it.
-      if (resp.statusCode == HttpStatus.unauthorized) throw DaemonOffline('$_engine не отвечает');
+      if (resp.statusCode == HttpStatus.unauthorized) throw DaemonOffline(_notResponding);
       if (!proofValid(resp.headers.value(proofHeader), ep.token, nonce)) throw DaemonOffline(_impostor);
     } on SocketException {
-      throw DaemonOffline('$_engine не отвечает');
+      throw DaemonOffline(_notResponding);
     } on HttpException {
-      throw DaemonOffline('$_engine не отвечает');
+      throw DaemonOffline(_notResponding);
     }
   }
 
@@ -357,10 +353,10 @@ class HttpBackend implements Backend {
         return decoded;
       } on SocketException {
         if (attempt == 0) continue;
-        throw DaemonOffline('$_engine не отвечает');
+        throw DaemonOffline(_notResponding);
       } on HttpException {
         if (attempt == 0) continue;
-        throw DaemonOffline('Соединение ${Platform.isAndroid ? 'с движком' : 'со службой'} прервалось');
+        throw DaemonOffline(_connectionLost);
       }
     }
   }
@@ -401,12 +397,12 @@ class HttpBackend implements Backend {
                     // One unreadable event must not end the stream.
                   }
                 },
-                onError: (Object e) => out.addError(DaemonOffline('Соединение ${Platform.isAndroid ? 'с движком' : 'со службой'} прервалось')),
+                onError: (Object e) => out.addError(DaemonOffline(_connectionLost)),
                 onDone: out.close,
               );
         } catch (e) {
           if (cancelled) return;
-          out.addError(e is SocketException || e is HttpException ? DaemonOffline('$_engine не отвечает') : e);
+          out.addError(e is SocketException || e is HttpException ? DaemonOffline(_notResponding) : e);
           out.close();
         }
       },
@@ -442,7 +438,7 @@ bool get canStartService => Platform.isWindows || Platform.isLinux;
 /// Returns why it could not, or null once the request went through.
 Future<String?> startService() async {
   if (Platform.isLinux) return linux.startService();
-  if (!Platform.isWindows) return 'Запустите службу coreshift вручную';
+  if (!Platform.isWindows) return tr('platform.start.manual');
   try {
     final r = await Process.run('powershell.exe', [
       '-NoProfile',
@@ -451,7 +447,7 @@ Future<String?> startService() async {
       "Start-Process -FilePath sc.exe -ArgumentList 'start','CoreShift' -Verb RunAs -WindowStyle Hidden",
     ]);
     // Declining the UAC prompt makes Start-Process fail.
-    return r.exitCode == 0 ? null : 'Запуск отменён или не удался';
+    return r.exitCode == 0 ? null : tr('platform.start.cancelledOrFailed');
   } catch (e) {
     return '$e';
   }

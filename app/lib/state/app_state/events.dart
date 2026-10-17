@@ -1,7 +1,7 @@
 part of '../app_state.dart';
 
 /// The ping cell's tooltip for the connected server the engine found silent.
-const _serverDownLatency = 'Сервер перестал отвечать во время подключения';
+String get _serverDownLatency => tr('app.server.latencyDown');
 
 /// Что служба присылает событиями (Event.kind) и что из этого идёт в журнал, в тосты и уведомления.
 extension AppStateEvents on AppState {
@@ -22,14 +22,14 @@ extension AppStateEvents on AppState {
         // what comes next.
         // A replayed end is summed up once, whatever the traffic replayed.
         final ended = _sessionEnd(e);
-        if (ended != null && !logs.any((l) => l.time.isAtSameMomentAs(e.time) && l.message.startsWith('сессия:'))) {
-          _log(e.time, 'служба', ended, LogLevel.info);
+        if (ended != null && !logs.any((l) => l.time.isAtSameMomentAs(e.time) && l.message.startsWith('${tr('app.session.label')}:'))) {
+          _log(e.time, tr('app.src.service'), ended, LogLevel.info);
         }
         // Without a network the "network" event beside it says what goes on.
         if (e.state != 'no-network') {
           _log(
             e.time,
-            'служба',
+            tr('app.src.service'),
             _sessionStateText(e) + (e.error.isNotEmpty ? ': ${journalCodedError(e.code, e.args, e.error)}' : ''),
             e.state == 'failed' ? LogLevel.err : (e.state == 'connected' ? LogLevel.ok : LogLevel.info),
           );
@@ -50,30 +50,30 @@ extension AppStateEvents on AppState {
         if (e.state == 'failed' && live) {
           final why = humanCodedError(e.code, e.args, e.error);
           toast(why, ToastKind.err);
-          _alerts.add(Alert('VPN отключился', why));
+          _alerts.add(Alert(tr('app.alert.vpnDown'), why));
         }
         _statusSoon();
       case 'core-state':
         // Stopping reports no core: the whole chain is stopped.
-        if (!e.probe) _log(e.time, e.core.isEmpty ? 'ядра' : e.core, AppState._coreStateText(e.reason), LogLevel.info);
+        if (!e.probe) _log(e.time, e.core.isEmpty ? tr('app.src.cores') : e.core, AppState._coreStateText(e.reason), LogLevel.info);
         _statusSoon();
       case 'swap':
         swaps++;
-        _log(e.time, 'автосвап', '${AppState.coreName(e.from)} → ${AppState.coreName(e.core)} (${AppState._reasonText(e.reason)})', LogLevel.swap);
+        _log(e.time, tr('app.src.swap'), '${AppState.coreName(e.from)} → ${AppState.coreName(e.core)} (${AppState._reasonText(e.reason)})', LogLevel.swap);
         if (live) {
           final back = e.reason == 'return-to-primary';
           toast(
             back
-                ? 'Снова работает основное ядро: ${AppState.coreName(e.core)}'
-                : 'Ядро переключено с ${AppState.coreName(e.from)} на ${AppState.coreName(e.core)}',
+                ? tr('app.swap.toastBack', {'core': AppState.coreName(e.core)})
+                : tr('app.swap.toast', {'from': AppState.coreName(e.from), 'core': AppState.coreName(e.core)}),
             ToastKind.swap,
           );
           _alerts.add(
             back
-                ? Alert('Основное ядро снова работает', AppState.coreName(e.core))
+                ? Alert(tr('app.swap.alertBack'), AppState.coreName(e.core))
                 : Alert(
-                    'CoreShift сменил ядро',
-                    '${AppState.coreName(e.from)}: ${AppState._reasonText(e.reason)}. Теперь работает ${AppState.coreName(e.core)}, VPN не прерывался.',
+                    tr('app.swap.alertTitle'),
+                    tr('app.swap.alertBody', {'from': AppState.coreName(e.from), 'reason': AppState._reasonText(e.reason), 'core': AppState.coreName(e.core)}),
                   ),
           );
         }
@@ -81,7 +81,7 @@ extension AppStateEvents on AppState {
       case 'no-better':
         // The engine now looks whether the server or the network is at
         // fault, and its "server" event says which.
-        _log(e.time, e.core, 'ни одно ядро не проходит проверку связи, проверяю сервер и сеть напрямую', LogLevel.warn);
+        _log(e.time, e.core, tr('app.noBetter'), LogLevel.warn);
       case 'server':
         _onServerEvent(e, live);
       case 'direct':
@@ -90,32 +90,32 @@ extension AppStateEvents on AppState {
         _onDnsDirectEvent(e);
       case 'failover':
         if (e.error.isNotEmpty) {
-          _log(e.time, 'автопереход', 'ни один другой сервер подписки не отвечает', LogLevel.err);
-          if (live) toast('Ни один другой сервер подписки не отвечает', ToastKind.err);
+          _log(e.time, tr('app.src.failover'), tr('app.failover.none'), LogLevel.err);
+          if (live) toast(tr('app.failover.noneToast'), ToastKind.err);
         } else {
-          _log(e.time, 'автопереход', 'сервер «${e.from}» не отвечает, подключаюсь к «${e.line}»', LogLevel.swap);
+          _log(e.time, tr('app.src.failover'), tr('app.failover.log', {'from': e.from, 'to': e.line}), LogLevel.swap);
           if (live) {
-            toast('Сервер «${e.from}» не отвечал: подключено «${e.line}»', ToastKind.swap);
-            _alerts.add(Alert('CoreShift сменил сервер', '«${e.from}» не отвечал. Теперь «${e.line}».'));
+            toast(tr('app.failover.toast', {'from': e.from, 'to': e.line}), ToastKind.swap);
+            _alerts.add(Alert(tr('app.failover.alertTitle'), tr('app.failover.alertBody', {'from': e.from, 'to': e.line})));
           }
         }
         _statusSoon();
       case 'core-failed':
-        _log(e.time, e.core, 'отключено (${AppState._reasonText(e.reason)}): ${e.error}', LogLevel.err);
+        _log(e.time, e.core, tr('app.core.failed', {'reason': AppState._reasonText(e.reason), 'error': e.error}), LogLevel.err);
         _statusSoon();
       case 'core-restart':
-        _log(e.time, e.core, 'завис и перезапущен: ${e.error}', LogLevel.swap);
+        _log(e.time, e.core, tr('app.core.restarted', {'error': e.error}), LogLevel.swap);
         _statusSoon();
       case 'health':
         if (e.probe) break;
         // While it fails the check repeats every few seconds: the log says
         // when it starts failing and when it works again.
         if (e.error.isNotEmpty) {
-          if (_healthFailing.add(e.core)) _log(e.time, e.core, 'проверка связи не прошла: ${e.errorText}', LogLevel.warn);
+          if (_healthFailing.add(e.core)) _log(e.time, e.core, tr('app.health.failed', {'error': e.errorText}), LogLevel.warn);
           final streak = _healthStreak[e.core] = (_healthStreak[e.core] ?? 0) + 1;
           if (streak == 2) _notify();
         } else {
-          if (_healthFailing.remove(e.core)) _log(e.time, e.core, 'проверка связи снова проходит', LogLevel.ok);
+          if (_healthFailing.remove(e.core)) _log(e.time, e.core, tr('app.health.ok'), LogLevel.ok);
           _healthStreak.remove(e.core);
           latencies.add(e.latencyMs);
           if (latencies.length > 60) latencies.removeAt(0);
@@ -128,15 +128,15 @@ extension AppStateEvents on AppState {
       case 'tun' when e.reason == 'retry':
         // The failed attempt's own FATAL line is in the journal just above:
         // this one says the next attempt follows.
-        _log(e.time, 'TUN', 'интерфейс не поднялся: Windows ещё убирает прежний адаптер; повтор через ${e.line}. Причина: ${e.error}', LogLevel.warn);
+        _log(e.time, 'TUN', tr('app.tun.retry', {'delay': e.line, 'error': e.error}), LogLevel.warn);
       case 'tun' when e.reason == 'updated':
         // The desktop's TUN layer is a sing-box of its own: after the core,
         // it moves to an updated sing-box too, restarting the interface.
-        _log(e.time, 'TUN', 'слой TUN перешёл на sing-box ${e.line}: интерфейс перезапущен, VPN не отключался', LogLevel.ok);
+        _log(e.time, 'TUN', tr('app.tun.updated', {'version': e.line}), LogLevel.ok);
       case 'dns' when e.reason == 'network-changed':
         // The reconnect that follows says why it happens.
-        _log(e.time, 'сеть', e.line.isNotEmpty ? e.lineText : AppState._layerText(e.kind, e.reason), LogLevel.swap);
-        if (live) toast('Сеть сменилась — CoreShift переподключается');
+        _log(e.time, tr('app.src.network'), e.line.isNotEmpty ? e.lineText : AppState._layerText(e.kind, e.reason), LogLevel.swap);
+        if (live) toast(tr('app.dns.networkChangedToast'));
       case 'dns' when e.reason == 'local-names':
         _log(e.time, 'DNS', e.lineText, LogLevel.info);
       case 'tun':
@@ -148,21 +148,21 @@ extension AppStateEvents on AppState {
           e.error.isNotEmpty ? LogLevel.warn : LogLevel.info,
         );
       case 'proxy':
-        _log(e.time, 'прокси', e.error.isNotEmpty ? e.errorText : e.lineText, e.error.isNotEmpty ? LogLevel.warn : LogLevel.info);
+        _log(e.time, tr('app.src.proxy'), e.error.isNotEmpty ? e.errorText : e.lineText, e.error.isNotEmpty ? LogLevel.warn : LogLevel.info);
       case 'action':
         // Why the connection changes, when not by the window's buttons:
         // Android's tile and notification, "Автозапуск", the service itself.
-        _log(e.time, e.source.isEmpty ? 'действие' : e.source, e.lineText, LogLevel.info);
+        _log(e.time, e.source.isEmpty ? tr('app.src.action') : e.source, e.lineText, LogLevel.info);
       case 'error':
         // Services before 0.7.2 sent a failure twice: in the state and here.
         if (e.error == _failedWith) break;
-        _log(e.time, 'служба', journalError(e.error), LogLevel.err);
+        _log(e.time, tr('app.src.service'), journalError(e.error), LogLevel.err);
         if (live) toast(humanError(e.error), ToastKind.err);
       case 'network':
         _onNetworkEvent(e, live);
       case 'netinfo':
         // Which network the connection runs over, and a move to another.
-        _log(e.time, 'сеть', e.lineText, e.reason == 'changed' ? LogLevel.swap : LogLevel.info);
+        _log(e.time, tr('app.src.network'), e.lineText, e.reason == 'changed' ? LogLevel.swap : LogLevel.info);
       case 'traffic':
         // Hidden, the samples come every few seconds: the graph, a sample a
         // second, keeps only the latest of them rather than squeezing
@@ -181,12 +181,12 @@ extension AppStateEvents on AppState {
           _trafficMissed = true;
         }
       case 'cores' when e.reason == 'applied':
-        _log(e.time, e.core, 'обновление до ${e.line} применено без отключения VPN', LogLevel.ok);
+        _log(e.time, e.core, tr('app.cores.applied', {'version': e.line}), LogLevel.ok);
       case 'cores':
-        _log(e.time, e.core, 'обновлено до ${e.line}', LogLevel.ok);
+        _log(e.time, e.core, tr('app.cores.updated', {'version': e.line}), LogLevel.ok);
         _reloadInfo();
       case 'store':
-        if (e.error.isNotEmpty) _log(e.time, 'подписки', 'обновление не удалось: ${e.error}', LogLevel.warn);
+        if (e.error.isNotEmpty) _log(e.time, tr('app.src.subs'), tr('app.store.failed', {'error': e.error}), LogLevel.warn);
         _reloadStore(e.reason);
       case 'options':
         _statusSoon();
@@ -216,9 +216,9 @@ extension AppStateEvents on AppState {
       case 'rules':
         if (e.line == 'resolved') {
           // The name of a rule taken for a category of the base by its spelling.
-          _log(e.time, 'правила', e.errorText, LogLevel.info);
+          _log(e.time, tr('app.src.rules'), e.errorText, LogLevel.info);
         } else if (e.error.isNotEmpty) {
-          _log(e.time, 'правила', e.errorText, LogLevel.warn);
+          _log(e.time, tr('app.src.rules'), e.errorText, LogLevel.warn);
           // Only the direct sets of the Russian preset failing changes much
           // at once. A set that was not updated ("kept"), damaged on disk or
           // not had from the chosen source (the copy built into CoreShift
@@ -227,25 +227,26 @@ extension AppStateEvents on AppState {
           const quiet = {'kept', 'damaged', 'fallback', 'pending'};
           if (live && e.line == 'skipped') {
             final why = switch (e.code) {
-              'rules.skipped.missing' => 'такой категории нет в базе',
-              'rules.skipped.ambiguous' => 'название подходит нескольким категориям',
-              'rules.skipped.empty' => 'в категории нет записей',
-              _ => 'база не загрузилась',
+              'rules.skipped.missing' => tr('app.rules.why.missing'),
+              'rules.skipped.ambiguous' => tr('app.rules.why.ambiguous'),
+              'rules.skipped.empty' => tr('app.rules.why.empty'),
+              _ => tr('app.rules.why.failed'),
             };
-            toast(
-              'Правило «${e.reason}» ${e.code == 'rules.skipped.failed' || e.code == 'rules.skipped.pending' || e.code.isEmpty ? 'пока ' : ''}не действует: $why. Подробности в журнале.',
-              ToastKind.err,
-            );
+            final yet = e.code == 'rules.skipped.failed' || e.code == 'rules.skipped.pending' || e.code.isEmpty;
+            toast(tr(yet ? 'app.rules.skippedYet' : 'app.rules.skipped', {'rule': e.reason, 'why': why}), ToastKind.err);
           } else if (live && !quiet.contains(e.line) && (e.reason == 'geosite-category-ru' || e.reason == 'geoip-ru')) {
-            toast('Базы российских сайтов не загрузились — они пойдут через туннель. Подробности в журнале.', ToastKind.err);
+            toast(tr('app.rules.geoFailed'), ToastKind.err);
           }
         } else {
-          final what = switch (e.line) {
-            'updated' => 'обновлена',
-            'builtin' => 'взята встроенная копия',
-            _ => 'загружена',
-          };
-          _log(e.time, 'правила', '${e.reason}: $what', LogLevel.info);
+          final line = tr(
+            switch (e.line) {
+              'updated' => 'app.rules.updated',
+              'builtin' => 'app.rules.builtin',
+              _ => 'app.rules.loaded',
+            },
+            {'rule': e.reason},
+          );
+          _log(e.time, tr('app.src.rules'), line, LogLevel.info);
         }
     }
   }
@@ -282,13 +283,13 @@ extension AppStateEvents on AppState {
   /// netwatch.go): the journal says so in words, a toast too as it happens.
   void _onNetworkEvent(Event e, bool live) {
     final (text, level, note) = switch (e.reason) {
-      'waiting' => ('сети нет: подключусь, как только она появится', LogLevel.warn, 'Нет сети — CoreShift подключится, когда она появится'),
-      'lost' => ('сеть пропала: VPN ждёт её, ядра и сервер не меняются', LogLevel.warn, 'Пропала сеть — VPN подождёт её'),
-      'back' => ('сеть вернулась', LogLevel.ok, 'Сеть вернулась'),
-      'reconnect' => ('сеть вернулась, но связь через сервер не восстановилась: переподключаюсь', LogLevel.swap, ''),
+      'waiting' => (tr('app.net.waiting'), LogLevel.warn, tr('app.net.waitingToast')),
+      'lost' => (tr('app.net.lost'), LogLevel.warn, tr('app.net.lostToast')),
+      'back' => (tr('app.net.back'), LogLevel.ok, tr('app.net.backToast')),
+      'reconnect' => (tr('app.net.reconnect'), LogLevel.swap, ''),
       _ => (e.line.isNotEmpty ? e.lineText : e.reason, LogLevel.info, ''),
     };
-    _log(e.time, 'сеть', text, level);
+    _log(e.time, tr('app.src.network'), text, level);
     if (live && note.isNotEmpty) toast(note, level == LogLevel.ok ? ToastKind.ok : ToastKind.info);
     _statusSoon();
   }
@@ -310,7 +311,7 @@ extension AppStateEvents on AppState {
           latency.remove(key);
         }
       }
-      _log(e.time, 'сервер', 'сервер «${e.from}» снова отвечает', LogLevel.ok);
+      _log(e.time, tr('app.src.server'), tr('app.server.ok', {'name': e.from}), LogLevel.ok);
       _notify();
       return;
     }
@@ -323,7 +324,7 @@ extension AppStateEvents on AppState {
     }
     _serverProblem = e.reason;
     final (title, body) = AppState.serverProblemText(e.reason, e.from);
-    _log(e.time, 'сервер', '$title${e.line.isEmpty ? '' : ' (${e.lineText})'}', LogLevel.err);
+    _log(e.time, tr('app.src.server'), '$title${e.line.isEmpty ? '' : ' (${e.lineText})'}', LogLevel.err);
     if (live) {
       toast(title, ToastKind.err);
       // Out of the window's sight: the desktop's tray, the phone's

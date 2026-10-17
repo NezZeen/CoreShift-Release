@@ -17,8 +17,8 @@ object Alerts {
     fun notify(context: Context, title: String, body: String) {
         val nm = context.getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(
-            NotificationChannel(CHANNEL, "Подписка", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                description = "Окончание срока и трафика подписки"
+            NotificationChannel(CHANNEL, Tr.t("Подписка", "Subscription"), NotificationManager.IMPORTANCE_DEFAULT).apply {
+                description = Tr.t("Окончание срока и трафика подписки", "The subscription running out of time or traffic")
             },
         )
         val open = PendingIntent.getActivity(context, 2, Intent(context, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)

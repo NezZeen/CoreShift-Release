@@ -62,7 +62,7 @@ extension AppStateSpeedTest on AppState {
     final vpn = status.state == ConnState.connected;
     speedTest = SpeedTestState(phase: SpeedPhase.latency, vpn: vpn, server: vpn ? status.node : '');
     _notify();
-    _logAction('тест скорости ${vpn ? 'через «${status.node}»' : 'без VPN'}');
+    _logAction(vpn ? tr('state.speed.logStartVpn', {'node': status.node}) : tr('state.speed.logStartPlain'));
     try {
       final r = SpeedResult.fromJson(await backend.call('POST', '/v1/speedtest') as Json);
       speedTest = SpeedTestState(
@@ -77,12 +77,21 @@ extension AppStateSpeedTest on AppState {
         testCountry: r.testCountry,
         at: DateTime.now(),
       );
-      final where = speedTest.testServerName.isEmpty ? '' : ', сервер теста ${[speedTest.testServerName, r.testCountry].where((s) => s.isNotEmpty).join(', ')}';
-      _log(DateTime.now(), 'скорость', 'загрузка ${_mbit(r.downloadBps)}, отдача ${_mbit(r.uploadBps)}, задержка ${r.latencyMs} мс$where', LogLevel.ok);
+      final where = speedTest.testServerName.isEmpty
+          ? ''
+          : tr('state.speed.logTestServer', {
+              'name': [speedTest.testServerName, r.testCountry].where((s) => s.isNotEmpty).join(', '),
+            });
+      _log(
+        DateTime.now(),
+        tr('state.src.speed'),
+        tr('state.speed.logDone', {'down': _mbit(r.downloadBps), 'up': _mbit(r.uploadBps), 'ms': r.latencyMs, 'where': where}),
+        LogLevel.ok,
+      );
     } on ApiError catch (e) {
       if (e.status == 404 || e.status == 405) speedUnsupported = true;
-      speedTest = SpeedTestState(phase: SpeedPhase.failed, vpn: vpn, error: e.status == 409 ? 'Тест скорости уже идёт' : speedTestError(e.message));
-      _log(DateTime.now(), 'скорость', 'тест не удался: ${e.message}', LogLevel.err);
+      speedTest = SpeedTestState(phase: SpeedPhase.failed, vpn: vpn, error: e.status == 409 ? tr('state.speed.alreadyRunning') : speedTestError(e.message));
+      _log(DateTime.now(), tr('state.src.speed'), tr('state.speed.logFailed', {'message': e.message}), LogLevel.err);
     } catch (e) {
       speedTest = SpeedTestState(phase: SpeedPhase.failed, vpn: vpn, error: speedTestError('$e'));
       if (e is DaemonOffline) _lost(e);
@@ -103,5 +112,5 @@ extension AppStateSpeedTest on AppState {
     _notify();
   }
 
-  static String _mbit(int bps) => '${(bps * 8 / 1e6).toStringAsFixed(1)} Мбит/с';
+  static String _mbit(int bps) => tr('state.speed.mbit', {'v': (bps * 8 / 1e6).toStringAsFixed(1)});
 }

@@ -6,6 +6,7 @@ import 'package:tray_manager/tray_manager.dart' as tray;
 import 'package:window_manager/window_manager.dart';
 
 import '../api/models.dart';
+import '../l10n/strings.dart';
 import '../state/app_state.dart';
 import '../ui/countries.dart' show cleanNodeName;
 import '../ui/theme.dart';
@@ -150,7 +151,7 @@ class _DesktopFrameState extends State<DesktopFrame> with WindowListener {
     await windowManager.hide();
     if (widget.state.status.active) {
       try {
-        await widget.state.disconnect(from: 'выход из приложения').timeout(const Duration(seconds: 5));
+        await widget.state.disconnect(from: tr('tray.from.exit')).timeout(const Duration(seconds: 5));
       } catch (_) {
         // The service disconnects by itself once the app is gone.
       }
@@ -187,20 +188,11 @@ class _DesktopFrameState extends State<DesktopFrame> with WindowListener {
     if (state.prefs['tray_hint_shown'] == true) return;
     state.setPref('tray_hint_shown', true);
     if (Platform.isLinux) {
-      Process.run('notify-send', [
-        '-a',
-        'CoreShift',
-        'CoreShift работает в трее',
-        'Окно свёрнуто, VPN работает как прежде. Чтобы выйти совсем, откройте меню значка CoreShift в трее → «Выход».',
-      ]).ignore();
+      Process.run('notify-send', ['-a', 'CoreShift', tr('tray.hint.title'), tr('tray.hint.linux')]).ignore();
     } else if (Platform.isWindows) {
       final id = _tray?.icon.getId();
       if (id != null) {
-        showTrayBalloon(
-          id,
-          'CoreShift работает в трее',
-          'Окно свёрнуто, VPN работает как прежде. Чтобы выйти совсем, нажмите на значок правой кнопкой → «Выход».',
-        );
+        showTrayBalloon(id, tr('tray.hint.title'), tr('tray.hint.windows'));
       }
     }
   }
@@ -416,6 +408,10 @@ class _Tray {
   final AppState state;
   final tray.TrayIcon icon;
   final tray.MenuItem toggle;
+  // The items worded by the language: it may change while the app runs.
+  final tray.MenuItem? openItem;
+  final tray.MenuItem? serverItem;
+  final tray.MenuItem? exitItem;
   // The native menu stays alive only while something refers to it.
   final tray.Menu menu;
   final tray.Menu servers;
@@ -424,10 +420,11 @@ class _Tray {
   String _image = '';
   String _tip = '';
   String _serversShown = '';
+  Lang _lang = lang;
 
   final VoidCallback onOpen;
 
-  _Tray._(this.state, this.icon, this.menu, this.toggle, this.servers, this.onOpen);
+  _Tray._(this.state, this.icon, this.menu, this.toggle, this.servers, this.onOpen, {this.openItem, this.serverItem, this.exitItem});
 
   /// How many servers the menu offers: the first of the selected
   /// subscription, in its order.
@@ -447,20 +444,20 @@ class _Tray {
       return i;
     }
 
-    item('Открыть CoreShift', onOpen);
+    final openItem = item(tr('tray.open'), onOpen);
     menu.addSeparator();
     late final _Tray t;
-    final toggle = item('Подключить', () => t._toggle());
+    final toggle = item(tr('tray.connect'), () => t._toggle());
     final servers = tray.Menu.create();
-    final serverItem = tray.MenuItem.createWithLabelAndType('Сервер', tray.MenuItemType.submenu);
+    final serverItem = tray.MenuItem.createWithLabelAndType(tr('tray.server'), tray.MenuItemType.submenu);
     if (servers != null && serverItem != null) {
       serverItem.submenu = servers;
       menu.addItem(serverItem);
     }
     menu.addSeparator();
-    item('Выход', onExit);
+    final exitItem = item(tr('tray.exit'), onExit);
     if (toggle == null || servers == null) return null;
-    t = _Tray._(state, icon, menu, toggle, servers, onOpen);
+    t = _Tray._(state, icon, menu, toggle, servers, onOpen, openItem: openItem, serverItem: serverItem, exitItem: exitItem);
 
     icon.setContextMenu(menu);
     if (Platform.isLinux) {
@@ -483,31 +480,33 @@ class _Tray {
     state.addListener(t._update);
     // The tooltip's speed, the window shown or not.
     state.speedNow.addListener(t._update);
+    // The menu is worded by the language: another one rewords it.
+    appLang.addListener(t._update);
     return t;
   }
 
   void _toggle() {
     if (state.busy || !state.online) return;
     if (state.status.active) {
-      state.disconnect(from: 'трей');
+      state.disconnect(from: tr('tray.from.tray'));
     } else if (!state.selection.available) {
       // Nothing to connect to yet: show the window, where a server is picked.
       onOpen();
     } else {
-      state.connect(from: 'трей');
+      state.connect(from: tr('tray.from.tray'));
     }
   }
 
   void _update() {
     final st = state.status;
     final (image, tip) = switch (st.state) {
-      _ when !state.online => ('idle', 'CoreShift — служба не запущена'),
-      ConnState.connected => ('connected', 'CoreShift — подключено${st.node.isEmpty ? '' : ': ${st.node}'}${_speed()}'),
-      ConnState.connecting => ('busy', 'CoreShift — подключение…'),
-      ConnState.disconnecting => ('busy', 'CoreShift — отключение…'),
-      ConnState.failed => ('idle', 'CoreShift — ошибка подключения'),
-      ConnState.noNetwork => ('busy', 'CoreShift — нет сети, ждём её${st.node.isEmpty ? '' : ': ${st.node}'}'),
-      ConnState.idle => ('idle', 'CoreShift — отключено'),
+      _ when !state.online => ('idle', tr('tray.tip.noService')),
+      ConnState.connected => ('connected', '${tr(st.node.isEmpty ? 'tray.tip.connected' : 'tray.tip.connectedTo', {'node': st.node})}${_speed()}'),
+      ConnState.connecting => ('busy', tr('tray.tip.connecting')),
+      ConnState.disconnecting => ('busy', tr('tray.tip.disconnecting')),
+      ConnState.failed => ('idle', tr('tray.tip.failed')),
+      ConnState.noNetwork => ('busy', tr(st.node.isEmpty ? 'tray.tip.noNetwork' : 'tray.tip.noNetworkTo', {'node': st.node})),
+      ConnState.idle => ('idle', tr('tray.tip.idle')),
     };
     // The picture is loaded again only when it changes: the tooltip's speed
     // changes with every traffic sample, and loading the image each time
@@ -520,13 +519,20 @@ class _Tray {
       _tip = tip;
       icon.setTooltip(tip);
     }
-    final key = '$image|${st.active}|${state.busy}|${state.online}';
+    final key = '$image|${st.active}|${state.busy}|${state.online}|${lang.name}';
     var menuChanged = false;
+    if (lang != _lang) {
+      _lang = lang;
+      openItem?.label = tr('tray.open');
+      serverItem?.label = tr('tray.server');
+      exitItem?.label = tr('tray.exit');
+      menuChanged = true;
+    }
     if (key != _shown) {
       _shown = key;
-      final label = st.active ? 'Отключить' : 'Подключить';
+      final label = st.active ? tr('tray.disconnect') : tr('tray.connect');
       final enabled = state.online && !state.busy;
-      menuChanged = toggle.label != label || toggle.isEnabled != enabled;
+      menuChanged = menuChanged || toggle.label != label || toggle.isEnabled != enabled;
       toggle.label = label;
       toggle.isEnabled = enabled;
     }
@@ -543,7 +549,8 @@ class _Tray {
   /// to it, or moves the running connection there. Returns whether the list
   /// changed.
   bool _updateServers() {
-    final (list, key) = trayServers(state, max: _maxServers);
+    final (list, listKey) = trayServers(state, max: _maxServers);
+    final key = '$listKey|${lang.name}';
     if (key == _serversShown) return false;
     _serversShown = key;
     servers.clear();
@@ -553,7 +560,7 @@ class _Tray {
     _serverItems.clear();
     for (final (sub, n) in list) {
       final l = state.latencyOf(sub.id, n.fingerprint);
-      final label = '${cleanNodeName(n.name)}${l != null && l.ok ? '   ${l.ms} мс' : ''}';
+      final label = '${cleanNodeName(n.name)}${l != null && l.ok ? '   ${tr('tray.ms', {'ms': l.ms})}' : ''}';
       final i = tray.MenuItem.createWithLabelAndType(label, tray.MenuItemType.checkbox);
       if (i == null) continue;
       i.state = state.isSelected(sub, n) ? tray.MenuItemState.checked : tray.MenuItemState.unchecked;
@@ -561,7 +568,7 @@ class _Tray {
       i.addListener((e) {
         if (e is tray.MenuItemClickedEvent) {
           Timer.run(() {
-            if (state.online && !state.busy) state.connect(subscription: sub.id, fingerprint: n.fingerprint, name: n.name, from: 'трей');
+            if (state.online && !state.busy) state.connect(subscription: sub.id, fingerprint: n.fingerprint, name: n.name, from: tr('tray.from.tray'));
           });
         }
       });
@@ -569,7 +576,7 @@ class _Tray {
       _serverItems.add(i);
     }
     if (list.isEmpty) {
-      final i = tray.MenuItem.createWithLabelAndType('Нет серверов', tray.MenuItemType.normal);
+      final i = tray.MenuItem.createWithLabelAndType(tr('tray.noServers'), tray.MenuItemType.normal);
       if (i != null) {
         i.isEnabled = false;
         servers.addItem(i);
@@ -589,6 +596,7 @@ class _Tray {
   void dispose() {
     state.removeListener(_update);
     state.speedNow.removeListener(_update);
+    appLang.removeListener(_update);
     icon.dispose();
   }
 }

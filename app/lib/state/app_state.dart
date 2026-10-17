@@ -15,7 +15,6 @@ import '../platform/platform.dart' as platform;
 import 'errors.dart';
 import 'import_link.dart';
 import 'leak.dart';
-import 'plural.dart';
 import 'redact.dart';
 import 'system_proxy_sync.dart';
 import '../version.dart';
@@ -188,14 +187,12 @@ class AppState extends ChangeNotifier {
 
   /// The service's version for [versionMismatch]: two builds of one version
   /// would read «0.7.1» against «0.7.1», and the build number is not shown.
-  String get serviceVersionLabel => info.version == version.version ? 'другая сборка' : info.buildVersion.label;
+  String get serviceVersionLabel => info.version == version.version ? tr('app.version.otherBuild') : info.buildVersion.label;
 
   /// What to do about [versionMismatch]. A service newer than the window is
   /// the usual case after an update with the window left open (a Linux
   /// package restarts only the service): restarting the window is enough.
-  String get versionMismatchAdvice => info.buildVersion.compareTo(version) > 0
-      ? 'Служба уже обновлена, а окно CoreShift открыто со старой сборки. Перезапустите CoreShift: «Выход» в меню значка, затем откройте снова.'
-      : 'Служба не обновилась вместе с приложением. Переустановите CoreShift целиком.';
+  String get versionMismatchAdvice => info.buildVersion.compareTo(version) > 0 ? tr('app.version.adviceRestart') : tr('app.version.adviceReinstall');
 
   bool online = false;
   bool loaded = false;
@@ -398,20 +395,14 @@ class AppState extends ChangeNotifier {
 
   /// The heading and the advice for a [Status.problem] of server [name].
   static (String, String) serverProblemText(String problem, String name) {
-    final server = name.isEmpty ? 'Сервер' : 'Сервер «$name»';
+    final server = name.isEmpty ? tr('app.problem.server') : tr('app.problem.serverNamed', {'name': name});
     return switch (problem) {
-      'server-down' => ('$server не отвечает', 'Интернет работает, а сервер нет: он выключен или заблокирован. Выберите другой сервер.'),
-      'offline' => ('Нет связи с интернетом', 'Не отвечают ни сервер, ни известные сайты: дело в сети, а не в VPN. Проверьте Wi-Fi или мобильный интернет.'),
-      'server-up' => (
-        name.isEmpty ? 'VPN через сервер не работает' : 'VPN через «$name» не работает',
-        'Сервер на связи, но соединение через него не проходит: его блокируют или изменились его настройки. Обновите подписку или выберите другой сервер.',
-      ),
-      'unknown' => (
-        name.isEmpty ? 'Связь через сервер не проходит' : 'Связь через «$name» не проходит',
-        'Не удалось выяснить, виноват сервер или сеть. Проверьте интернет; если он работает — выберите другой сервер или переподключитесь.',
-      ),
+      'server-down' => (tr('app.problem.down.title', {'server': server}), tr('app.problem.down.body')),
+      'offline' => (tr('app.problem.offline.title'), tr('app.problem.offline.body')),
+      'server-up' => (name.isEmpty ? tr('app.problem.up.title') : tr('app.problem.up.titleNamed', {'name': name}), tr('app.problem.up.body')),
+      'unknown' => (name.isEmpty ? tr('app.problem.unknown.title') : tr('app.problem.unknown.titleNamed', {'name': name}), tr('app.problem.unknown.body')),
       // Checks fail, and the engine has not looked why yet.
-      _ => ('$server не отвечает', 'Связь через него не проходит: он недоступен или заблокирован. Выберите другой сервер или переподключитесь.'),
+      _ => (tr('app.problem.down.title', {'server': server}), tr('app.problem.other.body')),
     };
   }
 
@@ -428,33 +419,33 @@ class AppState extends ChangeNotifier {
   static bool _chatter(LogLine l) => l.output && l.level == LogLevel.info;
 
   static String _stateText(String s) => switch (s) {
-    'connecting' => 'подключение…',
-    'no-network' || 'noNetwork' => 'нет сети, жду её',
-    'connected' => 'подключено',
-    'disconnecting' => 'отключение…',
-    'failed' => 'ошибка',
-    _ => 'отключено',
+    'connecting' => tr('app.state.connecting'),
+    'no-network' || 'noNetwork' => tr('app.state.noNetwork'),
+    'connected' => tr('app.state.connected'),
+    'disconnecting' => tr('app.state.disconnecting'),
+    'failed' => tr('app.state.failed'),
+    _ => tr('app.state.idle'),
   };
 
   static String _coreStateText(String s) => switch (s) {
-    'starting' => 'запуск',
-    'connected' => 'работает',
-    'connecting' => 'проверка связи',
-    'swapping' => 'переключение',
-    'failed' => 'все отказали',
-    'idle' => 'остановлены',
+    'starting' => tr('app.coreState.starting'),
+    'connected' => tr('app.coreState.connected'),
+    'connecting' => tr('app.coreState.connecting'),
+    'swapping' => tr('app.coreState.swapping'),
+    'failed' => tr('app.coreState.failed'),
+    'idle' => tr('app.coreState.idle'),
     _ => s,
   };
 
   static String reasonText(String r) => _reasonText(r);
 
   static String _reasonText(String r) => switch (r) {
-    'start-failed' => 'не запустилось',
-    'exited' => 'процесс завершился',
-    'hung' => 'завис',
-    'health-check' || 'health' => 'нет связи',
-    'latency' => 'высокая задержка',
-    'return-to-primary' || 'return' => 'возврат к основному',
+    'start-failed' => tr('app.reason.startFailed'),
+    'exited' => tr('app.reason.exited'),
+    'hung' => tr('app.reason.hung'),
+    'health-check' || 'health' => tr('app.reason.health'),
+    'latency' => tr('app.reason.latency'),
+    'return-to-primary' || 'return' => tr('app.reason.return'),
     _ => r,
   };
 
@@ -464,11 +455,11 @@ class AppState extends ChangeNotifier {
   };
 
   static String _layerText(String kind, String reason) => switch ((kind, reason)) {
-    ('tun', 'up') => 'интерфейс поднят',
-    ('tun', 'down') => 'интерфейс остановлен',
-    ('dns', 'applied') => 'системный DNS направлен в туннель',
-    ('dns', 'reverted') => 'системный DNS восстановлен',
-    ('dns', 'network-changed') => 'сеть сменилась, прежний DNS недоступен — переподключение',
+    ('tun', 'up') => tr('app.layer.tunUp'),
+    ('tun', 'down') => tr('app.layer.tunDown'),
+    ('dns', 'applied') => tr('app.layer.dnsApplied'),
+    ('dns', 'reverted') => tr('app.layer.dnsReverted'),
+    ('dns', 'network-changed') => tr('app.layer.dnsNetworkChanged'),
     _ => reason,
   };
 

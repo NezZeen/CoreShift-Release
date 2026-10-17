@@ -33,7 +33,7 @@ class DnsCheck {
 /// the home page then says so (see [dnsFallbackHint]).
 extension AppStateDnsCheck on AppState {
   /// The title of the setting behind [which] ("direct" or "remote").
-  static String dnsName(String which) => which == 'direct' ? 'DNS напрямую' : 'DNS через VPN';
+  static String dnsName(String which) => tr(which == 'direct' ? 'dnscheck.name.direct' : 'dnscheck.name.remote');
 
   String _dnsSetting(String which) => setting('dns.$which', '').trim();
 
@@ -67,7 +67,7 @@ extension AppStateDnsCheck on AppState {
       if (e.status == 404 || e.status == 405) {
         dnsCheckUnsupported = true;
       } else {
-        result = DnsCheck(server: server, status: 'fail', text: 'не удалось проверить: ${e.message}');
+        result = DnsCheck(server: server, status: 'fail', text: tr('dnscheck.failed', {'error': e.message}));
       }
     } catch (e) {
       if (e is DaemonOffline) _lost(e);
@@ -109,11 +109,11 @@ extension AppStateDnsCheck on AppState {
     if (e.reason == 'restored') {
       _dnsDown = _dnsDownWhy = '';
       _dnsDownDismissed = false;
-      if (e.line.isNotEmpty) _log(e.time, 'сеть', e.lineText, LogLevel.ok);
+      if (e.line.isNotEmpty) _log(e.time, tr('dnscheck.log.net'), e.lineText, LogLevel.ok);
     } else {
       _dnsDown = '${e.args['addr'] ?? ''}'.isEmpty ? 'DNS' : '${e.args['addr']}';
       _dnsDownWhy = engineJson(e.args['why']) ?? '';
-      if (e.line.isNotEmpty) _log(e.time, 'сеть', e.lineText, LogLevel.warn);
+      if (e.line.isNotEmpty) _log(e.time, tr('dnscheck.log.net'), e.lineText, LogLevel.warn);
     }
     _statusSoon();
     _notify();

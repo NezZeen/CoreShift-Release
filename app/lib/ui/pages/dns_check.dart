@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../../l10n/strings.dart';
 import '../../state/app_state.dart';
 import '../theme.dart';
 
 /// What to know before typing a DNS of one's own: where it is safe from
 /// the provider.
-const dnsHintText =
-    'Свой DNS с блокировкой рекламы (например, AdGuard) лучше указывать в поле «через VPN»: туда провайдер не дотянется. '
-    'В поле «напрямую» его может заблокировать провайдер или белый список.';
+String get dnsHintText => tr('dnscheck.hint');
 
 /// The hint above the DNS fields of the settings.
 class DnsHint extends StatelessWidget {
@@ -64,9 +63,9 @@ class DnsCheckLine extends StatelessWidget {
       _ => (Icons.schedule, p.muted),
     };
     final text = shown == null
-        ? 'ещё не проверен'
+        ? tr('dnscheck.not_yet')
         : shown.running
-        ? 'проверяю…'
+        ? tr('dnscheck.running')
         : shown.text;
     return Padding(
       key: ValueKey('dns-check-$which'),
@@ -94,7 +93,7 @@ class DnsCheckLine extends StatelessWidget {
             InkWell(
               onTap: state.online ? () => state.checkDns(which) : null,
               child: Text(
-                shown == null ? 'Проверить' : 'Проверить ещё раз',
+                tr(shown == null ? 'dnscheck.check' : 'dnscheck.again'),
                 style: TextStyle(fontSize: 12, color: p.accentInk, fontWeight: FontWeight.w600),
               ),
             ),

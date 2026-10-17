@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../../l10n/strings.dart';
 import '../../platform/platform.dart' as platform;
 import '../../state/app_state.dart';
 import '../theme.dart';
@@ -18,16 +19,16 @@ class AndroidAppsPanel extends StatelessWidget {
     final p = context.pal;
     final mode = state.setting('routing.app_filter', 'all');
     final apps = state.setting<List>('routing.filter_apps', const []).cast<String>();
-    const choices = [
-      ('all', 'Все приложения', 'Все приложения идут через VPN по правилам ниже'),
-      ('exclude', 'Кроме выбранных', 'Выбранные работают напрямую, как без VPN'),
-      ('only', 'Только выбранные', 'Через VPN идут только они, остальные напрямую'),
+    final choices = [
+      ('all', tr('apps.android.all'), tr('apps.android.all.desc')),
+      ('exclude', tr('apps.android.exclude'), tr('apps.android.exclude.desc')),
+      ('only', tr('apps.android.only'), tr('apps.android.only.desc')),
     ];
     return Panel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const PanelTitle('Приложения'),
+          PanelTitle(tr('apps.android.title')),
           for (final (value, title, text) in choices)
             InkWell(
               borderRadius: BorderRadius.circular(10),
@@ -57,12 +58,12 @@ class AndroidAppsPanel extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    apps.isEmpty ? (mode == 'only' ? 'Ничего не выбрано: пока через VPN идут все' : 'Ничего не выбрано') : 'Выбрано: ${apps.length}',
+                    apps.isEmpty ? tr(mode == 'only' ? 'apps.android.none.only' : 'apps.android.none') : tr('apps.android.chosen', {'n': apps.length}),
                     style: TextStyle(fontSize: 13, color: apps.isEmpty && mode == 'only' ? p.warnInk : p.text),
                   ),
                 ),
                 Btn(
-                  label: 'Выбрать',
+                  label: tr('apps.android.select'),
                   icon: Icons.apps,
                   small: true,
                   onPressed: () => Navigator.of(context).push(
@@ -135,12 +136,12 @@ class _AppPickerState extends State<_AppPicker> {
         .toList();
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.only ? 'Через VPN' : 'Без VPN', style: dialogTitle),
+        title: Text(tr(widget.only ? 'apps.android.picker.only' : 'apps.android.picker.exclude'), style: dialogTitle),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 12),
             child: Center(
-              child: Btn(label: 'Готово', kind: BtnKind.primary, small: true, loading: saving, onPressed: _save),
+              child: Btn(label: tr('apps.done'), kind: BtnKind.primary, small: true, loading: saving, onPressed: _save),
             ),
           ),
         ],
@@ -152,15 +153,15 @@ class _AppPickerState extends State<_AppPicker> {
             child: TextField(
               onChanged: (v) => setState(() => query = v.trim().toLowerCase()),
               decoration: InputDecoration(
-                hintText: 'Поиск приложения',
+                hintText: tr('apps.android.picker.search'),
                 prefixIcon: Icon(Icons.search, size: 18, color: p.dim),
               ),
             ),
           ),
           SwitchListTile(
             dense: true,
-            title: const Text('Показывать системные', style: TextStyle(fontSize: 13)),
-            subtitle: Text('Выбрано: ${chosen.length}', style: TextStyle(fontSize: 12, color: p.muted)),
+            title: Text(tr('apps.android.picker.system'), style: const TextStyle(fontSize: 13)),
+            subtitle: Text(tr('apps.android.chosen', {'n': chosen.length}), style: TextStyle(fontSize: 12, color: p.muted)),
             value: system,
             onChanged: (v) => setState(() => system = v),
           ),
@@ -169,7 +170,7 @@ class _AppPickerState extends State<_AppPicker> {
                 ? const Center(child: CircularProgressIndicator())
                 : shown.isEmpty
                 ? Center(
-                    child: Text('Ничего не найдено', style: TextStyle(color: p.dim)),
+                    child: Text(tr('apps.android.picker.empty'), style: TextStyle(color: p.dim)),
                   )
                 : ListView.builder(
                     itemCount: shown.length,

@@ -19,14 +19,14 @@ extension AppStateDirectHint on AppState {
 
   void _onDirectEvent(Event e) {
     _directBlocked = true;
-    if (e.line.isNotEmpty) _log(e.time, 'сеть', e.lineText, LogLevel.warn);
+    if (e.line.isNotEmpty) _log(e.time, tr('state.src.network'), e.lineText, LogLevel.warn);
     _notify();
   }
 
   /// Sends everything through the VPN: the mode «Всё через VPN», Russian
   /// sites no longer direct; then reconnects, so that it applies at once.
   Future<void> fixDirect() async {
-    _logAction('всё через VPN: прямые соединения в этой сети не проходят');
+    _logAction(tr('state.direct.logAllVpn'));
     final err = await updateSettings((s) {
       final r = (s['routing'] as Map?) ?? (s['routing'] = <String, dynamic>{});
       r['mode'] = 'all';

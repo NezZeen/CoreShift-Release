@@ -186,7 +186,7 @@ class MainActivity : FlutterActivity() {
         }
         if (saved == null) send.putExtra(Intent.EXTRA_TEXT, text)
         try {
-            startActivity(Intent.createChooser(send, "Отправить журнал"))
+            startActivity(Intent.createChooser(send, Tr.t("Отправить журнал", "Send the journal")))
         } catch (e: ActivityNotFoundException) {
             Log.w("CoreShift", "no app to send the journal: $e")
         }

@@ -5,6 +5,8 @@
 // leaves a guard and a sign-in entry behind in case the app or the service
 // does not get to put them back.
 
+import '../l10n/strings.dart';
+
 /// What `coreshiftd sysproxy` reported.
 class ProxyReport {
   final String action;
@@ -52,24 +54,20 @@ List<(String, bool)> proxyReportLines(ProxyReport r, {required String address}) 
   final out = <(String, bool)>[];
   if (r.action == 'apply') {
     if (r.applied.isNotEmpty) {
-      out.add(('системный прокси включён (${_names(r.applied)}): браузеры и программы идут через $address; прежние настройки сохранены', false));
+      out.add((tr('proxy.report.applied', {'names': _names(r.applied), 'address': address}), false));
     } else if (r.backends.isEmpty) {
-      out.add((
-        'системный прокси не настроен: рабочий стол не поддерживается (нужен GNOME или KDE). '
-            'CoreShift работает как обычный прокси: укажите в программах SOCKS5 или HTTP $address',
-        true,
-      ));
+      out.add((tr('proxy.report.unsupported', {'address': address}), true));
       return out;
     }
   } else {
-    if (r.restored.isNotEmpty) out.add(('системный прокси выключен, прежние настройки восстановлены (${_names(r.restored)})', false));
-    if (r.changed.isNotEmpty) out.add(('системный прокси уже изменён вручную (${_names(r.changed)}): оставлен как есть', false));
+    if (r.restored.isNotEmpty) out.add((tr('proxy.report.restored', {'names': _names(r.restored)}), false));
+    if (r.changed.isNotEmpty) out.add((tr('proxy.report.changed', {'names': _names(r.changed)}), false));
   }
   for (final e in r.errors) {
-    out.add(('системный прокси: $e', true));
+    out.add((tr('proxy.report.error', {'error': e}), true));
   }
   if (r.action != 'apply' && r.pending && r.errors.isNotEmpty) {
-    out.add(('прежние настройки прокси вернутся при следующем входе в систему или запуске CoreShift', true));
+    out.add((tr('proxy.report.pending'), true));
   }
   return out;
 }

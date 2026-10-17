@@ -53,47 +53,53 @@ extension AppStateSessionLog on AppState {
     final version = info.versionOf(core);
     final route = [
       if (!on('tun')) _proxyModeName,
-      setting('routing.mode', 'all') == 'selected' ? 'только выбранное через VPN' : 'всё через VPN',
-      if (on('routing.russia_direct')) 'Россия напрямую',
+      tr(setting('routing.mode', 'all') == 'selected' ? 'app.session.routeSelected' : 'app.session.routeAll'),
+      if (on('routing.russia_direct')) tr('app.session.russiaDirect'),
     ].join(', ');
-    final dns = ['DNS через VPN', if (on('dns.fake_ip')) 'Fake-IP'].join(', ');
+    final dns = [tr('app.session.dns'), if (on('dns.fake_ip')) tr('app.session.fakeIp')].join(', ');
     final parts = [
-      if (selection.name.isNotEmpty) '«${selection.name}»',
+      if (selection.name.isNotEmpty) tr('app.node.quoted', {'name': selection.name}),
       if (node != null && node.protocol.isNotEmpty) _protocolName(node.protocol),
       if (core.isNotEmpty) [AppState.coreName(core), if (version.isNotEmpty) version].join(' '),
       route,
       dns,
-      on('ipv6') ? 'IPv6 через VPN' : 'IPv6 выключен',
+      tr(on('ipv6') ? 'app.session.ipv6On' : 'app.session.ipv6Off'),
     ];
-    final when = took == null || took.isNegative || took > const Duration(minutes: 5) ? '' : ' за ${_seconds(took)}';
-    return 'подключено$when: ${parts.join(' · ')}';
+    final shown = took == null || took.isNegative || took > const Duration(minutes: 5) ? null : _seconds(took);
+    return shown == null
+        ? tr('app.session.connected', {'parts': parts.join(' · ')})
+        : tr('app.session.connectedIn', {'took': shown, 'parts': parts.join(' · ')});
   }
 
   /// «сессия: 2 ч 14 мин · ↓ 1.8 ГБ ↑ 120 МБ · «Amsterdam», sing-box».
   static String sessionText({required Duration lasted, required int down, required int up, String node = '', String core = ''}) {
-    final via = [if (node.isNotEmpty) '«$node»', if (core.isNotEmpty) AppState.coreName(core)].join(', ');
-    return 'сессия: ${_lasted(lasted)} · ↓ ${_bytes(down)} ↑ ${_bytes(up)}${via.isEmpty ? '' : ' · $via'}';
+    final via = [
+      if (node.isNotEmpty) tr('app.node.quoted', {'name': node}),
+      if (core.isNotEmpty) AppState.coreName(core),
+    ].join(', ');
+    final args = {'label': tr('app.session.label'), 'lasted': _lasted(lasted), 'down': _bytes(down), 'up': _bytes(up), 'via': via};
+    return tr(via.isEmpty ? 'app.session.summary' : 'app.session.summaryVia', args);
   }
 
   static String _seconds(Duration d) {
     final s = d.inMilliseconds / 1000;
-    return '${s < 10 ? s.toStringAsFixed(1) : s.round()} с';
+    return tr('app.unit.s', {'n': s < 10 ? s.toStringAsFixed(1) : s.round()});
   }
 
   static String _lasted(Duration d) {
-    if (d.inMinutes < 1) return '${max(0, d.inSeconds)} с';
-    if (d.inHours < 1) return '${d.inMinutes} мин';
+    if (d.inMinutes < 1) return tr('app.unit.s', {'n': max(0, d.inSeconds)});
+    if (d.inHours < 1) return tr('app.unit.min', {'n': d.inMinutes});
     final m = d.inMinutes % 60;
-    return '${d.inHours} ч${m == 0 ? '' : ' $m мин'}';
+    return m == 0 ? tr('app.unit.h', {'n': d.inHours}) : tr('app.unit.hmin', {'h': d.inHours, 'm': m});
   }
 
   /// As the home page counts traffic (formatBytes), kept here as the state
   /// does not reach into the UI.
   static String _bytes(num b) {
-    if (b >= 1e12) return '${(b / 1e12).toStringAsFixed(1)} ТБ';
-    if (b >= 1e9) return '${(b / 1e9).toStringAsFixed(b >= 1e11 ? 0 : 1)} ГБ';
-    if (b >= 1e6) return '${(b / 1e6).toStringAsFixed(0)} МБ';
-    return '${(b / 1e3).toStringAsFixed(0)} КБ';
+    if (b >= 1e12) return tr('app.unit.tb', {'n': (b / 1e12).toStringAsFixed(1)});
+    if (b >= 1e9) return tr('app.unit.gb', {'n': (b / 1e9).toStringAsFixed(b >= 1e11 ? 0 : 1)});
+    if (b >= 1e6) return tr('app.unit.mb', {'n': (b / 1e6).toStringAsFixed(0)});
+    return tr('app.unit.kb', {'n': (b / 1e3).toStringAsFixed(0)});
   }
 
   static String _protocolName(String p) => switch (p) {

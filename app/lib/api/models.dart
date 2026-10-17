@@ -1,6 +1,7 @@
 // Types mirroring the daemon's JSON API (engine/internal/service/api*.go).
 
 import '../l10n/engine_strings.dart';
+import '../l10n/strings.dart';
 import '../version.dart';
 
 typedef Json = Map<String, dynamic>;
@@ -485,7 +486,7 @@ class Subscription {
   factory Subscription._fromJson(Json j, List<NodeView> nodes, List<NodeView> hidden) => Subscription(
     id: j['id'] ?? '',
     name: j['name'] ?? '',
-    displayName: _placeholderNames[j['display_name']] ?? j['display_name'] ?? '',
+    displayName: _placeholderName(j['display_name']) ?? j['display_name'] ?? '',
     url: j['url'] ?? '',
     insecure: j['insecure'] == true,
     userAgent: j['user_agent'] ?? '',
@@ -728,7 +729,11 @@ class DaemonInfo {
 }
 
 /// The daemon's English names for an unnamed subscription.
-const _placeholderNames = {'Local nodes': 'Мои серверы', 'Subscription': 'Подписка'};
+String? _placeholderName(Object? name) => switch (name) {
+  'Local nodes' => tr('fmt.models.localNodes'),
+  'Subscription' => tr('fmt.models.subscription'),
+  _ => null,
+};
 
 /// Whether [url] is a release page on GitHub, or on its mirror on GitLab,
 /// the only addresses an announced update (Linux) may send the user to.

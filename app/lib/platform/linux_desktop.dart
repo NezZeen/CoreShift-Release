@@ -4,6 +4,9 @@
 
 import 'dart:io';
 
+import '../l10n/strings.dart';
+import 'api_access.dart' show accessDeniedPrefix;
+
 /// The desktop entry's id: the GTK application id of linux/CMakeLists.txt,
 /// so that docks match the window to dev.coreshift.coreshift.desktop.
 const desktopId = 'dev.coreshift.coreshift';
@@ -12,9 +15,7 @@ const desktopId = 'dev.coreshift.coreshift';
 const apiGroup = 'coreshift';
 
 /// What to tell a user who may not read the daemon's api.json.
-const groupHint =
-    'Нет доступа к службе CoreShift: ваш пользователь не в группе $apiGroup. '
-    'Выполните в терминале «sudo usermod -aG $apiGroup \$USER», затем выйдите из системы и войдите снова.';
+String get groupHint => tr('platform.access.linux', {'prefix': accessDeniedPrefix, 'group': apiGroup});
 
 /// Where the autostart entry lives: $XDG_CONFIG_HOME/autostart, by default
 /// ~/.config/autostart.
@@ -34,7 +35,10 @@ String desktopExecArg(String arg) {
   return '"${quoted.replaceAll(r'\', r'\\').replaceAll('%', '%%')}"';
 }
 
-/// The autostart entry: CoreShift in the tray when the user signs in.
+/// The autostart entry: CoreShift in the tray when the user signs in. The
+/// entry is a file for the session's autostart list, not a text of the
+/// window: its comment is said in English, with the Russian under the
+/// standard `Comment[ru]` key, and the desktop picks by its own locale.
 ///
 /// TryExec makes the session skip it once CoreShift is removed: a package
 /// cannot delete files in the users' homes, so the entry outlives it.
@@ -42,7 +46,8 @@ String autostartEntry(String exe) =>
     '''[Desktop Entry]
 Type=Application
 Name=CoreShift
-Comment=VPN-клиент CoreShift в трее
+Comment=CoreShift VPN client in the tray
+Comment[ru]=VPN-клиент CoreShift в трее
 TryExec=${exe.replaceAll(r'\', r'\\')}
 Exec=${desktopExecArg(exe)} --tray
 Icon=coreshift
@@ -112,15 +117,15 @@ Future<bool> trayAvailable() async {
 /// OpenRC, runit). Returns why it could not, or null once it started.
 Future<String?> startService() async {
   final daemon = daemonPaths.where((p) => File(p).existsSync()).firstOrNull;
-  if (daemon == null) return 'CoreShift не установлен: нет $daemonPaths';
+  if (daemon == null) return tr('platform.start.notInstalled', {'paths': '$daemonPaths'});
   try {
     final r = await Process.run('pkexec', [daemon, 'service', 'start']);
     if (r.exitCode == 0) return null;
     // pkexec: 126, the dialog was dismissed; 127, not authorized.
-    if (r.exitCode == 126 || r.exitCode == 127) return 'Запуск отменён';
+    if (r.exitCode == 126 || r.exitCode == 127) return tr('platform.start.cancelled');
     final err = '${r.stderr}'.trim();
-    return err.isEmpty ? 'Не удалось запустить службу' : 'Не удалось запустить службу: $err';
+    return err.isEmpty ? tr('platform.start.failed') : tr('platform.start.failedWith', {'err': err});
   } on ProcessException {
-    return 'Не найден pkexec. Запустите службу в терминале: sudo coreshiftd service start';
+    return tr('platform.start.noPkexec');
   }
 }

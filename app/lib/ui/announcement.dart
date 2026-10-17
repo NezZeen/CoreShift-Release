@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/strings.dart';
 import '../state/announcements.dart';
 import '../state/app_state.dart';
 import 'theme.dart';
@@ -53,7 +54,7 @@ class _AnnouncementCardState extends State<AnnouncementCard> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Объявление от «${a.sub.displayName}»',
+                        tr('announce.title', {'name': a.sub.displayName}),
                         style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -82,7 +83,7 @@ class _AnnouncementCardState extends State<AnnouncementCard> {
                               onTap: () => setState(() => _whole = !_whole),
                               child: MouseRegion(
                                 cursor: SystemMouseCursors.click,
-                                child: Text(_whole ? 'Свернуть' : 'Показать полностью', style: TextStyle(fontSize: 12, color: p.ink(color))),
+                                child: Text(_whole ? tr('announce.collapse') : tr('announce.expand'), style: TextStyle(fontSize: 12, color: p.ink(color))),
                               ),
                             ),
                           ),
@@ -95,8 +96,8 @@ class _AnnouncementCardState extends State<AnnouncementCard> {
                   spacing: 8,
                   runSpacing: 6,
                   children: [
-                    if (a.url.isNotEmpty) Btn(label: 'Подробнее', small: true, kind: BtnKind.primary, onPressed: () => widget.state.openLink(a.url)),
-                    Btn(label: 'Скрыть', small: true, onPressed: () => widget.state.hideAnnouncement(a)),
+                    if (a.url.isNotEmpty) Btn(label: tr('announce.details'), small: true, kind: BtnKind.primary, onPressed: () => widget.state.openLink(a.url)),
+                    Btn(label: tr('announce.hide'), small: true, onPressed: () => widget.state.hideAnnouncement(a)),
                   ],
                 ),
               ],
@@ -139,7 +140,7 @@ class SiteButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.pal;
     return Tooltip(
-      message: 'Открыть страницу подписки',
+      message: tr('announce.site.tooltip'),
       child: Material(
         color: p.surface2,
         shape: RoundedRectangleBorder(
@@ -159,7 +160,7 @@ class SiteButton extends StatelessWidget {
                 if (!iconOnly) ...[
                   const SizedBox(width: 6),
                   Text(
-                    'Сайт',
+                    tr('announce.site'),
                     style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: p.text),
                   ),
                 ],

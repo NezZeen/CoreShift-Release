@@ -1,5 +1,17 @@
 /// The UI's texts in Russian: the source of truth (see strings.dart). One
-/// entry a line, grouped by where they are shown.
+/// entry a line, grouped by where they are shown; each area of the app
+/// keeps its own in parts/, under a prefix of its own.
+library;
+
+import 'parts/errors.dart';
+import 'parts/settings.dart';
+import 'parts/routing.dart';
+import 'parts/servers.dart';
+import 'parts/home.dart';
+import 'parts/events.dart';
+import 'parts/state.dart';
+import 'parts/shell.dart';
+
 const uiRu = <String, String>{
   // The navigation (ui/shell.dart).
   'nav.home': 'Главная',
@@ -24,4 +36,14 @@ const uiRu = <String, String>{
   'settings.language.system': 'Как в системе',
   'settings.language.ru': 'Русский',
   'settings.language.en': 'English',
+
+  // The areas (parts/).
+  ...errorsRu,
+  ...settingsRu,
+  ...routingRu,
+  ...serversRu,
+  ...homeRu,
+  ...eventsRu,
+  ...stateRu,
+  ...shellRu,
 };

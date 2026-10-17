@@ -18,7 +18,7 @@ A VPN client for subscriptions on Windows, Linux and Android. It keeps the conne
 
 Inside are three proxy cores — **Xray, sing-box and mihomo**. If the current core crashes, rejects its config or stops passing traffic, CoreShift switches to the next one, while the tunnel and DNS stay as they are and apps keep their connections.
 
-Builds for Windows, Linux and Android are on the [Releases](https://github.com/NezZeen/CoreShift-Release/releases) page. Chat: [t.me/CoreShift_app](https://t.me/CoreShift_app) (in Russian).
+Builds for Windows, Linux and Android are on the [Releases](https://github.com/NezZeen/CoreShift-Release/releases) page. One Android APK fits every phone: 64- and 32-bit, Android 7 and newer. Chat: [t.me/CoreShift_app](https://t.me/CoreShift_app) (in Russian).
 
 If GitHub doesn't open for you, the same files are on the GitLab mirror: [CoreShift-Setup.exe](https://gitlab.com/NezZeen/coreshift/-/releases/permalink/latest/downloads/CoreShift-Setup.exe) for Windows, [CoreShift.apk](https://gitlab.com/NezZeen/coreshift/-/releases/permalink/latest/downloads/CoreShift.apk) for Android, every release at [gitlab.com/NezZeen/coreshift](https://gitlab.com/NezZeen/coreshift/-/releases).
 
@@ -62,6 +62,7 @@ If GitHub doesn't open for you, the same files are on the GitLab mirror: [CoreSh
 - Five tabs, the same on desktop and phone: Home, Servers, Rules, Journal, Settings. Fine-tuning lives under «Advanced».
 - On Home: your IP and country, speed, traffic for the week, a speed test via speedtest.net through the VPN or without it.
 - Journal: repeated core lines are folded («— N more times in 30 s»), errors in red, warnings in yellow, search and filter. The copy for support hides subscription links and UUIDs.
+- Russian and English: the system's language or the one chosen in the settings.
 - Dark and light themes, connect at startup, tray on desktop, a notification with the speed on Android. With the screen off, Android polls traffic and connectivity less often and saves battery.
 - The «Support» button opens the provider's chat if the panel gives one.
 
@@ -149,7 +150,7 @@ The version is the `VERSION` file; the build number is the commit count (users o
 
 ```
 powershell -ExecutionPolicy Bypass -File packaging\windows\build.ps1               # Windows installer
-powershell -ExecutionPolicy Bypass -File packaging\android\build.ps1               # APK for phones (arm64)
+powershell -ExecutionPolicy Bypass -File packaging\android\build.ps1               # APK for phones (arm64; -Abi armeabi-v7a, -Abi universal)
 powershell -ExecutionPolicy Bypass -File packaging\android\build.ps1 -Abi x86_64   # APK for the emulator
 powershell -ExecutionPolicy Bypass -File packaging\linux\build-wsl.ps1 -Ref main   # .deb, .rpm, Arch, .tar.gz (in WSL)
 ```

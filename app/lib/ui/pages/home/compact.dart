@@ -56,8 +56,13 @@ class _BackupBanner extends StatelessWidget {
         child: _Notice(
           color: swapColor,
           icon: Icons.swap_horiz,
-          text: '$primary не работает, подключено через ${coreStyle(st.core).name}',
-          action: Btn(label: 'Вернуть $primary', small: true, loading: state.returning, onPressed: state.busy ? null : state.returnToPrimary),
+          text: tr('home.backup.text', {'primary': primary, 'core': coreStyle(st.core).name}),
+          action: Btn(
+            label: tr('home.backup.return', {'primary': primary}),
+            small: true,
+            loading: state.returning,
+            onPressed: state.busy ? null : state.returnToPrimary,
+          ),
         ),
       ),
     );
@@ -99,7 +104,7 @@ class _CompactSpeed extends StatelessWidget {
     );
     return Panel(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Row(children: [metric(Icons.south, okColor, 'Загрузка', down), metric(Icons.north, accent, 'Отдача', up)]),
+      child: Row(children: [metric(Icons.south, okColor, tr('home.speed.down'), down), metric(Icons.north, accent, tr('home.speed.up'), up)]),
     );
   }
 }
@@ -112,8 +117,8 @@ class _PendingBanner extends StatelessWidget {
   Widget build(BuildContext context) => _Notice(
     color: warnColor,
     icon: Icons.info_outline,
-    text: 'Настройки изменены и применятся после переподключения',
-    action: Btn(label: 'Применить', small: true, onPressed: state.busy ? null : state.reconnect),
+    text: tr('home.pending.text'),
+    action: Btn(label: tr('home.pending.apply'), small: true, onPressed: state.busy ? null : state.reconnect),
   );
 }
 
@@ -179,20 +184,15 @@ class _Welcome extends StatelessWidget {
             children: [
               const CoreShiftMark(size: 44),
               const SizedBox(height: 18),
-              Text('Добро пожаловать в CoreShift', style: display(isCompact(context) ? 26 : 32, spacing: -.3)),
+              Text(tr('home.welcome.title'), style: display(isCompact(context) ? 26 : 32, spacing: -.3)),
               const SizedBox(height: 6),
-              Text('Три шага до подключения:', style: TextStyle(color: p.muted, fontSize: 14)),
+              Text(tr('home.welcome.subtitle'), style: TextStyle(color: p.muted, fontSize: 14)),
               const SizedBox(height: 24),
-              step(1, 'Добавьте подписку', 'Скопируйте ссылку на подписку из бота, панели или письма провайдера и вставьте её сюда.'),
-              step(2, 'Выберите сервер', 'CoreShift сам замерит пинг и подскажет самый быстрый.'),
-              step(
-                3,
-                'Нажмите кнопку подключения',
-                'Через VPN пойдут все приложения. Если одно ядро перестанет работать, CoreShift переключится на другое.',
-                last: true,
-              ),
+              step(1, tr('home.welcome.step1.title'), tr('home.welcome.step1.text')),
+              step(2, tr('home.welcome.step2.title'), tr('home.welcome.step2.text')),
+              step(3, tr('home.welcome.step3.title'), tr('home.welcome.step3.text'), last: true),
               const SizedBox(height: 26),
-              Btn(label: 'Добавить подписку', icon: Icons.add, kind: BtnKind.primary, onPressed: () => showAddSubscription(context, state)),
+              Btn(label: tr('home.welcome.add'), icon: Icons.add, kind: BtnKind.primary, onPressed: () => showAddSubscription(context, state)),
             ],
           ),
         ),

@@ -25,7 +25,7 @@ class _NodeTable extends StatelessWidget {
       return Padding(
         padding: const EdgeInsets.all(30),
         child: Center(
-          child: Text('Ничего не найдено', style: TextStyle(color: p.dim)),
+          child: Text(tr('servers.table.empty'), style: TextStyle(color: p.dim)),
         ),
       );
     }
@@ -53,8 +53,8 @@ class _NodeTable extends StatelessWidget {
               // A slot for the checkboxes only while servers are picked.
               radio: picking.active ? const SizedBox() : null,
               badge: const SizedBox(),
-              name: Text('Сервер', style: headStyle),
-              proto: Text('Протокол', style: headStyle),
+              name: Text(tr('servers.table.server'), style: headStyle),
+              proto: Text(tr('servers.table.protocol'), style: headStyle),
               ping: _PingSpeedHeader(state: state, style: headStyle),
               action: const SizedBox(),
               tools: const SizedBox(),
@@ -214,7 +214,7 @@ class _SectionHeading extends StatelessWidget {
           final titleStyle = display(15, color: section.leading == null ? p.muted : p.text);
           final countStyle = TextStyle(fontSize: 12, color: p.dim);
           final pingStyle = figures(12.5, color: p.ink(best < 200 ? okColor : (best < 500 ? warnColor : errColor)));
-          final count = '${section.rows.length}', ping = best < 1 << 30 ? 'от $best мс' : null;
+          final count = '${section.rows.length}', ping = best < 1 << 30 ? tr('servers.ms_from', {'ms': best}) : null;
           final scaler = MediaQuery.textScalerOf(context);
           double width(String s, TextStyle st) {
             final tp = TextPainter(
@@ -368,19 +368,25 @@ class _NodeRowState extends State<_NodeRow> {
 
     final Widget action;
     if (connected) {
-      action = narrow ? const Icon(Icons.check_circle, size: 18, color: okColor) : const Pill('Подключён', color: okColor);
+      action = narrow ? const Icon(Icons.check_circle, size: 18, color: okColor) : Pill(tr('servers.connected'), color: okColor);
     } else if (active) {
       action = narrow
           ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: accent))
-          : Pill('Подключение…', color: p.accentInk);
+          : Pill(tr('servers.connecting'), color: p.accentInk);
     } else if (picking) {
       // Picking: a tap picks the row, so nothing on it connects.
       action = const SizedBox();
     } else if (!unusable && sel && narrow) {
-      action = Btn(icon: Icons.power_settings_new, small: true, kind: BtnKind.primary, tooltip: 'Подключить', onPressed: s.busy || !s.online ? null : connect);
+      action = Btn(
+        icon: Icons.power_settings_new,
+        small: true,
+        kind: BtnKind.primary,
+        tooltip: tr('servers.connect'),
+        onPressed: s.busy || !s.online ? null : connect,
+      );
     } else if (!unusable && (hover || sel) && !narrow) {
       action = Btn(
-        label: 'Подключить',
+        label: tr('servers.connect'),
         icon: Icons.power_settings_new,
         small: true,
         kind: sel ? BtnKind.primary : BtnKind.normal,
@@ -393,7 +399,7 @@ class _NodeRowState extends State<_NodeRow> {
     // The star: always there, amber when the server is a favourite. A
     // phone's is a finger wide.
     final star = Tooltip(
-      message: fav ? 'Убрать из избранного' : 'В избранное',
+      message: fav ? tr('servers.fav.remove') : tr('servers.fav.add'),
       child: InkResponse(
         onTap: picking ? null : () => s.toggleFavorite(widget.sub, n),
         radius: compact ? 22 : 16,
@@ -423,7 +429,7 @@ class _NodeRowState extends State<_NodeRow> {
         message:
             '${country == null ? '' : '${countryName(country)}\n'}'
             '${n.server}:${n.port}\n'
-            '${n.cores.isEmpty ? 'Ни одно ядро не поддерживает' : 'Ядра: ${n.cores.map((k) => coreStyle(k).name).join(', ')}'}',
+            '${n.cores.isEmpty ? tr('servers.node.no_core') : tr('servers.node.cores', {'cores': n.cores.map((k) => coreStyle(k).name).join(', ')})}',
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -510,7 +516,7 @@ class _NodeRowState extends State<_NodeRow> {
           }
           return false;
         },
-        background: _SwipeBackground(color: okColor, icon: Icons.power_settings_new, label: 'Подключить', alignLeft: true),
+        background: _SwipeBackground(color: okColor, icon: Icons.power_settings_new, label: tr('servers.connect'), alignLeft: true),
         child: body,
       );
     }
@@ -530,7 +536,7 @@ class _NodeRowState extends State<_NodeRow> {
             ? () => pick.toggle(widget.sub, n)
             : unusable
             // Nothing to select: say why, a phone has no tooltip on hover.
-            ? () => s.toast('Ни одно установленное ядро не поддерживает этот сервер')
+            ? () => s.toast(tr('servers.node.unusable'))
             : sel
             ? null
             : compact && s.status.active && s.online && !s.busy
@@ -543,11 +549,7 @@ class _NodeRowState extends State<_NodeRow> {
     // to show. It stays while picking (empty), so the row keeps its place
     // in the tree under the finger.
     if (!unusable) return tile;
-    return Tooltip(
-      triggerMode: compact ? TooltipTriggerMode.manual : null,
-      message: picking ? '' : 'Ни одно установленное ядро не поддерживает этот сервер',
-      child: tile,
-    );
+    return Tooltip(triggerMode: compact ? TooltipTriggerMode.manual : null, message: picking ? '' : tr('servers.node.unusable'), child: tile);
   }
 }
 
@@ -637,7 +639,7 @@ class _LatencyCell extends StatelessWidget {
     if (!l.ok) {
       return Tooltip(
         message: l.error,
-        child: Text('нет ответа', style: mono.copyWith(color: p.errInk, fontSize: 11)),
+        child: Text(tr('servers.latency.none'), style: mono.copyWith(color: p.errInk, fontSize: 11)),
       );
     }
     final color = p.ink(l.ms < 200 ? okColor : (l.ms < 500 ? warnColor : errColor));
@@ -645,8 +647,8 @@ class _LatencyCell extends StatelessWidget {
     // the traffic goes through it: a short label next to the number says so.
     // A test through the server ("proxy") has none.
     final (label, note) = switch (l.method) {
-      'tcp' => ('TCP', 'Только проверка, что порт сервера открыт: через сервер не проверялось'),
-      'icmp' => ('ping', 'Только ping до сервера: через сервер не проверялось'),
+      'tcp' => ('TCP', tr('servers.latency.tcp_note')),
+      'icmp' => ('ping', tr('servers.latency.icmp_note')),
       _ => ('', ''),
     };
     final tag = Text(
@@ -657,7 +659,7 @@ class _LatencyCell extends StatelessWidget {
       TextSpan(
         style: mono.copyWith(color: color),
         children: [
-          TextSpan(text: '${l.ms} мс'),
+          TextSpan(text: tr('servers.ms', {'ms': l.ms})),
           if (label.isNotEmpty) ...[
             const TextSpan(text: ' '),
             // A phone's long press on the row picks it, so the label has no
@@ -671,9 +673,9 @@ class _LatencyCell extends StatelessWidget {
       ),
     );
     final how = switch (l.method) {
-      'icmp' => 'ICMP-пинг до сервера',
-      'tcp' => 'Время TCP-подключения к серверу',
-      _ when l.core.isNotEmpty => 'Запрос через ${coreStyle(l.core).name}',
+      'icmp' => tr('servers.latency.icmp'),
+      'tcp' => tr('servers.latency.tcp'),
+      _ when l.core.isNotEmpty => tr('servers.latency.core', {'core': coreStyle(l.core).name}),
       _ => '',
     };
     return how.isEmpty ? text : Tooltip(message: how, child: text);

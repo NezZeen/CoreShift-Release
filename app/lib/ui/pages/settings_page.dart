@@ -23,21 +23,21 @@ String _appUpdateText(AppState state) {
       '${t.day.toString().padLeft(2, '0')}.${t.month.toString().padLeft(2, '0')} '
       '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
   return switch (u.state) {
-    'off' when platform.isAndroid => 'Эта сборка не обновляется сама: так бывает у сборки для разработки.',
+    'off' when platform.isAndroid => tr('settings.update.off.android'),
     // The Linux daemon never installs CoreShift: the package manager does;
     // a release build still announces new versions ('available').
-    'off' when platform.isLinux => 'Эта сборка не ищет новые версии: так бывает у сборки для разработки. Обновляйте через пакет.',
-    'available' => 'Доступна новая версия ${u.label}. Скачайте пакет для своей системы и установите поверх этой.',
-    'off' => 'Эта копия не обновляется сама: так бывает у сборки для разработки или у службы старше 0.3.0.',
-    'checking' => 'Проверяю…',
-    'downloading' => 'Скачиваю версию ${u.label}…',
-    'ready' when u.waiting => 'Скачана версия ${u.label}. Установится сама после отключения VPN.',
-    'ready' when platform.isAndroid => 'Скачана версия ${u.label}. Android попросит подтвердить установку.',
-    'ready' => 'Скачана версия ${u.label}.',
-    'installing' => 'Устанавливаю ${u.label}. CoreShift перезапустится сам.',
+    'off' when platform.isLinux => tr('settings.update.off.linux'),
+    'available' => tr('settings.update.available', {'label': u.label}),
+    'off' => tr('settings.update.off'),
+    'checking' => tr('settings.update.checking'),
+    'downloading' => tr('settings.update.downloading', {'label': u.label}),
+    'ready' when u.waiting => tr('settings.update.ready.waiting', {'label': u.label}),
+    'ready' when platform.isAndroid => tr('settings.update.ready.android', {'label': u.label}),
+    'ready' => tr('settings.update.ready', {'label': u.label}),
+    'installing' => tr('settings.update.installing', {'label': u.label}),
     'error' => humanError(u.error),
-    _ when u.manual && u.checkedAt != null => 'Установлена последняя версия. Проверено ${when(u.checkedAt!)}. Новые версии ставятся пакетом.',
-    _ => u.checkedAt == null ? 'Проверка ещё не проводилась.' : 'Установлена последняя версия. Проверено ${when(u.checkedAt!)}.',
+    _ when u.manual && u.checkedAt != null => tr('settings.update.latest.manual', {'when': when(u.checkedAt!)}),
+    _ => u.checkedAt == null ? tr('settings.update.never') : tr('settings.update.latest', {'when': when(u.checkedAt!)}),
   };
 }
 
@@ -75,38 +75,38 @@ class SettingsPage extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const PanelTitle('Приложение'),
+          PanelTitle(tr('settings.app.title')),
           SettingRow(
             first: true,
-            title: 'Автозапуск',
+            title: tr('settings.autostart.title'),
             description: platform.isAndroid
-                ? 'Подключать выбранный сервер при включении телефона и при открытии CoreShift'
-                : 'Запускать CoreShift в трее при входе в ${platform.isLinux ? 'систему' : 'Windows'} и сразу подключать выбранный сервер',
+                ? tr('settings.autostart.desc.android')
+                : tr(platform.isLinux ? 'settings.autostart.desc.linux' : 'settings.autostart.desc.windows'),
             trailing: _switch('auto_connect'),
           ),
           // The engine slows down with the screen off (engine/internal/service/power.go).
           if (platform.isAndroid && state.hasSetting('battery_saving'))
-            SettingRow(
-              title: 'Экономия батареи',
-              description: 'Когда экран выключен или включено энергосбережение, связь с сервером проверяется реже и телефон дольше спит',
-              trailing: _switch('battery_saving'),
-            ),
+            SettingRow(title: tr('settings.battery.title'), description: tr('settings.battery.desc'), trailing: _switch('battery_saving')),
           if (desktop.canNotify)
             SettingRow(
-              title: 'Уведомления',
-              description: 'Сообщать о смене ядра, обрывах связи и окончании подписки, когда окно CoreShift свёрнуто или в трее',
+              title: tr('settings.notifications.title'),
+              description: tr('settings.notifications.desc'),
               trailing: Switch(value: state.systemNotifications, onChanged: (v) => state.setPref('notifications', v)),
             ),
           SettingRow(
-            title: 'Ссылки из буфера обмена',
-            description: 'Предлагать добавить подписку, когда скопирована ссылка на неё',
+            title: tr('settings.clipboard.title'),
+            description: tr('settings.clipboard.desc'),
             trailing: Switch(value: state.clipboardImport, onChanged: (v) => state.setPref('clipboard_import', v)),
           ),
           SettingRow(
-            title: 'Тема',
+            title: tr('settings.theme.title'),
             trailing: Seg<ThemeMode>(
               value: themeMode,
-              options: const [(ThemeMode.dark, 'Тёмная'), (ThemeMode.light, 'Светлая'), (ThemeMode.system, 'Как в системе')],
+              options: [
+                (ThemeMode.dark, tr('settings.theme.dark')),
+                (ThemeMode.light, tr('settings.theme.light')),
+                (ThemeMode.system, tr('settings.theme.system')),
+              ],
               onChanged: onThemeMode,
             ),
           ),
@@ -140,7 +140,7 @@ class SettingsPage extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const PanelTitle('Подключение'),
+          PanelTitle(tr('settings.network.title')),
           // On Android every app goes through the VPN: the switch shows
           // only to undo a proxy-only mode chosen somehow.
           if (androidProxy) ...[
@@ -149,65 +149,51 @@ class SettingsPage extends StatelessWidget {
           ] else if (!platform.isAndroid || tunOff)
             SettingRow(
               first: true,
-              title: 'Все приложения через VPN',
-              description: info.tunAvailable
-                  ? 'Режим TUN. Если выключить, через VPN пойдут только программы с прокси SOCKS5 или HTTP 127.0.0.1:${info.proxyPort}'
-                  : info.tunUnavailable,
+              title: tr('settings.tun.title'),
+              description: info.tunAvailable ? tr('settings.tun.desc', {'port': info.proxyPort}) : info.tunUnavailable,
               trailing: _switch('tun', enabled: info.tunAvailable || state.setting('tun', false)),
             ),
           if (!platform.isAndroid && tunOff && state.hasSetting('proxy.system')) SystemProxyRow(state: state),
           if (state.hasSetting('ipv6'))
             SettingRow(
               first: platform.isAndroid && !androidProxy && state.setting('tun', true),
-              title: 'IPv6 через туннель',
-              description:
-                  'IPv6-трафик тоже идёт через VPN. Если выключить, IPv6 при подключении не работает вовсе и сайты открываются по IPv4. '
-                  'Выключите, если какие-то сайты перестали открываться',
+              title: tr('settings.ipv6.title'),
+              description: tr('settings.ipv6.desc'),
               trailing: _switch('ipv6'),
             ),
           if (state.hasSetting('cores.fragment'))
             SettingRow(
               first: platform.isAndroid && !androidProxy && state.setting('tun', true) && !state.hasSetting('ipv6'),
-              title: 'Обход блокировок (DPI)',
-              description:
-                  'Делит начало защищённого соединения с сервером на части, чтобы провайдер не узнал его. '
-                  'Включите, если VPN то работает, то нет. Работает в Xray и sing-box, mihomo подключается без этого',
+              title: tr('settings.dpi.title'),
+              description: tr('settings.dpi.desc'),
               trailing: _switch('cores.fragment'),
             ),
           if (state.hasSetting('cores.switch_server'))
-            SettingRow(
-              title: 'Менять сервер, если он не отвечает',
-              description:
-                  'Если сервер не отвечает, а интернет работает, CoreShift подключит следующий сервер той же подписки, который отвечает. '
-                  'Автовыбор от панели провайдера меняет сервер всегда',
-              trailing: _switch('cores.switch_server'),
-            ),
+            SettingRow(title: tr('settings.switch_server.title'), description: tr('settings.switch_server.desc'), trailing: _switch('cores.switch_server')),
           if (state.hasSetting('cores.latency_test'))
             SettingRow(
               first: !rowsBefore,
-              title: 'Проверка задержки',
-              description:
-                  'Через сервер — запрос через сам сервер: видно, что он действительно пропускает трафик.\n'
-                  'TCP-пинг — только проверка, что порт сервера открыт; быстрее и экономнее для батареи и трафика',
+              title: tr('settings.latency.title'),
+              description: tr('settings.latency.desc'),
               trailing: Seg<String>(
                 value: state.setting('cores.latency_test', 'proxy'),
                 // Both words fit a phone's width only without the hints; the text explains them.
                 options: isCompact(context)
-                    ? const [('proxy', 'Через сервер'), ('ping', 'TCP-пинг')]
-                    : const [('proxy', 'Через сервер (точнее)'), ('ping', 'TCP-пинг (быстрее)')],
+                    ? [('proxy', tr('settings.latency.proxy')), ('ping', tr('settings.latency.ping'))]
+                    : [('proxy', tr('settings.latency.proxy.long')), ('ping', tr('settings.latency.ping.long'))],
                 onChanged: (v) => state.updateSettings((s) => s['cores']['latency_test'] = v),
               ),
             ),
           if (state.hasSetting('cores.speed_mb'))
             SettingRow(
               first: !rowsBefore && !state.hasSetting('cores.latency_test'),
-              title: 'Проверка скорости',
-              description:
-                  'Сколько данных скачивает один сервер при проверке скорости на странице «Серверы»: проверка идёт до 5 секунд или до этого объёма. '
-                  'Больше — точнее, но и трафика уходит больше',
+              title: tr('settings.speed.title'),
+              description: tr('settings.speed.desc'),
               trailing: Seg<int>(
                 value: state.setting<num>('cores.speed_mb', 10).toInt(),
-                options: const [(5, '5 МБ'), (10, '10 МБ'), (25, '25 МБ')],
+                options: [
+                  for (final n in const [5, 10, 25]) (n, tr('settings.speed.mb', {'n': n})),
+                ],
                 onChanged: (v) => state.updateSettings((s) => s['cores']['speed_mb'] = v),
               ),
             ),
@@ -224,16 +210,11 @@ class SettingsPage extends StatelessWidget {
     final expert = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const SectionLabel('Подписки'),
+        SectionLabel(tr('settings.subs.label')),
+        SettingRow(first: true, title: tr('settings.subs.auto.title'), description: tr('settings.subs.auto.desc'), trailing: _switch('updates.auto')),
         SettingRow(
-          first: true,
-          title: 'Обновлять подписки сами',
-          description: 'С интервалом, который задаёт панель провайдера',
-          trailing: _switch('updates.auto'),
-        ),
-        SettingRow(
-          title: 'User-Agent',
-          description: 'Меняйте, только если провайдер просит указать конкретное приложение',
+          title: tr('settings.ua.title'),
+          description: tr('settings.ua.desc'),
           trailing: SavingField(
             value: state.setting('updates.user_agent', ''),
             width: 170,
@@ -248,8 +229,8 @@ class SettingsPage extends StatelessWidget {
         const DnsHint(),
         SettingRow(
           first: true,
-          title: 'DNS через VPN',
-          description: 'DoH, DoT, DoQ или обычный адрес: https://1.1.1.1/dns-query, tls://dns.google, 8.8.8.8',
+          title: tr('settings.dns.remote.title'),
+          description: tr('settings.dns.remote.desc'),
           descriptionWidget: DnsCheckLine(state: state, which: 'remote'),
           trailing: SavingField(
             value: state.setting('dns.remote', ''),
@@ -263,14 +244,14 @@ class SettingsPage extends StatelessWidget {
           ),
         ),
         SettingRow(
-          title: 'DNS напрямую',
-          description: 'Для сайтов без VPN. Пусто — DNS, который был в системе до подключения',
+          title: tr('settings.dns.direct.title'),
+          description: tr('settings.dns.direct.desc'),
           descriptionWidget: DnsCheckLine(state: state, which: 'direct'),
           trailing: SavingField(
             value: state.setting('dns.direct', ''),
             width: 230,
             mono: true,
-            hint: 'системный',
+            hint: tr('settings.dns.direct.hint'),
             onSave: (v) async {
               final err = await state.updateSettings((s) => s['dns']['direct'] = v.trim());
               if (err == null) unawaited(state.checkDns('direct'));
@@ -278,7 +259,7 @@ class SettingsPage extends StatelessWidget {
             },
           ),
         ),
-        SettingRow(title: 'Fake-IP', description: 'Имена резолвятся на стороне сервера — быстрее и без утечек DNS', trailing: _switch('dns.fake_ip')),
+        SettingRow(title: tr('settings.fakeip.title'), description: tr('settings.fakeip.desc'), trailing: _switch('dns.fake_ip')),
         // Each guard of «Защита от утечек DNS» on its own, for when one of
         // them gets in the way.
         for (final (path, title, description) in _LeakGuard.parts)
@@ -293,8 +274,8 @@ class SettingsPage extends StatelessWidget {
           const PanelTitle('CoreShift'),
           SettingRow(
             first: true,
-            title: 'Версия',
-            description: state.version.commit.isEmpty ? null : 'коммит ${state.version.commit}',
+            title: tr('settings.version.title'),
+            description: state.version.commit.isEmpty ? null : tr('settings.version.commit', {'commit': state.version.commit}),
             trailing: SelectableText(
               state.version.known ? state.version.label : info.buildVersion.label,
               style: TextStyle(color: p.muted, fontFamily: monoFont),
@@ -303,7 +284,7 @@ class SettingsPage extends StatelessWidget {
           // On Android the engine is inside the app: one version.
           if (!platform.isAndroid && state.versionMismatch)
             SettingRow(
-              title: 'Версия службы',
+              title: tr('settings.service_version.title'),
               description: state.versionMismatchAdvice,
               trailing: SelectableText(
                 state.serviceVersionLabel,
@@ -311,31 +292,31 @@ class SettingsPage extends StatelessWidget {
               ),
             ),
           SettingRow(
-            title: 'Обновления',
+            title: tr('settings.updates.title'),
             description: _appUpdateText(state),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (state.appUpdate.state == 'ready') ...[
                   Btn(
-                    label: platform.isAndroid ? 'Обновить' : 'Установить сейчас',
+                    label: tr(platform.isAndroid ? 'settings.updates.install.android' : 'settings.updates.install'),
                     icon: Icons.system_update_alt,
                     kind: BtnKind.primary,
                     small: true,
-                    tooltip: state.status.active && !platform.isAndroid ? 'VPN отключится на время установки и подключится снова' : null,
+                    tooltip: state.status.active && !platform.isAndroid ? tr('settings.updates.install.tip') : null,
                     onPressed: state.online ? state.installAppUpdate : null,
                   ),
                   const SizedBox(width: 8),
                 ],
                 // Linux: a new version is downloaded from its page by hand.
                 if (state.appUpdate.state == 'available') ...[
-                  Btn(label: 'Скачать', icon: Icons.open_in_new, kind: BtnKind.primary, small: true, onPressed: state.openUpdatePage),
+                  Btn(label: tr('settings.updates.download'), icon: Icons.open_in_new, kind: BtnKind.primary, small: true, onPressed: state.openUpdatePage),
                   const SizedBox(width: 8),
                 ],
                 // A development build on Linux checks nothing.
                 if (!(platform.isLinux && state.appUpdate.off))
                   Btn(
-                    label: 'Проверить сейчас',
+                    label: tr('settings.updates.check'),
                     small: true,
                     loading: state.appUpdate.busy,
                     onPressed: state.online && !state.appUpdate.off ? state.checkAppUpdate : null,
@@ -344,17 +325,11 @@ class SettingsPage extends StatelessWidget {
             ),
           ),
           if (state.hasSetting('app_update.auto') && !platform.isAndroid && !platform.isLinux)
-            SettingRow(
-              title: 'Устанавливать обновления автоматически',
-              description:
-                  'Раз в день CoreShift проверяет новую версию и ставит её сам, когда VPN выключен. '
-                  'Если VPN включён, установка подождёт.',
-              trailing: _switch('app_update.auto'),
-            ),
+            SettingRow(title: tr('settings.updates.auto.title'), description: tr('settings.updates.auto.desc'), trailing: _switch('app_update.auto')),
           SettingRow(
-            title: 'Отказ от ответственности',
-            description: 'Некоммерческая программа «как есть»: серверы и подписки предоставляет ваш провайдер',
-            trailing: Btn(label: 'Прочитать', small: true, onPressed: () => showDisclaimer(context)),
+            title: tr('settings.disclaimer.title'),
+            description: tr('settings.disclaimer.desc'),
+            trailing: Btn(label: tr('settings.disclaimer.read'), small: true, onPressed: () => showDisclaimer(context)),
           ),
         ],
       ),
@@ -373,7 +348,7 @@ class SettingsPage extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('Ядра', style: display(16)),
+                Text(tr('settings.cores.title'), style: display(16)),
                 const SizedBox(height: 10),
                 Wrap(
                   spacing: 6,
@@ -388,10 +363,7 @@ class SettingsPage extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 8),
-                Text(
-                  prio.length == 1 ? 'Работает одно ядро, без переключения при сбое' : 'Если ядро перестанет работать, CoreShift переключится на следующее',
-                  style: TextStyle(fontSize: 12, color: p.muted),
-                ),
+                Text(tr(prio.length == 1 ? 'settings.cores.single' : 'settings.cores.chain'), style: TextStyle(fontSize: 12, color: p.muted)),
               ],
             ),
           ),
@@ -411,14 +383,9 @@ class SettingsPage extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const PageHeader('Настройки'),
+                PageHeader(tr('settings.title')),
                 for (final w in [general, if (hasNetwork) network, cores, about]) Padding(padding: const EdgeInsets.only(bottom: 16), child: w),
-                Fold(
-                  title: 'Дополнительно',
-                  sub: 'обновление подписок, User-Agent, DNS-серверы, защита DNS по отдельности',
-                  initiallyOpen: openDns,
-                  child: expert,
-                ),
+                Fold(title: tr('settings.more.title'), sub: tr('settings.more.sub'), initiallyOpen: openDns, child: expert),
               ],
             ),
           ),
@@ -438,20 +405,10 @@ class _LeakGuard extends StatelessWidget {
 
   /// The guards one by one, as «Дополнительно» lists them.
   static List<(String, String, String)> get parts => [
-    (
-      'dns.block_browser_doh',
-      'DNS браузеров только через VPN',
-      'Firefox не включает свой DNS-over-HTTPS сам, а если он включён вручную, его запросы идут через туннель',
-    ),
-    (
-      'dns.block_dot',
-      'Блокировать DNS-over-TLS (порт 853)',
-      platform.isAndroid
-          ? 'Android в режиме «Частный DNS: автоматически» перейдёт на обычный DNS. Если «Частный DNS» задан вручную, сайты перестанут открываться'
-          : 'Программы с собственным DNS-over-TLS перейдут на DNS через туннель',
-    ),
+    ('dns.block_browser_doh', tr('settings.guard.doh.title'), tr('settings.guard.doh.desc')),
+    ('dns.block_dot', tr('settings.guard.dot.title'), tr(platform.isAndroid ? 'settings.guard.dot.desc.android' : 'settings.guard.dot.desc')),
     // dns.strict is a Windows setting; the Linux daemon ignores it.
-    if (platform.isWindows) ('dns.strict', 'Строгий DNS в Windows', 'Запретить Windows опрашивать DNS других сетевых адаптеров в обход туннеля'),
+    if (platform.isWindows) ('dns.strict', tr('settings.guard.strict.title'), tr('settings.guard.strict.desc')),
   ];
 
   List<String> get _guards => [for (final (path, _, _) in parts) path].where(state.hasSetting).toList();
@@ -465,14 +422,14 @@ class _LeakGuard extends StatelessWidget {
     final partly = on > 0 && on < guards.length;
     return SettingRow(
       first: first,
-      title: 'Защита от утечек DNS',
+      title: tr('settings.guard.title'),
       description: platform.isAndroid
-          ? 'DNS браузеров и DNS-over-TLS только через VPN. Если в Android «Частный DNS» задан вручную, с защитой сайты перестанут открываться'
+          ? tr('settings.guard.desc.android')
           : platform.isWindows
-          ? 'DNS браузеров, DNS-over-TLS и DNS других сетевых адаптеров Windows не уходят мимо туннеля'
-          : 'DNS браузеров и DNS-over-TLS не уходят мимо туннеля',
+          ? tr('settings.guard.desc.windows')
+          : tr('settings.guard.desc'),
       descriptionWidget: partly
-          ? Text('Включено не всё: $on из ${guards.length}. Включите, чтобы защитить всё', style: TextStyle(fontSize: 12, color: p.warnInk))
+          ? Text(tr('settings.guard.partly', {'on': on, 'total': guards.length}), style: TextStyle(fontSize: 12, color: p.warnInk))
           : null,
       trailing: Switch(
         value: on == guards.length,

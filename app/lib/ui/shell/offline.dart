@@ -52,12 +52,12 @@ class _OfflineState extends State<_Offline> {
                   Flexible(
                     child: Text(
                       denied
-                          ? 'Нет доступа к службе'
+                          ? tr('shell.offline.denied')
                           : platform.isAndroid
-                          ? 'Запуск CoreShift…'
+                          ? tr('shell.offline.startingApp')
                           : state.daemonStarting
-                          ? 'Запуск службы…'
-                          : 'Подключение к службе…',
+                          ? tr('shell.offline.startingService')
+                          : tr('shell.offline.connecting'),
                       style: dialogTitle,
                     ),
                   ),
@@ -66,25 +66,22 @@ class _OfflineState extends State<_Offline> {
               const SizedBox(height: 12),
               // Selectable: it holds the command to give the administrator.
               SelectableText(
-                state.offlineReason.isEmpty ? (platform.isAndroid ? 'Запускаем движок' : 'Ищем службу CoreShift') : state.offlineReason,
+                state.offlineReason.isEmpty
+                    ? (platform.isAndroid ? tr('shell.offline.startingEngine') : tr('shell.offline.lookingForService'))
+                    : state.offlineReason,
                 style: TextStyle(color: p.muted),
               ),
               const SizedBox(height: 14),
               Text(
                 denied
-                    ? 'Служба CoreShift управляет VPN всего компьютера, поэтому ею пользуются только администраторы и участники группы '
-                          '«${platform.isLinux ? 'coreshift' : windowsGroup}». Установщик добавляет в неё того, кто установил CoreShift.'
+                    ? tr('shell.offline.deniedBody', {'group': platform.isLinux ? 'coreshift' : windowsGroup})
                     : platform.isAndroid
-                    ? 'Движок VPN работает внутри приложения и обычно запускается за секунду. '
-                          'Если этот экран не пропадает, закройте CoreShift в списке недавних приложений и откройте снова.'
+                    ? tr('shell.offline.androidBody')
                     : platform.isLinux
-                    ? 'VPN работает через системную службу CoreShift. Она запускается вместе с компьютером и держит VPN, '
-                          'пока его не выключат кнопкой, даже если окно закрыто.'
+                    ? tr('shell.offline.linuxBody')
                     : state.daemonStartRefused
-                    ? 'VPN работает через фоновую службу CoreShift. Windows не дал запустить её без прав администратора: '
-                          'так бывает со службой, установленной версией до 0.4. Запустите её кнопкой ниже или переустановите CoreShift.'
-                    : 'VPN работает через фоновую службу CoreShift. Она запускается вместе с приложением '
-                          'и останавливается, когда его закрывают. Обычно это занимает пару секунд.',
+                    ? tr('shell.offline.refusedBody')
+                    : tr('shell.offline.windowsBody'),
                 style: TextStyle(color: p.muted, fontSize: 13, height: 1.5),
               ),
               // Without access to the service, starting it would not help.
@@ -92,11 +89,11 @@ class _OfflineState extends State<_Offline> {
                 const SizedBox(height: 16),
                 Row(
                   children: [
-                    Btn(label: 'Запустить службу', icon: Icons.play_arrow, kind: BtnKind.primary, loading: starting, onPressed: _start),
+                    Btn(label: tr('shell.offline.start'), icon: Icons.play_arrow, kind: BtnKind.primary, loading: starting, onPressed: _start),
                     const SizedBox(width: 10),
                     Flexible(
                       child: Text(
-                        platform.isLinux ? 'Система спросит пароль администратора' : 'Windows попросит права администратора',
+                        platform.isLinux ? tr('shell.offline.startHintLinux') : tr('shell.offline.startHintWindows'),
                         style: TextStyle(color: p.dim, fontSize: 12),
                       ),
                     ),
@@ -107,7 +104,7 @@ class _OfflineState extends State<_Offline> {
               if (!platform.isAndroid) ...[
                 const SizedBox(height: 16),
                 Text(
-                  'Адрес службы берётся из ${state.backend.description}',
+                  tr('shell.offline.address', {'source': state.backend.description}),
                   style: TextStyle(color: p.dim, fontSize: 11, fontFamily: monoFont, fontFamilyFallback: monoFallback),
                 ),
               ],
@@ -159,10 +156,15 @@ class _OfflineBannerState extends State<_OfflineBanner> {
         children: [
           const Icon(Icons.link_off, size: 16, color: errColor),
           const SizedBox(width: 10),
-          Expanded(child: Text(error == null ? '${widget.reason}. Переподключаемся…' : '${widget.reason}. $error', style: const TextStyle(fontSize: 13))),
+          Expanded(
+            child: Text(
+              error == null ? tr('shell.offline.reconnecting', {'reason': widget.reason}) : '${widget.reason}. $error',
+              style: const TextStyle(fontSize: 13),
+            ),
+          ),
           if (_canStart) ...[
             const SizedBox(width: 10),
-            Btn(label: 'Запустить службу', icon: Icons.play_arrow, small: true, loading: starting, onPressed: _start),
+            Btn(label: tr('shell.offline.start'), icon: Icons.play_arrow, small: true, loading: starting, onPressed: _start),
           ],
         ],
       ),

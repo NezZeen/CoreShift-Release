@@ -51,7 +51,7 @@ class VpnTileService : TileService() {
         Engine.connect()
         qsTile?.let {
             it.state = Tile.STATE_ACTIVE
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) it.subtitle = "Подключение…"
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) it.subtitle = Tr.t("Подключение…", "Connecting…")
             it.updateTile()
         }
     }
@@ -59,14 +59,14 @@ class VpnTileService : TileService() {
     private fun update() {
         val tile = qsTile ?: return
         tile.state = if (VpnStatus.active) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
-        tile.label = if (VpnStatus.proxyOnly) "CoreShift · прокси" else "CoreShift"
+        tile.label = if (VpnStatus.proxyOnly) "CoreShift · " + Tr.t("прокси", "proxy") else "CoreShift"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             tile.subtitle = when (VpnStatus.state) {
-                "connected" -> if (VpnStatus.proxyOnly) "Прокси без VPN" else VpnStatus.node.ifEmpty { "Подключено" }
-                "connecting" -> "Подключение…"
-                "no-network" -> "Нет сети"
-                "disconnecting" -> "Отключение…"
-                else -> "Выключен"
+                "connected" -> if (VpnStatus.proxyOnly) Tr.t("Прокси без VPN", "Proxy without VPN") else VpnStatus.node.ifEmpty { Tr.t("Подключено", "Connected") }
+                "connecting" -> Tr.t("Подключение…", "Connecting…")
+                "no-network" -> Tr.t("Нет сети", "No network")
+                "disconnecting" -> Tr.t("Отключение…", "Disconnecting…")
+                else -> Tr.t("Выключен", "Off")
             }
         }
         tile.updateTile()

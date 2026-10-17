@@ -37,18 +37,14 @@ class _Hero extends StatelessWidget {
           style: muted,
         ),
       ),
-      ConnState.idle when sel.isEmpty => Text('Сначала выберите сервер', style: muted),
+      ConnState.idle when sel.isEmpty => Text(tr('home.hero.pick_first'), style: muted),
       ConnState.idle when !sel.available => Text(
-        'Сервер «${sel.name}» пропал из подписки',
+        tr('home.hero.gone', {'name': sel.name}),
         textAlign: TextAlign.center,
         style: TextStyle(color: p.warnInk, fontSize: 13.5),
       ),
-      ConnState.idle => Text('Нажмите, чтобы подключиться', style: muted),
-      ConnState.noNetwork => Text(
-        st.waiting ? 'Подключимся, как только появится сеть' : 'VPN продолжит работу, когда сеть вернётся',
-        textAlign: TextAlign.center,
-        style: muted,
-      ),
+      ConnState.idle => Text(tr('home.hero.tap'), style: muted),
+      ConnState.noNetwork => Text(tr(st.waiting ? 'home.hero.wait_net' : 'home.hero.resumes'), textAlign: TextAlign.center, style: muted),
       _ => const SizedBox(),
     };
     return Column(
@@ -191,21 +187,21 @@ class _DeviceStation extends StatelessWidget {
     final selected = state.setting('routing.mode', 'all') == 'selected';
     final russia = state.setting('routing.russia_direct', false);
     final rules = !tun
-        ? 'в VPN только программы с прокси'
+        ? tr('home.device.rules.proxy')
         : selected
-        ? 'в VPN только выбранные сайты и программы'
+        ? tr('home.device.rules.selected')
         : russia
-        ? 'российские сайты напрямую, кроме Google и YouTube, остальное в VPN'
-        : 'весь трафик идёт в VPN';
+        ? tr('home.device.rules.russia')
+        : tr('home.device.rules.all');
     return _Station(
-      caption: 'Это устройство',
+      caption: tr('home.device.caption'),
       onTap: () => Nav.to(context, PageId.routing),
       trailing: Icon(Icons.chevron_right, size: 20, color: p.dim),
       child: Text.rich(
         TextSpan(
           children: [
             TextSpan(
-              text: tun ? 'Все приложения' : 'Только прокси',
+              text: tun ? tr('home.device.all_apps') : tr('home.device.proxy_only'),
               style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
             ),
             TextSpan(
@@ -234,24 +230,24 @@ class _ServerStation extends StatelessWidget {
     final sub = state.subscriptionById(sel.subscription);
     final l = n == null ? null : state.latencyOf(sel.subscription, n.fingerprint);
     return _Station(
-      caption: 'Сервер',
+      caption: tr('home.server.caption'),
       onTap: () => showQuickPick(context, state, onAll: () => Nav.to(context, PageId.servers)),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           if (l != null && l.ok) ...[
-            Text('${l.ms} мс', style: figures(14, color: p.ink(l.ms < 200 ? okColor : (l.ms < 500 ? warnColor : errColor)))),
+            Text(tr('home.ms', {'ms': l.ms}), style: figures(14, color: p.ink(l.ms < 200 ? okColor : (l.ms < 500 ? warnColor : errColor)))),
             const SizedBox(width: 8),
           ],
           Tooltip(
-            message: 'Сменить сервер',
+            message: tr('home.server.change'),
             child: Icon(Icons.unfold_more, size: 20, color: p.dim),
           ),
         ],
       ),
       child: n == null
           ? Text(
-              sel.isEmpty ? 'Выбрать сервер' : sel.name,
+              sel.isEmpty ? tr('home.server.choose') : sel.name,
               style: TextStyle(fontWeight: FontWeight.w600, color: p.muted),
             )
           : Row(
@@ -310,13 +306,13 @@ class _UnresponsiveBanner extends StatelessWidget {
       actions: [
         if (!offline)
           Btn(
-            label: 'Другой сервер',
+            label: tr('home.btn.another_server'),
             small: true,
             kind: BtnKind.primary,
             onPressed: state.busy ? null : () => showQuickPick(context, state, onAll: () => Nav.to(context, PageId.servers)),
           ),
-        Btn(label: 'Переподключить', small: true, onPressed: state.busy ? null : state.reconnect),
-        Btn(label: 'Проверить всё', small: true, icon: Icons.fact_check_outlined, onPressed: () => showCheckup(context, state)),
+        Btn(label: tr('home.btn.reconnect'), small: true, onPressed: state.busy ? null : state.reconnect),
+        Btn(label: tr('home.btn.check_all'), small: true, icon: Icons.fact_check_outlined, onPressed: () => showCheckup(context, state)),
       ],
     );
   }
@@ -335,11 +331,9 @@ class _NoNetworkBanner extends StatelessWidget {
     return _Notice(
       color: warnColor,
       icon: Icons.wifi_off_outlined,
-      title: 'Нет сети',
-      text: waiting
-          ? 'Устройство сейчас не в сети. CoreShift подключится сам, как только она появится. Проверьте Wi-Fi, кабель или мобильный интернет.'
-          : 'Связь пропала у самого устройства, сервер и ядра ни при чём. VPN остаётся включённым и продолжит работу, когда сеть вернётся.',
-      actions: [Btn(label: waiting ? 'Отменить' : 'Отключить VPN', small: true, onPressed: state.busy ? null : state.disconnect)],
+      title: tr('home.nonet.title'),
+      text: waiting ? tr('home.nonet.waiting') : tr('home.nonet.lost'),
+      actions: [Btn(label: waiting ? tr('home.nonet.cancel') : tr('home.nonet.disconnect'), small: true, onPressed: state.busy ? null : state.disconnect)],
     );
   }
 }
@@ -362,8 +356,8 @@ class _VpnBlockedBanner extends StatelessWidget {
       title: refused?.title ?? vpnRevokedText.title,
       text: refused?.text ?? vpnRevokedText.text,
       actions: [
-        Btn(label: 'Настройки VPN', small: true, kind: BtnKind.primary, onPressed: state.openVpnSettings),
-        if (refusal != null) Btn(label: 'Скрыть', small: true, onPressed: state.dismissVpnRefusal),
+        Btn(label: tr('home.blocked.settings'), small: true, kind: BtnKind.primary, onPressed: state.openVpnSettings),
+        if (refusal != null) Btn(label: tr('home.btn.hide'), small: true, onPressed: state.dismissVpnRefusal),
       ],
     );
   }

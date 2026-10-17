@@ -9,17 +9,17 @@ extension AppStateFeedback on AppState {
     final u = Uri.tryParse(url.trim());
     final ok = u != null && (u.scheme == 'tg' || u.scheme == 'mailto' || ((u.scheme == 'https' || u.scheme == 'http') && u.host.isNotEmpty));
     if (!ok) {
-      toast('Панель прислала ссылку, которую нельзя открыть', ToastKind.err);
+      toast(tr('state.link.cannotOpen'), ToastKind.err);
       return;
     }
     if (linkOpener == null && backend is DemoBackend) {
-      toast('В демо-режиме ссылки не открываются');
+      toast(tr('state.link.demo'));
       return;
     }
     try {
       if (await (linkOpener ?? platform.openUrl)(u.toString())) return;
     } catch (_) {}
-    toast('Не удалось открыть ссылку: нет приложения, которое её откроет', ToastKind.err);
+    toast(tr('state.link.noApp'), ToastKind.err);
   }
 
   // ---------------------------------------------------------------- toasts

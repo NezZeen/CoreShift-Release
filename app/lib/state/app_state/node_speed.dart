@@ -19,8 +19,8 @@ class SpeedPlan {
 
   /// «30 серверов × 10 МБ ≈ 300 МБ трафика» (from a gigabyte on, in gigabytes).
   String get estimate {
-    final total = megabytes >= 1000 ? '${(megabytes / 1000).toStringAsFixed(1)} ГБ' : '$megabytes МБ';
-    return '$servers ${ruPlural(servers, 'сервер', 'сервера', 'серверов')} × $megabytesEach МБ ≈ $total трафика';
+    final total = megabytes >= 1000 ? tr('servers.unit.gb', {'n': (megabytes / 1000).toStringAsFixed(1)}) : tr('servers.unit.mb', {'n': megabytes});
+    return tr('servers.speed.estimate', {'servers': servers, 'each': megabytesEach, 'total': total});
   }
 }
 
@@ -57,7 +57,7 @@ extension AppStateNodeSpeed on AppState {
     speedBytes = 0;
     speedCurrent = null;
     _notify();
-    _logAction('проверка скорости: $servers ${ruPlural(servers, 'сервер', 'сервера', 'серверов')} по $speedVolumeMB МБ');
+    _logAction(tr('servers.speed.log.start', {'servers': servers, 'mb': speedVolumeMB}));
     final ok = await _act(() async {
       await backend.call('POST', '/v1/speedtest/nodes', {'subscription': ?subscription, 'nodes': ?fingerprints, 'bytes': speedVolumeMB << 20});
     });
@@ -110,14 +110,17 @@ extension AppStateNodeSpeed on AppState {
         speedCurrent = null;
         speedBytes = e.bytes;
         final done = e.reason == 'done';
-        final text = '${done ? 'проверено' : 'остановлено: проверено'} $speedDone из $speedTotal, использовано ${_traffic(e.bytes)} трафика';
-        _log(e.time, 'скорость', text, LogLevel.ok);
+        final traffic = _traffic(e.bytes);
+        final text = tr(done ? 'servers.speed.log.done' : 'servers.speed.log.stopped', {'done': speedDone, 'total': speedTotal, 'traffic': traffic});
+        _log(e.time, tr('state.src.speed'), text, LogLevel.ok);
         if (!e.time.isBefore(_liveSince)) {
-          toast(done ? 'Скорость проверена: ${_traffic(e.bytes)} трафика' : 'Проверка скорости остановлена: ${_traffic(e.bytes)} трафика', ToastKind.info);
+          toast(tr(done ? 'servers.speed.toast.done' : 'servers.speed.toast.stopped', {'traffic': traffic}), ToastKind.info);
         }
     }
     _notify();
   }
 
-  static String _traffic(int bytes) => bytes >= 1e9 ? '${(bytes / 1e9).toStringAsFixed(1)} ГБ' : '${(bytes / 1e6).toStringAsFixed(bytes >= 1e7 ? 0 : 1)} МБ';
+  static String _traffic(int bytes) => bytes >= 1e9
+      ? tr('servers.unit.gb', {'n': (bytes / 1e9).toStringAsFixed(1)})
+      : tr('servers.unit.mb', {'n': (bytes / 1e6).toStringAsFixed(bytes >= 1e7 ? 0 : 1)});
 }

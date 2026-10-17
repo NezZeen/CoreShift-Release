@@ -25,9 +25,9 @@ extension AppStateAddress on AppState {
       ipError = '';
     } on ApiError catch (e) {
       if (e.status == 404 || e.status == 405) ipUnsupported = true;
-      ipError = 'Не удалось узнать адрес';
+      ipError = tr('state.ip.error');
     } catch (_) {
-      ipError = 'Не удалось узнать адрес';
+      ipError = tr('state.ip.error');
     }
     ipLoading = false;
     _notify();

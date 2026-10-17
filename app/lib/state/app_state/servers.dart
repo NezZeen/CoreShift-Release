@@ -104,17 +104,16 @@ extension AppStateServers on AppState {
     if (done.isEmpty) return;
     final count = done.values.fold(0, (n, fps) => n + fps.length);
     final names = {for (final (_, n) in rows) n.name};
-    _logAction('удалить из подписки: ${names.join(', ')}');
+    _logAction(tr('servers.log.remove', {'names': names.join(', ')}));
     Future<void> undo() async {
       for (final MapEntry(key: id, value: fps) in done.entries) {
         await setNodesHidden(id, fps, hidden: false);
       }
     }
 
-    toast(
-      count == 1 ? '«${label ?? rows.first.$2.name}» удалён из подписки' : 'Удалено из подписки: $count ${ruPlural(count, 'сервер', 'сервера', 'серверов')}',
-      ToastKind.info,
-      ('Отменить', undo),
-    );
+    toast(count == 1 ? tr('servers.removed.one', {'name': label ?? rows.first.$2.name}) : tr('servers.removed.many', {'n': count}), ToastKind.info, (
+      tr('servers.undo'),
+      undo,
+    ));
   }
 }

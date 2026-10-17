@@ -46,14 +46,19 @@ class _SortChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sort = state.serverSort;
-    final orders = [('sub', 'Как в подписке'), ('ping', 'По пингу'), if (state.speedSupported) ('speed', 'По скорости'), ('name', 'По имени')];
+    final orders = [
+      ('sub', 'servers.sort.sub'),
+      ('ping', 'servers.sort.ping'),
+      if (state.speedSupported) ('speed', 'servers.sort.speed'),
+      ('name', 'servers.sort.name'),
+    ];
     return PopupMenuButton<String>(
-      tooltip: 'Порядок серверов',
+      tooltip: tr('servers.sort.menu'),
       onSelected: (v) => state.setPref('server_sort', v),
       position: PopupMenuPosition.under,
-      itemBuilder: (_) => [for (final (v, title) in orders) CheckedPopupMenuItem(value: v, checked: sort == v, child: Text(title))],
+      itemBuilder: (_) => [for (final (v, title) in orders) CheckedPopupMenuItem(value: v, checked: sort == v, child: Text(tr(title)))],
       child: IgnorePointer(
-        child: _Chip(label: orders.firstWhere((e) => e.$1 == sort).$2, icon: Icons.swap_vert, on: sort != 'sub', onTap: () {}),
+        child: _Chip(label: tr(orders.firstWhere((e) => e.$1 == sort).$2), icon: Icons.swap_vert, on: sort != 'sub', onTap: () {}),
       ),
     );
   }
@@ -72,15 +77,15 @@ class _EmptySubs extends StatelessWidget {
         children: [
           Icon(Icons.cloud_download_outlined, size: 40, color: p.dim),
           const SizedBox(height: 14),
-          Text('Подписок пока нет', style: dialogTitle),
+          Text(tr('servers.empty.title'), style: dialogTitle),
           const SizedBox(height: 6),
           Text(
-            'Добавьте ссылку на подписку от вашего провайдера или вставьте ссылки на серверы (vless://, trojan://, hy2://…)',
+            tr('servers.empty.text'),
             textAlign: TextAlign.center,
             style: TextStyle(color: p.muted),
           ),
           const SizedBox(height: 18),
-          Btn(label: 'Добавить подписку', icon: Icons.add, kind: BtnKind.primary, onPressed: onAdd),
+          Btn(label: tr('servers.add'), icon: Icons.add, kind: BtnKind.primary, onPressed: onAdd),
         ],
       ),
     );
@@ -144,7 +149,7 @@ class _SubCard extends StatelessWidget {
                   if (refreshing) const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
                   if (sub.lastError.isNotEmpty && !refreshing)
                     Tooltip(
-                      message: 'Последнее обновление не удалось:\n${humanError(sub.lastError)}',
+                      message: tr('servers.sub.last_error', {'error': humanError(sub.lastError)}),
                       child: const Icon(Icons.error_outline, size: 16, color: warnColor),
                     ),
                   _SubMenu(state: state, sub: sub),
@@ -156,7 +161,7 @@ class _SubCard extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(right: 8),
               child: Text(
-                sub.isLocal ? 'вставленный список' : sub.host,
+                sub.isLocal ? tr('servers.sub.pasted') : sub.host,
                 style: TextStyle(fontSize: 12, color: p.dim, fontFamily: monoFont, fontFamilyFallback: monoFallback),
                 overflow: TextOverflow.ellipsis,
               ),
@@ -170,7 +175,7 @@ class _SubCard extends StatelessWidget {
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      'Автовыбор: ${serversCount(sub.auto.length)}, при отказе подключится следующий',
+                      tr('servers.sub.auto', {'servers': serversCount(sub.auto.length)}),
                       style: TextStyle(fontSize: 12, color: p.dim),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -192,9 +197,9 @@ class _SubCard extends StatelessWidget {
                     Expanded(
                       flex: 3,
                       child: _Fact(
-                        label: i.total > 0 ? 'Трафик' : (i.used > 0 ? 'Израсходовано' : 'Серверы'),
+                        label: i.total > 0 ? tr('servers.sub.traffic') : (i.used > 0 ? tr('servers.sub.used') : tr('servers.sub.servers')),
                         value: i.total > 0 || i.used > 0 ? formatQuota(i.used) : '${sub.nodes.length}',
-                        note: i.total > 0 ? 'из ${formatQuota(i.total)}' : (i.used > 0 ? 'без лимита' : ''),
+                        note: i.total > 0 ? tr('servers.sub.of_total', {'total': formatQuota(i.total)}) : (i.used > 0 ? tr('servers.sub.no_limit') : ''),
                         color: i.total > 0 && i.used / i.total > .9 ? errColor : null,
                         progress: i.total > 0 ? (i.used / i.total).clamp(0, 1).toDouble() : null,
                       ),
@@ -204,12 +209,18 @@ class _SubCard extends StatelessWidget {
                       flex: 2,
                       child: i.expire != null
                           ? _Fact(
-                              label: expired ? 'Истекла' : 'Осталось',
-                              value: expired ? formatDate(i.expire!) : (daysLeft! < 1 ? 'меньше дня' : '$daysLeft дн.'),
-                              note: expired ? 'продлите подписку' : 'до ${formatDate(i.expire!)}',
+                              label: expired ? tr('servers.sub.expired') : tr('servers.sub.left'),
+                              value: expired
+                                  ? formatDate(i.expire!)
+                                  : (daysLeft! < 1 ? tr('servers.sub.less_than_day') : tr('servers.sub.days', {'n': daysLeft})),
+                              note: expired ? tr('servers.sub.renew') : tr('servers.sub.until', {'date': formatDate(i.expire!)}),
                               color: expired ? errColor : (expiresSoon ? warnColor : null),
                             )
-                          : _Fact(label: 'Срок', value: 'бессрочно', note: sub.isLocal ? '' : 'обновлено ${formatAgo(sub.updatedAt)}'),
+                          : _Fact(
+                              label: tr('servers.sub.term'),
+                              value: tr('servers.sub.forever'),
+                              note: sub.isLocal ? '' : tr('servers.sub.updated', {'ago': formatAgo(sub.updatedAt)}),
+                            ),
                     ),
                   ],
                 ),
@@ -287,7 +298,7 @@ class _SubMenu extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.pal;
     return PopupMenuButton<String>(
-      tooltip: 'Действия',
+      tooltip: tr('servers.sub.actions'),
       icon: Icon(Icons.more_vert, size: 18, color: p.muted),
       padding: EdgeInsets.zero,
       constraints: const BoxConstraints(minWidth: 180),
@@ -296,22 +307,22 @@ class _SubMenu extends StatelessWidget {
           case 'refresh':
             state.refreshSubscription(sub.id);
           case 'rename':
-            final name = await _askText(context, 'Переименовать', sub.name.isEmpty ? sub.displayName : sub.name);
+            final name = await _askText(context, tr('servers.sub.rename'), sub.name.isEmpty ? sub.displayName : sub.name);
             if (name != null) state.renameSubscription(sub.id, name);
           case 'qr':
             final url = await state.subscriptionUrl(sub.id);
             if (url != null && context.mounted) await showSubscriptionQr(context, sub, url);
           case 'delete':
-            if (await _confirm(context, 'Удалить «${sub.displayName}»?', 'Серверы этой подписки пропадут из списка. Текущее подключение не прервётся.')) {
+            if (await _confirm(context, tr('servers.sub.delete_title', {'name': sub.displayName}), tr('servers.sub.delete_text'))) {
               state.removeSubscription(sub.id);
             }
         }
       },
       itemBuilder: (context) => [
-        if (!sub.isLocal) _item('refresh', Icons.refresh, 'Обновить'),
-        _item('rename', Icons.edit_outlined, 'Переименовать'),
-        if (!sub.isLocal) _item('qr', Icons.qr_code_2, platform.isAndroid ? 'Показать QR-код' : 'QR-код для телефона'),
-        _item('delete', Icons.delete_outline, 'Удалить', color: errColor),
+        if (!sub.isLocal) _item('refresh', Icons.refresh, tr('servers.sub.refresh')),
+        _item('rename', Icons.edit_outlined, tr('servers.sub.rename')),
+        if (!sub.isLocal) _item('qr', Icons.qr_code_2, platform.isAndroid ? tr('servers.sub.qr_android') : tr('servers.sub.qr_desktop')),
+        _item('delete', Icons.delete_outline, tr('servers.sub.delete'), color: errColor),
       ],
     );
   }
@@ -347,7 +358,7 @@ class _CurrentBar extends StatelessWidget {
     final connected = state.status.state == ConnState.connected;
     final color = connected ? okColor : accent;
     final ink = p.ink(color);
-    final label = connected ? 'Сейчас' : (state.status.active ? 'Подключение' : 'Выбран');
+    final label = connected ? tr('servers.current.now') : (state.status.active ? tr('servers.current.connecting') : tr('servers.current.selected'));
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -394,7 +405,13 @@ class _CurrentBar extends StatelessWidget {
                 width: compact ? 74 : 84,
                 child: _LatencyCell(latency: state.latencyOf(sub.id, node.fingerprint)),
               ),
-              Btn(label: compact ? null : 'Показать', icon: Icons.my_location, small: true, tooltip: 'Показать в списке', onPressed: onShow),
+              Btn(
+                label: compact ? null : tr('servers.current.show'),
+                icon: Icons.my_location,
+                small: true,
+                tooltip: tr('servers.current.show_tip'),
+                onPressed: onShow,
+              ),
             ],
           ),
         ),
@@ -425,16 +442,13 @@ class _SwipeHint extends StatelessWidget {
           Icon(Icons.swipe, size: 17, color: p.accentInk),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              'Смахните сервер вправо — подключиться. Удерживайте и ведите пальцем — выбрать несколько',
-              style: TextStyle(fontSize: 12, color: p.muted),
-            ),
+            child: Text(tr('servers.swipe_hint'), style: TextStyle(fontSize: 12, color: p.muted)),
           ),
           IconButton(
             onPressed: onClose,
             visualDensity: VisualDensity.compact,
             icon: Icon(Icons.close, size: 16, color: p.dim),
-            tooltip: 'Понятно',
+            tooltip: tr('servers.swipe_hint.ok'),
           ),
         ],
       ),

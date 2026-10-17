@@ -1,9 +1,26 @@
 part of '../home_page.dart';
 
-const _weekdays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
-const _weekdaysLong = ['понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота', 'воскресенье'];
+/// Keys of the weekdays' names, Monday first; said with [tr] where shown.
+const _weekdays = [
+  'home.traffic.day.mon',
+  'home.traffic.day.tue',
+  'home.traffic.day.wed',
+  'home.traffic.day.thu',
+  'home.traffic.day.fri',
+  'home.traffic.day.sat',
+  'home.traffic.day.sun',
+];
+const _weekdaysLong = [
+  'home.traffic.dayfull.mon',
+  'home.traffic.dayfull.tue',
+  'home.traffic.dayfull.wed',
+  'home.traffic.dayfull.thu',
+  'home.traffic.dayfull.fri',
+  'home.traffic.dayfull.sat',
+  'home.traffic.dayfull.sun',
+];
 
-String _dayLabel(DateTime d) => '${_weekdaysLong[d.weekday - 1]}, ${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}';
+String _dayLabel(DateTime d) => '${tr(_weekdaysLong[d.weekday - 1])}, ${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}';
 
 /// The traffic through the VPN in one line: today's, and the week's in
 /// bars behind «Подробнее».
@@ -25,7 +42,7 @@ class _TrafficRow extends StatelessWidget {
       title: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text('Трафик', style: TextStyle(fontWeight: FontWeight.w600)),
+          Text(tr('home.traffic.title'), style: const TextStyle(fontWeight: FontWeight.w600)),
           const SizedBox(width: 10),
           Flexible(
             child: FittedBox(
@@ -44,9 +61,9 @@ class _TrafficRow extends StatelessWidget {
           ),
         ],
       ),
-      note: 'сегодня; за неделю ${formatBytes(total)}',
+      note: tr('home.traffic.note', {'total': formatBytes(total)}),
       noteColor: p.dim,
-      action: Btn(label: 'Подробнее', small: true, onPressed: () => showTrafficStats(context, state)),
+      action: Btn(label: tr('home.btn.details'), small: true, onPressed: () => showTrafficStats(context, state)),
     );
   }
 }
@@ -84,7 +101,7 @@ class _TrafficChartState extends State<_TrafficChart> {
             grid: p.border,
             label: p.dim,
             mini: widget.mini,
-            dayLabel: days.length <= 7 ? (d) => _weekdays[d.weekday - 1] : (d) => '${d.day}',
+            dayLabel: days.length <= 7 ? (d) => tr(_weekdays[d.weekday - 1]) : (d) => '${d.day}',
             base: Theme.of(context).textTheme.bodySmall ?? const TextStyle(),
           ),
           size: Size.infinite,
@@ -105,7 +122,11 @@ class _TrafficChartState extends State<_TrafficChart> {
         Expanded(child: chart),
         const SizedBox(height: 6),
         Text(
-          '${picked == null ? 'Сегодня' : _dayLabel(shown.date)}: ↓ ${formatBytes(shown.down)}   ↑ ${formatBytes(shown.up)}',
+          tr('home.traffic.picked', {
+            'day': picked == null ? tr('home.traffic.today') : _dayLabel(shown.date),
+            'down': formatBytes(shown.down),
+            'up': formatBytes(shown.up),
+          }),
           style: TextStyle(fontSize: 12, color: p.muted),
         ),
       ],
@@ -237,31 +258,38 @@ class _TrafficDetails extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('Трафик через VPN', style: dialogTitle),
+              Text(tr('home.traffic.details.title'), style: dialogTitle),
               const SizedBox(height: 2),
-              Text('за 7 дней', style: TextStyle(fontSize: 12.5, color: p.muted)),
+              Text(tr('home.traffic.details.period'), style: TextStyle(fontSize: 12.5, color: p.muted)),
               const SizedBox(height: 16),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  stat('Скачано', formatBytes(down)),
-                  stat('Отправлено', formatBytes(up)),
-                  stat('В день', active == 0 ? '—' : formatBytes((down + up) / active), active == 0 ? '' : 'в среднем'),
+                  stat(tr('home.traffic.details.down'), formatBytes(down)),
+                  stat(tr('home.traffic.details.up'), formatBytes(up)),
+                  stat(
+                    tr('home.traffic.details.per_day'),
+                    active == 0 ? '—' : formatBytes((down + up) / active),
+                    active == 0 ? '' : tr('home.traffic.details.average'),
+                  ),
                 ],
               ),
               const SizedBox(height: 16),
               SizedBox(height: 150, child: _TrafficChart(days: days)),
               if (busiest != null && busiest.total > 0) ...[
                 const SizedBox(height: 12),
-                Text('Больше всего: ${_dayLabel(busiest.date)}, ${formatBytes(busiest.total)}', style: TextStyle(fontSize: 12.5, color: p.muted)),
+                Text(
+                  tr('home.traffic.details.busiest', {'day': _dayLabel(busiest.date), 'size': formatBytes(busiest.total)}),
+                  style: TextStyle(fontSize: 12.5, color: p.muted),
+                ),
               ],
               const SizedBox(height: 4),
-              Text('Считается только трафик, прошедший через VPN. История хранится 90 дней.', style: TextStyle(fontSize: 11.5, color: p.dim)),
+              Text(tr('home.traffic.details.note'), style: TextStyle(fontSize: 11.5, color: p.dim)),
               if (!compact) ...[
                 const SizedBox(height: 14),
                 Align(
                   alignment: Alignment.centerRight,
-                  child: Btn(label: 'Закрыть', onPressed: () => Navigator.pop(context)),
+                  child: Btn(label: tr('home.btn.close'), onPressed: () => Navigator.pop(context)),
                 ),
               ],
             ],

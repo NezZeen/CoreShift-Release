@@ -19,7 +19,7 @@ extension AppStateImports on AppState {
     final quiet = from == ImportFrom.clipboard;
     final link = parseImportLink(text, strict: quiet);
     if (link == null) {
-      if (!quiet) toast(from == ImportFrom.qr ? 'В QR-коде нет ссылки на подписку или сервер' : 'Это не ссылка на подписку или сервер', ToastKind.err);
+      if (!quiet) toast(tr(from == ImportFrom.qr ? 'state.import.qrNoLink' : 'state.import.notLink'), ToastKind.err);
       return;
     }
     if (link.error.isNotEmpty) {
@@ -32,7 +32,7 @@ extension AppStateImports on AppState {
       // characters): a look-alike is compared whole before saying so.
       final lookAlikes = subscriptions.where((s) => s.url == maskedUrl(link.url)).toList();
       if (subscriptions.any((s) => s.url == link.url) || (lookAlikes.isNotEmpty && await _addedAs(lookAlikes, link.url))) {
-        if (!quiet) toast('Эта подписка уже добавлена');
+        if (!quiet) toast(tr('state.import.alreadyAdded'));
         return;
       }
     }
