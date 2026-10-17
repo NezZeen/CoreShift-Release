@@ -258,8 +258,11 @@ if (-not $Notes) { $Notes = ' ' }
 # release with Windows files may be marked so.
 $latest = if (Test-Path (Join-Path $dir 'latest.json')) { '--latest' } else { '--latest=false' }
 if ($Prerelease) { $latest = '--latest=false' }
-# An array, not the string an if-expression would give: @string splats its characters.
-[string[]]$pre = if ($Prerelease) { '--prerelease' } else { @() }
+# An array, empty without -Prerelease: an if-expression would give a string
+# (whose @ splats its characters), or $null, which the gh command line below
+# took for an empty file name ("no matches found for ``").
+$pre = @()
+if ($Prerelease) { $pre = @('--prerelease') }
 # Through a UTF-8 file: several lines or Cyrillic would be split or garbled
 # as an argument by Windows PowerShell.
 $notesFile = Join-Path $env:TEMP "coreshift-notes-$Version.md"
