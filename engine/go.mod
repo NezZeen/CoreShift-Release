@@ -2,6 +2,8 @@ module coreshift/engine
 
 go 1.26.0
 
+toolchain go1.27.2
+
 require (
 	github.com/miekg/dns v1.1.73
 	github.com/sagernet/sing v0.9.7-0.20260929150544-0ad23b637bd4
@@ -10,7 +12,7 @@ require (
 	github.com/showwin/speedtest-go v1.8.3
 	go.yaml.in/yaml/v3 v3.0.5
 	golang.org/x/mobile v0.0.0-20260908204917-8b95e45f8d3e
-	golang.org/x/net v0.59.0
+	golang.org/x/net v0.60.0
 	golang.org/x/sys v0.48.0
 	google.golang.org/protobuf v1.36.12
 )
