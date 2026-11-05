@@ -1,0 +1,21 @@
+# Weekly checks for fresh versions of the engine's Go modules, the app's
+# pub packages and the actions the workflows pin. Opened as pull requests,
+# where the test workflow (test.yml) checks them before a human looks.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /engine
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: pub
+    directory: /app
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

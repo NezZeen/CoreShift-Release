@@ -1,0 +1,97 @@
+# Builds and tests CoreShift on every push to main and every pull request:
+# the Go engine on Windows and Linux (with the Android cross-compile), the
+# Flutter app, and govulncheck over the engine. These are the pre-commit
+# checks run by GitHub, so a regression is caught here rather
+# than at the next manual audit.
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  engine-windows:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      # Pinned to commits, as in rulesets.yml: a moved tag cannot change
+      # what runs.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: engine/go.mod
+          cache-dependency-path: engine/go.sum
+
+      # The real cores are not in git (engine/.gitignore); tests build fake
+      # ones and skip what needs a real binary (SINGBOX_BIN).
+      - name: Vet and test
+        working-directory: engine
+        run: |
+          go vet ./...
+          go test ./...
+
+  engine-linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: engine/go.mod
+          cache-dependency-path: engine/go.sum
+
+      - name: Vet and test
+        working-directory: engine
+        run: |
+          go vet ./...
+          go test ./...
+
+      - name: Cross-compile for arm64 Linux and Android
+        working-directory: engine
+        run: |
+          GOOS=linux GOARCH=arm64 go build ./...
+          GOOS=android GOARCH=arm64 go vet ./mobile
+
+  govulncheck:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: engine/go.mod
+          cache-dependency-path: engine/go.sum
+
+      - name: Scan for known vulnerabilities
+        working-directory: engine
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+  app:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: "3.47.5"
+          channel: stable
+          cache: true
+
+      - name: Analyze and test
+        working-directory: app
+        run: |
+          flutter pub get
+          flutter analyze
+          flutter test
