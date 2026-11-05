@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -63,6 +64,33 @@ func (s *Service) addServerRoute(ip netip.Addr) error {
 	}
 	s.serverRoute, s.hasServerRoute = r, true
 	return nil
+}
+
+// followServerRoute moves the route to the server onto the gateway the
+// system goes out by now. A network can change under a connection without
+// going away (another Wi-Fi on the same adapter, a cable unplugged with
+// Wi-Fi on, a router that dies): the route would lead by the old gateway,
+// and the core could not reach its server until the user picked another.
+// Called by watchNet on every look at a network that is there; skipped
+// while another operation runs, as the next look comes soon.
+func (s *Service) followServerRoute() {
+	if s.cfg.routeWant == nil || !s.op.TryLock() {
+		return
+	}
+	defer s.op.Unlock()
+	if !s.hasServerRoute {
+		return
+	}
+	held := s.serverRoute
+	want, err := s.cfg.routeWant(held.IP)
+	if err != nil || (want.Gateway == held.Gateway && want.IfName == held.IfName && want.IfIndex == held.IfIndex) {
+		return
+	}
+	if err := s.addServerRoute(held.IP); err != nil {
+		s.Log("tun", "moving the server's route to the new network: "+err.Error())
+		return
+	}
+	s.Log("tun", fmt.Sprintf("the server's route moved to the new network: via %s (%s)", want.Gateway, want.IfName))
 }
 
 // dropServerRoute removes the route addServerRoute made, if any. Called

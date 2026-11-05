@@ -187,6 +187,7 @@ func (s *Service) watchNet(ctx context.Context, gen int) {
 			if line, ok := names.look(ctx, s); ok {
 				s.hub.publish(Event{Kind: "netinfo", Reason: "changed"}.withLine(line))
 			}
+			s.followServerRoute()
 		}
 		switch {
 		case s.netDown.Load():

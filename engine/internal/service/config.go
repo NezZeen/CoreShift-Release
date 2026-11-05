@@ -197,8 +197,10 @@ type Config struct {
 	// routeAdd and routeDel manage the host route that keeps the connected
 	// server's own traffic out of the tunnel (serverroute.go). nil means the
 	// platform default (internal/serverroute).
-	routeAdd    func(netip.Addr) (serverroute.Route, error)
-	routeDel    func(serverroute.Route) error
+	routeAdd func(netip.Addr) (serverroute.Route, error)
+	routeDel func(serverroute.Route) error
+	// routeWant is the route routeAdd would make now (followServerRoute).
+	routeWant   func(netip.Addr) (serverroute.Route, error)
 	netInterval time.Duration
 	netUp       func() bool
 	netName     func() string

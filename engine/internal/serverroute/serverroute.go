@@ -30,6 +30,20 @@ type Route struct {
 // Loopback, unspecified and invalid IPs are an error. IPv6 servers are not
 // supported yet: an error (the caller falls back to its old behavior).
 func Add(ip netip.Addr) (Route, error) {
+	r, err := Want(ip)
+	if err != nil {
+		return Route{}, err
+	}
+	if err := addRoute(r); err != nil {
+		return Route{}, err
+	}
+	return r, nil
+}
+
+// Want is the route Add would make for ip now, without making it: a held
+// route that differs from it leads by a gateway the system no longer uses
+// (another Wi-Fi, a cable unplugged), and has to be made again.
+func Want(ip netip.Addr) (Route, error) {
 	if !ip.IsValid() || ip.IsLoopback() || ip.IsUnspecified() {
 		return Route{}, fmt.Errorf("bad server address %s", ip)
 	}
@@ -44,11 +58,7 @@ func Add(ip netip.Addr) (Route, error) {
 	if err != nil {
 		return Route{}, fmt.Errorf("interface %s: %w", b.Interface, err)
 	}
-	r := Route{IP: ip, Gateway: gateway, IfName: ifc.Name, IfIndex: ifc.Index}
-	if err := addRoute(r); err != nil {
-		return Route{}, err
-	}
-	return r, nil
+	return Route{IP: ip, Gateway: gateway, IfName: ifc.Name, IfIndex: ifc.Index}, nil
 }
 
 // Del removes the route. A missing route is not an error.

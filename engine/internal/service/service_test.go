@@ -225,6 +225,9 @@ type harness struct {
 	// routeErr makes routeAdd fail, as where routes cannot be managed.
 	routes   []serverroute.Route
 	routeErr error
+	// routeGW is the gateway the route fakes route by: a change is a change
+	// of network under the connection (followServerRoute).
+	routeGW netip.Addr
 
 	svc    *Service
 	log    *callLog
@@ -247,7 +250,7 @@ func (h *harness) netName() string {
 func newHarness(t *testing.T, mutate func(*Config)) *harness {
 	t.Helper()
 	log := &callLog{}
-	h := &harness{log: log, tun: &fakeTUN{log: log}, guard: &fakeGuard{log: log}, listen: freePort(t)}
+	h := &harness{log: log, tun: &fakeTUN{log: log}, guard: &fakeGuard{log: log}, listen: freePort(t), routeGW: netip.MustParseAddr("192.0.2.1")}
 	cfg := Config{
 		DataDir:  t.TempDir(),
 		Binaries: installCores(t),
@@ -293,9 +296,14 @@ func newHarness(t *testing.T, mutate func(*Config)) *harness {
 			if h.routeErr != nil {
 				return serverroute.Route{}, h.routeErr
 			}
-			r := serverroute.Route{IP: ip, Gateway: netip.MustParseAddr("192.0.2.1"), IfName: "test0", IfIndex: 1}
-			h.routes = append(h.routes, r)
+			r := serverroute.Route{IP: ip, Gateway: h.routeGW, IfName: "test0", IfIndex: 1}
+			h.routes = append(slices.DeleteFunc(h.routes, func(x serverroute.Route) bool { return x.IP == ip }), r)
 			return r, nil
+		},
+		routeWant: func(ip netip.Addr) (serverroute.Route, error) {
+			h.mu.Lock()
+			defer h.mu.Unlock()
+			return serverroute.Route{IP: ip, Gateway: h.routeGW, IfName: "test0", IfIndex: 1}, nil
 		},
 		routeDel: func(r serverroute.Route) error {
 			log.add("route.del " + r.IP.String())
@@ -606,6 +614,38 @@ func TestReconnectReplacesConnection(t *testing.T) {
 		t.Errorf("each server routed around the tunnel: %v", calls)
 	} else if slices.Contains(calls[first:second], "dns.revert") {
 		t.Errorf("DNS must stay redirected across a switch: %v", calls)
+	}
+}
+
+// The network changes under the connection without going away (another
+// gateway): the route to the server follows, the TUN layer stays.
+func TestServerRouteFollowsTheGateway(t *testing.T) {
+	h := newHarness(t, nil)
+	if err := h.connect(t, trojanLink); err != nil {
+		t.Fatal(err)
+	}
+	moved := netip.MustParseAddr("192.0.2.99")
+	h.mu.Lock()
+	h.routeGW = moved
+	h.mu.Unlock()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		h.mu.Lock()
+		routes := slices.Clone(h.routes)
+		h.mu.Unlock()
+		if len(routes) == 1 && routes[0].Gateway == moved {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the route did not follow the gateway: %+v", routes)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if log := h.log.get(); countOf(log, "tun.start") != 1 || countOf(log, "tun.stop") != 0 {
+		t.Errorf("the TUN layer stays: %v", log)
+	}
+	if st := h.svc.Status(); st.State != Connected {
+		t.Errorf("status = %+v", st)
 	}
 }
 

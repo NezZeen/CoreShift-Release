@@ -391,7 +391,7 @@ func New(cfg Config) (*Service, error) {
 		s.cfg.dnsProbe = s.probeDNS
 	}
 	if s.cfg.routeAdd == nil {
-		s.cfg.routeAdd, s.cfg.routeDel = serverroute.Add, serverroute.Del
+		s.cfg.routeAdd, s.cfg.routeDel, s.cfg.routeWant = serverroute.Add, serverroute.Del, serverroute.Want
 	}
 	s.verbose.Store(cfg.Options.Verbose)
 	s.power.off.Store(cfg.Options.NoBatterySaving)
