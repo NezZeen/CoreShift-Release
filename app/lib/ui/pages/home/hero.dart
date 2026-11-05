@@ -26,7 +26,12 @@ class _Hero extends StatelessWidget {
     final canConnect = state.online && (st.active || (sel.available && !state.busy));
     final muted = TextStyle(color: p.muted, fontSize: 13.5);
     final Widget line = switch (st.state) {
-      ConnState.connected when st.since != null => ConnectedTime(since: st.since!, tun: st.tun, short: isCompact(context)),
+      ConnState.connected when st.since != null => ConnectedTime(
+        since: st.since!,
+        tun: st.tun,
+        systemProxy: !platform.isAndroid && state.setting('proxy.system', false) == true,
+        short: isCompact(context),
+      ),
       ConnState.failed => Tooltip(
         message: st.error,
         child: Text(
@@ -184,10 +189,11 @@ class _DeviceStation extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.pal;
     final tun = state.setting('tun', true);
+    final systemProxy = !platform.isAndroid && state.setting('proxy.system', false) == true;
     final selected = state.setting('routing.mode', 'all') == 'selected';
     final russia = state.setting('routing.russia_direct', false);
     final rules = !tun
-        ? tr('home.device.rules.proxy')
+        ? (systemProxy ? tr('home.device.rules.system_proxy') : tr('home.device.rules.proxy'))
         : selected
         ? tr('home.device.rules.selected')
         : russia
@@ -201,7 +207,7 @@ class _DeviceStation extends StatelessWidget {
         TextSpan(
           children: [
             TextSpan(
-              text: tun ? tr('home.device.all_apps') : tr('home.device.proxy_only'),
+              text: tun ? tr('home.device.all_apps') : (systemProxy ? tr('home.device.system_proxy') : tr('home.device.proxy_only')),
               style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
             ),
             TextSpan(

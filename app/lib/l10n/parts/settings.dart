@@ -39,7 +39,9 @@ const settingsRu = <String, String>{
   // Settings page: «Подключение».
   'settings.network.title': 'Подключение',
   'settings.tun.title': 'Все приложения через VPN',
-  'settings.tun.desc': 'Режим TUN. Если выключить, через VPN пойдут только программы с прокси SOCKS5 или HTTP 127.0.0.1:{port}',
+  'settings.tun.desc':
+      'Режим TUN. Если выключить — включите ниже «Системный прокси», и CoreShift сам пропишет прокси в систему. '
+      'Без него через VPN пойдут только программы с ручным прокси SOCKS5 или HTTP 127.0.0.1:{port}',
   'settings.ipv6.title': 'IPv6 через туннель',
   'settings.ipv6.desc':
       'IPv6-трафик тоже идёт через VPN. Если выключить, IPv6 при подключении не работает вовсе и сайты открываются по IPv4. '
@@ -170,6 +172,7 @@ const settingsRu = <String, String>{
   'proxy.system.desc':
       'Если «Все приложения» не включаются: CoreShift сам пропишет прокси в системе. '
       'Работает для браузеров и большинства программ, но не для игр и всего, что прокси не понимает',
+  'proxy.system.tun_on': 'Включите после выключения «Все приложения через VPN»',
   'proxy.only.title': 'Прокси без VPN',
   'proxy.only.desc':
       'VPN не включается: через CoreShift идут только приложения, настроенные на прокси. '
@@ -292,7 +295,9 @@ const settingsEn = <String, String>{
   // Settings page: «Подключение».
   'settings.network.title': 'Connection',
   'settings.tun.title': 'All apps through VPN',
-  'settings.tun.desc': 'TUN mode. If turned off, only programs using the SOCKS5 or HTTP proxy 127.0.0.1:{port} go through the VPN',
+  'settings.tun.desc':
+      'TUN mode. If turned off, turn on “System proxy” below and CoreShift sets the proxy in the system itself. '
+      'Without it only programs with a manual SOCKS5 or HTTP proxy 127.0.0.1:{port} go through the VPN',
   'settings.ipv6.title': 'IPv6 through the tunnel',
   'settings.ipv6.desc':
       'IPv6 traffic goes through the VPN too. If turned off, IPv6 does not work at all while connected and sites open over IPv4. '
@@ -423,6 +428,7 @@ const settingsEn = <String, String>{
   'proxy.system.desc':
       'If “All apps through VPN” will not turn on: CoreShift sets the proxy in the system itself. '
       'Works for browsers and most programs, but not for games or anything that does not understand a proxy',
+  'proxy.system.tun_on': 'Turn it on after turning off “All apps through VPN”',
   'proxy.only.title': 'Proxy without VPN',
   'proxy.only.desc':
       'The VPN does not turn on: only apps set up for the proxy go through CoreShift. '

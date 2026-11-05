@@ -13,6 +13,7 @@ import (
 
 	"coreshift/engine/internal/apps"
 	"coreshift/engine/internal/core"
+	"coreshift/engine/internal/msg"
 	"coreshift/engine/internal/node"
 	"coreshift/engine/internal/store"
 )
@@ -99,18 +100,21 @@ func (a *api) info(w http.ResponseWriter, r *http.Request) {
 		k := ad.Kind()
 		cores = append(cores, coreInfo{Kind: k, Installed: a.svc.cfg.Binaries[k] != "", Version: versions[k], Features: core.Features(k)})
 	}
-	tunReason := a.svc.cfg.TUNUnavailable
-	if tunReason == "" && a.svc.cfg.Binaries[core.SingBox] == "" {
-		tunReason = "TUN mode needs the sing-box core installed"
+	// A code, not a sentence: the app words it in its language, with the
+	// Russian text going along for apps before the codes.
+	tunCode := a.svc.cfg.TUNUnavailable
+	if tunCode == "" && a.svc.cfg.Binaries[core.SingBox] == "" {
+		tunCode = "tun.unavailable.no_singbox"
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"version":         Version,
-		"build":           BuildNumber(),
-		"commit":          Commit,
-		"cores":           cores,
-		"tun_available":   tunReason == "",
-		"tun_unavailable": tunReason,
-		"store":           a.svc.Store() != nil,
+		"version":              Version,
+		"build":                BuildNumber(),
+		"commit":               Commit,
+		"cores":                cores,
+		"tun_available":        tunCode == "",
+		"tun_unavailable":      msg.New(tunCode).String(),
+		"tun_unavailable_code": tunCode,
+		"store":                a.svc.Store() != nil,
 		// The port of the proxy without the TUN layer.
 		"proxy_port": a.svc.cfg.Listen.Port(),
 	})

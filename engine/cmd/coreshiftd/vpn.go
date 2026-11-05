@@ -148,9 +148,11 @@ func serveWith(ctx context.Context, cfg service.Config, apiAddr string, log io.W
 		fmt.Fprintln(log, "warning: remove the API file of an earlier run:", err)
 	}
 	if !isElevated() {
-		cfg.TUNUnavailable = "TUN mode needs administrator rights, which the daemon does not have; turn TUN off in the settings or run the daemon elevated"
+		// Codes, not sentences: the app words them in its language
+		// (engine/internal/msg), with the Russian text going along.
+		cfg.TUNUnavailable = "tun.unavailable.no_admin"
 		if runtime.GOOS == "linux" {
-			cfg.TUNUnavailable = "TUN mode needs root or CAP_NET_ADMIN, which the daemon does not have; run it as the coreshift systemd service"
+			cfg.TUNUnavailable = "tun.unavailable.no_root"
 		}
 	}
 	st, err := service.OpenStore(cfg.DataDir, store.Options{})

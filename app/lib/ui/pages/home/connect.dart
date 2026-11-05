@@ -10,11 +10,16 @@ part of '../home_page.dart';
 class ConnectedTime extends StatefulWidget {
   final DateTime since;
   final bool tun;
+
+  /// True while «Системный прокси» is on: a connection without TUN sets
+  /// the proxy of the system by itself, rather than waiting for programs
+  /// set up by hand.
+  final bool systemProxy;
   final bool short;
 
   /// The clock; a fake one in tests.
   final DateTime Function() now;
-  const ConnectedTime({super.key, required this.since, required this.tun, this.short = false, this.now = DateTime.now});
+  const ConnectedTime({super.key, required this.since, required this.tun, this.systemProxy = false, this.short = false, this.now = DateTime.now});
 
   /// How long «переподключено» stays.
   static const noteFor = Duration(seconds: 3);
@@ -97,9 +102,10 @@ class _ConnectedTimeState extends State<ConnectedTime> {
   Widget build(BuildContext context) {
     final p = context.pal;
     final d = widget.now().difference(widget.since);
+    final proxy = widget.systemProxy ? tr('home.connected.system_proxy') : tr('home.connected.proxy');
     final mode = widget.short
-        ? (widget.tun ? '' : ' · ${tr('home.connected.proxy_only')}')
-        : ' · ${widget.tun ? tr('home.connected.all_apps') : tr('home.connected.proxy')}';
+        ? (widget.tun ? '' : ' · ${widget.systemProxy ? tr('home.connected.system_proxy') : tr('home.connected.proxy_only')}')
+        : ' · ${widget.tun ? tr('home.connected.all_apps') : proxy}';
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 250),
       child: Text.rich(

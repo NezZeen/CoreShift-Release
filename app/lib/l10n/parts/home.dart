@@ -53,7 +53,8 @@ const homeRu = <String, String>{
   // Under the state: how long it is up, in what mode
   'home.connected.proxy_only': 'только прокси',
   'home.connected.all_apps': 'все приложения через VPN',
-  'home.connected.proxy': 'прокси SOCKS5 127.0.0.1:17890',
+  'home.connected.proxy': 'прокси вручную 127.0.0.1:17890',
+  'home.connected.system_proxy': 'системный прокси',
   'home.connected.reconnected': 'переподключено',
 
   // The hero
@@ -67,7 +68,9 @@ const homeRu = <String, String>{
   'home.device.caption': 'Это устройство',
   'home.device.all_apps': 'Все приложения',
   'home.device.proxy_only': 'Только прокси',
-  'home.device.rules.proxy': 'в VPN только программы с прокси',
+  'home.device.system_proxy': 'Системный прокси',
+  'home.device.rules.proxy': 'в VPN только программы с ручным прокси',
+  'home.device.rules.system_proxy': 'браузеры и программы идут через VPN сами',
   'home.device.rules.selected': 'в VPN только выбранные сайты и программы',
   'home.device.rules.russia': 'российские сайты напрямую, кроме Google и YouTube, остальное в VPN',
   'home.device.rules.all': 'весь трафик идёт в VPN',
@@ -276,7 +279,8 @@ const homeEn = <String, String>{
 
   'home.connected.proxy_only': 'proxy only',
   'home.connected.all_apps': 'all apps through VPN',
-  'home.connected.proxy': 'SOCKS5 proxy 127.0.0.1:17890',
+  'home.connected.proxy': 'manual proxy 127.0.0.1:17890',
+  'home.connected.system_proxy': 'system proxy',
   'home.connected.reconnected': 'reconnected',
 
   'home.hero.pick_first': 'Choose a server first',
@@ -288,7 +292,9 @@ const homeEn = <String, String>{
   'home.device.caption': 'This device',
   'home.device.all_apps': 'All apps',
   'home.device.proxy_only': 'Proxy only',
-  'home.device.rules.proxy': 'only proxied apps go through the VPN',
+  'home.device.system_proxy': 'System proxy',
+  'home.device.rules.proxy': 'only apps with a manual proxy go through the VPN',
+  'home.device.rules.system_proxy': 'browsers and programs go through the VPN by themselves',
   'home.device.rules.selected': 'only selected sites and apps go through the VPN',
   'home.device.rules.russia': 'Russian sites direct except Google and YouTube, the rest through the VPN',
   'home.device.rules.all': 'all traffic goes through the VPN',

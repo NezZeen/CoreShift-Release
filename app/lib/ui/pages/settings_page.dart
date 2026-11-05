@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../l10n/engine_strings.dart';
 import '../../l10n/strings.dart';
 import '../../platform/desktop.dart' as desktop;
 import '../../platform/platform.dart' as platform;
@@ -150,10 +151,13 @@ class SettingsPage extends StatelessWidget {
             SettingRow(
               first: true,
               title: tr('settings.tun.title'),
-              description: info.tunAvailable ? tr('settings.tun.desc', {'port': info.proxyPort}) : info.tunUnavailable,
+              description: info.tunAvailable
+                  ? tr('settings.tun.desc', {'port': info.proxyPort})
+                  : engineText(info.tunUnavailableCode, null, info.tunUnavailable),
               trailing: _switch('tun', enabled: info.tunAvailable || state.setting('tun', false)),
+              enabled: info.tunAvailable || state.setting('tun', false),
             ),
-          if (!platform.isAndroid && tunOff && state.hasSetting('proxy.system')) SystemProxyRow(state: state),
+          if (!platform.isAndroid && state.hasSetting('proxy.system')) SystemProxyRow(state: state, enabled: tunOff),
           if (state.hasSetting('ipv6'))
             SettingRow(
               first: platform.isAndroid && !androidProxy && state.setting('tun', true),

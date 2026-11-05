@@ -15,14 +15,17 @@ class SectionLabel extends StatelessWidget {
 }
 
 /// A settings line: title and description on the left, a control on the right.
+/// While [enabled] is false the whole line reads as switched off: dimmed,
+/// with the control itself disabled.
 class SettingRow extends StatelessWidget {
   final String title;
   final String? description;
   final Widget? descriptionWidget;
   final Widget? trailing;
   final bool first;
+  final bool enabled;
 
-  const SettingRow({super.key, required this.title, this.description, this.descriptionWidget, this.trailing, this.first = false});
+  const SettingRow({super.key, required this.title, this.description, this.descriptionWidget, this.trailing, this.first = false, this.enabled = true});
 
   @override
   Widget build(BuildContext context) {
@@ -55,7 +58,7 @@ class SettingRow extends StatelessWidget {
     final t = trailing;
     final narrow = t is Switch || t is Text || (t is SavingField && t.width <= 100);
     final below = t != null && !narrow && compact;
-    return Container(
+    final body = Container(
       padding: EdgeInsets.only(top: first ? 0 : 13, bottom: 13),
       decoration: BoxDecoration(
         border: first ? null : Border(top: BorderSide(color: p.border)),
@@ -79,6 +82,8 @@ class SettingRow extends StatelessWidget {
               ],
             ),
     );
+    if (enabled) return body;
+    return Opacity(opacity: .55, child: body);
   }
 }
 

@@ -114,7 +114,9 @@ type Config struct {
 	// Store, if set, provides settings, subscriptions and the selected node.
 	Store *store.Store
 	// TUNUnavailable, if set, is why TUN mode cannot work here, e.g. missing
-	// privileges; connecting with TUN on then fails with it.
+	// privileges: a message code (engine/internal/msg, "tun.unavailable.*").
+	// Connecting with TUN on then fails saying it; the API names it in
+	// "tun_unavailable_code" and words it in "tun_unavailable".
 	TUNUnavailable string
 	// SelfUpdate lets the service update CoreShift: only the installed
 	// service of a release build may run an installer over itself.
