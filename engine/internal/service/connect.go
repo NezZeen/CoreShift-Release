@@ -8,6 +8,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"time"
 
@@ -68,15 +69,38 @@ func (s *Service) Connect(ctx context.Context, n node.Node) error {
 
 // connectOp is Connect with s.op held, by beginOp.
 func (s *Service) connectOp(ctx context.Context, n node.Node) error {
+	return s.connectNode(ctx, n, true)
+}
+
+// connectNode is connectOp; mayKeep false rebuilds a running TUN layer
+// even when only the server changes, as after a change of network, whose
+// resolvers the layer has to look up again.
+func (s *Service) connectNode(ctx context.Context, n node.Node, mayKeep bool) error {
 	if disconnected(ctx) {
 		return ErrDisconnected // the user disconnected before it began
 	}
 	s.stopLatencyTest()
 	s.stopNodeSpeed()
-	s.stopLocked()
-
+	// A switch of servers keeps the TUN layer — its interface, the DNS
+	// redirect and the fake-IP records applications hold — when nothing but
+	// the server changes: rebuilding the layer takes seconds, and a request
+	// falling between the old layer and the new fails (the journal's
+	// "missing fakeip record" is one). The route to the server is the
+	// engine's own (serverroute.go), so the layer's config does not differ.
 	s.mu.Lock()
-	s.gen++
+	keepTUN := mayKeep && s.opts.TUN && s.tun != nil && s.status.State == Connected && !s.pending && !s.optsPending && s.hasTunLookups
+	s.mu.Unlock()
+	if keepTUN && s.networkGone(ctx) {
+		// No network: another server would not answer either; wait it out.
+		keepTUN = false
+	}
+	if !keepTUN {
+		s.stopLocked()
+	}
+	s.mu.Lock()
+	if !keepTUN {
+		s.gen++
+	}
 	gen, opts := s.gen, s.opts
 	s.pending, s.optsPending, s.connOpts = false, false, opts
 	s.lastNode, s.hasLast = n, true
@@ -87,18 +111,22 @@ func (s *Service) connectOp(ctx context.Context, n node.Node) error {
 	// VPN, and there other apps must not reach the port.
 	pol.OpenInbound = !opts.TUN && !s.cfg.AppOutsideVPN
 	pol.Inbound = s.inbound(opts)
-	s.sup.SetPolicy(pol)
+	if !keepTUN {
+		// The policy is the running connection's already: SetPolicy would
+		// stop the cores, which connectLocked needs for its lookups.
+		s.sup.SetPolicy(pol)
+	}
 	s.setStatus(Status{State: Connecting, Node: n.Name, Protocol: string(n.Protocol), TUN: opts.TUN, Since: time.Now()})
-	if s.networkGone(ctx) {
+	if !keepTUN && s.networkGone(ctx) {
 		// Nothing would come of it, and the server's name would not even
 		// resolve: the connection is made once there is a network.
 		s.waitNetwork(n, opts)
 		return nil
 	}
 
-	serverIP, err := s.connectLocked(ctx, n, gen, opts)
+	res, err := s.connectLocked(ctx, n, gen, opts, pol, keepTUN)
 	s.mu.Lock()
-	s.serverIP = serverIP
+	s.serverIP = res.serverIP
 	s.mu.Unlock()
 	s.healthFails.Store(0)
 	if err == nil && disconnected(ctx) {
@@ -123,15 +151,19 @@ func (s *Service) connectOp(ctx context.Context, n node.Node) error {
 	st.State = Connected
 	st.Since = time.Now()
 	s.setStatus(st)
+	if res.keptTUN {
+		// The connection's watchers, made with the layer, serve on.
+		return nil
+	}
 	pingCtx, stop := context.WithCancel(context.Background())
 	s.stopPing = stop
 	go s.watchTraffic(pingCtx)
-	go s.watchNet(pingCtx, gen)
+	go s.watchNet(pingCtx, res.gen)
 	s.mu.Lock()
 	autoDNS := s.autoDNS
 	s.mu.Unlock()
 	if autoDNS.IsValid() {
-		go s.watchNetwork(pingCtx, gen, autoDNS)
+		go s.watchNetwork(pingCtx, res.gen, autoDNS)
 	}
 	if k, ok := s.cfg.guard.(dnsguard.Keeper); ok && opts.TUN {
 		go s.keepDNS(pingCtx, k)
@@ -217,7 +249,9 @@ func (s *Service) reconnectGen(gen int) {
 	n, current := s.lastNode, gen == s.gen && (st.State == Connected || st.State == NoNetwork && !st.Waiting)
 	s.mu.Unlock()
 	if current {
-		_ = s.connectOp(ctx, n)
+		// The network changed: its resolvers are looked up again, so the
+		// TUN layer is built anew.
+		_ = s.connectNode(ctx, n, false)
 	}
 }
 
@@ -274,21 +308,39 @@ func (s *Service) ConnectSelected(ctx context.Context) error {
 	return s.Connect(ctx, n)
 }
 
-// connectLocked returns the address of n's server.
-func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Options) (netip.Addr, error) {
+// connectResult is how a connection was made.
+type connectResult struct {
+	serverIP netip.Addr // the connected server's address
+	// gen is the connection's generation: a kept TUN layer turns out to be
+	// unusable now and then, and the rebuild starts a new generation.
+	gen int
+	// keptTUN: the previous connection's TUN layer serves on (interface,
+	// DNS redirect, fake-IP records untouched), and its watchers with it.
+	keptTUN bool
+}
+
+// connectLocked makes the connection: the core (supervisor), then with TUN
+// the TUN layer and the DNS guard. keep allows keeping a running TUN layer
+// when only the server changes (tunReusable).
+func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Options, pol supervisor.Policy, keep bool) (connectResult, error) {
 	var tun TUNLayer
 	if o.TUN {
 		var err error
 		if tun, err = s.tunLayer(); err != nil {
-			return netip.Addr{}, err
+			return connectResult{}, err
 		}
 	}
 	// Both lookups must happen before the DNS guard redirects the system
-	// resolver into the tunnel.
+	// resolver into the tunnel; a kept layer has its own (tunLookups).
 	var direct string
 	var resolvers []netip.Addr
 	var domains []string
-	if o.TUN {
+	s.mu.Lock()
+	saved, hasSaved := s.tunLookups, s.hasTunLookups
+	s.mu.Unlock()
+	if o.TUN && keep && hasSaved {
+		direct, resolvers, domains = saved.direct, saved.resolvers, saved.domains
+	} else if o.TUN {
 		direct = o.DNS.Direct
 		// The network's own names (tunlayer.DNSOptions.LocalSuffixes);
 		// none known is no reason not to connect.
@@ -315,21 +367,116 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 	}
 	serverIP, err := s.resolveServer(ctx, n.Server)
 	if err != nil {
-		return netip.Addr{}, err
+		return connectResult{}, err
 	}
 	serverAddr := ""
 	if serverIP.IsValid() && serverIP.String() != n.Server {
 		serverAddr = serverIP.String()
 	}
 
+	if o.TUN && keep {
+		opts := s.tunOptions(ctx, o, direct, resolvers, domains)
+		if s.tunReusable(opts, o) {
+			// The route first: the core dials the new server as soon as it
+			// starts, and its traffic must not enter the tunnel it serves.
+			if err := s.addServerRoute(serverIP); err == nil {
+				if err := s.sup.Connect(ctx, n, serverAddr); err != nil {
+					return connectResult{serverIP: serverIP, gen: gen}, err
+				}
+				return connectResult{serverIP: serverIP, gen: gen, keptTUN: true}, nil
+			}
+			// Routes are not managed here (an IPv6 server, no rights): the
+			// layer's config has to carry the server, so it is rebuilt.
+		}
+		// Not reusable: down with the kept layer, then the classic way.
+		s.stopLocked()
+		s.mu.Lock()
+		s.gen++
+		gen = s.gen
+		s.mu.Unlock()
+		s.sup.SetPolicy(pol)
+	}
+
 	if err := s.sup.Connect(ctx, n, serverAddr); err != nil {
-		return netip.Addr{}, err
+		return connectResult{serverIP: serverIP, gen: gen}, err
 	}
 	if !o.TUN {
 		s.proxyUp(o)
-		return serverIP, nil
+		return connectResult{serverIP: serverIP, gen: gen}, nil
 	}
 
+	opts := s.tunOptions(ctx, o, direct, resolvers, domains)
+	if len(domains) > 0 && opts.DNS.LocalResolver.IsValid() {
+		// How many, not which: a journal sent to support would name the
+		// company the user works at.
+		s.hub.publish(Event{Kind: "dns", Reason: "local-names"}.withLine(
+			msg.New("dns.local_names", "count", len(domains), "dns", opts.DNS.LocalResolver.String())))
+	}
+	if serverIP.IsValid() {
+		if err := s.addServerRoute(serverIP); err != nil {
+			// No route management here: the layer excludes the server
+			// itself, and a switch of servers restarts it.
+			opts.BypassAddresses = []netip.Prefix{netip.PrefixFrom(serverIP, serverIP.BitLen())}
+		}
+	}
+	started := time.Now()
+	inst, err := tun.Start(ctx, opts)
+	if err != nil && opts.RefuseIPv6 && ctx.Err() == nil && ipv6Refused(err) {
+		// The system would not give the interface IPv6 after all (Windows
+		// with IPv6 switched off in a way ipv6Off cannot see). IPv4-only,
+		// strict_route still keeps IPv6 out of reach.
+		s.hub.publish(Event{Kind: "tun"}.withError(msg.New("tun.ipv6_refused", "err", msg.Raw(err.Error()))))
+		opts.RefuseIPv6 = false
+		inst, err = tun.Start(ctx, opts)
+	}
+	if err != nil {
+		return connectResult{serverIP: serverIP, gen: gen}, fmt.Errorf("start TUN layer: %w", err)
+	}
+	s.tunUp(inst, gen, opts, started)
+	s.hub.publish(Event{Kind: "tun", Reason: "up"})
+	if len(opts.DNS.DirectFallback) > 0 {
+		s.dnsDirect.arm(gen, opts.DNS.Direct)
+	}
+
+	s.guardCfg = dnsguard.Config{
+		Interface: tunlayer.DefaultInterface,
+		Servers:   []netip.Addr{tunlayer.DNSAddress(tunlayer.DefaultAddress)},
+		Strict:    o.DNS.Strict,
+	}
+	if err := s.cfg.guard.Apply(ctx, s.guardCfg); err != nil {
+		return connectResult{serverIP: serverIP, gen: gen}, fmt.Errorf("redirect system DNS: %w", err)
+	}
+	s.hub.publish(Event{Kind: "dns", Reason: "applied"})
+	select {
+	case <-inst.Exited():
+		// It came up and died at once: not connected, whatever came before.
+		// The caller's stopLocked gives the system its DNS back.
+		return connectResult{serverIP: serverIP, gen: gen}, fmt.Errorf("TUN layer stopped: %w", inst.ExitError())
+	default:
+	}
+	s.mu.Lock()
+	if !s.cfg.AppOutsideVPN {
+		s.tunDNS = netip.AddrPortFrom(tunlayer.DNSAddress(tunlayer.DefaultAddress), 53)
+	}
+	s.tunLookups, s.hasTunLookups = tunLookups{direct: direct, resolvers: resolvers, domains: domains}, true
+	s.mu.Unlock()
+	return connectResult{serverIP: serverIP, gen: gen}, nil
+}
+
+// tunLookups are the system lookups a TUN layer is built from: the resolver
+// direct names go to, the system's resolvers, the network's own names.
+type tunLookups struct {
+	direct    string
+	resolvers []netip.Addr
+	domains   []string
+}
+
+// tunOptions builds the TUN layer's options for a connection with o: direct
+// is the resolver direct names go to, resolvers the system's (they stay
+// routed into the TUN), domains the network's own names. The server itself
+// is not here: it is routed around the tunnel by addServerRoute, or, where
+// routes are not managed, carried in BypassAddresses by the caller.
+func (s *Service) tunOptions(ctx context.Context, o Options, direct string, resolvers []netip.Addr, domains []string) tunlayer.Options {
 	opts := tunlayer.Options{
 		StrictRoute:     true,
 		Upstream:        s.cfg.Listen,
@@ -353,12 +500,6 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 	}
 	// The core is up, so a blocked source can be reached through it.
 	applyRouting(&opts, o, s.rules.routing(ctx, o, s.proxyURL()))
-	if len(domains) > 0 && opts.DNS.LocalResolver.IsValid() {
-		// How many, not which: a journal sent to support would name the
-		// company the user works at.
-		s.hub.publish(Event{Kind: "dns", Reason: "local-names"}.withLine(
-			msg.New("dns.local_names", "count", len(domains), "dns", opts.DNS.LocalResolver.String())))
-	}
 	if self, err := os.Executable(); err == nil {
 		// The daemon resolves proxy servers, e.g. for latency tests.
 		opts.DirectDNSProcesses = []string{self}
@@ -379,55 +520,26 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 		// real address (see tunlayer.Options.RefuseIPv6).
 		opts.RefuseIPv6 = true
 	}
-	if serverIP.IsValid() {
-		opts.BypassAddresses = []netip.Prefix{netip.PrefixFrom(serverIP, serverIP.BitLen())}
-	}
 	// The local network (a Hyper-V or WSL switch, Docker, a printer) keeps
 	// the system's own routes on every platform, rather than leaving by the
 	// default interface from the TUN layer (see tunlayer.Options.ExcludeLAN).
 	opts.ExcludeLAN = true
 	opts.LANResolvers = resolvers
-	started := time.Now()
-	inst, err := tun.Start(ctx, opts)
-	if err != nil && opts.RefuseIPv6 && ctx.Err() == nil && ipv6Refused(err) {
-		// The system would not give the interface IPv6 after all (Windows
-		// with IPv6 switched off in a way ipv6Off cannot see). IPv4-only,
-		// strict_route still keeps IPv6 out of reach.
-		s.hub.publish(Event{Kind: "tun"}.withError(msg.New("tun.ipv6_refused", "err", msg.Raw(err.Error()))))
-		opts.RefuseIPv6 = false
-		inst, err = tun.Start(ctx, opts)
-	}
-	if err != nil {
-		return netip.Addr{}, fmt.Errorf("start TUN layer: %w", err)
-	}
-	s.tunUp(inst, gen, opts, started)
-	s.hub.publish(Event{Kind: "tun", Reason: "up"})
-	if len(opts.DNS.DirectFallback) > 0 {
-		s.dnsDirect.arm(gen, opts.DNS.Direct)
-	}
+	return opts
+}
 
-	s.guardCfg = dnsguard.Config{
-		Interface: tunlayer.DefaultInterface,
-		Servers:   []netip.Addr{tunlayer.DNSAddress(tunlayer.DefaultAddress)},
-		Strict:    o.DNS.Strict,
+// tunReusable reports whether the running TUN layer can serve a connection
+// that would be made with opts now: its options are the same, and the DNS
+// guard's too. A layer that carries its server in BypassAddresses (routes
+// are not managed here) is never reusable: a new server means new options.
+func (s *Service) tunReusable(opts tunlayer.Options, o Options) bool {
+	s.mu.Lock()
+	tun, tunOpts, strict := s.tun, s.tunOpts, s.guardCfg.Strict
+	s.mu.Unlock()
+	if tun == nil || len(tunOpts.BypassAddresses) > 0 {
+		return false
 	}
-	if err := s.cfg.guard.Apply(ctx, s.guardCfg); err != nil {
-		return netip.Addr{}, fmt.Errorf("redirect system DNS: %w", err)
-	}
-	s.hub.publish(Event{Kind: "dns", Reason: "applied"})
-	select {
-	case <-inst.Exited():
-		// It came up and died at once: not connected, whatever came before.
-		// The caller's stopLocked gives the system its DNS back.
-		return netip.Addr{}, fmt.Errorf("TUN layer stopped: %w", inst.ExitError())
-	default:
-	}
-	if !s.cfg.AppOutsideVPN {
-		s.mu.Lock()
-		s.tunDNS = netip.AddrPortFrom(tunlayer.DNSAddress(tunlayer.DefaultAddress), 53)
-		s.mu.Unlock()
-	}
-	return serverIP, nil
+	return strict == o.DNS.Strict && reflect.DeepEqual(tunOpts, opts)
 }
 
 // applyRouting gives opts the routing of o: the user's lists and rules, the
@@ -485,6 +597,7 @@ func (s *Service) stopLocked() {
 	s.gen++ // turns pending teardowns for this connection into no-ops
 	s.tunDNS = netip.AddrPort{}
 	s.autoDNS = netip.Addr{}
+	s.hasTunLookups = false
 	s.dnsDirect.disarm()
 	if s.waitCancel != nil {
 		s.waitCancel() // a wait for the network ends with its connection
@@ -509,6 +622,7 @@ func (s *Service) stopLocked() {
 		s.hub.publish(Event{Kind: "tun", Reason: "down"})
 	}
 	s.sup.Disconnect()
+	s.dropServerRoute()
 	s.proxyDown()
 	// The repeats counted so far belong to this connection: told now,
 	// before "отключено", not seconds after it.

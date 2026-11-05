@@ -17,6 +17,7 @@ import (
 	"coreshift/engine/internal/dnsprobe"
 	"coreshift/engine/internal/ping"
 	"coreshift/engine/internal/selfupdate"
+	"coreshift/engine/internal/serverroute"
 	"coreshift/engine/internal/store"
 	"coreshift/engine/internal/supervisor"
 )
@@ -193,13 +194,18 @@ type Config struct {
 	physical        func() (ping.Bind, error)
 	icmpPing        func(ctx context.Context, ip netip.Addr, b ping.Bind) (time.Duration, error)
 	tcpPing         func(ctx context.Context, ap netip.AddrPort, b ping.Bind) (time.Duration, error)
-	netInterval     time.Duration
-	netUp           func() bool
-	netName         func() string
-	netPoll         time.Duration // how often a connection looks whether the network is there
-	netSettle       time.Duration // how long a connection that finds no network looks again before waiting
-	netGrace        time.Duration // how long a returned network may take to carry the tunnel again
-	netEvidence     time.Duration // how often a wait for the network tries the server anyway
+	// routeAdd and routeDel manage the host route that keeps the connected
+	// server's own traffic out of the tunnel (serverroute.go). nil means the
+	// platform default (internal/serverroute).
+	routeAdd    func(netip.Addr) (serverroute.Route, error)
+	routeDel    func(serverroute.Route) error
+	netInterval time.Duration
+	netUp       func() bool
+	netName     func() string
+	netPoll     time.Duration // how often a connection looks whether the network is there
+	netSettle   time.Duration // how long a connection that finds no network looks again before waiting
+	netGrace    time.Duration // how long a returned network may take to carry the tunnel again
+	netEvidence time.Duration // how often a wait for the network tries the server anyway
 	// trafficEvery, trafficIdleEvery and trafficHiddenEvery stand in for
 	// trafficInterval, trafficIdleInterval and trafficHiddenInterval.
 	trafficEvery       time.Duration

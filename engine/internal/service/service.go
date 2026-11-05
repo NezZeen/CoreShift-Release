@@ -40,6 +40,7 @@ import (
 	"coreshift/engine/internal/ping"
 	"coreshift/engine/internal/proc"
 	"coreshift/engine/internal/selfupdate"
+	"coreshift/engine/internal/serverroute"
 	"coreshift/engine/internal/store"
 	"coreshift/engine/internal/supervisor"
 	"coreshift/engine/internal/tunlayer"
@@ -177,6 +178,10 @@ type Service struct {
 	// diagnosing is set while one runs.
 	serverIP   netip.Addr
 	diagnosing bool
+	// serverRoute is the host route to the connected server the engine
+	// holds around the tunnel (serverroute.go). Under op.
+	serverRoute    serverroute.Route
+	hasServerRoute bool
 	// tunDNS is the TUN layer's resolver while it runs. Server names are
 	// looked up there by the daemon itself, which the layer answers with
 	// real addresses (tunlayer.Options.DirectDNSProcesses). Through the
@@ -188,6 +193,13 @@ type Service struct {
 	// when the settings leave the choice to the system; watchNetwork
 	// follows it.
 	autoDNS netip.Addr
+	// tunLookups is what the running TUN layer was built from, looked up
+	// before the DNS guard redirected the system (connectLocked). A switch
+	// of servers that keeps the layer takes them from here: once the guard
+	// is on, the system names the tunnel's resolver, or none (a rewritten
+	// resolv.conf), and the layer's options would seem to differ.
+	tunLookups    tunLookups
+	hasTunLookups bool
 	// waitCancel ends a connection's wait for the network (awaitNetwork).
 	waitCancel context.CancelFunc
 
@@ -378,6 +390,9 @@ func New(cfg Config) (*Service, error) {
 	if s.cfg.dnsProbe == nil {
 		s.cfg.dnsProbe = s.probeDNS
 	}
+	if s.cfg.routeAdd == nil {
+		s.cfg.routeAdd, s.cfg.routeDel = serverroute.Add, serverroute.Del
+	}
 	s.verbose.Store(cfg.Options.Verbose)
 	s.power.off.Store(cfg.Options.NoBatterySaving)
 	s.logs = newLogGrouper(logGroupEvery, func(source, line string, at time.Time) {
@@ -564,9 +579,11 @@ func (s *Service) tunLayer() (TUNLayer, error) {
 }
 
 // Recover undoes system changes left by a daemon that did not shut down
-// cleanly. Call it once at start: DNS, and on Linux the TUN layer's ip
-// rules, which outlive a sing-box killed with the daemon.
+// cleanly. Call it once at start: DNS, the host route to the server, and on
+// Linux the TUN layer's ip rules, which outlive a sing-box killed with the
+// daemon.
 func (s *Service) Recover(ctx context.Context) error {
+	s.recoverServerRoute()
 	removeStaleResolverRules()
 	return errors.Join(s.cfg.guard.Recover(ctx), tunlayer.CleanupRoutes(ctx, tunlayer.DefaultInterface))
 }

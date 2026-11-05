@@ -28,6 +28,7 @@ import (
 	"coreshift/engine/internal/ping"
 	"coreshift/engine/internal/proc"
 	"coreshift/engine/internal/ruleset"
+	"coreshift/engine/internal/serverroute"
 	"coreshift/engine/internal/store"
 	"coreshift/engine/internal/subscription"
 	"coreshift/engine/internal/supervisor"
@@ -220,6 +221,10 @@ func (i *fakeInstance) crash()                  { i.once.Do(func() { close(i.exi
 type harness struct {
 	mu      sync.Mutex
 	lookups []netip.AddrPort // the resolver of each server lookup
+	// routes are the host routes the route fakes hold (Config.routeAdd);
+	// routeErr makes routeAdd fail, as where routes cannot be managed.
+	routes   []serverroute.Route
+	routeErr error
 
 	svc    *Service
 	log    *callLog
@@ -278,6 +283,26 @@ func newHarness(t *testing.T, mutate func(*Config)) *harness {
 		// No public DNS-over-HTTPS resolvers either.
 		dohLookup: func(context.Context, string, ping.Bind) ([]netip.Addr, error) {
 			return nil, errors.New("no DNS over HTTPS in tests")
+		},
+		// No real routes from tests: deterministic fakes instead, so the
+		// tests run the same with and without administrator rights.
+		routeAdd: func(ip netip.Addr) (serverroute.Route, error) {
+			log.add("route.add " + ip.String())
+			h.mu.Lock()
+			defer h.mu.Unlock()
+			if h.routeErr != nil {
+				return serverroute.Route{}, h.routeErr
+			}
+			r := serverroute.Route{IP: ip, Gateway: netip.MustParseAddr("192.0.2.1"), IfName: "test0", IfIndex: 1}
+			h.routes = append(h.routes, r)
+			return r, nil
+		},
+		routeDel: func(r serverroute.Route) error {
+			log.add("route.del " + r.IP.String())
+			h.mu.Lock()
+			defer h.mu.Unlock()
+			h.routes = slices.DeleteFunc(h.routes, func(x serverroute.Route) bool { return x.IP == r.IP })
+			return nil
 		},
 		// No speedtest.net from tests: the speed test goes to speedURL.
 		ookla: noOokla,
@@ -383,9 +408,11 @@ func TestConnectOrderAndDisconnect(t *testing.T) {
 	}
 
 	o := h.tun.opts
-	if o.Upstream != h.listen || o.DNS.Direct != "192.0.2.53" ||
-		!slices.Equal(o.BypassAddresses, []netip.Prefix{netip.MustParsePrefix("203.0.113.5/32")}) {
+	if o.Upstream != h.listen || o.DNS.Direct != "192.0.2.53" || len(o.BypassAddresses) > 0 {
 		t.Errorf("tun options = %+v", o)
+	}
+	if !slices.Contains(h.log.get(), "route.add 203.0.113.5") {
+		t.Errorf("the server must be routed around the tunnel: %v", h.log.get())
 	}
 	for _, bin := range h.svc.cfg.Binaries {
 		if !filepath.IsAbs(bin) || !slices.Contains(o.BypassProcesses, bin) {
@@ -509,8 +536,8 @@ func TestHostnameResolvedBeforeConnecting(t *testing.T) {
 	if err := h.connect(t, "trojan://pw@vpn.example.com:443#Named"); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(h.tun.opts.BypassAddresses, []netip.Prefix{netip.MustParsePrefix("198.51.100.7/32")}) {
-		t.Errorf("bypass = %v", h.tun.opts.BypassAddresses)
+	if !slices.Contains(h.log.get(), "route.add 198.51.100.7") {
+		t.Errorf("the resolved address must be routed around the tunnel: %v", h.log.get())
 	}
 	cfg, err := os.ReadFile(filepath.Join(h.svc.cfg.DataDir, "work", "xray", "config.json"))
 	if err != nil {
@@ -569,8 +596,72 @@ func TestReconnectReplacesConnection(t *testing.T) {
 		t.Fatalf("status = %+v", st)
 	}
 	calls := h.log.get()
+	if n := countOf(calls, "tun.start"); n != 1 || countOf(calls, "tun.stop") != 0 {
+		t.Errorf("a switch of servers keeps the TUN layer: %v", calls)
+	}
+	// The route around the tunnel moved to the new server, with the system's
+	// DNS redirected all along (no dns.revert between the connections).
+	first, second := slices.Index(calls, "route.add 203.0.113.5"), slices.Index(calls, "route.add 203.0.113.9")
+	if first < 0 || second < first {
+		t.Errorf("each server routed around the tunnel: %v", calls)
+	} else if slices.Contains(calls[first:second], "dns.revert") {
+		t.Errorf("DNS must stay redirected across a switch: %v", calls)
+	}
+}
+
+// Once the DNS guard is on, the system names no resolver of its own (Linux
+// with resolv.conf rewritten): a switch of servers still keeps the TUN
+// layer, built from what was looked up before the guard.
+func TestSwitchKeepsTUNWhenTheGuardHidesTheResolvers(t *testing.T) {
+	var mu sync.Mutex
+	calls := 0
+	h := newHarness(t, func(c *Config) {
+		c.resolvers = func(context.Context, string) ([]netip.Addr, error) {
+			mu.Lock()
+			defer mu.Unlock()
+			if calls++; calls == 1 {
+				return []netip.Addr{netip.MustParseAddr("192.0.2.53")}, nil
+			}
+			return nil, nil
+		}
+	})
+	if err := h.connect(t, trojanLink); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.connect(t, "trojan://pw@203.0.113.9:443?sni=t.example.com#Second"); err != nil {
+		t.Fatal(err)
+	}
+	log := h.log.get()
+	if countOf(log, "tun.start") != 1 || countOf(log, "tun.stop") != 0 {
+		t.Errorf("the layer is kept across the switch: %v", log)
+	}
+	if got := h.tun.opts.DNS.Direct; got != "192.0.2.53" {
+		t.Errorf("direct DNS = %q, want the one looked up before the guard", got)
+	}
+}
+
+// Where a host route cannot be managed the TUN layer carries the server in
+// its own options, and a switch of servers restarts the layer.
+func TestSwitchRestartsTUNWhereRoutesAreNotManaged(t *testing.T) {
+	h := newHarness(t, nil)
+	h.mu.Lock()
+	h.routeErr = errors.New("no routes here")
+	h.mu.Unlock()
+	if err := h.connect(t, trojanLink); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(h.tun.opts.BypassAddresses, []netip.Prefix{netip.MustParsePrefix("203.0.113.5/32")}) {
+		t.Fatalf("bypass = %v", h.tun.opts.BypassAddresses)
+	}
+	if err := h.connect(t, "trojan://pw@203.0.113.9:443?sni=t.example.com#Second"); err != nil {
+		t.Fatal(err)
+	}
+	calls := h.log.get()
 	if n := countOf(calls, "tun.start"); n != 2 || countOf(calls, "tun.stop") != 1 {
-		t.Errorf("expected one full restart: %v", calls)
+		t.Errorf("the layer carries the server: a switch restarts it: %v", calls)
+	}
+	if !slices.Equal(h.tun.opts.BypassAddresses, []netip.Prefix{netip.MustParsePrefix("203.0.113.9/32")}) {
+		t.Errorf("bypass = %v", h.tun.opts.BypassAddresses)
 	}
 }
 

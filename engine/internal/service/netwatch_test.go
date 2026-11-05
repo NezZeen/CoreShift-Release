@@ -288,7 +288,9 @@ func TestHeldConnectionIsMadeAnewWhenNothingGetsThrough(t *testing.T) {
 	h.offline.Store(false) // the route is back, the checks still fail
 	h.waitState(t, Connected, 5*time.Second)
 	deadline := time.Now().Add(10 * time.Second)
-	for countOf(h.log.get(), "tun.start") < 2 {
+	// The TUN layer serves on (a switch of servers keeps it): the connection
+	// made anew shows as the server's route made again.
+	for countOf(h.log.get(), "route.add 203.0.113.5") < 2 {
 		if time.Now().After(deadline) {
 			t.Fatalf("not made anew: %v", h.log.get())
 		}

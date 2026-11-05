@@ -136,9 +136,15 @@ type route struct {
 // skips them without knowing about them; skip names interfaces to ignore
 // anyway, such as the engine's own TUN.
 func Physical(skip ...string) (Bind, error) {
+	b, _, err := PhysicalRoute(skip...)
+	return b, err
+}
+
+// PhysicalRoute is Physical plus the gateway of the default route chosen.
+func PhysicalRoute(skip ...string) (b Bind, gateway netip.Addr, err error) {
 	routes, err := defaultRoutes()
 	if err != nil {
-		return Bind{}, err
+		return Bind{}, netip.Addr{}, err
 	}
 	slices.SortStableFunc(routes, func(a, b route) int { return a.metric - b.metric })
 	for _, r := range routes {
@@ -155,17 +161,17 @@ func Physical(skip ...string) (Bind, error) {
 			}
 			// Prefer the address on the gateway's subnet.
 			if p.Contains(r.gateway) {
-				return Bind{Source: p.Addr(), Interface: ifc.Name}, nil
+				return Bind{Source: p.Addr(), Interface: ifc.Name}, r.gateway, nil
 			}
 			if !first.IsValid() {
 				first = p.Addr()
 			}
 		}
 		if first.IsValid() {
-			return Bind{Source: first, Interface: ifc.Name}, nil
+			return Bind{Source: first, Interface: ifc.Name}, r.gateway, nil
 		}
 	}
-	return Bind{}, errors.New("no default route")
+	return Bind{}, netip.Addr{}, errors.New("no default route")
 }
 
 func (b Bind) String() string {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -116,11 +117,21 @@ func TestDisconnectCancelsAWaitingConnect(t *testing.T) {
 // the user's Disconnect.
 func TestDisconnectStopsAServerSwitch(t *testing.T) {
 	h, _, _ := switchHarness(t, panelJSON, "proxy")
-	h.tun.hang = true
-	mark := count(h, "tun.start")
+	// The TUN layer serves on across a switch: a new server tried shows as
+	// its route made around the tunnel.
+	routeAdds := func() int {
+		n := 0
+		for _, c := range h.log.get() {
+			if strings.HasPrefix(c, "route.add ") {
+				n++
+			}
+		}
+		return n
+	}
+	mark := routeAdds()
 	serverNotAnswering(h)
 	deadline := time.Now().Add(15 * time.Second)
-	for count(h, "tun.start") == mark {
+	for routeAdds() == mark {
 		if time.Now().After(deadline) {
 			t.Fatal("no switch started")
 		}
@@ -132,7 +143,7 @@ func TestDisconnectStopsAServerSwitch(t *testing.T) {
 		t.Errorf("Disconnect took %s", d)
 	}
 	time.Sleep(300 * time.Millisecond)
-	if n := count(h, "tun.start"); n != mark+1 {
+	if n := routeAdds(); n != mark+1 {
 		t.Errorf("%d more servers tried after Disconnect", n-mark-1)
 	}
 	if st := h.svc.Status(); st.State != Idle {
