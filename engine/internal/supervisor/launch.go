@@ -20,6 +20,10 @@ import (
 // opening it.
 const launchAttempts = 3
 
+// portSettle is how long a core whose port answers is still watched for a
+// bind error in its output before it is accepted.
+const portSettle = 100 * time.Millisecond
+
 // launch starts k on a random loopback port of its own: the running core
 // behind Listen, or a probe.
 func (s *Supervisor) launch(ctx context.Context, k core.Kind, n node.Node, serverAddr string, probe bool) (*process, error) {
@@ -61,6 +65,7 @@ func (s *Supervisor) launchOn(ctx context.Context, k core.Kind, n node.Node, ser
 		return nil, err
 	}
 	if proc.PortOpen(listen) {
+		os.Remove(path)
 		return nil, errPortTaken(listen)
 	}
 
@@ -77,9 +82,10 @@ func (s *Supervisor) launchOn(ctx context.Context, k core.Kind, n node.Node, ser
 		},
 	})
 	if err != nil {
+		os.Remove(path)
 		return nil, err
 	}
-	p := &process{Process: pr, kind: k, listen: listen, auth: auth, probe: probe, portLost: watch.ch, started: started}
+	p := &process{Process: pr, kind: k, listen: listen, auth: auth, probe: probe, portLost: watch.ch, started: started, config: path}
 	// A core that could not open its port is done waiting for: the port
 	// answering then is someone else's.
 	ready := func() bool { return watch.failed() || proc.PortOpen(listen) }
@@ -87,7 +93,12 @@ func (s *Supervisor) launchOn(ctx context.Context, k core.Kind, n node.Node, ser
 		p.stop()
 		return nil, err
 	}
-	if watch.failed() || !coreListens(pr, listen) {
+	// The port answering races the core's output: a core that failed to bind
+	// prints its error just before or after, and the line reaches OnLine
+	// through a pipe and a reader goroutine. Give it a moment to arrive so
+	// that a core which reported a bind error is never accepted; this also
+	// covers Android, where coreListens cannot tell whose the port is.
+	if !watch.settle(ctx, portSettle) || !coreListens(pr, listen) {
 		p.stop()
 		return nil, errPortTaken(listen)
 	}

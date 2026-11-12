@@ -63,7 +63,7 @@ func FetchAs(ctx context.Context, client *http.Client, rawURL, userAgent string,
 	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Accept", "*/*")
 	ThisDevice().ForPanel(rawURL, legacyHWID).setHeaders(req.Header)
-	resp, err := client.Do(req)
+	resp, err := WithRedirectPolicy(client).Do(req)
 	if err != nil {
 		var ue *url.Error
 		if errors.As(err, &ue) {
@@ -87,6 +87,47 @@ func FetchAs(ctx context.Context, client *http.Client, rawURL, userAgent string,
 		err = placeholdersOnly(&res)
 	}
 	return Fetched{Result: res, Info: parseInfo(resp.Header)}, err
+}
+
+// maxRedirects bounds a redirect chain, the same as net/http's default.
+const maxRedirects = 10
+
+// deviceHeaders are the identifying headers Device.setHeaders sends. Go
+// itself keeps them across redirects, because it only drops Authorization and
+// Cookie when the host changes.
+var deviceHeaders = []string{"x-hwid", "x-device-os", "x-device-model", "x-ver-os"}
+
+// RedirectPolicy is the CheckRedirect for subscription fetches: at most
+// maxRedirects hops, no step from https down to http (the access token in the
+// URL and the device id would travel in clear), and no device headers for a
+// host other than the one the user's URL names, which has no business knowing
+// who is asking.
+func RedirectPolicy(req *http.Request, via []*http.Request) error {
+	if len(via) >= maxRedirects {
+		return fmt.Errorf("stopped after %d redirects", maxRedirects)
+	}
+	prev := via[len(via)-1]
+	if prev.URL.Scheme == "https" && req.URL.Scheme != "https" {
+		return errors.New("refused a redirect from https to http")
+	}
+	if !strings.EqualFold(req.URL.Host, via[0].URL.Host) {
+		for _, h := range deviceHeaders {
+			req.Header.Del(h)
+		}
+	}
+	return nil
+}
+
+// WithRedirectPolicy returns c with RedirectPolicy set, leaving c itself
+// alone: the clients are shared and may be built by callers with a policy of
+// their own, which is kept.
+func WithRedirectPolicy(c *http.Client) *http.Client {
+	if c.CheckRedirect != nil {
+		return c
+	}
+	cp := *c
+	cp.CheckRedirect = RedirectPolicy
+	return &cp
 }
 
 // placeholdersOnly fails a subscription whose every server is a placeholder

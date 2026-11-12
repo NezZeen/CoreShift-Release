@@ -59,13 +59,18 @@ func ParseLink(link string) (node.Node, error) {
 
 // finish fills defaults shared by every source format and validates.
 func finish(n *node.Node) error {
-	if n.Name == "" {
-		n.Name = fmt.Sprintf("%s:%d", n.Server, n.Port)
-	}
 	if n.Transport.Network == node.NetTCP {
 		n.Transport.Network = ""
 	}
-	return n.Validate()
+	// Validate cleans the name, which may leave nothing of it: the default
+	// is chosen after.
+	if err := n.Validate(); err != nil {
+		return err
+	}
+	if n.Name == "" {
+		n.Name = fmt.Sprintf("%s:%d", n.Server, n.Port)
+	}
+	return nil
 }
 
 // linkParts is a share link split without net/url, which rejects the port

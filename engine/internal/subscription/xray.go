@@ -48,7 +48,7 @@ func parseXrayJSON(configs []fields) (Result, error) {
 			idx++
 			n, err := xrayOutbound(o, cfg.str("remarks", "remark"), len(proxies) == 1)
 			if err != nil {
-				res.Skipped = append(res.Skipped, Skipped{Index: idx, Kind: strings.ToLower(o.str("protocol")), Reason: err.Error()})
+				res.skip(Skipped{Index: idx, Kind: strings.ToLower(o.str("protocol")), Reason: err.Error()})
 				continue
 			}
 			res.Nodes = append(res.Nodes, n)
@@ -59,7 +59,7 @@ func parseXrayJSON(configs []fields) (Result, error) {
 		}
 	}
 	res.Nodes = dropTagTwins(res.Nodes, byTag)
-	if len(res.Nodes) == 0 && len(res.Skipped) == 0 && template {
+	if len(res.Nodes) == 0 && res.SkippedTotal == 0 && template {
 		return res, errors.New("this is a Remnawave template, not a subscription: the panel adds the servers when it serves it to an app")
 	}
 	return res, nil

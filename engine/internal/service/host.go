@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"coreshift/engine/internal/msg"
+	"coreshift/engine/internal/serverroute"
 	"coreshift/engine/internal/tunlayer"
 )
 
@@ -28,8 +29,18 @@ func (s *Service) serverAddr(ctx context.Context, host string) (netip.Addr, erro
 	if err != nil {
 		return netip.Addr{}, &resolveError{host: host, err: err}
 	}
+	// A name that resolves into the tunnel's own ranges (a stale fake-IP
+	// answer, or a hostile record) would send the server's traffic back into
+	// the tunnel that carries it: say so rather than loop.
+	if serverroute.InTunnelRange(a) {
+		return netip.Addr{}, &resolveError{host: host, err: fmt.Errorf("%w: the name resolves to %s, an address of the tunnel itself", errTunnelRange, a)}
+	}
 	return a, nil
 }
+
+// errTunnelRange marks a server name that resolved into the tunnel's own
+// address ranges; asking again would not change that.
+var errTunnelRange = errors.New("inside the tunnel range")
 
 // errResolve is what a failed lookup of a server's name is (errors.Is).
 var errResolve = errors.New("resolve server")

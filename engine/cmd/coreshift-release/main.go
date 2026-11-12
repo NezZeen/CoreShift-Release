@@ -124,9 +124,24 @@ func manifest(args []string) error {
 	if err != nil {
 		return err
 	}
+	name := selfupdate.ManifestFor("windows")
+	switch filepath.Ext(*installer) {
+	case ".apk":
+		// CoreShift-armv7.apk is the 32-bit phones' update; the others'
+		// (CoreShift-arm64.apk) has the usual manifest.
+		arch := "arm64"
+		if strings.Contains(strings.ToLower(filepath.Base(*installer)), "armv7") {
+			arch = "arm"
+		}
+		name = selfupdate.ManifestForArch("android", arch)
+	case ".deb":
+		// Linux: announced, not installed; the .deb is the package the
+		// other formats are built with.
+		name = selfupdate.ManifestFor("linux")
+	}
 	m := selfupdate.Manifest{
 		Version: *version, Build: *build, Commit: *commit,
-		Installer: filepath.Base(*installer), SHA256: sum, Size: fi.Size(),
+		Installer: filepath.Base(*installer), Platform: selfupdate.PlatformFor(name), SHA256: sum, Size: fi.Size(),
 		Published: time.Now().UTC().Truncate(time.Second), Notes: *notes,
 	}
 	body, err := json.MarshalIndent(m, "", "  ")
@@ -142,21 +157,6 @@ func manifest(args []string) error {
 	}
 	if err := os.MkdirAll(*out, 0o755); err != nil {
 		return err
-	}
-	name := selfupdate.ManifestFor("windows")
-	switch filepath.Ext(*installer) {
-	case ".apk":
-		// CoreShift-armv7.apk is the 32-bit phones' update; the others'
-		// (CoreShift-arm64.apk) has the usual manifest.
-		arch := "arm64"
-		if strings.Contains(strings.ToLower(filepath.Base(*installer)), "armv7") {
-			arch = "arm"
-		}
-		name = selfupdate.ManifestForArch("android", arch)
-	case ".deb":
-		// Linux: announced, not installed; the .deb is the package the
-		// other formats are built with.
-		name = selfupdate.ManifestFor("linux")
 	}
 	if err := os.WriteFile(filepath.Join(*out, name), body, 0o644); err != nil {
 		return err

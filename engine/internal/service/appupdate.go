@@ -310,7 +310,10 @@ func (s *Service) checkAppUpdate(ctx context.Context) {
 			Published: rel.Published, CheckedAt: now}
 	})
 	dir := filepath.Join(s.updatesDir(), "installers")
-	if err := os.MkdirAll(dir, 0o700); err == nil {
+	// The outer err is assigned on purpose: a failure here must stop the
+	// download and reach the user instead of being dropped in a nested scope.
+	err = os.MkdirAll(dir, 0o700)
+	if err == nil {
 		// The installer runs as SYSTEM: nobody else may swap it.
 		err = restrictDir(s.updatesDir())
 	}
@@ -362,6 +365,9 @@ func (s *Service) installAppUpdate(reconnect bool) error {
 		return fail(errors.New("the downloaded update changed or is gone; it will be downloaded again"))
 	}
 	var staged *stagedInstaller
+	// Only Android sets InstallUpdate: there the package goes to the system
+	// PackageInstaller, which verifies the APK signature itself and does not
+	// run our code with elevated rights, so a staged copy would add nothing.
 	if !s.userInstalls() {
 		// Checked again, on a copy nobody can change, right before it runs
 		// as SYSTEM (stage.go).

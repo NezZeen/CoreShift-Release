@@ -59,11 +59,18 @@ const (
 	// that lost it is held as it is, its tunnel and DNS redirect in place,
 	// until it returns.
 	NoNetwork State = "no-network"
+	// Blocked: the connection failed with the kill switch on
+	// (Options.KillSwitch). The TUN layer and the DNS redirect are up and
+	// traffic is refused, the connection is retried; only Disconnect, or a
+	// connection that succeeds, ends it (killswitch.go).
+	Blocked State = "blocked"
 )
 
 // active reports whether the VPN is on, coming up or waiting for the
 // network to do either.
-func (st State) active() bool { return st == Connecting || st == Connected || st == NoNetwork }
+func (st State) active() bool {
+	return st == Connecting || st == Connected || st == NoNetwork || st == Blocked
+}
 
 type Status struct {
 	State    State                `json:"state"`
@@ -202,6 +209,10 @@ type Service struct {
 	hasTunLookups bool
 	// waitCancel ends a connection's wait for the network (awaitNetwork).
 	waitCancel context.CancelFunc
+	// blocked is set while the connection is held by the kill switch
+	// (killswitch.go); blockCancel ends its retries. Both under mu.
+	blocked     bool
+	blockCancel context.CancelFunc
 
 	// The network, as netwatch.go follows it: netDown is set while a
 	// connection is held for want of one; netKick asks the watcher to look
@@ -523,6 +534,7 @@ func (s *Service) SetOptions(o Options) {
 	cmp := o
 	cmp.Verbose = s.connOpts.Verbose
 	cmp.NoBatterySaving = s.connOpts.NoBatterySaving // applies at once, power.go
+	cmp.KillSwitch = s.connOpts.KillSwitch           // read at the next failure, killswitch.go
 	// The app sets the system proxy itself, at once (proxymode.go).
 	cmp.SystemProxy = s.connOpts.SystemProxy
 	conn := s.connOpts

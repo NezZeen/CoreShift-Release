@@ -31,9 +31,12 @@ const (
 )
 
 type Result struct {
-	Format  Format
-	Nodes   []node.Node
-	Skipped []Skipped
+	Format Format
+	Nodes  []node.Node
+	// Skipped holds the first MaxSkipped entries that could not be used;
+	// SkippedTotal counts all of them, so a junk list of any size stays small.
+	Skipped      []Skipped
+	SkippedTotal int
 	// Auto is the fingerprints, in list order, of the servers the panel put
 	// into an automatic selection group (an Xray balancer): when one of them
 	// stops answering, the next is to take over. Empty when there is none.
@@ -51,6 +54,30 @@ type Skipped struct {
 func (s Skipped) String() string {
 	return fmt.Sprintf("#%d (%s): %s", s.Index, s.Kind, s.Reason)
 }
+
+// Limits on what is kept of the entries that were skipped: a 16 MB list of
+// junk lines would otherwise make hundreds of thousands of them, stored and
+// sent to the interface with every request.
+const (
+	MaxSkipped       = 100
+	maxSkippedKind   = 64
+	maxSkippedReason = 200
+)
+
+// skip records an entry that could not be used. Kind comes from the
+// subscription's own text, so it is cleaned like a name.
+func (r *Result) skip(s Skipped) {
+	r.SkippedTotal++
+	if len(r.Skipped) >= MaxSkipped {
+		return
+	}
+	s.Kind = node.CleanText(s.Kind, maxSkippedKind)
+	s.Reason = node.CleanText(s.Reason, maxSkippedReason)
+	r.Skipped = append(r.Skipped, s)
+}
+
+// SkippedMore is how many skipped entries are not in Skipped.
+func (r Result) SkippedMore() int { return max(r.SkippedTotal-len(r.Skipped), 0) }
 
 var ErrNoNodes = errors.New("subscription contains no usable nodes")
 
@@ -72,6 +99,9 @@ func limitNodes(res *Result, max int) {
 		kept[res.Nodes[i].Fingerprint()] = true
 	}
 	res.Auto = slices.DeleteFunc(res.Auto, func(fp string) bool { return !kept[fp] })
+	// Appended directly: this one is kept even when the cap on Skipped is
+	// reached, so the user learns why the rest of the servers are missing.
+	res.SkippedTotal++
 	res.Skipped = append(res.Skipped, Skipped{Index: max + 1, Kind: "limit",
 		Reason: fmt.Sprintf("the subscription lists %d servers; only the first %d are kept, %d left out", max+extra, max, extra)})
 }
@@ -104,8 +134,8 @@ func Parse(body []byte) (Result, error) {
 	}
 	limitNodes(&res, MaxNodes)
 	if len(res.Nodes) == 0 {
-		if len(res.Skipped) > 0 {
-			return res, fmt.Errorf("%w (%d entries skipped, first: %s)", ErrNoNodes, len(res.Skipped), res.Skipped[0])
+		if res.SkippedTotal > 0 {
+			return res, fmt.Errorf("%w (%d entries skipped, first: %s)", ErrNoNodes, res.SkippedTotal, res.Skipped[0])
 		}
 		return res, ErrNoNodes
 	}
@@ -152,7 +182,7 @@ func parseLinks(b []byte) Result {
 		n, err := ParseLink(line)
 		if err != nil {
 			scheme, _, _ := strings.Cut(line, "://")
-			res.Skipped = append(res.Skipped, Skipped{Index: idx, Kind: strings.ToLower(scheme), Reason: unwrapScheme(err)})
+			res.skip(Skipped{Index: idx, Kind: strings.ToLower(scheme), Reason: unwrapScheme(err)})
 			continue
 		}
 		res.Nodes = append(res.Nodes, n)
@@ -181,7 +211,7 @@ func parseClash(b []byte) (Result, error) {
 		f := fields(p)
 		n, err := clashProxy(f)
 		if err != nil {
-			res.Skipped = append(res.Skipped, Skipped{Index: i + 1, Kind: f.str("type"), Reason: err.Error()})
+			res.skip(Skipped{Index: i + 1, Kind: f.str("type"), Reason: err.Error()})
 			continue
 		}
 		res.Nodes = append(res.Nodes, n)
@@ -219,7 +249,7 @@ func parseJSON(b []byte) (Result, error) {
 		}
 		n, err := singBoxOutbound(o)
 		if err != nil {
-			res.Skipped = append(res.Skipped, Skipped{Index: i + 1, Kind: typ, Reason: err.Error()})
+			res.skip(Skipped{Index: i + 1, Kind: typ, Reason: err.Error()})
 			continue
 		}
 		res.Nodes = append(res.Nodes, n)

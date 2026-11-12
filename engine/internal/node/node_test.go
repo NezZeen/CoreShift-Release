@@ -2,6 +2,7 @@ package node
 
 import (
 	"net/netip"
+	"strings"
 	"testing"
 )
 
@@ -82,5 +83,28 @@ func TestNormalizePin(t *testing.T) {
 		if got, err := NormalizePin(bad); err == nil {
 			t.Errorf("NormalizePin(%q) = %q, want an error", bad, got)
 		}
+	}
+}
+
+func TestValidateCleansNameAndServer(t *testing.T) {
+	n := Node{Name: "Official\u202e\u200bvpn\x00\n" + strings.Repeat("я", 300), Protocol: Trojan, Server: " evil\u202e.example\t", Port: 443, Password: "p"}
+	if err := n.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if strings.ContainsAny(n.Name, "\u202e\u200b\x00\n") || !strings.HasPrefix(n.Name, "Officialvpn") {
+		t.Errorf("name = %q", n.Name)
+	}
+	if got := len([]rune(n.Name)); got != MaxNameRunes {
+		t.Errorf("name has %d runes, want %d", got, MaxNameRunes)
+	}
+	if n.Server != "evil.example" {
+		t.Errorf("server = %q", n.Server)
+	}
+	only := Node{Name: "\u202e\u200b", Protocol: Trojan, Server: "a.example", Port: 1, Password: "p"}
+	if err := only.Validate(); err != nil || only.Name != "" {
+		t.Errorf("name of hidden characters: %q, %v", only.Name, err)
+	}
+	if err := (&Node{Protocol: Trojan, Server: "\u202e", Port: 1, Password: "p"}).Validate(); err == nil {
+		t.Error("a server of hidden characters is accepted")
 	}
 }

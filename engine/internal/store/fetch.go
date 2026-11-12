@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"coreshift/engine/internal/subscription"
@@ -108,6 +109,10 @@ func (s *Store) load(ctx context.Context, sub *Subscription, content string) err
 	sub.Format, sub.Nodes, sub.Skipped, sub.Auto = string(f.Format), f.Nodes, nil, f.Auto
 	for _, sk := range f.Skipped {
 		sub.Skipped = append(sub.Skipped, sk.String())
+	}
+	// The parser keeps only the first entries; the rest is told as a count.
+	if more := f.SkippedMore(); more > 0 {
+		sub.Skipped = append(sub.Skipped, fmt.Sprintf("and %d more entries skipped", more))
 	}
 	sub.UpdatedAt = s.opts.now()
 	sub.CheckedAt, sub.LastError = sub.UpdatedAt, ""

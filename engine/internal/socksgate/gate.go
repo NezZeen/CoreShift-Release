@@ -26,6 +26,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/netip"
 	"sync"
@@ -69,7 +70,17 @@ type Config struct {
 	// OpenHTTP lets HTTP requests in without credentials while SOCKS still
 	// needs them: Android's Wi-Fi proxy setting has no field for them.
 	OpenHTTP bool
+	// MaxSessions caps the client connections open at once; the excess is
+	// closed on arrival. Zero means DefaultMaxSessions for an open or
+	// guest-accepting gate and no cap for one only its own credentials open.
+	MaxSessions int
 }
+
+// DefaultMaxSessions is the cap on concurrent client connections: the port
+// of the open proxy (without the TUN layer) takes connections from any
+// program, and without a limit one could exhaust the engine's descriptors
+// and memory. Real use is far below it.
+const DefaultMaxSessions = 512
 
 // DefaultWait covers a core starting (a few seconds at most): what
 // connects in the meantime goes to the new core rather than failing.
@@ -104,6 +115,13 @@ type Gate struct {
 	closed  bool
 	conns   map[*session]struct{}
 	wg      sync.WaitGroup
+
+	// maxSessions (0: none) caps active, the sessions whose goroutines run (conns
+	// shrinks sooner, when a target change closes sessions). turnedAway is
+	// when the last refusal was logged: once a minute is enough.
+	maxSessions int
+	active      int
+	turnedAway  time.Time
 }
 
 // session is one client connection and, once relayed, its connection to
@@ -138,6 +156,14 @@ func Listen(cfg Config) (*Gate, error) {
 	}
 	if g.wait <= 0 {
 		g.wait = DefaultWait
+	}
+	// Behind the TUN layer the gate carries every connection of the device,
+	// thousands at times, and only the layer holds its credentials: no cap
+	// there. The cap is for the port that others can reach (see
+	// DefaultMaxSessions).
+	g.maxSessions = cfg.MaxSessions
+	if g.maxSessions <= 0 && (g.open || g.guest.Set() || g.openHTTP) {
+		g.maxSessions = DefaultMaxSessions
 	}
 	g.wg.Add(1)
 	go g.serve()
@@ -227,6 +253,19 @@ func (g *Gate) serve() {
 			c.Close()
 			return
 		}
+		if g.maxSessions > 0 && g.active >= g.maxSessions {
+			warn := time.Since(g.turnedAway) >= time.Minute
+			if warn {
+				g.turnedAway = time.Now()
+			}
+			g.mu.Unlock()
+			c.Close()
+			if warn {
+				log.Printf("socksgate: %d connections open, more are turned away", g.maxSessions)
+			}
+			continue
+		}
+		g.active++
 		g.conns[s] = struct{}{}
 		g.wg.Add(1)
 		g.mu.Unlock()
@@ -235,6 +274,7 @@ func (g *Gate) serve() {
 			g.handle(s)
 			g.mu.Lock()
 			delete(g.conns, s)
+			g.active--
 			g.mu.Unlock()
 			s.close()
 		}()

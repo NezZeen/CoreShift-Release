@@ -51,7 +51,8 @@ type Platform interface {
 	InstallUpdate(path string) error
 	// StateChanged reports the connection for the notification and the
 	// quick settings tile: the state ("idle", "connecting", "connected",
-	// "disconnecting", "failed", or "no-network": waiting for a network to
+	// "disconnecting", "failed", "blocked" (the kill switch holds the TUN
+	// with traffic refused), or "no-network": waiting for a network to
 	// connect, or with the VPN held until it returns), the server, when
 	// it connected (Unix milliseconds, 0 when not connected) and whether
 	// the connection is the proxy without the VPN ("Прокси без VPN"),

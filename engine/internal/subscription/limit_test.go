@@ -38,3 +38,26 @@ func TestLimitNodesKeepsAutoOfKeptNodes(t *testing.T) {
 		t.Errorf("nodes %d, auto %v", len(res.Nodes), res.Auto)
 	}
 }
+
+// A list of junk lines makes one skipped entry per line: only the first are
+// kept, the rest is counted, and what is kept is short.
+func TestParseCapsSkippedEntries(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("trojan://pw@203.0.113.5:443?sni=a.example.com#ok\n")
+	long := strings.Repeat("x", 5000)
+	for i := range 20000 {
+		fmt.Fprintf(&b, "%s%d://junk\n", long[:300], i%3)
+	}
+	res, err := Parse([]byte(b.String()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Skipped) != MaxSkipped || res.SkippedTotal != 20000 || res.SkippedMore() != 20000-MaxSkipped {
+		t.Fatalf("kept %d, total %d, more %d", len(res.Skipped), res.SkippedTotal, res.SkippedMore())
+	}
+	for _, s := range res.Skipped {
+		if len([]rune(s.Kind)) > 64 || len([]rune(s.Reason)) > 200 {
+			t.Fatalf("entry not truncated: %d, %d", len(s.Kind), len(s.Reason))
+		}
+	}
+}

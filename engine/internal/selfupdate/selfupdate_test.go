@@ -361,3 +361,38 @@ func TestRateLimit(t *testing.T) {
 		t.Errorf("rate limited: %v", err)
 	}
 }
+
+func TestManifestPlatformBinding(t *testing.T) {
+	k := newKey(t)
+	check := func(platform, manifest string) error {
+		dir := t.TempDir()
+		body, sig := release(t, k, func(m *Manifest) {
+			m.Installer = "coreshift-0.3.0-b7" + installerExt(manifest)
+			m.Platform = platform
+		})
+		os.WriteFile(filepath.Join(dir, manifest), body, 0o644)
+		os.WriteFile(filepath.Join(dir, manifest+".sig"), sig, 0o644)
+		_, err := Check(context.Background(), http.DefaultClient, Source{Dir: dir}, manifest, []string{k.pub})
+		return err
+	}
+	for _, name := range []string{ManifestName, AndroidManifestName, AndroidArmManifestName, LinuxManifestName} {
+		if err := check(PlatformFor(name), name); err != nil {
+			t.Errorf("%s with its own platform: %v", name, err)
+		}
+		// Manifests published before the field existed carry none.
+		if err := check("", name); err != nil {
+			t.Errorf("%s without a platform: %v", name, err)
+		}
+	}
+	// A signed arm64 manifest served as the 32-bit one (same .apk kind, so
+	// only the platform tells them apart).
+	if err := check("android", AndroidArmManifestName); err == nil || !strings.Contains(err.Error(), "signed for android") {
+		t.Errorf("android manifest taken as armv7: %v", err)
+	}
+	if err := check("linux", LinuxManifestName); err != nil {
+		t.Error(err)
+	}
+	if err := check("windows", LinuxManifestName); err == nil {
+		t.Error("windows manifest taken as linux")
+	}
+}

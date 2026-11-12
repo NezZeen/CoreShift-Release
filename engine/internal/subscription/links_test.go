@@ -190,3 +190,14 @@ func describe(n node.Node) string {
 	b, _ := json.Marshal(n)
 	return string(b)
 }
+
+func TestLinkNameIsCleanedAndDefaulted(t *testing.T) {
+	n, err := ParseLink("trojan://pw@203.0.113.5:443?sni=a.example.com#%E2%80%AEOfficial%E2%80%8B")
+	if err != nil || n.Name != "Official" {
+		t.Errorf("name = %q, %v", n.Name, err)
+	}
+	n, err = ParseLink("trojan://pw@203.0.113.5:443?sni=a.example.com#%E2%80%AE")
+	if err != nil || n.Name != "203.0.113.5:443" {
+		t.Errorf("name = %q, %v", n.Name, err)
+	}
+}

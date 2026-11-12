@@ -61,3 +61,17 @@ func TestAddRejectsBadIPs(t *testing.T) {
 		t.Error("Add(invalid) succeeded, want error")
 	}
 }
+
+func TestRefuseKeepsLANServersAndRejectsTunnelRanges(t *testing.T) {
+	for _, s := range []string{"224.0.0.1", "239.255.255.250", "ff02::1", "169.254.1.1", "fe80::1", "255.255.255.255",
+		"172.19.0.1", "172.19.0.2", "198.18.0.5", "198.19.255.254", "fc00::1", "::ffff:198.18.0.5"} {
+		if err := refuse(netip.MustParseAddr(s)); err == nil {
+			t.Errorf("refuse(%s) = nil, want an error", s)
+		}
+	}
+	for _, s := range []string{"192.168.1.10", "10.0.0.5", "172.16.0.9", "172.19.0.4", "203.0.113.7", "198.20.0.1"} {
+		if err := refuse(netip.MustParseAddr(s)); err != nil {
+			t.Errorf("refuse(%s) = %v, want nil (a server on the local network is legitimate)", s, err)
+		}
+	}
+}

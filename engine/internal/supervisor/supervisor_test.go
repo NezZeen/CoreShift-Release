@@ -174,13 +174,17 @@ func TestConnectUsesFirstCoreAndDisconnects(t *testing.T) {
 		t.Fatalf("status = %+v", st)
 	}
 	// The generated config must hold the credentials only for the owner.
+	cfgPath := filepath.Join(h.s.cfg.WorkDir, "xray", "config.json")
 	if runtime.GOOS != "windows" {
-		fi, err := os.Stat(filepath.Join(h.s.cfg.WorkDir, "xray", "config.json"))
+		fi, err := os.Stat(cfgPath)
 		if err != nil || fi.Mode().Perm() != 0o600 {
 			t.Errorf("config permissions = %v, %v", fi.Mode(), err)
 		}
 	}
 	h.s.Disconnect()
+	if _, err := os.Stat(cfgPath); !os.IsNotExist(err) {
+		t.Errorf("config with credentials left after Disconnect: %v", err)
+	}
 	if st := h.s.Status(); st.State != Idle {
 		t.Errorf("after disconnect: %+v", st)
 	}

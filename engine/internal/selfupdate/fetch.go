@@ -148,6 +148,9 @@ func Check(ctx context.Context, client *http.Client, src Source, manifest string
 	if err == nil && filepath.Ext(rel.Installer) != installerExt(manifest) {
 		return Release{}, fmt.Errorf("update manifest: %s names %s, not a %s file", manifest, rel.Installer, installerExt(manifest))
 	}
+	if err == nil && rel.Platform != "" && rel.Platform != PlatformFor(manifest) {
+		return Release{}, fmt.Errorf("update manifest: %s is signed for %s, not for %s", manifest, rel.Platform, PlatformFor(manifest))
+	}
 	return rel, err
 }
 

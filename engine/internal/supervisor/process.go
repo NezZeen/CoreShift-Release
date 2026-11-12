@@ -1,7 +1,9 @@
 package supervisor
 
 import (
+	"context"
 	"net/netip"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -23,11 +25,18 @@ type process struct {
 	portLost <-chan struct{}
 	// started is when its executable was started (Restart).
 	started time.Time
+	// config is the file the core was started with: it holds the node's
+	// credentials and goes with the process.
+	config string
 }
 
 func (p *process) stop() {
 	if p != nil {
 		p.Process.Stop()
+		// Stops are sequential per core directory (a new start comes only
+		// after the previous process was stopped), so this never removes the
+		// config of its successor.
+		_ = os.Remove(p.config)
 	}
 }
 
@@ -62,6 +71,21 @@ func (w *portWatch) line(l string) {
 	if strings.Contains(l, w.needle) {
 		w.once.Do(func() { close(w.ch) })
 	}
+}
+
+// settle waits up to d for the core to say its port is taken and reports
+// whether it stayed silent. A cancelled ctx counts as silent: the caller
+// sees the cancellation itself.
+func (w *portWatch) settle(ctx context.Context, d time.Duration) bool {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-w.ch:
+		return false
+	case <-t.C:
+	case <-ctx.Done():
+	}
+	return !w.failed()
 }
 
 // failed reports whether the core said its port is taken.

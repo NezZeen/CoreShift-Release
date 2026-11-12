@@ -27,6 +27,13 @@ type Settings struct {
 	// IPv6 routes IPv6 traffic through the tunnel too. Off, IPv6 is
 	// refused while connected (apps use IPv4), never let around the tunnel.
 	IPv6 bool `json:"ipv6"`
+	// KillSwitch, «Блокировать трафик при сбое»: when the connection fails
+	// (every core, or the TUN layer, or a switch of servers) the TUN layer
+	// and the DNS redirect stay up, so what goes through the tunnel is
+	// refused rather than sent out with the real address; the connection is
+	// tried again meanwhile. Only the user's Disconnect lifts it. Off by
+	// default: a block nobody asked for would look like a broken network.
+	KillSwitch bool `json:"kill_switch"`
 	// AutoConnect connects the selected node when the daemon starts.
 	AutoConnect bool           `json:"auto_connect"`
 	Cores       CoreSettings   `json:"cores"`

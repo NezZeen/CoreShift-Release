@@ -4,7 +4,6 @@ package mobile
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/netip"
 	"os"
@@ -147,8 +146,9 @@ func (s *tunSlot) revoke() {
 	i := s.i
 	s.mu.Unlock()
 	if i != nil {
-		// The service sees the layer exit and disconnects with this.
-		go i.stop(errors.New("android turned the VPN off: another VPN app was started, or CoreShift was turned off in the system settings"))
+		// The service sees the layer exit and disconnects with this; the
+		// kill switch does not hold a VPN the system took away.
+		go i.stop(fmt.Errorf("android turned the VPN off: another VPN app was started, or CoreShift was turned off in the system settings: %w", service.ErrTUNRevoked))
 	}
 }
 

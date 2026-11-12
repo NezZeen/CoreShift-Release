@@ -93,6 +93,23 @@ func ManifestForArch(goos, goarch string) string {
 	return ManifestName
 }
 
+// PlatformFor is the platform name the release tool signs into a manifest
+// published as manifest: "windows", "android", "android-armv7" or "linux".
+// It is empty for a name that is none of ours.
+func PlatformFor(manifest string) string {
+	switch manifest {
+	case ManifestName:
+		return "windows"
+	case AndroidManifestName:
+		return "android"
+	case AndroidArmManifestName:
+		return "android-armv7"
+	case LinuxManifestName:
+		return "linux"
+	}
+	return ""
+}
+
 // installerExt is the kind of installer a manifest may name: a manifest
 // signed for one platform cannot hand another platform's file to it.
 func installerExt(manifest string) string {
@@ -118,8 +135,13 @@ type Manifest struct {
 	Commit string `json:"commit,omitempty"`
 	// Installer is the installer's file name, next to the manifest.
 	Installer string `json:"installer"`
-	SHA256    string `json:"sha256"`
-	Size      int64  `json:"size"`
+	// Platform is which manifest the release tool published this as, see
+	// PlatformFor. It is signed with the rest, so a manifest copied under
+	// another platform's name is refused. Manifests published before it was
+	// added have none and are accepted as they are.
+	Platform string `json:"platform,omitempty"`
+	SHA256   string `json:"sha256"`
+	Size     int64  `json:"size"`
 	// Published is when the release was made.
 	Published time.Time `json:"published"`
 	Notes     string    `json:"notes,omitempty"`

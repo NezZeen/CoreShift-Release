@@ -65,6 +65,10 @@ type Options struct {
 	// phone's screen is off or it saves its battery: «Экономия батареи»
 	// off (store.Settings.BatterySaving, power.go). It applies at once.
 	NoBatterySaving bool
+	// KillSwitch keeps the TUN layer and the DNS redirect up, refusing the
+	// traffic, when the connection fails (store.Settings.KillSwitch,
+	// killswitch.go). It is read when a failure comes, not at connection.
+	KillSwitch bool
 
 	// TUN routes all system traffic through the tunnel and guards DNS.
 	// Without it only the SOCKS port is served.
@@ -206,8 +210,10 @@ type Config struct {
 	netName     func() string
 	netPoll     time.Duration // how often a connection looks whether the network is there
 	netSettle   time.Duration // how long a connection that finds no network looks again before waiting
-	netGrace    time.Duration // how long a returned network may take to carry the tunnel again
-	netEvidence time.Duration // how often a wait for the network tries the server anyway
+	// blockedRetry stands in for blockedRetryMin (killswitch.go).
+	blockedRetry time.Duration
+	netGrace     time.Duration // how long a returned network may take to carry the tunnel again
+	netEvidence  time.Duration // how often a wait for the network tries the server anyway
 	// trafficEvery, trafficIdleEvery and trafficHiddenEvery stand in for
 	// trafficInterval, trafficIdleInterval and trafficHiddenInterval.
 	trafficEvery       time.Duration
@@ -287,6 +293,7 @@ func OptionsFromSettings(set store.Settings) Options {
 		Verbose:              set.Log.Verbose,
 		SwitchServer:         c.SwitchServer,
 		NoBatterySaving:      !set.BatterySaving,
+		KillSwitch:           set.KillSwitch,
 		TUN:                  set.TUN,
 		IPv6:                 set.IPv6,
 		DirectApps:           slices.Clone(set.Routing.DirectApps),

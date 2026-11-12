@@ -79,6 +79,11 @@ func (s *Service) connectNode(ctx context.Context, n node.Node, mayKeep bool) er
 	if disconnected(ctx) {
 		return ErrDisconnected // the user disconnected before it began
 	}
+	if s.isBlocked() && s.networkGone(ctx) {
+		// Held by the kill switch with no network to try: the next attempt
+		// comes with the retries, and nothing is torn down meanwhile.
+		return errBlockedNoNetwork
+	}
 	s.stopLatencyTest()
 	s.stopNodeSpeed()
 	// A switch of servers keeps the TUN layer — its interface, the DNS
@@ -88,14 +93,19 @@ func (s *Service) connectNode(ctx context.Context, n node.Node, mayKeep bool) er
 	// "missing fakeip record" is one). The route to the server is the
 	// engine's own (serverroute.go), so the layer's config does not differ.
 	s.mu.Lock()
-	keepTUN := mayKeep && s.opts.TUN && s.tun != nil && s.status.State == Connected && !s.pending && !s.optsPending && s.hasTunLookups
+	blocked := s.blocked
+	// A connection held by the kill switch keeps its layer as a connected one.
+	keepTUN := mayKeep && s.opts.TUN && s.tun != nil && (s.status.State == Connected || blocked) && !s.pending && !s.optsPending && s.hasTunLookups
+	// A held connection whose layer is gone (it died) is built anew from what
+	// the old one was made of: the system's lookups would now name the tunnel.
+	keepLookups := keepTUN || blocked && s.hasTunLookups
 	s.mu.Unlock()
 	if keepTUN && s.networkGone(ctx) {
 		// No network: another server would not answer either; wait it out.
 		keepTUN = false
 	}
 	if !keepTUN {
-		s.stopLocked()
+		s.stopConn()
 	}
 	s.mu.Lock()
 	if !keepTUN {
@@ -116,15 +126,19 @@ func (s *Service) connectNode(ctx context.Context, n node.Node, mayKeep bool) er
 		// stop the cores, which connectLocked needs for its lookups.
 		s.sup.SetPolicy(pol)
 	}
-	s.setStatus(Status{State: Connecting, Node: n.Name, Protocol: string(n.Protocol), TUN: opts.TUN, Since: time.Now()})
-	if !keepTUN && s.networkGone(ctx) {
+	if !blocked {
+		// A held connection shows Blocked until it is made: attempts every few
+		// seconds must not flash "connecting" at a user whose traffic is refused.
+		s.setStatus(Status{State: Connecting, Node: n.Name, Protocol: string(n.Protocol), TUN: opts.TUN, Since: time.Now()})
+	}
+	if !keepTUN && !blocked && s.networkGone(ctx) {
 		// Nothing would come of it, and the server's name would not even
 		// resolve: the connection is made once there is a network.
 		s.waitNetwork(n, opts)
 		return nil
 	}
 
-	res, err := s.connectLocked(ctx, n, gen, opts, pol, keepTUN)
+	res, err := s.connectLocked(ctx, n, gen, opts, pol, keepLookups)
 	s.mu.Lock()
 	s.serverIP = res.serverIP
 	s.mu.Unlock()
@@ -133,6 +147,9 @@ func (s *Service) connectNode(ctx context.Context, n node.Node, mayKeep bool) er
 		err = ErrDisconnected // during the last step
 	}
 	if err != nil {
+		if !disconnected(ctx) && s.holdBlocked(err) {
+			return err
+		}
 		s.stopLocked()
 		if disconnected(ctx) {
 			// Not a failure: what the user asked for.
@@ -147,6 +164,7 @@ func (s *Service) connectNode(ctx context.Context, n node.Node, mayKeep bool) er
 		s.fail(err)
 		return err
 	}
+	s.leaveBlocked()
 	st := s.Status()
 	st.State = Connected
 	st.Since = time.Now()
@@ -389,7 +407,7 @@ func (s *Service) connectLocked(ctx context.Context, n node.Node, gen int, o Opt
 			// layer's config has to carry the server, so it is rebuilt.
 		}
 		// Not reusable: down with the kept layer, then the classic way.
-		s.stopLocked()
+		s.stopConn()
 		s.mu.Lock()
 		s.gen++
 		gen = s.gen
@@ -603,6 +621,13 @@ func (s *Service) stopLocked() {
 		s.waitCancel() // a wait for the network ends with its connection
 		s.waitCancel = nil
 	}
+	// Whatever tears the connection down, a disconnect or the failure of a
+	// switch that is not held, ends the kill switch's hold with it.
+	s.blocked = false
+	if s.blockCancel != nil {
+		s.blockCancel()
+		s.blockCancel = nil
+	}
 	s.mu.Unlock()
 	s.netDown.Store(false)
 	if s.stopPing != nil {
@@ -642,6 +667,9 @@ func (s *Service) teardown(gen int, cause error) {
 		if stale {
 			return
 		}
+		if s.holdBlocked(cause) {
+			return
+		}
 		s.stopLocked()
 		s.fail(cause)
 	}()
@@ -667,8 +695,12 @@ func (s *Service) watchTUN(t TUNInstance, gen, seq int) {
 	if stale || seq != s.tunSeq {
 		return
 	}
+	cause := fmt.Errorf("TUN layer stopped: %w", t.ExitError())
+	if s.holdBlocked(cause) {
+		return
+	}
 	s.stopLocked()
-	s.fail(fmt.Errorf("TUN layer stopped: %w", t.ExitError()))
+	s.fail(cause)
 }
 
 func (s *Service) onSupervisorEvent(e supervisor.Event) {

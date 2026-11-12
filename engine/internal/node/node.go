@@ -175,6 +175,10 @@ type WireGuardOptions struct {
 
 // Validate checks that the fields every core needs are present.
 func (n *Node) Validate() error {
+	// The name and the server come from a subscription or a link anyone can
+	// write: no hidden characters or text direction tricks in either.
+	n.Name = CleanText(n.Name, MaxNameRunes)
+	n.Server = CleanText(n.Server, MaxServerRunes)
 	if n.Server == "" {
 		return errors.New("missing server")
 	}

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"coreshift/engine/internal/node"
+	"coreshift/engine/internal/subscription"
 )
 
 // AddRequest is a subscription URL or, for a pasted list, its content.
@@ -88,6 +89,10 @@ func (s *Store) addToPaste(id string, add Subscription) (Subscription, error) {
 		// New slices: the old ones are shared with readers.
 		sub.Nodes = slices.Concat(sub.Nodes, fresh)
 		sub.Skipped = slices.Concat(sub.Skipped, add.Skipped)
+		// Repeated additions must not grow the list without bound either.
+		if len(sub.Skipped) > subscription.MaxSkipped+1 {
+			sub.Skipped = slices.Clip(sub.Skipped[:subscription.MaxSkipped+1])
+		}
 		sub.UpdatedAt, sub.CheckedAt, sub.LastError = add.UpdatedAt, add.CheckedAt, ""
 		d.Subscriptions[i] = sub
 		return nil
