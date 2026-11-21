@@ -1,9 +1,9 @@
 {
-  "fetched": "2026-11-21T07:03:55Z",
+  "fetched": "2026-11-21T19:14:21Z",
   "sets": {
     "geosite-category-ads-all": {
-      "sha256": "b834b80fa59a491e9c1ed4173917036de28da00ebd0bdda87455d242dc16aeae",
-      "size": 1628889
+      "sha256": "0731b923017e8daabe21c5e98eebe733ea673b735c125ea71ec75e8f742f3565",
+      "size": 1630694
     },
     "geosite-ru-blocked": {
       "sha256": "73340373acfc2a3a69405dc6ae6c616492874dabd7b9486f4e0d3c0c4f48b0ce",
