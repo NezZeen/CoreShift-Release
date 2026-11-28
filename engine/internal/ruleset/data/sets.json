@@ -1,29 +1,29 @@
 {
-  "fetched": "2026-11-05T22:53:13Z",
+  "fetched": "2026-11-28T08:46:08Z",
   "sets": {
     "geoip-ru": {
-      "sha256": "bdca5cdb44cdcf0940001e5952386822a6f4ffa8b2c8eea00340aa6f585c7f9d",
-      "size": 50096
+      "sha256": "55869c680cf6489991cbfdf62c2f5da77ea85bf571babddb6cd9c4941d84cbfa",
+      "size": 50098
     },
     "geosite-category-ads-all": {
-      "sha256": "500b5a4e75ed7b2127a3c645757f7a760f19abc99f2bb550a18fddd46d9c576e",
-      "size": 1608653
+      "sha256": "20dae86a3339890c59c40db2c07c0ca78ac51b672912588b68afa75a65753cab",
+      "size": 1662205
     },
     "geosite-category-media-ru-blocked": {
-      "sha256": "081d06c300b6062d0538a8e18075d310c4a70ee96db5027c93988e4e2893e3b5",
-      "size": 1252
+      "sha256": "e38f564045044c2e36cbcfb62d1ca3999f2148bde0128884f9b963868d0c7158",
+      "size": 1249
     },
     "geosite-category-ru": {
-      "sha256": "83aad0aa61c9f35a6084478fac9d57b5f202b88fa92dfa6c6056ec4396a9bbb6",
-      "size": 9031
+      "sha256": "4a217ace59b07527bc25bb05bb68cf7b7cbce760d5b479bab0c3cc2273b0ae6f",
+      "size": 9159
     },
     "geosite-google": {
-      "sha256": "992d7ba91ce9c6e1c248d9ef0d58b2a17281415526b6a560dce6368e4f72e1f2",
-      "size": 7792
+      "sha256": "67de78f83e73f406b7afa9c043797954d0e3c00b906a05d86b406a35f38a72d7",
+      "size": 7817
     },
     "geosite-ru-blocked": {
-      "sha256": "62588c875e69044610bcdaf590cca0aa77acbd0b4c052c58ca3ff0bf959c0291",
-      "size": 456546
+      "sha256": "05bb7d4d1c3655d5ec8a6b4f60d10a0dbf18459b9a4609a533dafb3f93f1baa0",
+      "size": 453563
     }
   }
 }
