@@ -18,7 +18,9 @@ List<String> _strings(dynamic v) => v is List ? v.map((e) => '$e').toList() : co
 
 /// [noNetwork]: the device has no network. A connection either waits for one
 /// to start ([Status.waiting]) or is held as it is until it returns.
-enum ConnState { idle, connecting, connected, disconnecting, failed, noNetwork }
+/// [blocked]: the connection failed with «Блокировать трафик при сбое» on; the
+/// tunnel stays up and refuses traffic while the engine reconnects.
+enum ConnState { idle, connecting, connected, disconnecting, failed, noNetwork, blocked }
 
 ConnState _connState(dynamic v) => switch (v) {
   'connecting' => ConnState.connecting,
@@ -26,6 +28,7 @@ ConnState _connState(dynamic v) => switch (v) {
   'connected' => ConnState.connected,
   'disconnecting' => ConnState.disconnecting,
   'failed' => ConnState.failed,
+  'blocked' => ConnState.blocked,
   _ => ConnState.idle,
 };
 
@@ -115,7 +118,7 @@ class Status {
 
   /// On, coming up, or waiting for the network to do either: the button
   /// then disconnects (or cancels).
-  bool get active => state == ConnState.connected || state == ConnState.connecting || state == ConnState.noNetwork;
+  bool get active => state == ConnState.connected || state == ConnState.connecting || state == ConnState.noNetwork || state == ConnState.blocked;
 
   /// [error] in the app's language when the engine sent its code.
   String get errorText => engineText(errorCode, errorArgs, error);

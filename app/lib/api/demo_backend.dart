@@ -40,6 +40,7 @@ class DemoBackend implements Backend {
   Json _settings = {
     'tun': true,
     'ipv6': true,
+    'kill_switch': false,
     'auto_connect': false,
     'cores': {
       'priority': ['xray', 'sing-box', 'mihomo'],

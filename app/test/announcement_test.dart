@@ -6,6 +6,7 @@ import 'package:coreshift/api/models.dart';
 import 'package:coreshift/main.dart';
 import 'package:coreshift/state/announcements.dart';
 import 'package:coreshift/state/app_state.dart';
+import 'package:coreshift/ui/announcement.dart';
 
 void main() {
   const sizes = {'phone': Size(390, 844), 'desktop': Size(1400, 900)};
@@ -60,28 +61,54 @@ void main() {
     ];
   }
 
+  // On a phone the announcement is a line above the button; the text and
+  // its buttons are in a sheet it opens.
+  Future<void> openSheet(WidgetTester tester, String where) async {
+    if (where != 'phone') return;
+    await tester.tap(find.byIcon(Icons.campaign_outlined).first);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+  }
+
+  /// [finder] inside the announcement: the sheet on a phone, the card on the desktop
+  /// (the home page has another «Подробнее» of its own).
+  Finder inAnnouncement(String where, Finder finder) =>
+      find.descendant(of: where == 'phone' ? find.byType(BottomSheet) : find.byType(AnnouncementCard), matching: finder);
+
+  Future<void> closeSheet(WidgetTester tester, String where) async {
+    if (where != 'phone') return;
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+  }
+
   for (final MapEntry(key: where, value: size) in sizes.entries) {
     testWidgets('the provider\'s announcement on the $where: shown, hidden, and a new text shows again', (tester) async {
       final opened = <String>[];
       final state = await pumpApp(tester, size, opened: opened);
       expect(state.subscriptions.first.info.announce, startsWith(demoText));
+      await openSheet(tester, where);
 
       // The card: the subscription's name, the text and the way to read on.
       expect(find.text('Объявление от «NorthLink Premium»'), findsOneWidget);
-      expect(find.textContaining(demoText), findsOneWidget);
-      expect(find.text('Подробнее'), findsOneWidget);
-      expect(find.text('Скрыть'), findsOneWidget);
+      // On a phone the line above the button carries the text too.
+      expect(find.textContaining(demoText), findsWidgets);
+      expect(inAnnouncement(where, find.text('Подробнее')), findsOneWidget);
+      expect(inAnnouncement(where, find.text('Скрыть')), findsOneWidget);
       expect(tester.takeException(), isNull, reason: where);
 
-      await tester.tap(find.text('Подробнее'));
+      await tester.tap(inAnnouncement(where, find.text('Подробнее')));
       await tester.pump();
       expect(opened, ['https://northlink.example/news/maintenance']);
+      await tester.pump(const Duration(milliseconds: 400));
+      await openSheet(tester, where);
 
       // Hidden: gone, and remembered with the preferences.
-      await tester.tap(find.text('Скрыть'));
+      await tester.tap(inAnnouncement(where, find.text('Скрыть')));
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
       expect(find.textContaining(demoText), findsNothing);
-      expect(find.text('Скрыть'), findsNothing);
+      expect(inAnnouncement(where, find.text('Скрыть')), findsNothing);
       expect(state.announcements, isEmpty);
       expect((state.prefs['announce_hidden'] as Map).keys, [state.subscriptions.first.id]);
 
@@ -95,10 +122,12 @@ void main() {
       announce(state, 'Новый сервер в Финляндии. Подключайтесь!');
       redraw(state);
       await tester.pump();
+      await openSheet(tester, where);
       expect(find.text('Объявление от «NorthLink Premium»'), findsOneWidget);
-      expect(find.text('Новый сервер в Финляндии. Подключайтесь!'), findsOneWidget);
+      expect(find.text('Новый сервер в Финляндии. Подключайтесь!'), findsWidgets);
       // Without a link, no «Подробнее».
-      expect(find.text('Подробнее'), findsNothing);
+      expect(inAnnouncement(where, find.text('Подробнее')), findsNothing);
+      await closeSheet(tester, where);
 
       // The panel withdraws it.
       announce(state, null);
@@ -112,8 +141,10 @@ void main() {
     testWidgets('a hidden announcement stays hidden after a restart on the $where', (tester) async {
       final first = await pumpApp(tester, size);
       final hidden = <String, dynamic>{};
-      await tester.tap(find.text('Скрыть'));
+      await openSheet(tester, where);
+      await tester.tap(inAnnouncement(where, find.text('Скрыть')));
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
       hidden.addAll(first.prefs);
       expect(hidden['announce_hidden'], isNotEmpty);
 
@@ -130,10 +161,17 @@ void main() {
       announce(state, long);
       redraw(state);
       await tester.pump();
-      expect(find.text('Показать полностью'), findsOneWidget);
-      await tester.tap(find.text('Показать полностью'));
-      await tester.pump();
-      expect(find.text('Свернуть'), findsOneWidget);
+      if (where == 'phone') {
+        // The sheet shows it whole.
+        await openSheet(tester, where);
+        expect(find.textContaining('Строка номер 29 объявления.'), findsWidgets);
+        expect(find.text('Показать полностью'), findsNothing);
+      } else {
+        expect(find.text('Показать полностью'), findsOneWidget);
+        await tester.tap(find.text('Показать полностью'));
+        await tester.pump();
+        expect(find.text('Свернуть'), findsOneWidget);
+      }
       expect(tester.takeException(), isNull, reason: where);
       await settle(tester);
     });
@@ -143,7 +181,7 @@ void main() {
     for (final size in sizes.values) {
       final opened = <String>[];
       await pumpApp(tester, size, opened: opened);
-      await tester.tap(find.text('Серверы').last);
+      await tester.tap(size.width < 720 ? find.byTooltip('Серверы') : find.text('Серверы').last);
       await tester.pump();
       expect(find.text('Поддержка'), findsWidgets);
       final site = find.byIcon(Icons.language);

@@ -505,6 +505,7 @@ class _Tray {
       ConnState.connecting => ('busy', tr('tray.tip.connecting')),
       ConnState.disconnecting => ('busy', tr('tray.tip.disconnecting')),
       ConnState.failed => ('idle', tr('tray.tip.failed')),
+      ConnState.blocked => ('busy', tr('tray.tip.blocked')),
       ConnState.noNetwork => ('busy', tr(st.node.isEmpty ? 'tray.tip.noNetwork' : 'tray.tip.noNetworkTo', {'node': st.node})),
       ConnState.idle => ('idle', tr('tray.tip.idle')),
     };

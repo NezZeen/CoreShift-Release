@@ -194,10 +194,17 @@ void main() {
   testWidgets('in the settings, beside the leak test, also without a connection', (tester) async {
     for (final size in [const Size(390, 844), const Size(1400, 900)]) {
       final (state, _, _) = await pumpApp(tester, size, connect: false);
-      final phone = find.byType(NavigationBar).evaluate().isNotEmpty;
-      await tester.tap(phone ? find.descendant(of: find.byType(NavigationBar), matching: find.text('Настройки')) : find.text('Настройки').first);
-      await tester.pump();
+      final phone = find.byKey(const ValueKey('pill-nav')).evaluate().isNotEmpty;
+      await tester.tap(phone ? find.byTooltip('Настройки') : find.text('Настройки').first);
+      await tester.pump(const Duration(milliseconds: 500));
       final button = find.widgetWithText(InkWell, 'Проверить всё').last;
+      if (phone) {
+        // A phone keeps it in the settings' section «Подключение».
+        await tester.tap(find.text('Подключение'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+        await tester.scrollUntilVisible(button, 300, scrollable: find.byType(Scrollable).last);
+      }
       await tester.ensureVisible(button);
       await tester.tap(button);
       await advance(tester);

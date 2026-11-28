@@ -104,7 +104,7 @@ void main() {
     await tester.tap(find.text('Журнал').first);
     await tester.pump(const Duration(milliseconds: 300));
     expect(state.setting('log.verbose', false), isTrue);
-    await tester.tap(find.text('Подробно'));
+    await tester.tap(find.text('● Подробно'));
     for (var i = 0; i < 5; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }

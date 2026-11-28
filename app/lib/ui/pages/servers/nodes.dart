@@ -29,7 +29,7 @@ class _NodeTable extends StatelessWidget {
         ),
       );
     }
-    final headStyle = TextStyle(fontSize: 12, color: p.dim, fontWeight: FontWeight.w600);
+    final headStyle = TextStyle(fontSize: 11, color: p.muted, fontWeight: FontWeight.w600, letterSpacing: .2);
     // The place of each server in its subscription, worked out once for all
     // the rows (looking for it row by row is a walk of the list per row).
     final positions = HashMap<NodeView, int>.identity();
@@ -59,6 +59,7 @@ class _NodeTable extends StatelessWidget {
               action: const SizedBox(),
               tools: const SizedBox(),
             ),
+            if (!narrow) Divider(height: 1, color: p.border),
             for (final (i, sec) in sections.indexed) ...[
               if (sec.title != null)
                 _SectionHeading(
@@ -98,6 +99,7 @@ class _NodeTable extends StatelessWidget {
     required Widget ping,
     required Widget action,
     required Widget tools,
+    Widget? second,
     bool header = false,
   }) {
     // The place in the subscription, right-aligned in a slot of its own so
@@ -112,78 +114,82 @@ class _NodeTable extends StatelessWidget {
             ),
           );
     if (narrow) {
-      // A phone: the name over the protocol, then the ping
-      // and the actions; the column headings and the cores are left out.
+      // A phone: a card with the name over the delay and the protocol; the
+      // column headings and the cores are left out.
       if (header) return const SizedBox.shrink();
-      return Padding(
-        padding: const EdgeInsets.only(left: 8, right: 2, top: 4, bottom: 4),
-        child: Row(
-          children: [
-            ?numberSlot,
-            // The checkbox while picking, at the slot's left, clear of the
-            // flag. The selected server shows by its row's frame instead.
-            if (radio != null)
+      return ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 52),
+        child: Padding(
+          padding: const EdgeInsets.only(left: 12, right: 4, top: 6, bottom: 6),
+          child: Row(
+            children: [
+              ?numberSlot,
+              // The checkbox while picking, at the slot's left, clear of the
+              // flag. The selected server shows by its card's frame instead.
+              if (radio != null)
+                SizedBox(
+                  width: 26,
+                  child: Align(alignment: Alignment.centerLeft, child: radio),
+                ),
               SizedBox(
-                width: 22,
-                child: Align(alignment: Alignment.centerLeft, child: radio),
+                width: 44,
+                child: Align(alignment: Alignment.centerLeft, child: badge),
               ),
-            SizedBox(
-              width: 38,
-              child: Align(alignment: Alignment.centerLeft, child: badge),
-            ),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  name,
-                  const SizedBox(height: 4),
-                  Align(alignment: Alignment.centerLeft, child: proto),
-                ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    name,
+                    const SizedBox(height: 2),
+                    Align(alignment: Alignment.centerLeft, child: second ?? proto),
+                  ],
+                ),
               ),
-            ),
-            // Wide enough for "123 мс" and the method's short label.
-            SizedBox(width: 74, child: ping),
-            action,
-            tools,
-          ],
+              action,
+              tools,
+            ],
+          ),
         ),
       );
     }
-    return Padding(
-      padding: EdgeInsets.only(left: 12, right: 4, top: header ? 8 : 4, bottom: header ? 8 : 4),
-      child: Row(
-        children: [
-          ?numberSlot,
-          if (radio != null)
+    return ConstrainedBox(
+      constraints: BoxConstraints(minHeight: header ? 0 : 44),
+      child: Padding(
+        padding: EdgeInsets.only(left: 12, right: 4, top: header ? 8 : 4, bottom: header ? 8 : 4),
+        child: Row(
+          children: [
+            ?numberSlot,
+            if (radio != null)
+              SizedBox(
+                width: 28,
+                child: Align(alignment: Alignment.centerLeft, child: radio),
+              ),
             SizedBox(
-              width: 28,
-              child: Align(alignment: Alignment.centerLeft, child: radio),
+              width: 42,
+              child: Align(alignment: Alignment.centerLeft, child: badge),
             ),
-          SizedBox(
-            width: 42,
-            child: Align(alignment: Alignment.centerLeft, child: badge),
-          ),
-          Expanded(flex: 14, child: name),
-          Expanded(
-            flex: 10,
-            child: Align(alignment: Alignment.centerLeft, child: proto),
-          ),
-          SizedBox(width: 196, child: ping),
-          // As tall as the "Подключить" button that shows under the pointer:
-          // a row that grew when hovered would shift the rows below it and
-          // jerk the list as the pointer moves.
-          SizedBox(
-            width: 118,
-            height: header ? null : 28,
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: FittedBox(fit: BoxFit.scaleDown, child: action),
+            Expanded(flex: 14, child: name),
+            Expanded(
+              flex: 10,
+              child: Align(alignment: Alignment.centerLeft, child: proto),
             ),
-          ),
-          // The star, always in its place.
-          SizedBox(width: 36, height: header ? null : 28, child: tools),
-        ],
+            SizedBox(width: 196, child: ping),
+            // As tall as the "Подключить" button that shows under the pointer:
+            // a row that grew when hovered would shift the rows below it and
+            // jerk the list as the pointer moves.
+            SizedBox(
+              width: 118,
+              height: header ? null : 28,
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: FittedBox(fit: BoxFit.scaleDown, child: action),
+              ),
+            ),
+            // The star, always in its place.
+            SizedBox(width: 36, height: header ? null : 28, child: tools),
+          ],
+        ),
       ),
     );
   }
@@ -364,11 +370,12 @@ class _NodeRowState extends State<_NodeRow> {
     final narrow = widget.narrow;
     final compact = isCompact(context);
     final fav = s.isFavorite(widget.sub, n);
+    final speedKey = '${widget.sub.id}/${n.fingerprint}';
     void connect() => s.connect(subscription: widget.sub.id, fingerprint: n.fingerprint, name: n.name);
 
     final Widget action;
     if (connected) {
-      action = narrow ? const Icon(Icons.check_circle, size: 18, color: okColor) : Pill(tr('servers.connected'), color: okColor);
+      action = narrow ? const Icon(Icons.check_circle, size: 20, color: okColor) : _ConnectedChip(label: tr('servers.connected'), color: p.okInk);
     } else if (active) {
       action = narrow
           ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: accent))
@@ -398,18 +405,30 @@ class _NodeRowState extends State<_NodeRow> {
 
     // The star: always there, amber when the server is a favourite. A
     // phone's is a finger wide.
-    final star = Tooltip(
-      message: fav ? tr('servers.fav.remove') : tr('servers.fav.add'),
+    final lat = s.latencyOf(widget.sub.id, n.fingerprint);
+    final dead = lat != null && !lat.ok;
+    final retry = Tooltip(
+      message: tr('servers.ping.retry'),
       child: InkResponse(
-        onTap: picking ? null : () => s.toggleFavorite(widget.sub, n),
-        radius: compact ? 22 : 16,
-        child: SizedBox(
-          width: compact ? 40 : 32,
-          height: compact ? 40 : 28,
-          child: Icon(fav ? Icons.star_rounded : Icons.star_outline_rounded, size: compact ? 22 : 19, color: fav ? warnColor : p.dim),
-        ),
+        onTap: picking || s.testingLatency || s.testingSpeed ? null : () => s.testLatency(widget.sub.id),
+        radius: 22,
+        child: SizedBox(width: 40, height: 40, child: Icon(Icons.refresh_rounded, size: 22, color: p.muted)),
       ),
     );
+    final star = narrow && dead && !fav
+        ? retry
+        : Tooltip(
+            message: fav ? tr('servers.fav.remove') : tr('servers.fav.add'),
+            child: InkResponse(
+              onTap: picking ? null : () => s.toggleFavorite(widget.sub, n),
+              radius: compact ? 22 : 16,
+              child: SizedBox(
+                width: compact ? 40 : 32,
+                height: compact ? 40 : 28,
+                child: Icon(fav ? Icons.star_rounded : Icons.star_outline_rounded, size: compact ? 22 : 19, color: fav ? warnColor : p.dim),
+              ),
+            ),
+          );
 
     final country = countryOf(n.name, n.server);
     final row = _NodeTable._row(
@@ -419,7 +438,7 @@ class _NodeRowState extends State<_NodeRow> {
       number: Text(
         '${widget.position + 1}',
         key: ValueKey('server-number/${widget.sub.id}/${n.fingerprint}'),
-        style: TextStyle(fontSize: 11, color: p.muted, fontFeatures: const [FontFeature.tabularFigures()]),
+        style: TextStyle(fontSize: 11, color: p.muted, fontFamily: monoFont, fontFamilyFallback: monoFallback),
       ),
       radio: picking ? _PickBox(on: picked, enabled: pick.canPick(widget.sub, n)) : null,
       badge: CountryBadge(country, width: narrow ? 32 : 30, tip: false),
@@ -435,7 +454,7 @@ class _NodeRowState extends State<_NodeRow> {
           children: [
             Text(
               cleanNodeName(n.name),
-              style: TextStyle(fontWeight: sel && !picking ? FontWeight.w700 : FontWeight.w500),
+              style: TextStyle(fontWeight: narrow ? FontWeight.w600 : (sel && !picking ? FontWeight.w700 : FontWeight.w500), fontSize: narrow ? 14 : null),
               overflow: TextOverflow.ellipsis,
             ),
             if (widget.showSub)
@@ -451,6 +470,7 @@ class _NodeRowState extends State<_NodeRow> {
       ping: _PingSpeedCell(state: s, sub: widget.sub, node: n, narrow: narrow),
       action: action,
       tools: star,
+      second: narrow ? _protoMs(context, n, lat, msFirst: true, speed: s.speedSupported ? s.nodeSpeeds[speedKey] : null) : null,
     );
 
     // The selected server stands out on any theme: a tint, an edge and a
@@ -467,21 +487,25 @@ class _NodeRowState extends State<_NodeRow> {
     } else if (lit) {
       bg = (connected ? okColor : accent).withValues(alpha: p.isLight ? .18 : .14);
       edge = lamp.withValues(alpha: p.isLight ? .7 : .8);
+    } else if (narrow) {
+      bg = p.surface;
+      edge = p.border;
     } else {
       bg = Colors.transparent;
       edge = hover && !unusable ? p.border2 : Colors.transparent;
     }
+    final radius = narrow ? 14.0 : 10.0;
     Widget body = Opacity(
-      opacity: unusable && !picked ? .45 : 1,
+      opacity: picked ? 1 : (unusable ? .45 : (dead ? .62 : 1)),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 120),
         decoration: BoxDecoration(
           color: bg,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(radius),
           // Always 1.5 wide, clear when unused: the row keeps its size.
           border: Border.all(color: edge, width: 1.5),
         ),
-        child: lit
+        child: lit && !narrow
             ? Stack(
                 children: [
                   row,
@@ -504,20 +528,23 @@ class _NodeRowState extends State<_NodeRow> {
       // A phone: swipe right to connect. The row stays where it is; the
       // swipe only triggers the action. Not while picking: the finger
       // picks then.
-      body = Dismissible(
-        key: ValueKey('swipe/${widget.sub.id}/${n.fingerprint}/${n.name}'),
-        direction: unusable || picking ? DismissDirection.none : DismissDirection.startToEnd,
-        dismissThresholds: const {DismissDirection.startToEnd: .28},
-        confirmDismiss: (dir) async {
-          s.setPref(serverHintPref, true);
-          if (!s.busy && s.online) {
-            HapticFeedback.selectionClick();
-            connect();
-          }
-          return false;
-        },
-        background: _SwipeBackground(color: okColor, icon: Icons.power_settings_new, label: tr('servers.connect'), alignLeft: true),
-        child: body,
+      body = Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Dismissible(
+          key: ValueKey('swipe/${widget.sub.id}/${n.fingerprint}/${n.name}'),
+          direction: unusable || picking ? DismissDirection.none : DismissDirection.startToEnd,
+          dismissThresholds: const {DismissDirection.startToEnd: .28},
+          confirmDismiss: (dir) async {
+            s.setPref(serverHintPref, true);
+            if (!s.busy && s.online) {
+              HapticFeedback.selectionClick();
+              connect();
+            }
+            return false;
+          },
+          background: _SwipeBackground(color: okColor, icon: Icons.power_settings_new, label: tr('servers.connect'), alignLeft: true),
+          child: body,
+        ),
       );
     }
 
@@ -596,10 +623,10 @@ class _SwipeBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    margin: const EdgeInsets.symmetric(vertical: 1),
+    margin: EdgeInsets.zero,
     padding: const EdgeInsets.symmetric(horizontal: 18),
     alignment: alignLeft ? Alignment.centerLeft : Alignment.centerRight,
-    decoration: BoxDecoration(color: color.withValues(alpha: .16), borderRadius: BorderRadius.circular(10)),
+    decoration: BoxDecoration(color: color.withValues(alpha: .16), borderRadius: BorderRadius.circular(14)),
     child: Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -680,4 +707,79 @@ class _LatencyCell extends StatelessWidget {
     };
     return how.isEmpty ? text : Tooltip(message: how, child: text);
   }
+}
+
+/// A phone's second line of a server: «40 мс · VLESS» (or «VLESS · 40 мс»),
+/// the delay in the mono face and its colour, «нет ответа» in red, and the
+/// download speed after them when it was measured.
+Widget _protoMs(BuildContext context, NodeView n, Latency? l, {required bool msFirst, Color? color, NodeSpeed? speed}) {
+  final p = context.pal;
+  const size = 11.5;
+  final base = TextStyle(fontSize: size, color: p.muted);
+  final mono = TextStyle(fontSize: size, fontFamily: monoFont, fontFamilyFallback: monoFallback);
+  final proto = TextSpan(text: protocolLabel(n.protocol), style: base);
+  const dot = '  ·  ';
+  final spans = <InlineSpan>[];
+  if (l == null) {
+    spans.add(proto);
+  } else if (!l.ok) {
+    spans.add(
+      TextSpan(
+        text: tr('servers.latency.none'),
+        style: base.copyWith(color: p.errInk),
+      ),
+    );
+  } else {
+    final ms = TextSpan(
+      text: tr('servers.ms', {'ms': l.ms}),
+      style: mono.copyWith(color: color ?? p.ink(l.ms < 200 ? okColor : (l.ms < 500 ? warnColor : errColor))),
+    );
+    // A port check or a ping says only that the server answers: a short label says so.
+    final how = switch (l.method) {
+      'tcp' => 'TCP',
+      'icmp' => 'ping',
+      _ => '',
+    };
+    final tag = how.isEmpty
+        ? null
+        : WidgetSpan(
+            alignment: PlaceholderAlignment.middle,
+            child: Text(
+              how,
+              style: TextStyle(fontSize: 10, color: p.muted, fontWeight: FontWeight.w600),
+            ),
+          );
+    final gap = TextSpan(text: dot, style: base);
+    spans.addAll(msFirst ? [ms, ?(tag == null ? null : gap), ?tag, gap, proto] : [proto, gap, ms, ?(tag == null ? null : TextSpan(text: ' ')), ?tag]);
+  }
+  if (speed != null && speed.ok) {
+    spans.addAll([
+      TextSpan(text: dot, style: base),
+      TextSpan(
+        text: formatMbps(speed.mbps),
+        style: mono.copyWith(color: p.ink(speedColor(speed.mbps))),
+      ),
+    ]);
+  }
+  return Text.rich(TextSpan(children: spans), maxLines: 1, overflow: TextOverflow.ellipsis);
+}
+
+/// «подключён» as a small outlined chip, the table's current row.
+class _ConnectedChip extends StatelessWidget {
+  final String label;
+  final Color color;
+  const _ConnectedChip({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(99),
+      border: Border.all(color: color.withValues(alpha: .7)),
+    ),
+    child: Text(
+      label.toLowerCase(),
+      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color),
+    ),
+  );
 }

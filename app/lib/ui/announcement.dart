@@ -128,6 +128,141 @@ class AnnouncementCards extends StatelessWidget {
   }
 }
 
+/// The phone's announcements: a line each above the button, the
+/// subscription's name and the start of the text; a tap opens the whole
+/// text in a sheet with «Подробнее» and «Скрыть». So the button and the
+/// server stay on the first screen.
+class AnnouncementStrips extends StatelessWidget {
+  final AppState state;
+  const AnnouncementStrips({super.key, required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final all = state.announcements;
+    if (all.isEmpty) return const SizedBox();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final a in all) ...[_AnnouncementStrip(key: ValueKey('announce-strip/${a.sub.id}'), state: state, announcement: a), const SizedBox(height: 12)],
+      ],
+    );
+  }
+}
+
+class _AnnouncementStrip extends StatelessWidget {
+  final AppState state;
+  final Announcement announcement;
+  const _AnnouncementStrip({super.key, required this.state, required this.announcement});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    final a = announcement;
+    return Material(
+      color: Color.alphaBlend(accent.withValues(alpha: .10), p.surface),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: accent.withValues(alpha: .35)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => _open(context),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 9, 8, 9),
+          child: Row(
+            children: [
+              Icon(Icons.campaign_outlined, size: 20, color: p.accentInk),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      a.sub.displayName,
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      a.text.replaceAll('\n', ' '),
+                      style: TextStyle(fontSize: 12, color: p.muted),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.expand_less, size: 22, color: p.muted),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _open(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) {
+        final p = context.pal;
+        final a = announcement;
+        return SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(22, 0, 22, 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(color: accent.withValues(alpha: .14), borderRadius: BorderRadius.circular(11)),
+                      child: Icon(Icons.campaign_outlined, size: 22, color: p.accentInk),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(child: Text(tr('announce.title', {'name': a.sub.displayName}), style: dialogTitle)),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Text(a.text, style: TextStyle(fontSize: 15, height: 1.5, color: p.text)),
+                const SizedBox(height: 18),
+                Row(
+                  children: [
+                    if (a.url.isNotEmpty) ...[
+                      Expanded(
+                        child: Btn(
+                          label: tr('announce.details'),
+                          kind: BtnKind.primary,
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            state.openLink(a.url);
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                    ],
+                    Expanded(
+                      child: Btn(
+                        label: tr('announce.hide'),
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                          state.hideAnnouncement(a);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 /// «Сайт»: the subscription's page (the panel's profile-web-page-url), a
 /// small pill beside «Поддержка». On a phone the word is left out.
 class SiteButton extends StatelessWidget {

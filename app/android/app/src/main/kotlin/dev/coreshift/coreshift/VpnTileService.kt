@@ -65,6 +65,7 @@ class VpnTileService : TileService() {
                 "connected" -> if (VpnStatus.proxyOnly) Tr.t("Прокси без VPN", "Proxy without VPN") else VpnStatus.node.ifEmpty { Tr.t("Подключено", "Connected") }
                 "connecting" -> Tr.t("Подключение…", "Connecting…")
                 "no-network" -> Tr.t("Нет сети", "No network")
+                "blocked" -> Tr.t("Трафик заблокирован", "Traffic blocked")
                 "disconnecting" -> Tr.t("Отключение…", "Disconnecting…")
                 else -> Tr.t("Выключен", "Off")
             }

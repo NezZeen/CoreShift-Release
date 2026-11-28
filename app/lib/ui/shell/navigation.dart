@@ -1,7 +1,9 @@
 part of '../shell.dart';
 
-/// The phone's navigation: the five main pages. On the cores the settings
-/// stay lit.
+/// The phone's navigation: the five main pages as icons on a pill that
+/// floats above the bottom edge; the current one lit amber. The names are
+/// the icons' tooltips (a long press) and what a screen reader says. On the
+/// cores the settings stay lit.
 class _BottomNav extends StatelessWidget {
   final AppState state;
   final PageId page;
@@ -10,19 +12,63 @@ class _BottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final index = mainPages.indexWhere((m) => m.$1 == stationOf(page));
-    // Five labels share the width of a phone at a fixed height: with the
-    // system's large text «Настройки» broke into two lines and was cut off.
-    // The labels grow a little only, as the system's own bars do; the
-    // pages above take the whole text size.
-    return MediaQuery.withClampedTextScaling(
-      maxScaleFactor: 1.1,
-      child: NavigationBar(
-        height: 68,
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        selectedIndex: index,
-        onDestinationSelected: (i) => onPage(mainPages[i].$1),
-        destinations: [for (final (_, icon, label) in mainPages) NavigationDestination(icon: Icon(icon), label: tr(label))],
+    final p = context.pal;
+    final current = stationOf(page);
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
+        child: Container(
+          key: const ValueKey('pill-nav'),
+          height: 64,
+          decoration: BoxDecoration(
+            color: p.surface,
+            borderRadius: BorderRadius.circular(32),
+            border: Border.all(color: p.border),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [for (final (id, icon, label) in mainPages) _PillTab(icon: icon, label: tr(label), active: current == id, onTap: () => onPage(id))],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PillTab extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+  const _PillTab({required this.icon, required this.label, required this.active, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    return Tooltip(
+      message: label,
+      child: Semantics(
+        button: true,
+        selected: active,
+        label: label,
+        excludeSemantics: true,
+        child: InkResponse(
+          onTap: onTap,
+          radius: 28,
+          hoverColor: Colors.transparent,
+          highlightColor: Colors.transparent,
+          splashColor: accent.withValues(alpha: .18),
+          highlightShape: BoxShape.rectangle,
+          borderRadius: BorderRadius.circular(24),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            width: 56,
+            height: 48,
+            decoration: BoxDecoration(color: active ? accent.withValues(alpha: .14) : Colors.transparent, borderRadius: BorderRadius.circular(24)),
+            child: Icon(icon, size: 24, color: active ? p.accentInk : p.dim),
+          ),
+        ),
       ),
     );
   }
@@ -99,6 +145,7 @@ class _StatusPill extends StatelessWidget {
             ConnState.connecting => (warnColor, tr('shell.pill.connecting')),
             ConnState.disconnecting => (warnColor, tr('shell.pill.disconnecting')),
             ConnState.failed => (errColor, tr('shell.pill.failed')),
+            ConnState.blocked => (errColor, tr('shell.pill.blocked')),
             ConnState.noNetwork => (warnColor, state.status.waiting ? tr('shell.pill.waitingNetwork') : tr('shell.pill.noNetwork')),
             ConnState.idle => (p.dim, tr('shell.pill.disconnected')),
           };
@@ -109,9 +156,9 @@ class _StatusPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
       decoration: BoxDecoration(
-        color: p.surface,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: on ? okColor.withValues(alpha: .45) : p.border),
+        color: on ? Color.alphaBlend(okColor.withValues(alpha: .12), p.surface) : p.surface,
+        borderRadius: BorderRadius.circular(11),
+        border: Border.all(color: on ? okColor.withValues(alpha: .5) : p.border),
       ),
       child: Row(
         children: [

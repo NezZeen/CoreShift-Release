@@ -74,8 +74,9 @@ extension AppStateActions on AppState {
   }
 
   /// The journal for support, on the clipboard and as a file to send: a
-  /// desktop saves it to Downloads, Android to Downloads/CoreShift and
-  /// opens «Отправить». Returns where the file is, null when none was saved.
+  /// desktop saves it to Downloads, Android hands it to «Отправить»
+  /// from its private cache, saving nothing in shared storage.
+  /// Returns where the file is, null when none was saved.
   /// [before] goes first, a checkup's report; [kind] names the file.
   Future<String?> copyJournal({List<String> before = const [], String kind = 'log'}) async {
     final text = [...before, ...journalForSupport()].join('\n');

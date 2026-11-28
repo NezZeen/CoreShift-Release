@@ -12,9 +12,9 @@ class _CompactHome extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        AnnouncementCards(state: state),
+        AnnouncementStrips(state: state),
         if (state.subscriptionWarnings.isNotEmpty) ...[_SubWarningBanner(state: state), const SizedBox(height: 14)],
-        _Hero(state: state, size: 150),
+        _Hero(state: state, size: 190, compact: true),
         const SizedBox(height: 20),
         if (state.vpnBlocked) ...[_VpnBlockedBanner(state: state), const SizedBox(height: 10)],
         if (st.state == ConnState.noNetwork) ...[_NoNetworkBanner(state: state), const SizedBox(height: 10)],
@@ -23,8 +23,16 @@ class _CompactHome extends StatelessWidget {
         if (state.dnsFallbackHint) ...[_DnsFallbackBanner(state: state), const SizedBox(height: 10)],
         if (st.settingsPending) ...[_PendingBanner(state: state), const SizedBox(height: 10)],
         _BackupBanner(state: state, below: true),
-        _Route(state: state),
+        _ServerChip(state: state),
         if (st.state == ConnState.connected) ...[const SizedBox(height: 10), _CompactSpeed(state: state)],
+        if (st.state == ConnState.idle && state.online) ...[const SizedBox(height: 10), const _DirectNotice()],
+        if (!state.ipUnsupported) ...[
+          const SizedBox(height: 10),
+          Panel(
+            padding: const EdgeInsets.fromLTRB(12, 0, 4, 0),
+            child: _IpCard(state: state),
+          ),
+        ],
         const SizedBox(height: 10),
         _HomeTools(state: state),
       ],
@@ -69,6 +77,34 @@ class _BackupBanner extends StatelessWidget {
   }
 }
 
+/// The phone while disconnected: an amber line saying the traffic is not
+/// protected.
+class _DirectNotice extends StatelessWidget {
+  const _DirectNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(accent.withValues(alpha: .10), p.surface),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: accent.withValues(alpha: .35)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.shield_outlined, size: 20, color: p.accentInk),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(tr('home.direct_unprotected'), style: TextStyle(color: p.accentInk, fontSize: 13.5)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// The phone's speed while connected, down and up.
 class _CompactSpeed extends StatelessWidget {
   final AppState state;
@@ -102,9 +138,12 @@ class _CompactSpeed extends StatelessWidget {
         ],
       ),
     );
-    return Panel(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Row(children: [metric(Icons.south, okColor, tr('home.speed.down'), down), metric(Icons.north, accent, tr('home.speed.up'), up)]),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+      decoration: BoxDecoration(color: p.surface, borderRadius: BorderRadius.circular(16)),
+      child: Row(
+        children: [metric(Icons.south, okColor, tr('home.speed.down'), down), const SizedBox(width: 12), metric(Icons.north, accent, tr('home.speed.up'), up)],
+      ),
     );
   }
 }

@@ -99,8 +99,12 @@ void main() {
     });
     await tester.pumpWidget(CoreShiftApp(state: state));
     await tester.pump();
-    final phone = find.byType(NavigationBar).evaluate().isNotEmpty;
-    await tester.tap(phone ? find.descendant(of: find.byType(NavigationBar), matching: find.text('Правила')) : find.text('Правила').first);
+    final phone = find.byKey(const ValueKey('pill-nav')).evaluate().isNotEmpty;
+    await tester.tap(phone ? find.byTooltip('Правила') : find.text('Правила').first);
+    await tester.pump();
+    // The own rules are a fold, closed until asked for.
+    await tester.ensureVisible(find.text('Свои правила'));
+    await tester.tap(find.text('Свои правила'));
     await tester.pump();
     return state;
   }
@@ -197,6 +201,15 @@ void main() {
       expect(find.byKey(const ValueKey('geo-note-resolved')), findsOneWidget);
 
       // Its time, in the source of the bases.
+      if (name == 'phone') {
+        // A phone keeps «Источник баз» in the settings, under «Подключение».
+        await tester.tap(find.byTooltip('Настройки'));
+        await tester.pump(const Duration(milliseconds: 500));
+        await tester.tap(find.text('Подключение'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+        await tester.scrollUntilVisible(find.text('Источник баз'), 300, scrollable: find.byType(Scrollable).last);
+      }
       await tester.ensureVisible(find.text('Источник баз'));
       await tester.tap(find.text('Источник баз'));
       await tester.pump();

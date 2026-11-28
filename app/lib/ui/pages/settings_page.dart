@@ -11,11 +11,14 @@ import '../../state/errors.dart';
 import '../checkup.dart';
 import '../disclaimer.dart';
 import '../shell.dart';
+import '../update_offer.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'dns_check.dart';
 import 'leak_check.dart';
 import 'proxy_mode.dart';
+import 'routing_page.dart';
+import 'user_rules.dart';
 
 /// What the self-update is doing, in words.
 String _appUpdateText(AppState state) {
@@ -65,18 +68,12 @@ class SettingsPage extends StatelessWidget {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final p = context.pal;
-    final info = state.info;
-    // The home page sent the user to the DNS fields: the fold opens on them.
-    final openDns = state.takeDnsSettingsRequest();
-
-    final general = Panel(
+  /// «Приложение»: autostart, notifications, theme, language.
+  Widget _general(BuildContext context, ThemeMode mode, ValueChanged<ThemeMode> onMode) {
+    return Panel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          PanelTitle(tr('settings.app.title')),
           SettingRow(
             first: true,
             title: tr('settings.autostart.title'),
@@ -102,13 +99,13 @@ class SettingsPage extends StatelessWidget {
           SettingRow(
             title: tr('settings.theme.title'),
             trailing: Seg<ThemeMode>(
-              value: themeMode,
+              value: mode,
               options: [
                 (ThemeMode.dark, tr('settings.theme.dark')),
                 (ThemeMode.light, tr('settings.theme.light')),
                 (ThemeMode.system, tr('settings.theme.system')),
               ],
-              onChanged: onThemeMode,
+              onChanged: onMode,
             ),
           ),
           if (englishReady)
@@ -123,25 +120,34 @@ class SettingsPage extends StatelessWidget {
         ],
       ),
     );
+  }
 
-    // On Android with every app through the VPN the panel may have nothing
-    // to offer: then it is left out.
-    // «Прокси без VPN» on Android, with an engine that knows it.
-    final androidProxy = platform.isAndroid && state.hasSetting('proxy.user');
+  /// On Android with every app through the VPN the panel may have nothing
+  /// to offer: then it is left out.
+  /// «Прокси без VPN» on Android, with an engine that knows it.
+  bool get _androidProxy => platform.isAndroid && state.hasSetting('proxy.user');
+
+  bool get _rowsBefore =>
+      !platform.isAndroid ||
+      _androidProxy ||
+      !state.setting('tun', true) ||
+      state.hasSetting('ipv6') ||
+      state.hasSetting('cores.fragment') ||
+      state.hasSetting('cores.switch_server') ||
+      state.hasSetting('kill_switch');
+
+  bool get _hasNetwork => _rowsBefore || state.hasSetting('dns.block_dot') || state.hasSetting('dns.block_browser_doh');
+
+  /// «Подключение»: TUN, proxy, IPv6, DPI, tests, DNS leak guard.
+  Widget _network(BuildContext context) {
+    final info = state.info;
+    final androidProxy = _androidProxy;
     final tunOff = !state.setting('tun', true);
-    final rowsBefore =
-        !platform.isAndroid ||
-        androidProxy ||
-        tunOff ||
-        state.hasSetting('ipv6') ||
-        state.hasSetting('cores.fragment') ||
-        state.hasSetting('cores.switch_server');
-    final hasNetwork = rowsBefore || state.hasSetting('dns.block_dot') || state.hasSetting('dns.block_browser_doh');
-    final network = Panel(
+    final rowsBefore = _rowsBefore;
+    return Panel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          PanelTitle(tr('settings.network.title')),
           // On Android every app goes through the VPN: the switch shows
           // only to undo a proxy-only mode chosen somehow.
           if (androidProxy) ...[
@@ -174,6 +180,17 @@ class SettingsPage extends StatelessWidget {
             ),
           if (state.hasSetting('cores.switch_server'))
             SettingRow(title: tr('settings.switch_server.title'), description: tr('settings.switch_server.desc'), trailing: _switch('cores.switch_server')),
+          // Keeps the tunnel up, refusing traffic, when the connection fails
+          // (engine/internal/service/killswitch.go); the TUN layer's own.
+          if (state.hasSetting('kill_switch') && state.setting('tun', true))
+            SettingRow(title: tr('settings.killswitch.title'), description: tr('settings.killswitch.desc'), trailing: _switch('kill_switch')),
+          // If Android kills the app, only the system can still block: its own switch.
+          if (platform.isAndroid && state.hasSetting('kill_switch') && state.setting('tun', true))
+            SettingRow(
+              title: tr('settings.killswitch.android.title'),
+              description: tr('settings.killswitch.android'),
+              trailing: Btn(label: tr('settings.killswitch.android.button'), small: true, onPressed: state.openVpnSettings),
+            ),
           if (state.hasSetting('cores.latency_test'))
             SettingRow(
               first: !rowsBefore,
@@ -209,9 +226,12 @@ class SettingsPage extends StatelessWidget {
         ],
       ),
     );
+  }
 
-    // Settings few people touch, folded away under «Дополнительно».
-    final expert = Column(
+  /// Subscription updates and the User-Agent.
+  Widget _subscriptions(BuildContext context) {
+    final info = state.info;
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SectionLabel(tr('settings.subs.label')),
@@ -227,9 +247,17 @@ class SettingsPage extends StatelessWidget {
             onSave: (v) => state.updateSettings((s) => s['updates']['user_agent'] = v.trim()),
           ),
         ),
-        const SizedBox(height: 14),
+      ],
+    );
+  }
+
+  /// DNS servers, Fake-IP and each leak guard on its own.
+  Widget _dns(BuildContext context, {bool scrollTo = false}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
         // «Настройки DNS» on the home page brings the user here.
-        ScrollIntoViewOnce(request: openDns, child: const SectionLabel('DNS')),
+        ScrollIntoViewOnce(request: scrollTo, child: const SectionLabel('DNS')),
         const DnsHint(),
         SettingRow(
           first: true,
@@ -270,12 +298,26 @@ class SettingsPage extends StatelessWidget {
           if (state.hasSetting(path)) SettingRow(title: title, description: description, trailing: _switch(path)),
       ],
     );
+  }
 
-    final about = Panel(
+  /// Settings few people touch, folded away under «Дополнительно» on a computer.
+  Widget _expert(BuildContext context, {bool scrollTo = false}) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      _subscriptions(context),
+      const SizedBox(height: 14),
+      _dns(context, scrollTo: scrollTo),
+    ],
+  );
+
+  /// Version, updates, disclaimer.
+  Widget _about(BuildContext context) {
+    final p = context.pal;
+    final info = state.info;
+    return Panel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const PanelTitle('CoreShift'),
           SettingRow(
             first: true,
             title: tr('settings.version.title'),
@@ -338,36 +380,34 @@ class SettingsPage extends StatelessWidget {
         ],
       ),
     );
+  }
 
-    // The cores: what is used, in what order, and whether a newer version
-    // waits. The whole list is a page of its own, opened from here only.
-    final prio = state.setting('cores.mode', 'auto') == 'manual'
-        ? [state.setting('cores.manual', '')]
-        : state.setting<List>('cores.priority', const []).cast<String>();
-    final cores = Panel(
+  /// The cores in use, in the order of switching.
+  List<String> get _priority =>
+      state.setting('cores.mode', 'auto') == 'manual' ? [state.setting('cores.manual', '')] : state.setting<List>('cores.priority', const []).cast<String>();
+
+  /// The cores: what is used, in what order, and whether a newer version
+  /// waits. The whole list is a page of its own, opened from here only.
+  Widget _coresRow(BuildContext context) {
+    final p = context.pal;
+    final prio = _priority;
+    return Panel(
       onTap: () => Nav.to(context, PageId.cores),
       child: Row(
         children: [
+          Text(tr('settings.cores.title'), style: display(16)),
+          const SizedBox(width: 16),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                Text(tr('settings.cores.title'), style: display(16)),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    for (final (i, k) in prio.indexed) ...[
-                      if (i > 0) Icon(Icons.chevron_right, size: 16, color: p.dim),
-                      CoreLogo(k, size: 22),
-                      Text(coreStyle(k).name, style: const TextStyle(fontWeight: FontWeight.w500)),
-                    ],
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(tr(prio.length == 1 ? 'settings.cores.single' : 'settings.cores.chain'), style: TextStyle(fontSize: 12, color: p.muted)),
+                for (final (i, k) in prio.indexed) ...[
+                  if (i > 0) Icon(Icons.chevron_right, size: 16, color: p.dim),
+                  CoreLogo(k, size: 22),
+                  Text(coreStyle(k).name, style: const TextStyle(fontWeight: FontWeight.w500)),
+                ],
               ],
             ),
           ),
@@ -376,7 +416,35 @@ class SettingsPage extends StatelessWidget {
         ],
       ),
     );
+  }
 
+  /// «Готовые наборы» and «Источник баз», which a phone keeps here and not
+  /// on the rules page.
+  List<Widget> _rulesExtras() => [
+    if (state.setting('routing.mode', 'all') == 'selected' || state.hasSetting('routing.russia_direct')) RulePresets(state: state),
+    if (state.hasSetting('routing.geo'))
+      Fold(
+        title: tr('rules.geo.fold'),
+        sub: geoFoldSub(state),
+        child: GeoSourcePanel(state: state),
+      ),
+  ];
+
+  Widget _label(BuildContext context, String text) => Padding(
+    padding: const EdgeInsets.fromLTRB(4, 0, 0, 8),
+    child: Text(
+      text.toUpperCase(),
+      style: TextStyle(fontSize: 11, letterSpacing: .8, fontWeight: FontWeight.w600, color: context.pal.muted),
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    // The home page sent the user to the DNS fields: the fold opens on them.
+    final openDns = state.takeDnsSettingsRequest();
+    if (isCompact(context)) return _phone(context, openDns);
+
+    Widget gap(Widget w) => Padding(padding: const EdgeInsets.only(bottom: 16), child: w);
     // One column of sections, the most used first: a settings page is
     // read from the top, not scanned across.
     return PageFrame(
@@ -388,13 +456,253 @@ class SettingsPage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 PageHeader(tr('settings.title')),
-                for (final w in [general, if (hasNetwork) network, cores, about]) Padding(padding: const EdgeInsets.only(bottom: 16), child: w),
-                Fold(title: tr('settings.more.title'), sub: tr('settings.more.sub'), initiallyOpen: openDns, child: expert),
+                _label(context, tr('settings.app.title')),
+                gap(_general(context, themeMode, onThemeMode)),
+                if (_hasNetwork) ...[_label(context, tr('settings.network.title')), gap(_network(context))],
+                gap(_coresRow(context)),
+                _label(context, tr('settings.about.title')),
+                gap(_about(context)),
+                Fold(
+                  title: tr('settings.more.title'),
+                  sub: tr('settings.more.sub'),
+                  initiallyOpen: openDns,
+                  child: _expert(context, scrollTo: openDns),
+                ),
               ],
             ),
           ),
         ),
       ],
+    );
+  }
+
+  /// A phone: the sections as rows, each opening a page of its own.
+  Widget _phone(BuildContext context, bool openDns) {
+    void open(String title, Widget Function(BuildContext, ThemeMode, ValueChanged<ThemeMode>) body) {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => _SettingsSubPage(title: title, state: state, themeMode: themeMode, onThemeMode: onThemeMode, body: body),
+        ),
+      );
+    }
+
+    void openDnsPage() => open('DNS', (c, _, _) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [_dns(c)]));
+    // «Настройки DNS» on the home page: straight to the DNS page.
+    if (openDns) WidgetsBinding.instance.addPostFrameCallback((_) => openDnsPage());
+
+    final u = state.appUpdate;
+    final names = _priority.map((k) => coreStyle(k).name).join(' · ');
+    final version = state.version.known ? state.version.label : state.info.buildVersion.label;
+    return PageFrame(
+      children: [
+        PageHeader(tr('settings.title')),
+        if (u.state == 'available' || u.state == 'ready') ...[
+          _UpdatePill(text: tr('settings.pill.update', {'label': u.label}), onTap: () => showUpdateOffer(context, state)),
+          const SizedBox(height: 12),
+        ],
+        _SectionRow(
+          icon: Icons.tune,
+          tint: accent,
+          title: tr('settings.app.title'),
+          summary: tr('settings.sum.app'),
+          onTap: () => open(
+            tr('settings.app.title'),
+            (c, mode, onMode) =>
+                Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [_general(c, mode, onMode), const SizedBox(height: 18), _subscriptions(c)]),
+          ),
+        ),
+        _SectionRow(
+          icon: Icons.settings_ethernet,
+          tint: okColor,
+          title: tr('settings.network.title'),
+          summary: tr('settings.sum.network'),
+          onTap: () => open(
+            tr('settings.network.title'),
+            (c, _, _) => Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (_hasNetwork) _network(c),
+                for (final w in _rulesExtras()) ...[const SizedBox(height: 18), w],
+              ],
+            ),
+          ),
+        ),
+        _SectionRow(icon: Icons.dns_outlined, tint: okColor, title: 'DNS', summary: tr('settings.sum.dns'), onTap: openDnsPage),
+        _SectionRow(
+          icon: Icons.memory,
+          tint: protocolColor('vless'),
+          title: tr('settings.cores.title'),
+          summary: names.isEmpty ? tr('settings.cores.chain') : names,
+          onTap: () => Nav.to(context, PageId.cores),
+        ),
+        _SectionRow(
+          icon: Icons.info_outline,
+          tint: context.pal.muted,
+          title: tr('settings.about.title'),
+          summary: tr('settings.sum.about', {'v': version}),
+          onTap: () => open(tr('settings.about.title'), (c, _, _) => _about(c)),
+        ),
+      ],
+    );
+  }
+}
+
+/// The full-width amber button above the sections: a new version waits.
+class _UpdatePill extends StatelessWidget {
+  final String text;
+  final VoidCallback onTap;
+  const _UpdatePill({required this.text, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: accent,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Container(
+          height: 48,
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Text(
+            text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: onAccent),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One section on a phone: a coloured badge, the name, what is inside.
+class _SectionRow extends StatelessWidget {
+  final IconData icon;
+  final Color tint;
+  final String title;
+  final String summary;
+  final VoidCallback onTap;
+  const _SectionRow({required this.icon, required this.tint, required this.title, required this.summary, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Material(
+        color: p.surface,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onTap,
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 68),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: p.border),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(color: tint.withValues(alpha: .16), borderRadius: BorderRadius.circular(11)),
+                  child: Icon(icon, size: 21, color: tint),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 2),
+                      Text(
+                        summary,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 12, color: p.muted),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(Icons.chevron_right, color: p.dim),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A section of the settings on a phone, as a page of its own. It listens
+/// to the state itself: the route sits above the shell, which does not
+/// rebuild it.
+class _SettingsSubPage extends StatefulWidget {
+  final String title;
+  final AppState state;
+  final ThemeMode themeMode;
+  final ValueChanged<ThemeMode> onThemeMode;
+  final Widget Function(BuildContext, ThemeMode, ValueChanged<ThemeMode>) body;
+  const _SettingsSubPage({required this.title, required this.state, required this.themeMode, required this.onThemeMode, required this.body});
+
+  @override
+  State<_SettingsSubPage> createState() => _SettingsSubPageState();
+}
+
+class _SettingsSubPageState extends State<_SettingsSubPage> {
+  late ThemeMode _mode = widget.themeMode;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    // A window widened past the phone's layout: back to the page, which
+    // shows every section itself there.
+    if (!isCompact(context)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted) Navigator.of(context).maybePop();
+      });
+    }
+    return Scaffold(
+      backgroundColor: p.bg,
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 8, 16, 0),
+              child: Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back),
+                    tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                  Expanded(
+                    child: Text(widget.title, style: display(22), overflow: TextOverflow.ellipsis),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: ListenableBuilder(
+                listenable: widget.state,
+                builder: (context, _) => PageFrame(
+                  children: [
+                    widget.body(context, _mode, (m) {
+                      setState(() => _mode = m);
+                      widget.onThemeMode(m);
+                    }),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

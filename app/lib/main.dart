@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'api/backend.dart';
 import 'api/demo_backend.dart';
@@ -17,10 +19,18 @@ const demo = bool.fromEnvironment('DEMO');
 /// install, with the first-run wizard.
 const demoEmpty = bool.fromEnvironment('DEMO_EMPTY');
 
+/// The bundled fonts' licences (SIL OFL 1.1), shown with the others.
+Stream<LicenseEntry> _fontLicenses() async* {
+  for (final (name, file) in [('Manrope', 'Manrope-OFL.txt'), ('JetBrains Mono', 'JetBrainsMono-OFL.txt')]) {
+    yield LicenseEntryWithLineBreaks([name], await rootBundle.loadString('assets/fonts/$file'));
+  }
+}
+
 /// `--tray` starts hidden in the tray: the service starts the app so after
 /// updating CoreShift, and Windows at sign-in ("Автозапуск").
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+  LicenseRegistry.addLicense(_fontLicenses);
   await desktop.initWindow(hidden: args.contains('--tray'));
   if (!demo) await platform.initPlatform();
   final prefs = await platform.loadPrefs();

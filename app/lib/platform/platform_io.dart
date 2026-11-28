@@ -140,10 +140,10 @@ Future<void> notify(String title, String body) async {
 /// Opens a link in the browser or the app that handles it (Telegram for
 /// t.me); false when nothing could. The caller checks the link.
 /// Saves the journal as a text file to send: on a desktop to the user's
-/// Downloads, on Android to Downloads/CoreShift, where the system's «Send»
-/// then offers the apps that take it (Telegram, mail). Returns where it
-/// went, null when it could not be saved (Android before 10 sends it as
-/// text instead).
+/// Downloads; on Android it is not saved at all: a file in the app's cache
+/// goes to the system's «Send», which offers the apps that take it
+/// (Telegram, mail), and nothing stays in shared storage. Returns where it
+/// went, null when nothing was saved (always on Android).
 Future<String?> saveJournal(String name, String text) async {
   if (Platform.isAndroid) {
     return _android.invokeMethod<String>('shareLog', {'name': name, 'text': text});

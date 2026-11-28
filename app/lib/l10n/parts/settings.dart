@@ -5,6 +5,12 @@ library;
 const settingsRu = <String, String>{
   // Settings page: the page and the self-update line.
   'settings.title': 'Настройки',
+  'settings.about.title': 'О приложении',
+  'settings.pill.update': '↑ Доступна {label} · Обновить',
+  'settings.sum.app': 'Автозапуск · Тема · Язык',
+  'settings.sum.network': 'IPv6 · обход DPI · наборы и базы',
+  'settings.sum.dns': 'Через VPN · Напрямую · Fake-IP',
+  'settings.sum.about': 'Версия {v} · обновления',
   'settings.update.off.android': 'Эта сборка не обновляется сама: так бывает у сборки для разработки.',
   'settings.update.off.linux': 'Эта сборка не ищет новые версии: так бывает у сборки для разработки. Обновляйте через пакет.',
   'settings.update.available': 'Доступна новая версия {label}. Скачайте пакет для своей системы и установите поверх этой.',
@@ -54,6 +60,13 @@ const settingsRu = <String, String>{
   'settings.switch_server.desc':
       'Если сервер не отвечает, а интернет работает, CoreShift подключит следующий сервер той же подписки, который отвечает. '
       'Автовыбор от панели провайдера меняет сервер всегда',
+  'settings.killswitch.title': 'Блокировать трафик при сбое',
+  'settings.killswitch.desc':
+      'Если связь с VPN оборвалась, интернет не уходит напрямую с настоящим адресом, а останавливается, пока CoreShift переподключается. '
+      'Чтобы вернуть обычный интернет, отключитесь. Локальная сеть и сайты из списка «напрямую» работают как обычно',
+  'settings.killswitch.android': 'Если Android закроет CoreShift, заблокировать трафик сможет только система: включите в её настройках VPN «Постоянная VPN» и «Блокировать соединения без VPN»',
+  'settings.killswitch.android.title': 'Постоянная VPN в системе',
+  'settings.killswitch.android.button': 'Настройки VPN',
   'settings.latency.title': 'Проверка задержки',
   'settings.latency.desc':
       'Через сервер — запрос через сам сервер: видно, что он действительно пропускает трафик.\n'
@@ -260,6 +273,12 @@ const settingsRu = <String, String>{
 const settingsEn = <String, String>{
   // Settings page: the page and the self-update line.
   'settings.title': 'Settings',
+  'settings.about.title': 'About',
+  'settings.pill.update': '↑ {label} available · Update',
+  'settings.sum.app': 'Autostart · Theme · Language',
+  'settings.sum.network': 'IPv6 · DPI bypass · sets and databases',
+  'settings.sum.dns': 'Through VPN · Direct · Fake-IP',
+  'settings.sum.about': 'Version {v} · updates',
   'settings.update.off.android': 'This build does not update itself: that is normal for a development build.',
   'settings.update.off.linux': 'This build does not look for new versions: that is normal for a development build. Update through the package.',
   'settings.update.available': 'A new version {label} is available. Download the package for your system and install it over this one.',
@@ -310,6 +329,14 @@ const settingsEn = <String, String>{
   'settings.switch_server.desc':
       'If the server does not respond but the internet works, CoreShift connects the next responding server of the same subscription. '
       'Auto-select from the provider panel always switches the server',
+  'settings.killswitch.title': 'Block traffic on failure',
+  'settings.killswitch.desc':
+      'If the connection to the VPN drops, traffic is stopped instead of leaving directly with your real address while CoreShift reconnects. '
+      'Disconnect to get the normal internet back. The local network and the sites on the direct list work as usual',
+  'settings.killswitch.android':
+      'If Android closes CoreShift, only the system can block traffic: turn on Always-on VPN and Block connections without VPN in its VPN settings',
+  'settings.killswitch.android.title': 'System always-on VPN',
+  'settings.killswitch.android.button': 'VPN settings',
   'settings.latency.title': 'Latency check',
   'settings.latency.desc':
       'Through server: a request through the server itself, so you see it really passes traffic.\n'

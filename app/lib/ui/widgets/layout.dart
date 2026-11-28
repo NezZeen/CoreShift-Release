@@ -18,7 +18,7 @@ class Panel extends StatelessWidget {
       padding: padding ?? EdgeInsets.all(isCompact(context) ? 14 : 20),
       decoration: BoxDecoration(
         color: dashed ? Colors.transparent : Color.alphaBlend(color ?? Colors.transparent, p.surface),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: borderColor ?? p.border, width: borderColor == null ? 1 : 1.5),
       ),
       child: child,

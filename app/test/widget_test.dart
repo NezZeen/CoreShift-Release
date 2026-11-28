@@ -46,8 +46,8 @@ void main() {
   /// Opens [page]: a main page from the navigation, the cores from their
   /// card in the settings.
   Future<void> open(WidgetTester tester, String page) async {
-    final phone = find.byType(NavigationBar).evaluate().isNotEmpty;
-    Finder nav(String p) => phone ? find.descendant(of: find.byType(NavigationBar), matching: find.text(p)) : find.text(p).first;
+    final phone = find.byKey(const ValueKey('pill-nav')).evaluate().isNotEmpty;
+    Finder nav(String p) => phone ? find.byTooltip(p) : find.text(p).first;
     final from = page == 'Ядра' ? 'Настройки' : null;
     if (from == null) {
       await tester.tap(nav(page));
@@ -1063,14 +1063,27 @@ void main() {
     final state = await pumpApp(tester, size: const Size(390, 844));
     await tester.runAsync(() => state.connect());
     await tester.pump();
-    await tester.tap(find.text('Правила').first);
+    // A phone keeps the ready-made sets (their switches) in the settings,
+    // under «Подключение», a page of its own above the shell.
+    await tester.tap(find.byTooltip('Настройки'));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.text('Подключение'));
     await tester.pump();
-    expect(find.text('Изменения применятся после переподключения'), findsNothing);
+    await tester.pump(const Duration(milliseconds: 500));
+    final russia = find.text('Российские сайты напрямую');
+    await tester.scrollUntilVisible(russia, 300, scrollable: find.byType(Scrollable).last);
+    final presetSwitch = find.descendant(
+      of: find.ancestor(of: russia, matching: find.byType(SettingRow)),
+      matching: find.byType(Switch),
+    );
     await tester.runAsync(() async {
-      await tester.tap(find.byType(Switch).first);
+      await tester.tap(presetSwitch);
       await Future.delayed(const Duration(milliseconds: 300));
     });
     await tester.pump();
+    await tester.tap(find.byIcon(Icons.arrow_back));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
     expect(find.text('Изменения применятся после переподключения'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.runAsync(() async {
@@ -1117,17 +1130,23 @@ void main() {
     await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 100)));
     await tester.pump();
     expect(find.text('Доступно обновление'), findsNothing);
-    await tester.tap(find.descendant(of: find.byType(NavigationBar), matching: find.text('Настройки')));
+    await tester.tap(find.byTooltip('Настройки'));
+    await tester.pump(const Duration(milliseconds: 500));
+    // On a phone the settings offer it in an amber button above the sections,
+    // and in «О приложении».
+    expect(find.textContaining('Обновить'), findsOneWidget);
+    await tester.tap(find.text('О приложении'));
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
     expect(find.text('Установить сейчас'), findsOneWidget);
     await tester.pump(const Duration(seconds: 6));
   });
 
   testWidgets('the add dialog fits a phone', (tester) async {
     await pumpApp(tester, size: const Size(390, 844));
-    await tester.tap(find.descendant(of: find.byType(NavigationBar), matching: find.text('Серверы')));
+    await tester.tap(find.byTooltip('Серверы'));
     await tester.pump();
-    await tester.tap(find.text('Добавить'));
+    await tester.tap(find.byTooltip('Добавить подписку'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('Добавить подписку'), findsOneWidget);
@@ -1138,8 +1157,11 @@ void main() {
 
   testWidgets('a phone hides explanations behind an icon', (tester) async {
     await pumpApp(tester, size: const Size(390, 844));
-    await tester.tap(find.descendant(of: find.byType(NavigationBar), matching: find.text('Настройки')));
+    await tester.tap(find.byTooltip('Настройки'));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.text('Подключение'));
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
     const text = 'IPv6-трафик тоже идёт через VPN';
     expect(find.textContaining(text), findsNothing);
     final row = find.ancestor(of: find.text('IPv6 через туннель'), matching: find.byType(Row)).first;
@@ -1152,9 +1174,9 @@ void main() {
   for (final width in [390.0, 360.0]) {
     testWidgets('every page fits a phone ${width.round()} wide', (tester) async {
       final state = await pumpApp(tester, size: Size(width, 800));
-      expect(find.byType(NavigationBar), findsOneWidget);
+      expect(find.byKey(const ValueKey('pill-nav')), findsOneWidget);
       // Five tabs, the journal one of them.
-      expect(find.byType(NavigationDestination), findsNWidgets(5));
+      expect(find.descendant(of: find.byKey(const ValueKey('pill-nav')), matching: find.byType(Tooltip)), findsNWidgets(5));
       final problems = <String>[];
       Future<void> check(String page) async {
         await tester.pump();
@@ -1164,7 +1186,7 @@ void main() {
       }
 
       for (final page in ['Серверы', 'Правила', 'Журнал', 'Настройки', 'Главная']) {
-        await tester.tap(find.descendant(of: find.byType(NavigationBar), matching: find.text(page)));
+        await tester.tap(find.byTooltip(page));
         await check(page);
         // Scroll through the page, so rows further down are laid out too.
         final scrollable = find.byType(Scrollable);
@@ -1309,7 +1331,7 @@ void main() {
   testWidgets('a subscription shows as a QR code on the desktop and the phone', (tester) async {
     for (final size in [const Size(1400, 900), const Size(390, 844)]) {
       await pumpApp(tester, size: size);
-      final nav = size.width > 600 ? find.text('Серверы').first : find.descendant(of: find.byType(NavigationBar), matching: find.text('Серверы'));
+      final nav = size.width > 600 ? find.text('Серверы').first : find.byTooltip('Серверы');
       await tester.tap(nav);
       await tester.pump();
       await tester.tap(find.byTooltip('Действия').first);
@@ -1357,8 +1379,8 @@ void main() {
       expect(state.subscriptions.length, greaterThan(1));
       final sub = state.subscriptions.first;
       final node = cleanNodeName(sub.nodes.first.name);
-      final nav = size.width > 600 ? find.text('Серверы').first : find.descendant(of: find.byType(NavigationBar), matching: find.text('Серверы'));
-      final home = size.width > 600 ? find.text('Главная').first : find.descendant(of: find.byType(NavigationBar), matching: find.text('Главная'));
+      final nav = size.width > 600 ? find.text('Серверы').first : find.byTooltip('Серверы');
+      final home = size.width > 600 ? find.text('Главная').first : find.byTooltip('Главная');
       await tester.tap(nav);
       await tester.pump();
       final shown = find.text(node).evaluate().length;
@@ -1509,10 +1531,17 @@ void main() {
     testWidgets('the latency test has a switch in the settings (${size.width.round()})', (tester) async {
       final state = await pumpApp(tester, size: size);
       await open(tester, 'Настройки');
-      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      final phone = size.width < 600;
+      if (phone) {
+        // A phone keeps it in the section «Подключение».
+        await tester.tap(find.text('Подключение'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+      }
+      await tester.scrollUntilVisible(find.text('Проверка задержки'), 300, scrollable: find.byType(Scrollable).last);
       expect(find.text('Проверка задержки'), findsOneWidget);
       await tester.ensureVisible(find.text('Проверка задержки'));
-      final phone = size.width < 600;
       // The explanations: beside the row on the desktop, behind the icon on a phone.
       const server = 'Через сервер — запрос через сам сервер: видно, что он действительно пропускает трафик.';
       const tcp = 'TCP-пинг — только проверка, что порт сервера открыт; быстрее и экономнее для батареи и трафика';
@@ -1668,7 +1697,7 @@ void main() {
     // A main page: no way back to another one.
     expect(find.byIcon(Icons.arrow_back), findsNothing);
     expect(find.text('Все'), findsOneWidget);
-    expect(find.text('Ошибки'), findsOneWidget);
+    expect(find.textContaining('Ошибки'), findsOneWidget);
     for (final gone in ['Автосвап', 'Ядра', 'Очистить']) {
       expect(find.text(gone), findsNothing, reason: gone);
     }
@@ -1680,7 +1709,7 @@ void main() {
     // The cores' own output is kept for a search, not shown on the page.
     expect(find.text('Xray 26.3.27 started'), findsNothing);
     expect(state.logs.any((l) => l.message == 'Xray 26.3.27 started'), isTrue);
-    await tester.tap(find.text('Ошибки'));
+    await tester.tap(find.textContaining('Ошибки'));
     await tester.pump();
     expect(find.textContaining('Xray-core → sing-box'), findsNothing);
     expect(find.textContaining('502'), findsOneWidget);
@@ -1807,10 +1836,10 @@ void main() {
     await tester.pump();
     final title = tester.getRect(find.text('Журнал').first);
     final search = tester.getRect(find.widgetWithText(TextField, 'Поиск'));
-    final copy = tester.getRect(find.text('Копировать'));
+    final copy = tester.getRect(find.byIcon(Icons.copy));
     expect(search.top, greaterThan(title.bottom), reason: 'the search wrapped above the title');
     expect((copy.center.dy - title.center.dy).abs(), lessThan(24), reason: 'the copy button beside the title');
-    expect(tester.getRect(find.text('Ошибки')).center.dy, closeTo(search.center.dy, 12));
+    expect(tester.getRect(find.textContaining('Ошибки')).top, greaterThan(search.bottom - 1), reason: 'the filters under the search');
     expect(tester.takeException(), isNull);
     await tester.pump(const Duration(seconds: 6));
   });

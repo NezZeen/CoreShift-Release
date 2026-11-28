@@ -206,7 +206,8 @@ class _ConnectButtonState extends State<ConnectButton> with SingleTickerProvider
     // Waiting for the network turns as connecting does.
     final offline = widget.state == ConnState.noNetwork;
     final busy = widget.state == ConnState.connecting || widget.state == ConnState.disconnecting || offline;
-    final failed = widget.state == ConnState.failed;
+    // A blocked connection is red too: traffic is refused until it is back.
+    final failed = widget.state == ConnState.failed || widget.state == ConnState.blocked;
     // The lamp's colour: amber stands by, green is through, yellow waits
     // for the network, red failed.
     final lamp = on ? okColor : (failed ? errColor : (offline ? warnColor : (widget.enabled || busy ? accent : p.border2)));

@@ -31,12 +31,14 @@ void main() {
     return state;
   }
 
-  Finder nav(String label, Size size) => size == phone ? find.descendant(of: find.byType(NavigationBar), matching: find.text(label)) : find.text(label).first;
+  Finder nav(String label, Size size) => size == phone ? find.byTooltip(label) : find.text(label).first;
 
   /// Which page is shown, by something only it has.
   bool onHome(WidgetTester t) => t.any(find.text('Другой сервер'));
-  bool onServers(WidgetTester t) => t.any(find.text('Добавить подписку')) || t.any(find.text('Добавить'));
-  bool onSettings(WidgetTester t) => t.any(find.text('Прочитать'));
+  // A phone's «+» is a round icon button: it has the name as a tooltip only.
+  bool onServers(WidgetTester t) => t.any(find.text('Добавить подписку')) || t.any(find.text('Добавить')) || t.any(find.byTooltip('Добавить подписку'));
+  // A phone's settings are five rows; «Прочитать» is inside «О приложении».
+  bool onSettings(WidgetTester t) => t.any(find.text('Прочитать')) || t.any(find.text('О приложении'));
 
   for (final (name, size) in [('phone', phone), ('desktop', const Size(1400, 900))]) {
     testWidgets('$name: a storm of core output and a server that does not answer; the navigation still works', (tester) async {

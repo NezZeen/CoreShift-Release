@@ -37,8 +37,11 @@ object VpnStatus {
     var proxyOnly = false
         private set
 
-    /** "no-network": waiting for a network to connect, or held until it returns. */
-    val active get() = state == "connecting" || state == "connected" || state == "no-network"
+    /**
+     * "no-network": waiting for a network to connect, or held until it returns.
+     * "blocked": the kill switch holds the VPN with traffic refused until it reconnects.
+     */
+    val active get() = state == "connecting" || state == "connected" || state == "no-network" || state == "blocked"
 
     fun set(state: String, node: String, since: Long, proxyOnly: Boolean) {
         this.state = state

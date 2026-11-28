@@ -42,7 +42,7 @@ void main() {
     await tester.pumpWidget(CoreShiftApp(state: state));
     await tester.pump();
     final compact = size.width < 720;
-    await tester.tap(compact ? find.descendant(of: find.byType(NavigationBar), matching: find.text('Серверы')) : find.text('Серверы').first);
+    await tester.tap(compact ? find.byTooltip('Серверы') : find.text('Серверы').first);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
     return state;

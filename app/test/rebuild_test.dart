@@ -67,7 +67,8 @@ void main() {
     for (final (page, limit) in [('Главная', 70), ('Серверы', 0), ('Правила', 0), ('Настройки', 0)]) {
       testWidgets('a traffic tick on $page redraws only the traffic ($name)', (tester) async {
         final state = await pumpApp(tester, size);
-        final nav = find.text(page);
+        // The phone's navigation is icons with the page's name as a tooltip.
+        final nav = name == 'phone' ? find.byTooltip(page) : find.text(page);
         await tester.tap(nav.evaluate().length > 1 ? nav.last : nav.first);
         await tester.pump(const Duration(seconds: 30));
         final n = await rebuildsPerTick(tester, state);

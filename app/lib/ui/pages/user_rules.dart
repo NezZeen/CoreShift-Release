@@ -14,7 +14,10 @@ import '../widgets.dart';
 /// the VPN, around it or blocked.
 class UserRulesPanel extends StatefulWidget {
   final AppState state;
-  const UserRulesPanel({super.key, required this.state});
+
+  /// Without its own panel and title: inside a [Fold] that has them.
+  final bool bare;
+  const UserRulesPanel({super.key, required this.state, this.bare = false});
 
   @override
   State<UserRulesPanel> createState() => _UserRulesPanelState();
@@ -148,61 +151,60 @@ class _UserRulesPanelState extends State<UserRulesPanel> {
     );
     final pick = Seg<String>(options: ruleActions, value: _action, onChanged: (v) => setState(() => _action = v));
     final add = Btn(label: tr('rules.add'), icon: Icons.add, onPressed: _add);
-    return Panel(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          PanelTitle(tr('rules.own.title'), sub: tr('rules.own.sub'), info: tr('rules.own.info')),
-          Text(tr('rules.own.desc'), style: TextStyle(fontSize: 12, color: p.muted, height: 1.45)),
-          const SizedBox(height: 12),
-          LayoutBuilder(
-            builder: (context, c) => c.maxWidth < 760
-                ? Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      field,
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Align(alignment: Alignment.centerLeft, child: pick),
-                          ),
-                          const SizedBox(width: 8),
-                          add,
-                        ],
-                      ),
-                    ],
-                  )
-                : Row(
-                    children: [
-                      Expanded(child: field),
-                      const SizedBox(width: 8),
-                      pick,
-                      const SizedBox(width: 8),
-                      add,
-                    ],
-                  ),
+    final body = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (!widget.bare) PanelTitle(tr('rules.own.title'), sub: tr('rules.own.sub'), info: tr('rules.own.info')),
+        Text(tr('rules.own.desc'), style: TextStyle(fontSize: 12, color: p.muted, height: 1.45)),
+        const SizedBox(height: 12),
+        LayoutBuilder(
+          builder: (context, c) => c.maxWidth < 760
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    field,
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Align(alignment: Alignment.centerLeft, child: pick),
+                        ),
+                        const SizedBox(width: 8),
+                        add,
+                      ],
+                    ),
+                  ],
+                )
+              : Row(
+                  children: [
+                    Expanded(child: field),
+                    const SizedBox(width: 8),
+                    pick,
+                    const SizedBox(width: 8),
+                    add,
+                  ],
+                ),
+        ),
+        if (_error != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(_error!, style: const TextStyle(color: errColor, fontSize: 12)),
           ),
-          if (_error != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(_error!, style: const TextStyle(color: errColor, fontSize: 12)),
+        ..._checkWidgets(context),
+        GeoBasesNote(state: s),
+        const SizedBox(height: 12),
+        if (rules.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            child: Center(
+              child: Text(tr('rules.own.empty'), style: TextStyle(color: p.dim, fontSize: 12)),
             ),
-          ..._checkWidgets(context),
-          GeoBasesNote(state: s),
-          const SizedBox(height: 12),
-          if (rules.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              child: Center(
-                child: Text(tr('rules.own.empty'), style: TextStyle(color: p.dim, fontSize: 12)),
-              ),
-            )
-          else
-            for (var i = 0; i < rules.length; i++) _row(context, rules, i),
-        ],
-      ),
+          )
+        else
+          for (var i = 0; i < rules.length; i++) _row(context, rules, i),
+      ],
     );
+    return widget.bare ? body : Panel(child: body);
   }
 
   /// Under the field: what the base says of the name typed, and the names to
@@ -540,11 +542,32 @@ String geoFoldSub(AppState s) {
 
 /// Where the categories of the rules come from (routing.geo), and whether
 /// the ready-made sets come from there too.
-class GeoSourcePanel extends StatelessWidget {
+class GeoSourcePanel extends StatefulWidget {
   final AppState state;
   const GeoSourcePanel({super.key, required this.state});
 
-  AppState get s => state;
+  @override
+  State<GeoSourcePanel> createState() => _GeoSourcePanelState();
+}
+
+class _GeoSourcePanelState extends State<GeoSourcePanel> {
+  VoidCallback? _unwatch;
+
+  AppState get s => widget.state;
+
+  // The panel shows how the bases load, so it follows them itself: on a
+  // phone it is in the settings, with no rules editor beside it to do so.
+  @override
+  void initState() {
+    super.initState();
+    _unwatch = s.watchGeo();
+  }
+
+  @override
+  void dispose() {
+    _unwatch?.call();
+    super.dispose();
+  }
 
   Future<String?> _set(String key, Object value) => s.updateSettings((x) {
     final r = x['routing'] as Map;

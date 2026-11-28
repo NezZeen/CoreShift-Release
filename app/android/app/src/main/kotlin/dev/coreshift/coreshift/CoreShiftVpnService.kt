@@ -231,6 +231,12 @@ class CoreShiftVpnService : VpnService() {
                 .setContentText("↓ ${VpnStatus.formatRate(s.down)}    ↑ ${VpnStatus.formatRate(s.up)}")
                 .setSubText(Tr.t("Подключено", "Connected"))
             if (s.since > 0) b.setWhen(s.since).setUsesChronometer(true).setShowWhen(true)
+        } else if (s.state == "blocked") {
+            // The VPN is kept up with traffic refused, so nothing leaks while it reconnects.
+            b.setContentTitle(Tr.t("Трафик заблокирован", "Traffic blocked"))
+                .setContentText(Tr.t("Нет связи с VPN, переподключаюсь", "No connection to the VPN, reconnecting"))
+                .setSubText(s.node.ifEmpty { "CoreShift" })
+                .setShowWhen(false)
         } else if (s.state == "no-network") {
             b.setContentTitle(Tr.t("Нет сети", "No network"))
                 .setContentText(

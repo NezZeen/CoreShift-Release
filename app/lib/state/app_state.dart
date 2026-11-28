@@ -424,6 +424,7 @@ class AppState extends ChangeNotifier {
     'connected' => tr('app.state.connected'),
     'disconnecting' => tr('app.state.disconnecting'),
     'failed' => tr('app.state.failed'),
+    'blocked' => tr('app.state.blocked'),
     _ => tr('app.state.idle'),
   };
 

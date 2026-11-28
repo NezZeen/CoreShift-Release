@@ -214,11 +214,26 @@ class _ServersPageState extends State<ServersPage> {
         controller: _search,
         focusNode: widget.searchFocus,
         onChanged: (v) => setState(() => query = v.trim().toLowerCase()),
-        style: const TextStyle(fontSize: 13),
+        style: TextStyle(fontSize: compact ? 14 : 13),
         decoration: InputDecoration(
           hintText: compact ? tr('servers.search.short') : tr('servers.search.long'),
-          prefixIcon: Icon(Icons.search, size: 17, color: context.pal.dim),
-          prefixIconConstraints: const BoxConstraints(minWidth: 34),
+          prefixIcon: Icon(Icons.search, size: compact ? 20 : 17, color: context.pal.dim),
+          prefixIconConstraints: BoxConstraints(minWidth: compact ? 42 : 34),
+          // A phone's field: a filled, rounded box.
+          filled: compact ? true : null,
+          fillColor: compact ? context.pal.bg2 : null,
+          enabledBorder: compact
+              ? OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: context.pal.border),
+                )
+              : null,
+          focusedBorder: compact
+              ? OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: context.pal.border2),
+                )
+              : null,
         ),
       ),
     );
@@ -280,12 +295,10 @@ class _ServersPageState extends State<ServersPage> {
                   loading: s.refreshing.isNotEmpty,
                   onPressed: s.refreshAll,
                 ),
-              Btn(
-                label: compact ? tr('servers.add.short') : tr('servers.add'),
-                icon: Icons.add,
-                kind: BtnKind.primary,
-                onPressed: () => showAddSubscription(context, s),
-              ),
+              if (compact)
+                _RoundAdd(onTap: () => showAddSubscription(context, s))
+              else
+                Btn(label: tr('servers.add'), icon: Icons.add, kind: BtnKind.primary, onPressed: () => showAddSubscription(context, s)),
             ],
           ),
           if (subs.isEmpty)
@@ -511,8 +524,8 @@ class _ServersPageState extends State<ServersPage> {
         // Its own layer: the spinner of the ping button, the toasts or a hover
         // elsewhere redraw the toolbar, not the hundreds of rows.
         RepaintBoundary(
-          child: Panel(
-            padding: const EdgeInsets.all(6),
+          child: _ListFrame(
+            compact: compact,
             child: _NodeTable(
               state: s,
               sections: sections,

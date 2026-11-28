@@ -2,7 +2,7 @@ package dev.coreshift.coreshift
 
 import android.Manifest
 import android.content.ActivityNotFoundException
-import android.content.ContentValues
+import android.content.ClipData
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
@@ -12,11 +12,10 @@ import android.net.Uri
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
-import android.os.Environment
 import android.os.SystemClock
-import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Log
+import androidx.core.content.FileProvider
 import com.google.mlkit.common.MlKitException
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
@@ -26,6 +25,7 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.ByteArrayOutputStream
+import java.io.File
 
 /**
  * The Flutter UI. The channel gives it what only Android has: where the
@@ -46,6 +46,9 @@ class MainActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // A journal shared in an earlier run is not kept around; a day's grace
+        // leaves one the receiving app may still be reading when the screen is rebuilt.
+        clearSharedLogs(olderThanMs = 24 * 60 * 60 * 1000L)
         // "Автозапуск" connects when CoreShift opens, once the VPN is allowed;
         // not when Android only recreates the screen.
         // The proxy without the VPN needs no permission.
@@ -157,40 +160,42 @@ class MainActivity : FlutterActivity() {
 
     /** Opens a link in the app that handles it; false when there is none. */
     /**
-     * Saves the journal as a text file in Downloads/CoreShift and offers to
-     * send it (Telegram, mail): the chooser of the apps that take a file.
-     * Returns where it was saved, for the app to say; null when Android is
-     * older than 10, which has no shared Downloads to write to without a
-     * permission: the journal is then sent as text.
+     * Offers the journal as a text file to send (Telegram, mail): the chooser
+     * of the apps that take a file. The file lives in the app's own cache and
+     * is handed over as a content URI, so it never sits in shared storage:
+     * the journal names servers and sites, and nothing is left behind in
+     * Downloads for other apps to read. Earlier files are removed first (and
+     * at start, a day later). Returns null: there is no saved path to
+     * tell the user, the journal is also on the clipboard.
      */
     private fun shareLog(name: String, text: String): String? {
         val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_SUBJECT, name)
-        var saved: String? = null
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val values = ContentValues().apply {
-                put(MediaStore.Downloads.DISPLAY_NAME, name)
-                put(MediaStore.Downloads.MIME_TYPE, "text/plain")
-                put(MediaStore.Downloads.RELATIVE_PATH, "${Environment.DIRECTORY_DOWNLOADS}/CoreShift")
-            }
-            val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-            if (uri != null) {
-                try {
-                    contentResolver.openOutputStream(uri)?.use { it.write(text.toByteArray(Charsets.UTF_8)) }
-                    send.putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    saved = "${Environment.DIRECTORY_DOWNLOADS}/CoreShift/$name"
-                } catch (e: Exception) {
-                    Log.w("CoreShift", "save the journal: $e")
-                    contentResolver.delete(uri, null, null)
-                }
-            }
+        try {
+            clearSharedLogs()
+            val dir = File(cacheDir, SHARE_DIR).apply { mkdirs() }
+            // Only a plain file name: the name comes from the UI.
+            val file = File(dir, File(name).name.ifEmpty { "CoreShift-log.txt" })
+            file.writeText(text, Charsets.UTF_8)
+            val uri = FileProvider.getUriForFile(this, "$packageName.share", file)
+            send.putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            // Before Android 10 the chooser passes the grant on only with a ClipData.
+            send.clipData = ClipData.newRawUri(name, uri)
+        } catch (e: Exception) {
+            Log.w("CoreShift", "share the journal: $e")
+            send.putExtra(Intent.EXTRA_TEXT, text)
         }
-        if (saved == null) send.putExtra(Intent.EXTRA_TEXT, text)
         try {
             startActivity(Intent.createChooser(send, Tr.t("Отправить журнал", "Send the journal")))
         } catch (e: ActivityNotFoundException) {
             Log.w("CoreShift", "no app to send the journal: $e")
         }
-        return saved
+        return null
+    }
+
+    /** Removes the journals shared earlier from the cache, those older than [olderThanMs]. */
+    private fun clearSharedLogs(olderThanMs: Long = 0) {
+        val cutoff = System.currentTimeMillis() - olderThanMs
+        File(cacheDir, SHARE_DIR).listFiles()?.forEach { if (it.lastModified() <= cutoff) it.delete() }
     }
 
     private fun openUrl(url: String): Boolean = try {
@@ -271,5 +276,8 @@ class MainActivity : FlutterActivity() {
         private const val REQUEST_VPN = 1
         private const val UNASKED_WITHIN_MS = 800L
         private const val REQUEST_NOTIFICATIONS = 2
+
+        /** The cache subdirectory the FileProvider shares (res/xml/share_paths.xml). */
+        private const val SHARE_DIR = "share"
     }
 }

@@ -31,8 +31,15 @@ class RuleListPanel extends StatefulWidget {
   /// Without its own panel and title: inside a [Fold] that has them.
   final bool bare;
 
+  /// The phone's form: one field with a round «+», quick-add chips of
+  /// popular services ([quick]) and the entries as rows with a cross.
+  final bool compact;
+  final bool quick;
+
   const RuleListPanel({
     this.bare = false,
+    this.compact = false,
+    this.quick = false,
     super.key,
     required this.state,
     required this.title,
@@ -91,9 +98,146 @@ class _RuleListPanelState extends State<RuleListPanel> {
     super.dispose();
   }
 
+  bool _svcOn(ServicePreset sp) {
+    final domains = _list(widget.domainsKey).toSet(), ips = _list(_ipsKey).toSet();
+    return domains.containsAll(sp.domains) && (_ipsKey == null || ips.containsAll(sp.ips));
+  }
+
+  /// A popular service in or out of this list in one tap.
+  Future<void> _toggleSvc(ServicePreset sp) async {
+    final on = _svcOn(sp);
+    final domains = _list(widget.domainsKey), ips = _list(_ipsKey);
+    final names = sp.domains.toSet(), addrs = sp.ips.toSet();
+    final ok = await _save(
+      on ? domains.where((d) => !names.contains(d)).toList() : {...domains, ...sp.domains}.toList(),
+      _ipsKey == null ? ips : (on ? ips.where((a) => !addrs.contains(a)).toList() : {...ips, ...sp.ips}.toList()),
+    );
+    if (ok) s.toast(tr(on ? 'rules.svc.toast.off' : 'rules.svc.toast.on', {'name': sp.label}), ToastKind.ok);
+  }
+
+  Widget _compact(BuildContext context) {
+    final p = context.pal;
+    final domains = _list(widget.domainsKey), ips = _list(_ipsKey);
+    final c = widget.chipColor ?? accent;
+    Widget row(String text, VoidCallback onRemove, {bool ip = false}) => Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.fromLTRB(14, 2, 4, 2),
+      decoration: BoxDecoration(
+        color: p.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: p.border),
+      ),
+      child: Row(
+        children: [
+          if (ip) ...[Icon(Icons.lan_outlined, size: 14, color: p.muted), const SizedBox(width: 6)],
+          Expanded(
+            child: Text(
+              text,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 14, fontFamily: monoFont, fontFamilyFallback: monoFallback),
+            ),
+          ),
+          IconButton(
+            tooltip: widget.removeTip,
+            visualDensity: VisualDensity.compact,
+            onPressed: onRemove,
+            icon: Icon(Icons.close, size: 18, color: p.dim),
+          ),
+        ],
+      ),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (widget.description != null) ...[
+          Text(widget.description!, style: TextStyle(fontSize: 12, color: p.muted, height: 1.45)),
+          const SizedBox(height: 12),
+        ],
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _add,
+                onSubmitted: (_) => _addEntries(),
+                onChanged: (_) => setState(() => _error = null),
+                style: const TextStyle(fontSize: 14, fontFamily: monoFont, fontFamilyFallback: monoFallback),
+                decoration: InputDecoration(hintText: widget.hint),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Tooltip(
+              message: tr('rules.add'),
+              child: Material(
+                color: accent,
+                shape: const CircleBorder(),
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: _addEntries,
+                  child: const SizedBox(width: 46, height: 46, child: Icon(Icons.add, color: onAccent)),
+                ),
+              ),
+            ),
+          ],
+        ),
+        if (_error != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(_error!, style: const TextStyle(color: errColor, fontSize: 12)),
+          ),
+        if (widget.quick) ...[
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final sp in servicePresets)
+                InkWell(
+                  borderRadius: BorderRadius.circular(99),
+                  onTap: () => _toggleSvc(sp),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: _svcOn(sp) ? c.withValues(alpha: .16) : p.surface2,
+                      borderRadius: BorderRadius.circular(99),
+                      border: Border.all(color: _svcOn(sp) ? c : p.border),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(_svcOn(sp) ? Icons.check : Icons.add, size: 14, color: _svcOn(sp) ? p.text : p.muted),
+                        const SizedBox(width: 5),
+                        Text(
+                          sp.label,
+                          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500, color: _svcOn(sp) ? p.text : p.muted),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
+        const SizedBox(height: 14),
+        if (domains.isEmpty && ips.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            child: Center(
+              child: Text(widget.empty, style: TextStyle(color: p.dim, fontSize: 12)),
+            ),
+          )
+        else ...[
+          // Names in other scripts are kept in punycode, shown as typed.
+          for (final d in domains) row(domainToUnicode(d), () => _save(domains.where((x) => x != d).toList(), ips)),
+          for (final a in ips) row(a, () => _save(domains, ips.where((x) => x != a).toList()), ip: true),
+        ],
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = context.pal;
+    if (widget.compact) return _compact(context);
     final domains = _list(widget.domainsKey), ips = _list(_ipsKey);
     final body = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

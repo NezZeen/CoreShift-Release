@@ -61,7 +61,10 @@ const homeRu = <String, String>{
   'home.hero.pick_first': 'Сначала выберите сервер',
   'home.hero.gone': 'Сервер «{name}» пропал из подписки',
   'home.hero.tap': 'Нажмите, чтобы подключиться',
+  'home.direct_unprotected': 'Трафик идёт напрямую, без защиты',
   'home.hero.wait_net': 'Подключимся, как только появится сеть',
+  'home.state.blocked': 'Трафик заблокирован',
+  'home.hero.blocked': 'Нет связи с VPN. CoreShift переподключается; нажмите кнопку, чтобы отключиться и вернуть обычный интернет',
   'home.hero.resumes': 'VPN продолжит работу, когда сеть вернётся',
 
   // The route: this device, the server
@@ -286,7 +289,10 @@ const homeEn = <String, String>{
   'home.hero.pick_first': 'Choose a server first',
   'home.hero.gone': 'Server “{name}” is gone from the subscription',
   'home.hero.tap': 'Tap to connect',
+  'home.direct_unprotected': 'Traffic goes direct, unprotected',
   'home.hero.wait_net': 'We will connect as soon as the network is back',
+  'home.state.blocked': 'Traffic blocked',
+  'home.hero.blocked': 'No connection to the VPN. CoreShift is reconnecting; press the button to disconnect and get the normal internet back',
   'home.hero.resumes': 'The VPN will resume when the network returns',
 
   'home.device.caption': 'This device',

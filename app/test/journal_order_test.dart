@@ -20,8 +20,8 @@ void main() {
     });
     await tester.pumpWidget(CoreShiftApp(state: state));
     await tester.pump();
-    final phone = find.byType(NavigationBar).evaluate().isNotEmpty;
-    await tester.tap(phone ? find.descendant(of: find.byType(NavigationBar), matching: find.text('Журнал')) : find.text('Журнал').first);
+    final phone = find.byKey(const ValueKey('pill-nav')).evaluate().isNotEmpty;
+    await tester.tap(phone ? find.byTooltip('Журнал') : find.text('Журнал').first);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 600));
     return state;
@@ -105,7 +105,7 @@ void main() {
       expect(find.textContaining(hidden), findsNothing, reason: hidden);
     }
     // The errors filter has them too.
-    await tester.tap(find.text('Ошибки'));
+    await tester.tap(find.textContaining('Ошибки ·'));
     for (var i = 0; i < 6; i++) {
       await tester.pump(const Duration(milliseconds: 16));
     }

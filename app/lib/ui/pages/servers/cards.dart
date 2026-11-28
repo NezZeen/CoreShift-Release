@@ -10,16 +10,17 @@ class _Chip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.pal;
+    final compact = isCompact(context);
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+          padding: EdgeInsets.symmetric(horizontal: compact ? 14 : 12, vertical: compact ? 8 : 5),
           decoration: BoxDecoration(
-            color: on ? p.text : Colors.transparent,
+            color: on ? p.text : p.surface2,
             borderRadius: BorderRadius.circular(99),
-            border: Border.all(color: on ? p.text : p.border2),
+            border: Border.all(color: on ? p.text : (compact ? Colors.transparent : p.border)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -27,7 +28,7 @@ class _Chip extends StatelessWidget {
               if (icon != null) ...[Icon(icon, size: 14, color: on ? p.bg : p.muted), const SizedBox(width: 5)],
               Text(
                 label,
-                style: TextStyle(fontSize: 12, fontWeight: on ? FontWeight.w600 : FontWeight.w500, color: on ? p.bg : p.muted),
+                style: TextStyle(fontSize: compact ? 13 : 12, fontWeight: on ? FontWeight.w600 : FontWeight.w500, color: on ? p.bg : p.muted),
               ),
             ],
           ),
@@ -62,6 +63,26 @@ class _SortChip extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A phone's «add a subscription»: a round amber button in the header.
+class _RoundAdd extends StatelessWidget {
+  final VoidCallback onTap;
+  const _RoundAdd({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+    message: tr('servers.add'),
+    child: Material(
+      color: accent,
+      shape: const CircleBorder(),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: const SizedBox(width: 40, height: 40, child: Icon(Icons.add, size: 22, color: onAccent)),
+      ),
+    ),
+  );
 }
 
 class _EmptySubs extends StatelessWidget {
@@ -183,50 +204,102 @@ class _SubCard extends StatelessWidget {
                 ],
               ),
             ),
-          Padding(
-            padding: EdgeInsets.only(right: compact ? 10 : 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(height: compact ? 4 : 12),
-                // What the panel says about the subscription: the traffic
-                // on the left, how long it lasts on the right.
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      flex: 3,
-                      child: _Fact(
-                        label: i.total > 0 ? tr('servers.sub.traffic') : (i.used > 0 ? tr('servers.sub.used') : tr('servers.sub.servers')),
-                        value: i.total > 0 || i.used > 0 ? formatQuota(i.used) : '${sub.nodes.length}',
-                        note: i.total > 0 ? tr('servers.sub.of_total', {'total': formatQuota(i.total)}) : (i.used > 0 ? tr('servers.sub.no_limit') : ''),
-                        color: i.total > 0 && i.used / i.total > .9 ? errColor : null,
-                        progress: i.total > 0 ? (i.used / i.total).clamp(0, 1).toDouble() : null,
+          if (compact)
+            _compactFacts(context, expired: expired, daysLeft: daysLeft)
+          else
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(height: compact ? 4 : 12),
+                  // What the panel says about the subscription: the traffic
+                  // on the left, how long it lasts on the right.
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: _Fact(
+                          label: i.total > 0 ? tr('servers.sub.traffic') : (i.used > 0 ? tr('servers.sub.used') : tr('servers.sub.servers')),
+                          value: i.total > 0 || i.used > 0 ? formatQuota(i.used) : '${sub.nodes.length}',
+                          note: i.total > 0 ? tr('servers.sub.of_total', {'total': formatQuota(i.total)}) : (i.used > 0 ? tr('servers.sub.no_limit') : ''),
+                          color: i.total > 0 && i.used / i.total > .9 ? errColor : null,
+                          progress: i.total > 0 ? (i.used / i.total).clamp(0, 1).toDouble() : null,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      flex: 2,
-                      child: i.expire != null
-                          ? _Fact(
-                              label: expired ? tr('servers.sub.expired') : tr('servers.sub.left'),
-                              value: expired
-                                  ? formatDate(i.expire!)
-                                  : (daysLeft! < 1 ? tr('servers.sub.less_than_day') : tr('servers.sub.days', {'n': daysLeft})),
-                              note: expired ? tr('servers.sub.renew') : tr('servers.sub.until', {'date': formatDate(i.expire!)}),
-                              color: expired ? errColor : (expiresSoon ? warnColor : null),
-                            )
-                          : _Fact(
-                              label: tr('servers.sub.term'),
-                              value: tr('servers.sub.forever'),
-                              note: sub.isLocal ? '' : tr('servers.sub.updated', {'ago': formatAgo(sub.updatedAt)}),
-                            ),
-                    ),
-                  ],
-                ),
-              ],
+                      const SizedBox(width: 14),
+                      Expanded(
+                        flex: 2,
+                        child: i.expire != null
+                            ? _Fact(
+                                label: expired ? tr('servers.sub.expired') : tr('servers.sub.left'),
+                                value: expired
+                                    ? formatDate(i.expire!)
+                                    : (daysLeft! < 1 ? tr('servers.sub.less_than_day') : tr('servers.sub.days', {'n': daysLeft})),
+                                note: expired ? tr('servers.sub.renew') : tr('servers.sub.until', {'date': formatDate(i.expire!)}),
+                                color: expired ? errColor : (expiresSoon ? warnColor : null),
+                              )
+                            : _Fact(
+                                label: tr('servers.sub.term'),
+                                value: tr('servers.sub.forever'),
+                                note: sub.isLocal ? '' : tr('servers.sub.updated', {'ago': formatAgo(sub.updatedAt)}),
+                              ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A phone's facts about a subscription on one line, «142 ГБ из 500 ГБ · 47 дн.
+/// · обновлено 9 мин назад», and a thin bar of the traffic used.
+extension _CompactFacts on _SubCard {
+  Widget _compactFacts(BuildContext context, {required bool expired, required int? daysLeft}) {
+    final p = context.pal;
+    final i = sub.info;
+    final String term;
+    if (i.expire == null) {
+      term = tr('servers.sub.forever');
+    } else if (expired) {
+      term = '${tr('servers.sub.expired')} ${formatDate(i.expire!)}';
+    } else {
+      term = daysLeft! < 1 ? tr('servers.sub.less_than_day') : tr('servers.sub.days', {'n': daysLeft});
+    }
+    final parts = [
+      if (i.total > 0)
+        '${formatQuota(i.used)} ${tr('servers.sub.of_total', {'total': formatQuota(i.total)})}'
+      else if (i.used > 0)
+        '${formatQuota(i.used)} · ${tr('servers.sub.no_limit')}'
+      else
+        serversCount(sub.nodes.length),
+      term,
+      if (!sub.isLocal) tr('servers.sub.updated', {'ago': formatAgo(sub.updatedAt)}),
+    ];
+    final used = i.total > 0 ? (i.used / i.total).clamp(0, 1).toDouble() : null;
+    return Padding(
+      padding: const EdgeInsets.only(right: 10, top: 2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            parts.join(' · '),
+            style: TextStyle(fontSize: 12, color: expired ? p.errInk : p.muted),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
+          if (used != null) ...[
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(9),
+              child: LinearProgressIndicator(value: used, minHeight: 4, backgroundColor: p.surface3, color: used > .9 ? errColor : accent),
+            ),
+          ],
         ],
       ),
     );
@@ -359,6 +432,58 @@ class _CurrentBar extends StatelessWidget {
     final color = connected ? okColor : accent;
     final ink = p.ink(color);
     final label = connected ? tr('servers.current.now') : (state.status.active ? tr('servers.current.connecting') : tr('servers.current.selected'));
+    if (compact) {
+      // A phone: the word over the name, the protocol and the delay under
+      // it, a check once connected.
+      final l = state.latencyOf(sub.id, node.fingerprint);
+      return Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onShow,
+          borderRadius: BorderRadius.circular(14),
+          child: Ink(
+            padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: .12),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: color.withValues(alpha: .45)),
+            ),
+            child: Row(
+              children: [
+                CountryBadge(countryOf(node.name, node.server), width: 32),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        label,
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: ink),
+                      ),
+                      Text(
+                        cleanNodeName(node.name),
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      _protoMs(context, node, l, msFirst: false, color: ink),
+                    ],
+                  ),
+                ),
+                if (connected)
+                  const Padding(
+                    padding: EdgeInsets.all(10),
+                    child: Icon(Icons.check_circle, size: 22, color: okColor),
+                  )
+                else
+                  Btn(icon: Icons.my_location, small: true, tooltip: tr('servers.current.show_tip'), onPressed: onShow),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -454,4 +579,15 @@ class _SwipeHint extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The servers' frame: on a computer one surface panel holding the table, on
+/// a phone nothing, as every server is a card of its own.
+class _ListFrame extends StatelessWidget {
+  final bool compact;
+  final Widget child;
+  const _ListFrame({required this.compact, required this.child});
+
+  @override
+  Widget build(BuildContext context) => compact ? child : Panel(padding: const EdgeInsets.all(6), child: child);
 }

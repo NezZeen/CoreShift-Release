@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Only the cache's "share" folder, where the journal for support is written
+     to be sent; nothing else of the app's files is reachable by URI. -->
+<paths>
+    <cache-path name="share" path="share/" />
+</paths>

@@ -39,8 +39,7 @@ void main() {
     await tester.pump();
   }
 
-  Finder navTo(String page, {required bool phone}) =>
-      phone ? find.descendant(of: find.byType(NavigationBar), matching: find.text(page)) : find.text(page).first;
+  Finder navTo(String page, {required bool phone}) => phone ? find.byTooltip(page) : find.text(page).first;
 
   (Subscription, NodeView) node(AppState s, String name) {
     for (final sub in s.subscriptions) {
@@ -213,8 +212,14 @@ void main() {
       await tester.tap(find.text('Все серверы · ${state.nodeCount}'));
       await tester.pump(const Duration(milliseconds: 600));
       await tester.pump(const Duration(milliseconds: 600));
-      expect(find.text('Добавить подписку').evaluate().isNotEmpty || find.text('Добавить').evaluate().isNotEmpty, isTrue);
-      expect(find.byType(NavigationBar).evaluate().isNotEmpty == isPhone, isTrue);
+      // A phone's «+» is a round icon button named by its tooltip.
+      expect(
+        find.text('Добавить подписку').evaluate().isNotEmpty ||
+            find.text('Добавить').evaluate().isNotEmpty ||
+            find.byTooltip('Добавить подписку').evaluate().isNotEmpty,
+        isTrue,
+      );
+      expect(find.byKey(const ValueKey('pill-nav')).evaluate().isNotEmpty == isPhone, isTrue);
       // The demo's connection ticks on timers: ended, so none is left.
       state.disconnect();
       await tester.pump(const Duration(seconds: 2));

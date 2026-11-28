@@ -100,8 +100,8 @@ void main() {
     });
     await tester.pumpWidget(CoreShiftApp(state: state));
     await tester.pump();
-    final phone = find.byType(NavigationBar).evaluate().isNotEmpty;
-    await tester.tap(phone ? find.descendant(of: find.byType(NavigationBar), matching: find.text('Правила')) : find.text('Правила').first);
+    final phone = find.byKey(const ValueKey('pill-nav')).evaluate().isNotEmpty;
+    await tester.tap(phone ? find.byTooltip('Правила') : find.text('Правила').first);
     await tester.pump();
     return state;
   }
@@ -109,10 +109,16 @@ void main() {
   for (final (name, size) in [('desktop', Size(1400, 900)), ('phone', Size(390, 844))]) {
     testWidgets('own rules: add, reorder, remove ($name)', (tester) async {
       final state = await pumpRules(tester, size);
+      final field = find.widgetWithText(TextField, 'geosite:youtube, geoip:ru, example.com');
       List<String> rules() => [for (final r in state.setting<List>('routing.rules', const [])) '${r['match']} ${r['action']}'];
       expect(find.text('Свои правила'), findsOneWidget);
+      // The own rules are a fold, closed until asked for.
+      expect(field, findsNothing);
+      await tester.ensureVisible(find.text('Свои правила'));
+      await tester.tap(find.text('Свои правила'));
+      await tester.pump();
+      expect(field, findsOneWidget);
       expect(find.text('Блокировать рекламу'), findsNothing, reason: 'no switch for now: always on');
-      final field = find.widgetWithText(TextField, 'geosite:youtube, geoip:ru, example.com');
 
       Future<void> add(String text, String action) async {
         await tester.ensureVisible(field);
@@ -156,7 +162,16 @@ void main() {
       // Another source, with a link of the user's own: once the toasts,
       // which a phone shows over the bottom of the page, are gone.
       await tester.pump(const Duration(seconds: 6));
-      await tester.ensureVisible(find.text('Источник баз'));
+      if (name == 'phone') {
+        // A phone keeps «Источник баз» in the settings, under «Подключение».
+        expect(find.text('Источник баз'), findsNothing);
+        await tester.tap(find.byTooltip('Настройки'));
+        await tester.pump(const Duration(milliseconds: 500));
+        await tester.tap(find.text('Подключение'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+      }
+      await tester.scrollUntilVisible(find.text('Источник баз'), 300, scrollable: find.byType(Scrollable).last);
       await tester.tap(find.text('Источник баз'));
       await tester.pump();
       await tester.ensureVisible(find.text('Своя ссылка'));

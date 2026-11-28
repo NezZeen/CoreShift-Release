@@ -63,13 +63,20 @@ void main() {
   }
 
   Finder nav(String page) {
-    final onPhone = find.byType(NavigationBar).evaluate().isNotEmpty;
-    return onPhone ? find.descendant(of: find.byType(NavigationBar), matching: find.text(page)) : find.text(page).first;
+    final onPhone = find.byKey(const ValueKey('pill-nav')).evaluate().isNotEmpty;
+    return onPhone ? find.byTooltip(page) : find.text(page).first;
   }
 
   Future<void> openDnsSettings(WidgetTester tester) async {
     await tester.tap(nav('Настройки'));
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    if (find.byKey(const ValueKey('pill-nav')).evaluate().isNotEmpty) {
+      // A phone: the section «DNS» is a page of its own.
+      await tester.tap(find.text('DNS'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      return;
+    }
     await tester.ensureVisible(find.text('Дополнительно'));
     await tester.tap(find.text('Дополнительно'));
     await tester.pump();
@@ -261,14 +268,22 @@ void main() {
       await tester.tap(find.text('Настройки DNS'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
-      expect(find.text('Настройки'), findsWidgets);
+      await tester.pump(const Duration(milliseconds: 400));
+      // A phone shows the DNS page itself, a desktop the settings.
+      expect(find.text(size == phone ? 'DNS' : 'Настройки'), findsWidgets);
       expect(find.byKey(const ValueKey('dns-hint')), findsOneWidget, reason: 'the DNS fields are open at $size');
       expect(find.text('DNS напрямую'), findsOneWidget);
       expect(tester.takeException(), isNull, reason: 'settings at $size');
 
       // Back on the home page the restored resolver takes the note away.
+      if (size == phone) {
+        await tester.tap(find.byIcon(Icons.arrow_back));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+      }
       await tester.tap(nav('Главная'));
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
       expect(find.text(title), findsOneWidget);
       state.injectEvent(Event(time: DateTime.now(), kind: 'dns-direct', reason: 'restored', line: 'DNS напрямую (94.140.14.14) снова отвечает'));
       await tester.pump();

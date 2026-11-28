@@ -6,6 +6,7 @@ part of '../home_page.dart';
   ConnState.connecting => (tr('home.state.connecting'), context.pal.accentInk),
   ConnState.disconnecting => (tr('home.state.disconnecting'), context.pal.muted),
   ConnState.failed => (tr('home.state.failed'), context.pal.errInk),
+  ConnState.blocked => (tr('home.state.blocked'), context.pal.errInk),
   ConnState.noNetwork => (tr(st.waiting ? 'home.state.waiting' : 'home.state.no_network'), context.pal.warnInk),
   ConnState.idle => (tr('home.state.idle'), context.pal.text),
 };
@@ -15,7 +16,11 @@ part of '../home_page.dart';
 class _Hero extends StatelessWidget {
   final AppState state;
   final double size;
-  const _Hero({required this.state, this.size = 184});
+
+  /// The phone: the state goes into a chip above the button instead of big
+  /// letters under it.
+  final bool compact;
+  const _Hero({required this.state, this.size = 184, this.compact = false});
 
   @override
   Widget build(BuildContext context) {
@@ -49,9 +54,29 @@ class _Hero extends StatelessWidget {
         style: TextStyle(color: p.warnInk, fontSize: 13.5),
       ),
       ConnState.idle => Text(tr('home.hero.tap'), style: muted),
+      ConnState.blocked => Text(tr('home.hero.blocked'), textAlign: TextAlign.center, style: muted),
       ConnState.noNetwork => Text(tr(st.waiting ? 'home.hero.wait_net' : 'home.hero.resumes'), textAlign: TextAlign.center, style: muted),
       _ => const SizedBox(),
     };
+    if (compact) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: _StateChip(title: title, color: color, lit: st.state == ConnState.connected),
+          ),
+          const SizedBox(height: 26),
+          Center(
+            child: ConnectButton(state: st.state, enabled: canConnect, onTap: state.toggleConnect, size: size),
+          ),
+          const SizedBox(height: 18),
+          ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 20),
+            child: Center(child: line),
+          ),
+        ],
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -70,6 +95,115 @@ class _Hero extends StatelessWidget {
           child: Center(child: line),
         ),
       ],
+    );
+  }
+}
+
+/// The phone's state above the button: a lamp and the word, in a pill tinted
+/// with the state's colour.
+class _StateChip extends StatelessWidget {
+  final String title;
+  final Color color;
+  final bool lit;
+  const _StateChip({required this.title, required this.color, required this.lit});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+      decoration: BoxDecoration(
+        color: lit ? Color.alphaBlend(okColor.withValues(alpha: .12), p.surface) : p.surface,
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: lit ? okColor.withValues(alpha: .5) : p.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: lit ? color : Colors.transparent,
+              border: Border.all(color: color, width: 1.5),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            title,
+            style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The phone's chosen server: one card under the button; a tap opens the
+/// quick pick, as the server's station does on the desktop.
+class _ServerChip extends StatelessWidget {
+  final AppState state;
+  const _ServerChip({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.pal;
+    final sel = state.selection;
+    final n = sel.node;
+    final sub = state.subscriptionById(sel.subscription);
+    final l = n == null ? null : state.latencyOf(sel.subscription, n.fingerprint);
+    final detail = <InlineSpan>[
+      if (n != null) TextSpan(text: protocolLabel(n.protocol)),
+      if (l != null && l.ok) ...[
+        const TextSpan(text: ' · '),
+        TextSpan(
+          text: tr('home.ms', {'ms': l.ms}),
+          style: TextStyle(fontFamily: monoFont, fontFamilyFallback: monoFallback, color: p.ink(l.ms < 200 ? okColor : (l.ms < 500 ? warnColor : errColor))),
+        ),
+      ],
+      if (sub != null) TextSpan(text: ' · ${sub.displayName}'),
+    ];
+    return Material(
+      color: p.surface2,
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => showQuickPick(context, state, onAll: () => Nav.to(context, PageId.servers)),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+          child: Row(
+            children: [
+              if (n != null) ...[CountryBadge(countryOf(n.name, n.server), width: 40), const SizedBox(width: 14)],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      n == null ? (sel.isEmpty ? tr('home.server.choose') : sel.name) : cleanNodeName(n.name),
+                      style: display(17, weight: FontWeight.w700, color: n == null ? p.muted : null),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (detail.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text.rich(
+                        TextSpan(children: detail),
+                        style: TextStyle(fontSize: 13, color: p.muted),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              Tooltip(
+                message: tr('home.server.change'),
+                child: Icon(Icons.chevron_right, size: 22, color: p.muted),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

@@ -38,7 +38,7 @@ void main() {
 
   /// Opens the servers and waits out the first ping test.
   Future<void> openServers(WidgetTester tester, {required bool phone}) async {
-    await tester.tap(phone ? find.descendant(of: find.byType(NavigationBar), matching: find.text('Серверы')) : find.text('Серверы').first);
+    await tester.tap(phone ? find.byTooltip('Серверы') : find.text('Серверы').first);
     await tester.pump();
     await tester.pump(const Duration(seconds: 30));
   }
@@ -165,6 +165,9 @@ void main() {
     final state = await pumpApp(tester);
     await openServers(tester, phone: false);
     final (sub, tokyo) = node(state, 'Tokyo');
+    // The rows are 44 px: Tokyo is below the window's edge until scrolled to.
+    await tester.ensureVisible(find.text('Tokyo'));
+    await tester.pump();
     final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
     addTearDown(mouse.removePointer);
     await mouse.addPointer(location: tester.getCenter(find.text('Tokyo')));
@@ -178,9 +181,13 @@ void main() {
     expect(find.text('Tokyo'), findsOneWidget, reason: 'a favourite is not listed twice');
 
     // One subscription shown: the rest under a heading of its own.
+    await tester.ensureVisible(find.text('NorthLink Premium').first);
+    await tester.pump();
     await tester.tap(find.text('NorthLink Premium').first);
     await tester.pump();
     expect(find.text('Остальные'), findsOneWidget);
+    await tester.ensureVisible(find.text('NorthLink Premium').first);
+    await tester.pump();
     await tester.tap(find.text('NorthLink Premium').first);
     await tester.pump();
 
@@ -216,6 +223,8 @@ void main() {
     final (sub, tokyo) = node(state, 'Tokyo');
     final count = state.nodeCount;
 
+    await tester.ensureVisible(find.text('Tokyo'));
+    await tester.pump();
     await tester.tap(find.text('Tokyo'), buttons: kSecondaryButton);
     await tester.pumpAndSettle();
     expect(find.text('Подключиться'), findsOneWidget);
@@ -226,6 +235,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(state.isFavorite(sub, tokyo), isTrue);
 
+    await tester.ensureVisible(find.text('Tokyo'));
+    await tester.pump();
     await tester.tap(find.text('Tokyo'), buttons: kSecondaryButton);
     await tester.pumpAndSettle();
     expect(find.text('Убрать из избранного'), findsOneWidget);
@@ -247,6 +258,8 @@ void main() {
     expect(find.text('Удалено из подписок: 1'), findsNothing);
 
     // Removed again, it stays removed when the subscription is refreshed.
+    await tester.ensureVisible(find.text('Tokyo'));
+    await tester.pump();
     await tester.tap(find.text('Tokyo'), buttons: kSecondaryButton);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Удалить из подписки'));

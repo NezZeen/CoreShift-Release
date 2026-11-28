@@ -228,10 +228,17 @@ void main() {
         });
         await tester.pumpWidget(CoreShiftApp(state: state));
         await tester.pump();
-        final phone = find.byType(NavigationBar).evaluate().isNotEmpty;
+        final phone = find.byKey(const ValueKey('pill-nav')).evaluate().isNotEmpty;
         expect(phone, name == 'phone');
-        await tester.tap(phone ? find.descendant(of: find.byType(NavigationBar), matching: find.text('Настройки')) : find.text('Настройки').first);
-        await tester.pump();
+        await tester.tap(phone ? find.byTooltip('Настройки') : find.text('Настройки').first);
+        await tester.pump(const Duration(milliseconds: 500));
+        if (phone) {
+          // A phone keeps the test in the settings' section «Подключение».
+          await tester.tap(find.text('Подключение'));
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 500));
+          await tester.scrollUntilVisible(find.byType(LeakResultCard), 300, scrollable: find.byType(Scrollable).last);
+        }
         await tester.ensureVisible(find.byType(LeakResultCard));
         await tester.pump();
         return state;

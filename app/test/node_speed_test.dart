@@ -36,7 +36,7 @@ void main() {
 
   /// Opens the servers and waits out the first ping test.
   Future<void> openServers(WidgetTester tester, {required bool phone}) async {
-    await tester.tap(phone ? find.descendant(of: find.byType(NavigationBar), matching: find.text('Серверы')) : find.text('Серверы').first);
+    await tester.tap(phone ? find.byTooltip('Серверы') : find.text('Серверы').first);
     await tester.pump();
     await tester.pump(const Duration(seconds: 30));
   }
@@ -52,6 +52,9 @@ void main() {
   Finder speedButton({required bool phone}) => phone
       ? find.byWidgetPredicate((w) => w is Tooltip && (w.message ?? '').startsWith('Проверить скорость скачивания показанных серверов'))
       : find.widgetWithText(Btn, 'Скорость');
+
+  /// A phone's row has the delay, the protocol and the speed in one line of rich text.
+  Finder richText(String part) => find.byWidgetPredicate((w) => w is RichText && w.text.toPlainText().contains(part));
 
   int usable(AppState s) => s.subscriptions.fold(0, (n, sub) => n + sub.nodes.where((x) => x.cores.isNotEmpty).length);
 
@@ -170,6 +173,9 @@ void main() {
   testWidgets('the right-click menu tests one server', (tester) async {
     final state = await pumpApp(tester);
     await openServers(tester, phone: false);
+    // The rows are 44 px: Tokyo is below the window's edge until scrolled to.
+    await tester.ensureVisible(find.text('Tokyo'));
+    await tester.pump();
     await tester.tap(find.text('Tokyo'), buttons: kSecondaryButton);
     await tester.pumpAndSettle();
     expect(find.text('Проверить скорость'), findsOneWidget);
@@ -183,7 +189,9 @@ void main() {
     expect(state.nodeSpeeds.length, 1);
     expect(find.descendant(of: rowOf('Tokyo'), matching: find.text('12 Мбит/с')), findsOneWidget);
 
-    // Not while a test is on.
+    // Not while a test is on. The toolbar scrolls with the list: back to it.
+    await tester.ensureVisible(speedButton(phone: false));
+    await tester.pump();
     await tester.tap(speedButton(phone: false));
     await tester.pump(const Duration(milliseconds: 600));
     await tester.ensureVisible(find.text('Tokyo'));
@@ -244,7 +252,7 @@ void main() {
 
     await run(tester, 40);
     expect(state.testingSpeed, isFalse);
-    expect(find.text('94 Мбит/с'), findsOneWidget);
+    expect(richText('94 Мбит/с'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pump(const Duration(seconds: 10));
   });
@@ -267,7 +275,7 @@ void main() {
     expect(find.textContaining('Выбрано'), findsNothing, reason: 'the picking ends');
     expect(state.speedTotal, 1);
     await run(tester, 3);
-    expect(find.descendant(of: rowOf('Helsinki'), matching: find.text('33 Мбит/с')), findsOneWidget);
+    expect(find.descendant(of: rowOf('Helsinki'), matching: richText('33 Мбит/с')), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pump(const Duration(seconds: 10));
   });
@@ -292,12 +300,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(state.serverSort, 'speed');
     expect(onScreen(tester, ['Amsterdam', 'Rotterdam', 'Frankfurt', 'Warsaw']), ['Amsterdam', 'Rotterdam', 'Frankfurt', 'Warsaw']);
-    // The latency and the speed one above the other, in the same column.
+    // The new phone row has the latency, the protocol and the speed in one
+    // line under the name, in that order.
     final row = rowOf('Amsterdam');
-    final ping = tester.getRect(find.descendant(of: row, matching: find.textContaining('мс')).first);
-    final speed = tester.getRect(find.descendant(of: row, matching: find.text('94 Мбит/с')));
-    expect(speed.top, greaterThan(ping.bottom - 2));
-    expect(speed.left, closeTo(ping.left, 2));
+    final line = find.descendant(of: row, matching: richText('94 Мбит/с'));
+    expect(line, findsOneWidget);
+    expect(tester.widget<RichText>(line).text.toPlainText(), matches(RegExp(r'\d+ мс.*94 Мбит/с')));
     expect(tester.takeException(), isNull);
     await tester.pump(const Duration(seconds: 10));
   });
@@ -314,8 +322,8 @@ void main() {
       await run(tester, 40);
       expect(state.testingSpeed, isFalse);
       final row = rowOf('Amsterdam');
-      expect(find.descendant(of: row, matching: find.textContaining('TCP')), findsOneWidget);
-      expect(find.descendant(of: row, matching: find.text('94 Мбит/с')), findsOneWidget);
+      expect(find.descendant(of: row, matching: find.textContaining('TCP', findRichText: true)), findsOneWidget);
+      expect(find.descendant(of: row, matching: isPhone ? richText('94 Мбит/с') : find.text('94 Мбит/с')), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pump(const Duration(seconds: 10));
     });
@@ -348,9 +356,14 @@ void main() {
     testWidgets('the volume per server is in the settings: 5, 10 or 25 MB, and the question follows it (${size.width.round()})', (tester) async {
       final state = await pumpApp(tester, size: size);
       final isPhone = size.width < 600;
-      Finder nav(String p) => isPhone ? find.descendant(of: find.byType(NavigationBar), matching: find.text(p)) : find.text(p).first;
+      Finder nav(String p) => isPhone ? find.byTooltip(p) : find.text(p).first;
       await tester.tap(nav('Настройки'));
       await tester.pump();
+      // A phone's settings are rows that open pages: the speed check is in «Подключение».
+      if (isPhone) {
+        await tester.tap(find.text('Подключение'));
+        await tester.pumpAndSettle();
+      }
       expect(find.text('Проверка скорости'), findsOneWidget);
       await tester.ensureVisible(find.text('Проверка скорости'));
       expect(state.speedVolumeMB, 10);
@@ -369,7 +382,10 @@ void main() {
       expect(tester.takeException(), isNull);
 
       if (isPhone) {
-        await tester.tap(nav('Серверы'));
+        // Back from the settings sub-page (a pushed route), then to the servers.
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('Серверы'));
         await tester.pump();
         await tester.pump(const Duration(seconds: 30));
         await tester.tap(speedButton(phone: true));

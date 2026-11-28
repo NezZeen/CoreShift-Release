@@ -19,8 +19,8 @@ void main() {
     });
     await tester.pumpWidget(CoreShiftApp(state: state));
     await tester.pump();
-    final phone = find.byType(NavigationBar).evaluate().isNotEmpty;
-    await tester.tap(phone ? find.descendant(of: find.byType(NavigationBar), matching: find.text('Правила')) : find.text('Правила').first);
+    final phone = find.byKey(const ValueKey('pill-nav')).evaluate().isNotEmpty;
+    await tester.tap(phone ? find.byTooltip('Правила') : find.text('Правила').first);
     await tester.pump();
     return state;
   }
@@ -33,6 +33,20 @@ void main() {
       expect(state.setting('routing.block_ads', false), isTrue);
       expect(find.text('Блокировать рекламу'), findsNothing);
       expect(find.textContaining('Рекламу внутри YouTube'), findsNothing);
+      // «Готовые наборы» are on the rules page on a computer; a phone keeps
+      // them in the settings, under «Подключение».
+      Future<void> openPresets() async {
+        if (name != 'phone') return;
+        expect(find.text('Российские сайты напрямую'), findsNothing, reason: 'not on the rules page of a phone');
+        await tester.tap(find.byTooltip('Настройки'));
+        await tester.pump(const Duration(milliseconds: 500));
+        await tester.tap(find.text('Подключение'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+        await tester.scrollUntilVisible(find.text('Российские сайты напрямую'), 300, scrollable: find.byType(Scrollable).last);
+      }
+
+      await openPresets();
       expect(find.text('Российские сайты напрямую'), findsOneWidget);
       await tester.runAsync(() => state.updateSettings((s) => s['routing']['mode'] = 'selected'));
       await tester.pump(const Duration(seconds: 1));

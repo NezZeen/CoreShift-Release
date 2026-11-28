@@ -51,6 +51,9 @@ class _ImportOfferState extends State<_ImportOffer> {
     if (link == null) return const SizedBox();
     final servers = link.content.isEmpty ? 0 : link.content.split('\n').length;
     final what = link.url.isNotEmpty ? Uri.tryParse(link.url)?.host ?? '' : (servers == 1 ? tr('import.one_server') : tr('import.servers', {'n': servers}));
+    // Hidden characters (text direction overrides, zero-width ones) in the
+    // link's name could make it read as something it is not.
+    final name = link.name.replaceAll(RegExp(r'[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u2028-\u202E\u2060-\u2069\uFEFF]'), '').trim();
     final from = switch (s.importFrom) {
       ImportFrom.clipboard => tr('import.from.clipboard'),
       ImportFrom.qr => tr('import.from.qr'),
@@ -88,12 +91,24 @@ class _ImportOfferState extends State<_ImportOffer> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (link.name.isNotEmpty) Text(link.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                    // The host comes first and at least as large as the name:
+                    // the name is whatever the link says, and "Official ..."
+                    // must not hide a foreign host.
                     Text(
                       what,
-                      style: TextStyle(fontFamily: monoFont, fontFamilyFallback: monoFallback, fontSize: 12.5, color: link.name.isEmpty ? p.text : p.muted),
+                      style: TextStyle(fontFamily: monoFont, fontFamilyFallback: monoFallback, fontSize: 15, fontWeight: FontWeight.w600, color: p.text),
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
+                    if (name.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        name,
+                        style: TextStyle(fontSize: 13, color: p.muted),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ],
                 ),
               ),

@@ -49,7 +49,7 @@ void main() {
   }
 
   Future<void> openServers(WidgetTester tester, bool isPhone) async {
-    await tap(tester, isPhone ? find.descendant(of: find.byType(NavigationBar), matching: find.text('Серверы')) : find.text('Серверы').first);
+    await tap(tester, isPhone ? find.byTooltip('Серверы') : find.text('Серверы').first);
   }
 
   /// The number shown before a server's row, found by the server itself.

@@ -119,7 +119,7 @@ void main() {
 
       testWidgets('the servers list scrolls by the wheel and by a drag on a row', (tester) async {
         final state = await pumpApp(tester, size: size, stars: false);
-        await tester.tap(isPhone ? find.descendant(of: find.byType(NavigationBar), matching: find.text('Серверы')) : find.text('Серверы').first);
+        await tester.tap(isPhone ? find.byTooltip('Серверы') : find.text('Серверы').first);
         await tester.pump();
         await tester.pump(const Duration(seconds: 30));
         final scroll = tester.state<ScrollableState>(find.byType(Scrollable).first);

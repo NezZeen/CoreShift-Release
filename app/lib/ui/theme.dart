@@ -30,19 +30,19 @@ class Palette extends ThemeExtension<Palette> {
 
   static const dark = Palette(
     bg: Color(0xFF161A1D),
-    bg2: Color(0xFF101315),
+    bg2: Color(0xFF121315),
     surface: Color(0xFF1D2225),
     surface2: Color(0xFF242A2E),
     surface3: Color(0xFF2E353A),
     border: Color(0xFF293034),
     border2: Color(0xFF384146),
-    text: Color(0xFFECEFEC),
-    muted: Color(0xFF9AA5A7),
+    text: Color(0xFFEDF0EC),
+    muted: Color(0xFF9AA3A0),
     dim: Color(0xFF6A777C),
-    accentInk: Color(0xFFF5B25E),
+    accentInk: Color(0xFFEDB566),
     okInk: okColor,
     warnInk: warnColor,
-    errInk: errColor,
+    errInk: Color(0xFFE58A84),
   );
 
   static const light = Palette(
@@ -117,26 +117,28 @@ class Palette extends ThemeExtension<Palette> {
 }
 
 /// The amber lamp: the action to take, the selected thing.
-const accent = Color(0xFFF0A23B);
+const accent = Color(0xFFE5A450);
 
 /// Text and icons on an amber fill.
-const onAccent = Color(0xFF241604);
+const onAccent = Color(0xFF3A2507);
 
 /// The green lamp: connected, working, fast.
-const okColor = Color(0xFF3CCB98);
+const okColor = Color(0xFF6BC89B);
 const warnColor = Color(0xFFF2CB4C);
-const errColor = Color(0xFFEE5D58);
+const errColor = Color(0xFFC16661);
 const swapColor = Color(0xFFB794F6);
 
-const monoFont = 'Consolas';
-const monoFallback = ['Cascadia Mono', 'DejaVu Sans Mono', 'monospace'];
+/// Times, delays and the journal: JetBrains Mono when bundled (assets/fonts),
+/// else the system's monospace.
+const monoFont = 'JetBrains Mono';
+const monoFallback = ['Consolas', 'Cascadia Mono', 'DejaVu Sans Mono', 'monospace'];
 
-/// Headings and figures: Bahnschrift, the DIN of road and rail signs, which
-/// Windows ships. Android has no Bahnschrift: "sans-serif-condensed" is the
-/// name its fonts.xml gives Roboto Condensed, the nearest it has; failing
-/// that, the plain UI face of each system.
-const displayFont = 'Bahnschrift';
-const displayFallback = ['sans-serif-condensed', 'Roboto Condensed', 'Segoe UI', 'Roboto', 'sans-serif'];
+/// Text and headings: Manrope when bundled (assets/fonts), else the plain UI
+/// face of each system.
+const uiFont = 'Manrope';
+const uiFallback = ['Segoe UI', 'Roboto', 'Noto Sans', 'Ubuntu', 'sans-serif'];
+const displayFont = uiFont;
+const displayFallback = uiFallback;
 
 /// A heading in the display face.
 TextStyle display(double size, {FontWeight weight = FontWeight.w600, Color? color, double spacing = 0}) => TextStyle(
@@ -196,7 +198,7 @@ String protocolLabel(String p) => switch (p) {
 };
 
 Color protocolColor(String p) => switch (p) {
-  'vless' => const Color(0xFF6D8CFF),
+  'vless' => const Color(0xFF7A92FD),
   'vmess' => const Color(0xFF60A5FA),
   'trojan' => const Color(0xFFF472B6),
   'shadowsocks' => const Color(0xFFA3E635),
@@ -217,7 +219,8 @@ ThemeData buildTheme(Brightness b) {
       brightness: b,
     ).copyWith(primary: accent, onPrimary: onAccent, secondary: okColor, surface: p.surface, onSurface: p.text, error: errColor),
     scaffoldBackgroundColor: p.bg,
-    fontFamily: 'Segoe UI',
+    fontFamily: uiFont,
+    fontFamilyFallback: uiFallback,
     extensions: [p],
   );
   final dark = b == Brightness.dark;
